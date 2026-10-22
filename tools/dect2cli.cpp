@@ -436,6 +436,12 @@ int main(int argc, char** argv) {
                 printf("  beacon: carrier %+.1f Hz, %.1f dB-Hz, drift %+.1f Hz/min, %s; telemetry %d tone(s) at %.0f Hz, %.2f bit/s, frame %d bits, %llu good %llu bad\n", b.cfoHz, (double)b.snrDb, b.driftHzPerMin, b.carrierLocked ? "locked" : "searching", b.tones, b.subcarrierHz, b.baud, b.frameBits, (unsigned long long)b.blocksOk, (unsigned long long)b.blocksBad);
                 for (size_t i = 0; i < b.frames.size() && i < 2; i++) { printf("  frame:"); for (uint8_t x : b.frames[i].bytes) printf(" %02X", x); printf(" (%d errors)\n", b.frames[i].fixedErrors); }
             }
+            if (t.standard == 151)   // SBAS: the satellites with what they have sent
+                for (const auto& sat : t.sbas.sats) {
+                    int masked = 0, fast = 0;
+                    for (const auto& g : t.sbas.geos) if (g.prn == sat.prn) { masked = g.nMasked; fast = dect2::sbas::Network::summarise(g).nFast; }
+                    printf("  sbas: PRN %d %-6s %5.1f dB-Hz  %u messages  last type %d  mask %d satellites  %d fast corrections\n", sat.prn, dect2::sbasServiceOfPrn(sat.prn), (double)sat.cn0, sat.messages, sat.lastType, masked, fast);
+                }
             if (t.standard == 105)   // meteor scatter: the newest pings
             if (t.standard == 105)   // meteor scatter: the newest pings
                 for (size_t i = 0; i < t.mscatter.pings.size() && i < 3; i++) {

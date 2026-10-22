@@ -402,6 +402,7 @@ void GnssTracker::sbasLayer(float I) {
             ev.kind = GnssMsgSbas;
             ev.sbasType = msg.type;
             for (int i = 0; i < 128 && i < kSbasMsgBits; i++) ev.word[i] = msg.bits[i];
+            for (int i = 0; i < kSbasMsgBits; i++) ev.bits[i] = msg.bits[i];     // the whole message, for the SBAS content decoder
             ev.startEpoch = (int64_t)syncPhase_ + 2 * at;
             ev.towStart = -1;
             events_.push_back(ev);

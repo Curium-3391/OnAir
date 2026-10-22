@@ -8,7 +8,7 @@ void GnssReceiver::Impl::startFromHit(const GnssAcqHit& found) {
     // the hit is old: look again in the newest samples
     GnssAcqHit h;
     units += (uint64_t)(6 * std::max(8, found.blocks));
-    if (!(found.prn > 32 ? auxAcq : gpsAcq).confirm(gpsBand, found.prn, found.dopplerHz, found.blocks, &h)) return;
+    if (!(found.prn > 32 && !l1Standalone ? auxAcq : gpsAcq).confirm(gpsBand, found.prn, found.dopplerHz, found.blocks, &h)) return;
     auto t = std::make_unique<GnssTracker>();
     const double rc = (kGpsCaChipRate + h.dopplerHz * kGpsCaChipRate / kGpsL1Hz) / kGpsFsOut;
     int64_t idx = gpsBand.end() - 3 * kGpsN;

@@ -103,6 +103,7 @@ struct GnssReceiver::Impl {
     double rate = 0;
     std::function<void(const std::string&)> log;
     std::function<void(const std::vector<GnssMeasurement>&)> measCb;
+    std::function<void(int, const uint8_t*, double)> sbasCb;     // SBAS messages with a good CRC (setSbasCallback)
     uint64_t units = 0;
     double cpuFront = 0, cpuTrack = 0, cpuAcq = 0;
 
@@ -302,6 +303,7 @@ struct GnssReceiver::Impl {
     bool galRebuild = false;
     double lastRate = 0;
     unsigned gpsMaskNow = 0;
+    bool l1Standalone = false;     // SBAS / QZSS without GPS: gpsAcq searches their PRNs
     // the systems searched or tracked now (GnssTelemetry::decodeMask)
     unsigned decodeMask() const {
         const unsigned b = (bdsActive ? gnssSystemBit(GnssBeidou) : 0u) | (gloActive ? gnssSystemBit(GnssGlonass) : 0u);

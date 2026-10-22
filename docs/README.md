@@ -4,6 +4,7 @@ The user guides and notes that live in the repository. The same text is on the [
 
 | File | Topic | What it covers |
 |---|---|---|
+| [asterix.md](asterix.md) | ASTERIX surveillance data | Receive only. The mode ASTERIX decodes CAT 021, 048 and 062 radar and ADS-B data from UDP or a file into a track table and a map. |
 | [audio-cleanup.md](audio-cleanup.md) | Audio cleanup | A chain that cleans the sound you hear. |
 | [auto-gain.md](auto-gain.md) | Auto gain (AGC) | The AGC keeps a radio's front end at the best operating point for the active mode. |
 | [band-plans.md](band-plans.md) | Band plans | A band plan is the channel raster and the allocations of a country: |
@@ -43,6 +44,7 @@ The user guides and notes that live in the repository. The same text is on the [
 | [protocol-lab.md](protocol-lab.md) | Protocol lab | View > Protocol lab... |
 | [rf-camera.md](rf-camera.md) | RF camera | The RF camera lays the direction finder's bearing spectrum over a picture as a heat map, so you see roughly where in a scene a signal comes from. |
 | [rfi-hunter.md](rfi-hunter.md) | Interference hunter (View > Interference hunter) | Watches a band for new interference, guesses what kind of source it is, and helps you walk to it with a loud / quiet meter. |
+| [sbas.md](sbas.md) | SBAS (L1 augmentation messages) | Receive only. The mode SBAS receives the geostationary augmentation satellites on 1575.42 MHz and shows what they send; nothing is applied. |
 | [same.md](same.md) | NOAA Weather Radio SAME (EAS alerts, US and Canada) | Receive only. |
 | [sarsat.md](sarsat.md) | COSPAS-SARSAT 406 MHz distress beacons | Receive only. |
 | [scanner.md](scanner.md) | Sweep scanner | A fast wideband sweep with a noise-floor measurement: |

@@ -22,6 +22,7 @@ GnssSimConfig gnssSimConfigFrom(const SynthConfig& cfg) {
     c.maxSats = cfg.modeOpt[1] > 0 ? cfg.modeOpt[1] : 0;
     c.warmStart = cfg.modeOpt[2] == 0;
     c.jammer = (cfg.modeOpt[3] & 1) != 0;
+    c.sbasContent = (cfg.modeOpt[3] & 4) != 0;
     if (cfg.modeOpt[3] & 2) c.dcOffset = 0.02;
     c.noiseRms = 0.14;
     c.seed = cfg.modeOpt[4] > 0 ? (unsigned)cfg.modeOpt[4] : 1u;
