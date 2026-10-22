@@ -1,7 +1,8 @@
 // "What is this?": a click or a drag over a signal on the spectrum or the waterfall (the Identify tool, key I, or Shift+drag) hands a region to the
-// engine's capture (dect2/engine/sig_ident.h); a card next to the selection shows what was measured, the modes it could be with how sure each one is
-// (the numbers are calibrated, docs/signal-id.md), the evidence on request, and one click switches to the best mode, tuned. "Identify all signals"
-// does the same for every signal in the view and lists them in a table.
+// engine's capture (dect2/engine/sig_ident.h); a card next to the selection shows what was measured, the ranked modes it could be with how sure
+// each one is (calibrated, docs/IDENTIFIER.md), whether the mode's own detectors confirmed it (the verify step), the evidence of each candidate,
+// a "Why?" view with every measured feature, and one click on any candidate switches to that mode, tuned. "Identify all signals" does the same
+// for every signal in the view, lists them in a table, and opens any row's full card.
 #include "app.h"
 #include "memory/memory_options.h"
 #include "dect2/channels/memory_bank.h"
@@ -27,6 +28,7 @@ struct IdState {
     std::string note;           // the last thing a button did ("Added to Memory.")
     double loMhz = 0, hiMhz = 0;   // the selection, for the band drawn on the plots
     double pendingAt = 0, pendHz = 0, pendBw = 0;   // "Identify selected" of the sweep: the radio was tuned, the capture starts when it has settled
+    int detail = -1;            // "Identify all signals": the row whose full card is shown (-1 the table)
 };
 IdState I;
 
@@ -87,6 +89,10 @@ void addMemory(const si::Candidate& c, const si::Features& f) {
     else I.note = tr("The memory bank is full.");
 }
 
+// the labels of si::featureRows() (English from the core), marked for translation: row() looks each one up
+[[maybe_unused]] const char* const kFeatureLabels[] = {N_("Centre"), N_("Width"), N_("SNR"), N_("Spectrum"), N_("Tones"), N_("Spectral comb"), N_("On the air"), N_("Modulation"), N_("Envelope"),
+                                                      N_("Carrier line"), N_("Power lines"), N_("Symbol rate"), N_("Roll-off"), N_("Constellation"), N_("FSK levels"), N_("OFDM"), N_("LoRa"), N_("FM"), N_("Capture")};
+
 void row(const char* k, const std::string& v) {
     ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("%s", tr(k));
     ImGui::TableNextColumn(); ImGui::TextUnformatted(v.c_str());
@@ -99,6 +105,78 @@ void confBar(double conf, float w) {
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, conf >= 0.6 ? ImVec4(0.30f, 0.65f, 0.40f, 1) : conf >= 0.3 ? ImVec4(0.78f, 0.62f, 0.25f, 1) : ImVec4(0.55f, 0.55f, 0.58f, 1));
     ImGui::ProgressBar((float)conf, ImVec2(w, ImGui::GetTextLineHeight() + 2 * gUi), b);
     ImGui::PopStyleColor();
+}
+
+// what the verify step said about a candidate, as a short coloured tag (with its notes on hover)
+void verifyTag(const si::Candidate& c) {
+    if (c.verify == si::VerifyNotTried && c.source != 2) return;
+    ImGui::SameLine();
+    if (c.source == 2) ImGui::TextDisabled("%s", tr("(frequency only)"));
+    else if (c.verify == si::VerifyConfirmed) ImGui::TextColored(ImVec4(0.45f, 0.82f, 0.50f, 1), "%s", tr("verified"));
+    else if (c.verify == si::VerifyFailed) ImGui::TextColored(ImVec4(0.92f, 0.62f, 0.35f, 1), "%s", tr("not confirmed"));
+    else ImGui::TextDisabled("%s", tr("inconclusive"));
+    if (ImGui::IsItemHovered() && !c.verifyNotes.empty()) {
+        std::string t;
+        for (const std::string& n : c.verifyNotes) t += n + "\n";
+        ImGui::SetTooltip("%s", t.c_str());
+    }
+}
+
+// the card of one result: the measurement in a line, the verdict, the ranked candidates (each with its evidence and an Open button), the
+// measured features and the "why"
+void resultView(App& a, const si::Result& res) {
+    const si::Features& f = res.f;
+    if (!f.valid) { ImGui::TextWrapped("%s", f.why.empty() ? tr("Nothing to identify here.") : f.why.c_str()); return; }
+    ImGui::Separator();
+    ImGui::TextWrapped("%s", measuredLine(f).c_str());
+    ImGui::PushStyleColor(ImGuiCol_Text, res.verdict == si::VerdictLikely ? ImVec4(0.55f, 0.88f, 0.60f, 1) : res.verdict == si::VerdictAmbiguous ? ImVec4(0.95f, 0.80f, 0.45f, 1) : ImVec4(0.75f, 0.75f, 0.78f, 1));
+    ImGui::TextWrapped("%s", verdictLine(res).c_str());
+    ImGui::PopStyleColor();
+    if (!res.cands.empty() && res.verdict != si::VerdictUnknown) {
+        const si::Candidate& top = res.cands[0];
+        if (canOpen(top, f)) {
+            char b[160];
+            snprintf(b, sizeof b, tr("Open in %s"), top.name.c_str());
+            if (ImGui::Button(b)) openMode(a, top, f);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Switch to %s and tune to %s"), top.name.c_str(), fq(f.rfHz).c_str());
+            ImGui::SameLine();
+        }
+        if (ImGui::Button(tr("Add to memory"))) addMemory(top, f);
+    }
+    if (!res.cands.empty()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", tr("Candidates"));
+        const float nameW = 190 * gUi;
+        for (size_t i = 0; i < res.cands.size(); i++) {
+            const si::Candidate& c = res.cands[i];
+            ImGui::PushID((int)i);
+            const bool open = ImGui::TreeNodeEx("##cand", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", c.name.c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", c.why.c_str());
+            ImGui::SameLine(nameW + 8 * gUi);
+            confBar(c.confidence, 120 * gUi);
+            if (c.syncTried) { ImGui::SameLine(); ImGui::TextDisabled(tr(c.syncHits ? "(sync %dx)" : "(no sync)"), c.syncHits); }
+            verifyTag(c);
+            if (canOpen(c, f)) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Open"))) openMode(a, c, f); }
+            if (open) {
+                for (const std::string& e : c.evidence) ImGui::BulletText("%s", e.c_str());
+                for (const std::string& e : c.verifyNotes) ImGui::BulletText("%s", e.c_str());
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+    }
+    if (ImGui::TreeNode(tr("Why?"))) {
+        if (ImGui::BeginTable("##sidf", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
+            for (const auto& kv : si::featureRows(f)) row(kv.first.c_str(), kv.second);
+            ImGui::EndTable();
+        }
+        if (!res.priors.empty()) {
+            ImGui::TextDisabled("%s", tr("The frequency list has here:"));
+            for (const std::string& p : res.priors) ImGui::BulletText("%s", p.c_str());
+        }
+        ImGui::TextDisabled("%s", tr("A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal."));
+        ImGui::TreePop();
+    }
 }
 
 void startCapture(App& a) {
@@ -194,10 +272,19 @@ void identifyWindow(App& a) {
         else if (st == 1) ImGui::ProgressBar((float)cap.progress(), ImVec2(-1, 0), tr("collecting samples"));
         else if (st == 2) ImGui::TextUnformatted(tr("Working it out..."));
         if (I.all) {
-            if (I.haveAll) {
+            if (I.haveAll && I.detail >= 0 && I.detail < (int)I.found.size()) {   // one row's full card
+                const si::Capture::Found& fd = I.found[(size_t)I.detail];
+                if (ImGui::SmallButton(tr("< Back to the list"))) I.detail = -1;
+                else {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled(tr("Signal at %s"), fq(fd.res.f.valid ? fd.res.f.rfHz : I.rfHz + fd.region.centreHz).c_str());
+                    resultView(a, fd.res);
+                }
+            } else if (I.haveAll) {
                 if (I.found.empty()) ImGui::TextUnformatted(tr("No signal stands out of the noise here."));
-                else if (ImGui::BeginTable("##sidall", 5, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
-                    ImGui::TableSetupColumn(tr("Frequency")); ImGui::TableSetupColumn(tr("Width")); ImGui::TableSetupColumn(tr("Best guess")); ImGui::TableSetupColumn(tr("Sure")); ImGui::TableSetupColumn("");
+                else if (ImGui::BeginTable("##sidall", 6, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+                    ImGui::TableSetupColumn(tr("Frequency")); ImGui::TableSetupColumn(tr("Width")); ImGui::TableSetupColumn(tr("Best guess")); ImGui::TableSetupColumn(tr("Sure"));
+                    ImGui::TableSetupColumn(tr("Verified")); ImGui::TableSetupColumn("");
                     ImGui::TableHeadersRow();
                     for (size_t i = 0; i < I.found.size(); i++) {
                         const si::Result& r = I.found[i].res;
@@ -212,6 +299,10 @@ void identifyWindow(App& a) {
                         ImGui::TableNextColumn();
                         if (r.f.valid && !r.cands.empty()) confBar(r.cands[0].confidence, 70 * gUi);
                         ImGui::TableNextColumn();
+                        if (r.f.valid && !r.cands.empty() && r.verdict != si::VerdictUnknown)
+                            ImGui::TextUnformatted(r.cands[0].verify == si::VerifyConfirmed ? tr("yes") : r.cands[0].verify == si::VerifyFailed ? tr("no") : "-");
+                        ImGui::TableNextColumn();
+                        if (r.f.valid) { if (ImGui::SmallButton(tr("Details"))) I.detail = (int)i; ImGui::SameLine(); }
                         if (r.f.valid && !r.cands.empty() && r.verdict != si::VerdictUnknown && canOpen(r.cands[0], r.f)) {
                             if (ImGui::SmallButton(tr("Open"))) openMode(a, r.cands[0], r.f);
                             ImGui::SameLine();
@@ -225,90 +316,16 @@ void identifyWindow(App& a) {
         } else {
             if (I.widthHz > 0) ImGui::TextDisabled(tr("Region %s, %s wide"), fq(I.rfHz + I.offHz).c_str(), fq(I.widthHz).c_str());
             else ImGui::TextDisabled(tr("The strongest signal around %s"), fq(I.rfHz).c_str());
-            if (I.have) {
-                const si::Features& f = I.res.f;
-                if (!f.valid) ImGui::TextWrapped("%s", f.why.empty() ? tr("Nothing to identify here.") : f.why.c_str());
-                else {
-                    ImGui::Separator();
-                    ImGui::TextWrapped("%s", measuredLine(f).c_str());
-                    ImGui::PushStyleColor(ImGuiCol_Text, I.res.verdict == si::VerdictLikely ? ImVec4(0.55f, 0.88f, 0.60f, 1) : I.res.verdict == si::VerdictAmbiguous ? ImVec4(0.95f, 0.80f, 0.45f, 1) : ImVec4(0.75f, 0.75f, 0.78f, 1));
-                    ImGui::TextWrapped("%s", verdictLine(I.res).c_str());
-                    ImGui::PopStyleColor();
-                    if (!I.res.cands.empty() && I.res.verdict != si::VerdictUnknown) {
-                        const si::Candidate& top = I.res.cands[0];
-                        if (canOpen(top, f)) {
-                            char b[160];
-                            snprintf(b, sizeof b, tr("Open in %s"), top.name.c_str());
-                            if (ImGui::Button(b)) openMode(a, top, f);
-                            if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Switch to %s and tune to %s"), top.name.c_str(), fq(f.rfHz).c_str());
-                            ImGui::SameLine();
-                        }
-                        if (ImGui::Button(tr("Add to memory"))) addMemory(top, f);
-                    }
-                    if (!I.res.cands.empty()) {
-                        ImGui::Spacing();
-                        ImGui::TextDisabled("%s", tr("Candidates"));
-                        const float nameW = 190 * gUi;
-                        for (size_t i = 0; i < I.res.cands.size(); i++) {
-                            const si::Candidate& c = I.res.cands[i];
-                            ImGui::PushID((int)i);
-                            ImGui::SetNextItemWidth(nameW);
-                            ImGui::TextUnformatted(c.name.c_str());
-                            ImGui::SameLine(nameW + 8 * gUi);
-                            confBar(c.confidence, 140 * gUi);
-                            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", c.why.c_str());
-                            if (c.syncTried) { ImGui::SameLine(); ImGui::TextDisabled(tr(c.syncHits ? "(sync %dx)" : "(no sync)"), c.syncHits); }
-                            if (i > 0 && canOpen(c, f)) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Open"))) openMode(a, c, f); }
-                            ImGui::PopID();
-                        }
-                    }
-                    if (ImGui::TreeNode(tr("Measured"))) {
-                        if (ImGui::BeginTable("##sidf", 2, ImGuiTableFlags_SizingFixedFit)) {
-                            char b[128];
-                            row(N_("Centre"), fq(f.rfHz));
-                            snprintf(b, sizeof b, "%s / %s / %s", fq(f.bw3Hz).c_str(), fq(f.bw20Hz).c_str(), fq(f.bw26Hz).c_str()); row(N_("Width -3 / -20 / -26 dB"), b);
-                            row(N_("Occupied (99 %)"), fq(f.obwHz));
-                            snprintf(b, sizeof b, "%.1f dB", f.snrDb); row("SNR", b);
-                            if (f.duty < 0.97) {
-                                snprintf(b, sizeof b, tr("bursts, %.0f %% on, %d of about %.3g ms"), f.duty * 100, f.bursts, f.burstMs);
-                                std::string s = b;
-                                if (f.burstPeriodMs > 0) { snprintf(b, sizeof b, tr(", every %.3g ms"), f.burstPeriodMs); s += b; }
-                                row(N_("On the air"), s);
-                            } else row(N_("On the air"), tr("continuous"));
-                            row(N_("Modulation"), si::modName(f.mod));
-                            snprintf(b, sizeof b, tr("%.2f (1 constant, 2 noise-like)"), f.envKurt); row(N_("Envelope"), b);
-                            if (f.symRate > 0) {
-                                static const char* const kSrc[] = {"", "|x|^2 line", "FM discriminator line", "x^n lines", "chirp length", "OFDM symbol"};
-                                snprintf(b, sizeof b, "%.1f Bd (%s, %.0f dB)", f.symRate, kSrc[f.symSrc < 6 ? f.symSrc : 0], f.symLineDb); row(N_("Symbol rate"), b);
-                            }
-                            if (f.fskLevels == 4) { snprintf(b, sizeof b, "%+.0f / %+.0f / %+.0f / %+.0f Hz", f.devHz[0], f.devHz[1], f.devHz[2], f.devHz[3]); row("FSK levels", b); }
-                            if (f.fskLevels == 2) { snprintf(b, sizeof b, "%+.0f / %+.0f Hz", f.devHz[0], f.devHz[1]); row("FSK levels", b); }
-                            if (f.mod == si::ModOfdm) { snprintf(b, sizeof b, "Tu %.4g us, guard %.4g us", f.ofdmTuSec * 1e6, f.ofdmTgSec * 1e6); row("OFDM", b); }
-                            if (f.mod == si::ModChirp) { snprintf(b, sizeof b, "SF%d, %s", f.loraSf, fq(f.chirpBwHz).c_str()); row("LoRa", b); }
-                            ImGui::EndTable();
-                        }
-                        ImGui::TreePop();
-                    }
-                    if (ImGui::TreeNode(tr("Why?"))) {
-                        if (!I.res.priors.empty()) {
-                            ImGui::TextDisabled("%s", tr("The frequency list has here:"));
-                            for (const std::string& p : I.res.priors) ImGui::BulletText("%s", p.c_str());
-                        }
-                        if (!I.res.cands.empty()) {
-                            ImGui::TextDisabled(tr("Evidence for %s:"), I.res.cands[0].name.c_str());
-                            for (const std::string& e : I.res.cands[0].evidence) ImGui::BulletText("%s", e.c_str());
-                        }
-                        ImGui::TextDisabled("%s", tr("A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal."));
-                        ImGui::TreePop();
-                    }
-                }
-            }
+            if (I.have) resultView(a, I.res);
         }
         if (!I.note.empty()) ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.60f, 1), "%s", I.note.c_str());
         ImGui::Separator();
-        if (!I.all && I.have && I.res.f.valid && ImGui::Button(tr("Copy as text"))) { ImGui::SetClipboardText(si::toText(I.res).c_str()); I.note = tr("Copied"); }
-        if (!I.all && I.have && I.res.f.valid) ImGui::SameLine();
-        if (ImGui::Button(tr("Again")) && a.engine.running()) { I.have = I.haveAll = false; I.note.clear(); startCapture(a); }
+        const si::Result* shown = !I.all && I.have ? &I.res : I.all && I.haveAll && I.detail >= 0 && I.detail < (int)I.found.size() ? &I.found[(size_t)I.detail].res : nullptr;
+        if (shown && shown->f.valid) {
+            if (ImGui::Button(tr("Copy as text"))) { ImGui::SetClipboardText(si::toText(*shown).c_str()); I.note = tr("Copied"); }
+            ImGui::SameLine();
+        }
+        if (ImGui::Button(tr("Again")) && a.engine.running()) { I.have = I.haveAll = false; I.detail = -1; I.note.clear(); startCapture(a); }
         ImGui::SameLine();
         if (!I.all) { if (ImGui::Button(tr("Identify all signals")) && a.engine.running()) identifyAll(a); ImGui::SameLine(); }
         if (ImGui::Button(tr("Close"))) I.open = false;

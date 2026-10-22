@@ -1,7 +1,10 @@
 // The table of modes the signal identifier knows (sig_ident.h): one row per mode the app can decode, what its signal looks like.
-// Adding a mode: one row in sig_known.cpp (docs/signal-id.md), then run test_specx_idmatrix and look at its line in the table.
+// Adding a mode: one row in sig_known.cpp (docs/IDENTIFIER.md), then run test_specx_idmatrix and look at its line in the table. A mode without a
+// hand-written row gets one measured on its own test signal (sig_known_gen.cpp, written by test_specx_idmatrix --signatures) or, without a test
+// signal, one made from the mode list (signatures() below): every mode the app has can be a candidate.
 #pragma once
 #include "dect2/engine/sig_ident.h"
+#include <vector>
 
 namespace dect2 {
 namespace sigid {
@@ -23,9 +26,20 @@ struct Known {
     int sync;
     float bands[10];               // MHz (lo, hi) pairs, 0 = end; none = anywhere
     const char* note;
+    // optional (0 = not used by the rule)
+    int tones = 0;                 // MFSK: the number of tones
+    double toneHz = 0;             // MFSK / multi-carrier: the tone or carrier spacing, Hz
+    double defMhz = 0;             // the mode's usual frequency (rows without bands: from the mode list)
+    int source = 0;                // 0 hand-written, 1 measured on the test signal, 2 the mode list only (SigInfo::source)
 };
 extern const Known kKnown[];
 extern const int kKnownCount;
+extern const Known kKnownMeasured[];   // sig_known_gen.cpp
+extern const int kKnownMeasuredCount;
+
+// The whole table: the hand-written rows, the measured ones for the modes without a hand-written row, and a row from the mode list for every
+// mode and sub-mode that has neither (built once, then constant)
+const std::vector<Known>& signatures();
 
 } // namespace sigid
 } // namespace dect2

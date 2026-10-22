@@ -603,14 +603,9 @@ Candidates	候选
 (sync %dx)	（同步 %dx）
 (no sync)	（无同步）
 Centre	中心
-Width -3 / -20 / -26 dB	宽度 -3 / -20 / -26 dB
-Occupied (99 %)	占用带宽（99 %）
 On the air	发射情况
-bursts, %.0f %% on, %d of about %.3g ms	突发，%.0f %% 时间发射，%d 个，各约 %.3g ms
-continuous	连续
 Modulation	调制
 Envelope	包络
-%.2f (1 constant, 2 noise-like)	%.2f（1 为恒定，2 类似噪声）
 Symbol rate	符号率
 #  updates
 Updates	更新
@@ -2294,7 +2289,6 @@ sky + spill K	天空 + 溢出 K
 , %.0f baud	, %.0f 波特
 , %s wide	, 带宽 %s
 , bursts (%.0f %% on)	, 突发 (开启 %.0f %%)
-, every %.3g ms	, 每 %.3g 毫秒
 , useful symbol %.4g us	, 有效符号 %.4g µs
 A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal.	得分是成立的依据所占的比例;百分比是用 OnAir 自带的测试信号校准的,并未在所有真实信号上验证。
 Add to memory	添加到 Memory
@@ -2302,11 +2296,9 @@ Best guess	最佳判断
 Copy as text	复制为文本
 Could be %s (%.0f %%) or %s (%.0f %%).	可能是 %s (%.0f %%) 或 %s (%.0f %%)。
 Could not open this mode.	无法打开此模式。
-Evidence for %s:	%s 的依据:
 I do not know what this is: nothing I know fits well enough to say.	不知道这是什么:已知的类型都不够吻合。
 Identify all signals	识别所有信号
 Identify: click a signal or drag across it. Esc or I leaves the tool.	识别:点击信号或在其上拖动。按 Esc 或 I 退出此工具。
-Measured	测量值
 Most likely %s, %.0f %% sure.	很可能是 %s,把握 %.0f %%。
 No signal stands out of the noise here.	这里没有信号高出噪声。
 Open in %s	在 %s 中打开

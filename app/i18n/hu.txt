@@ -591,14 +591,9 @@ Candidates	Jelöltek
 (sync %dx)	(szinkron %dx)
 (no sync)	(nincs szinkron)
 Centre	Közép
-Width -3 / -20 / -26 dB	Szélesség -3 / -20 / -26 dB
-Occupied (99 %)	Foglalt (99 %)
 On the air	Adásban
-bursts, %.0f %% on, %d of about %.3g ms	impulzusok, %.0f %% bekapcsolva, %d, kb. %.3g ms
-continuous	folyamatos
 Modulation	Moduláció
 Envelope	Burkoló
-%.2f (1 constant, 2 noise-like)	%.2f (1 állandó, 2 zajszerű)
 Symbol rate	Szimbólumsebesség
 Updates	Frissítések
 Check for updates automatically	Frissítések automatikus keresése
@@ -2280,7 +2275,6 @@ sky + spill K	ég + túlcsordulás K
 , %.0f baud	, %.0f baud
 , %s wide	, %s széles
 , bursts (%.0f %% on)	, impulzusok (%.0f %% aktív)
-, every %.3g ms	, %.3g ms-onként
 , useful symbol %.4g us	, hasznos szimbólum %.4g µs
 A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal.	A pontszám a teljesülő bizonyítékok aránya; a százalékokat az OnAir saját tesztjelein kalibráltuk, nem minden valódi jelen.
 Add to memory	Hozzáadás a Memoryhoz
@@ -2288,11 +2282,9 @@ Best guess	Legjobb tipp
 Copy as text	Másolás szövegként
 Could be %s (%.0f %%) or %s (%.0f %%).	Lehet %s (%.0f %%) vagy %s (%.0f %%).
 Could not open this mode.	Ezt a módot nem sikerült megnyitni.
-Evidence for %s:	%s mellett szóló bizonyítékok:
 I do not know what this is: nothing I know fits well enough to say.	Nem tudom, mi ez: semmi, amit ismerek, nem illik elég jól.
 Identify all signals	Minden jel azonosítása
 Identify: click a signal or drag across it. Esc or I leaves the tool.	Azonosítás: kattints egy jelre, vagy húzd át rajta. Esc vagy I kilép az eszközből.
-Measured	Mért
 Most likely %s, %.0f %% sure.	Valószínűleg %s, %.0f %% biztos.
 No signal stands out of the noise here.	Itt egy jel sem emelkedik ki a zajból.
 Open in %s	Megnyitás: %s
