@@ -209,5 +209,28 @@ int main() {
             if (t.nets.size() == 1) CHECK(t.nets[0].vendorIe.find("0C:BF:74") == 0 && std::fabs(t.nets[0].primaryMhz - (902.0 + 0.5 * 7)) < 1e-6, "vendor '%s', primary %.1f MHz", t.nets[0].vendorIe.c_str(), t.nets[0].primaryMhz);
         }
     }
+    {   // the radio rate Auto 1 - 4 MHz asks for must hold the primaries of a 4 MHz BSS (1 MHz at +-1.5 MHz, 2 MHz at +-1 MHz from its centre; #192)
+        const double rate = halowTuning().sampleRate;
+        struct T { double dial; int w; } tt[] = {{-1.5e6, W1}, {1.5e6, W1}, {-1.0e6, W2}, {1.0e6, W2}};
+        for (const T& e : tt) {
+            BssSpec b;
+            const uint8_t mac[6] = {0x0C, 0xBF, 0x74, 4, 5, 6};
+            memcpy(b.bssid, mac, 6); b.ssid = "Bonded4"; b.security = Wpa3Sae; b.opWidthMhz = 4; b.primaryWidthMhz = e.w == W1 ? 1 : 2;
+            HalowGenFrame f;
+            f.psdu = makeS1gBeacon(b); f.width = e.w; f.mcs = 0;
+            HalowGenConfig c;
+            c.rate = rate; c.snrDb = 30; c.dialOffsetHz = e.dial; c.frames = {f, f, f, f, f, f};
+            HalowGenerator g(c);
+            HalowReceiver r;
+            r.configure(rate);
+            r.setCenterHz(905e6);
+            std::vector<cf32> buf(16384);
+            for (size_t done = 0; done < (size_t)(0.6 * rate); done += buf.size()) { g.generate(buf.data(), buf.size()); r.feed(buf.data(), buf.size()); }
+            r.flush();
+            HalowTelemetry t;
+            r.telemetry(t, 0);
+            CHECK(t.nets.size() == 1 && t.nets[0].ssid == "Bonded4", "default rate %.0f Msps, %d MHz primary at %+.1f MHz: %zu networks", rate / 1e6, e.w == W1 ? 1 : 2, e.dial / 1e6, t.nets.size());
+        }
+    }
     return testSummary("halow modes");
 }
