@@ -206,7 +206,13 @@ Verdict verdict(const Params& p, const Range& r, const Point* q, const char* rxL
                 else add(fmt("Near the radio horizon (%s): the earth's bulge starts to get in the way.", kmText(q->horizonKm).c_str()));
                 break;
             case Model::TwoRay: add(fmt("Line of sight, but the ground reflection weakens it with distance (%.0f dB beyond free space). Higher antennas help most.", q->excessDb)); break;
-            default: add("Clear line of sight."); break;
+            case Model::Troposcatter:
+                add(fmt("Beyond the radio horizon (%s): it arrives by troposcatter, weak and fading (%.0f dB beyond free space).", kmText(q->horizonKm).c_str(), q->excessDb));
+                break;
+            default:
+                if (q->distKm > q->horizonKm) add(fmt("Beyond the radio horizon (%s), but still in reach.", kmText(q->horizonKm).c_str()));
+                else add("Clear line of sight.");
+                break;
         }
         if (q->clutterDb >= 3) add(fmt("Buildings or trees around the receiver cost about %.0f dB.", q->clutterDb));
         if (q->rainDb >= 3) add(fmt("Rain costs %.0f dB.", q->rainDb));
