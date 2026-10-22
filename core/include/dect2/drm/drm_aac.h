@@ -18,6 +18,9 @@ public:
     bool open() const;
     int rateHz() const;
     void reset();                                           // lost frames: forget the overlap with the previous frame
+    // true (the default): a lost frame fades the last good one out and the first good frame after a loss fades in; false: silence for a lost frame,
+    // the next frame as decoded (a concealment after the decoder takes care of the joins)
+    void setLossFades(bool on);
     // One frame of the audio super frame with the CRC byte of its header. Appends 960 mono samples at the core rate; for a frame that is damaged (CRC, structure) or uses
     // something that is not handled (pulse data), 960 samples of silence.
     AacFrameStatus frame(const uint8_t* data, int len, uint8_t crc, std::vector<float>& out);

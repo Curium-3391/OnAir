@@ -61,7 +61,14 @@ public:
     bool hierarchical() const { return hierarchical_; }
     bool mscReady() const { return mscCode_ != nullptr; }
     uint64_t facOk = 0, facBad = 0, sdcOk = 0, sdcBad = 0, mscOk = 0, mscBad = 0;
+    uint64_t mscSkipped = 0;             // multiplex frames not decoded because their cells carry no signal (a fade): counted in mscBad too
+    uint64_t facRejected = 0;            // FAC blocks that passed their CRC but disagreed with the frame sequence or the configuration once (not taken)
     std::vector<cf32> facConst, sdcConst, mscConst;
+
+    // A block is not decoded when the mean weight of its cells (their SNR, linear) is below kFadeRel times what it is in the blocks that decode, and
+    // below kFadeMaxWeight: a deep fade or no signal. Decoding noise would only fail (or, once in 256 times, pass an 8 bit CRC with garbage). Relative,
+    // because in a fast fading channel the noise estimate also holds the change of the channel and all weights are lower.
+    static constexpr double kFadeRel = 0.03, kFadeMaxWeight = 2.0;
 
 private:
     struct MuxFrame { std::vector<cf32> z; std::vector<float> w; };
@@ -70,6 +77,14 @@ private:
     void buildMscCode();
     void decodeMux(int txPos);
     void dropData();
+    bool fadedBlock(double meanW, double ref) const { return ref > 0 && meanW < kFadeRel * ref && meanW < kFadeMaxWeight; }
+    static void learnWeight(double& ref, double meanW) { ref = ref > 0 ? ref + (meanW - ref) * 0.1 : meanW; }
+    double wRefFac_ = 0, wRefSdc_ = 0, wRefMux_ = 0;   // mean weight of the blocks that decoded
+    int muxDone_ = 0;                    // multiplex frames of the super frame being collected that have been decoded
+    FacInfo pendFac_;                    // a changed configuration seen once (a reconfiguration is taken when two FAC blocks in a row agree on it)
+    bool pendFacValid_ = false;
+    int pendPos_ = -1;                   // a frame position that disagreed with the sequence once
+    int announced_ = 0;                  // FAC blocks left in which a changed configuration is expected (the reconfiguration index was set)
     int mode_ = -1, occ_ = -1;
     std::shared_ptr<const Layout> layout_;
     bool facValid_ = false, sdcSeen_ = false, hierarchical_ = false;

@@ -16,6 +16,7 @@ void DrmBackend::dropData() {
 
 void DrmBackend::reset() {
     mode_ = -1; occ_ = -1; layout_.reset();
+    wRefFac_ = wRefSdc_ = wRefMux_ = 0; pendFacValid_ = false; pendPos_ = -1; announced_ = 0;
     facValid_ = false; sdcSeen_ = false; hierarchical_ = false;
     fac_ = FacInfo(); sdc_ = SdcInfo();
     for (int i = 0; i < 4; i++) facSeen_[i] = false;
@@ -55,23 +56,42 @@ void DrmBackend::decodeFac(const CellGrid& g) {
     }
     std::vector<cf32> z((size_t)nFac);
     std::vector<float> w((size_t)nFac);
+    double wSum = 0;
     for (int i = 0; i < nFac; i++) {
         const auto& c = L->facCells[(size_t)i];
         if (c.second < g.kmin || c.second > g.kmax || c.first >= g.ns) { facBad++; return; }
         z[(size_t)i] = g.zAt(c.first, c.second);
         w[(size_t)i] = g.wAt(c.first, c.second);
+        wSum += w[(size_t)i];
     }
+    facConst = z;
+    // a fade: the cells are noise, the block is lost (its 8 bit CRC would pass one block of noise in 256)
+    if (facValid_ && fadedBlock(wSum / nFac, wRefFac_)) { facBad++; return; }
     std::vector<uint8_t> u((size_t)facCode_->infoBits()), pr(u.size());
     facCode_->decode(z.data(), w.data(), u.data(), 1);
     prbs(pr.data(), pr.size());
     for (size_t i = 0; i < u.size(); i++) u[i] ^= pr[i];
     FacInfo f;
-    facConst = z;
     if (!facParse(u.data(), E, f) || !occupancyValid(mode_, f.occupancy)) { facBad++; return; }
-    facOk++;
+    learnWeight(wRefFac_, wSum / nFac);
     const bool first = !facValid_;
-    const bool changed = facValid_ && (f.occupancy != fac_.occupancy || f.interleaver != fac_.interleaver || f.mscMode != fac_.mscMode || f.sdcMode != fac_.sdcMode ||
-                                       f.numServicesCode != fac_.numServicesCode);
+    auto sameConfig = [](const FacInfo& a, const FacInfo& b) {
+        return a.occupancy == b.occupancy && a.interleaver == b.interleaver && a.mscMode == b.mscMode && a.sdcMode == b.sdcMode && a.numServicesCode == b.numServicesCode;
+    };
+    const bool changed = facValid_ && !sameConfig(f, fac_);
+    if (announced_ > 0) announced_--;
+    if (!changed) pendFacValid_ = false;
+    else if (announced_ == 0 && (!pendFacValid_ || !sameConfig(f, pendFac_))) {
+        // A new configuration is taken when the next block confirms it (a reconfiguration lasts; a block of noise that passed the CRC does not)
+        pendFac_ = f; pendFacValid_ = true;
+        facRejected++;
+        return;
+    }
+    pendFacValid_ = false;
+    facOk++;
+    if (f.reconfig != 0) announced_ = 12;   // the FAC announces a reconfiguration (its reconfiguration index): the changed FAC that follows is taken at once
+    // what the change touches: the multiplex (occupancy, interleaver, constellation) or only the SDC and the service list
+    const bool mscChanged = changed && (f.occupancy != fac_.occupancy || f.interleaver != fac_.interleaver || f.mscMode != fac_.mscMode);
     fac_ = f;
     facValid_ = true;
     for (int i = 0; i < f.nSvc && i < 2; i++) {     // mode E carries two sets of service parameters
@@ -85,11 +105,11 @@ void DrmBackend::decodeFac(const CellGrid& g) {
         log(b);
     }
     if (changed && log) log("DRM: the channel parameters changed (reconfiguration)");
-    if (first || changed) {
+    if (first || mscChanged) {
         if (occ_ != f.occupancy) { occ_ = f.occupancy; layout_ = drm::layout(mode_, occ_); }
-        sdcSeen_ = changed ? false : sdcSeen_;
+        sdcSeen_ = mscChanged ? false : sdcSeen_;
         dropData();
-        if (changed) { mscCode_.reset(); mscKey_ = -1; }
+        if (mscChanged) { mscCode_.reset(); mscKey_ = -1; }
     }
     if (onFac) onFac(f);
 }
@@ -152,6 +172,13 @@ void DrmBackend::decodeSdc() {
         sdcCode_ = std::make_unique<MlcCode>(s);
         sdcCodeMode_ = mode;
     }
+    double sdcMeanW = 0;
+    {   // a fade: nothing to decode
+        double ws = 0;
+        for (float v : sdcW_) ws += v;
+        sdcMeanW = sdcW_.empty() ? 0 : ws / (double)sdcW_.size();
+        if (fadedBlock(sdcMeanW, wRefSdc_)) { sdcBad++; return; }
+    }
     std::vector<uint8_t> u((size_t)sdcCode_->infoBits()), pr(u.size());
     sdcCode_->decode(sdcZ_.data(), sdcW_.data(), u.data(), 2);
     prbs(pr.data(), pr.size());
@@ -161,6 +188,7 @@ void DrmBackend::decodeSdc() {
     int afs = 0;
     if (F < 4 || !sdcCheckBits(u.data(), F, afs)) { sdcBad++; return; }
     sdcOk++;
+    learnWeight(wRefSdc_, sdcMeanW);
     std::vector<uint8_t> field((size_t)F, 0);
     for (int i = 0; i < F * 8; i++) field[(size_t)i / 8] |= (uint8_t)(u[(size_t)(4 + i)] << (7 - i % 8));
     const bool first = !sdcSeen_;
@@ -181,12 +209,22 @@ void DrmBackend::decodeMux(int txPos) {
     const std::vector<int>& pi = interleavePerm(M, 5);
     std::vector<cf32> z((size_t)M);
     std::vector<float> w((size_t)M);
+    double wSum = 0;
     for (int i = 0; i < M; i++) {
         const MuxFrame& f = hist_[(size_t)(depth_ > 1 ? i % depth_ : 0)];
         z[(size_t)pi[(size_t)i]] = f.z[(size_t)i];
         w[(size_t)pi[(size_t)i]] = f.w[(size_t)i];
+        wSum += f.w[(size_t)i];
     }
     const ModeParams& mp = modeParams(mode_);
+    if (fadedBlock(wSum / M, wRefMux_)) {
+        // the cells carry no signal (a fade longer than the interleaver can bridge): the frame is lost, the next one comes after a gap
+        mscSkipped++; mscBad++;
+        muxIndex_++;
+        gap_ = true;
+        return;
+    }
+    learnWeight(wRefMux_, wSum / M);
     const int L = mscCode_->infoBits();
     std::vector<uint8_t> u((size_t)L), pr((size_t)L);
     mscCode_->decode(z.data(), w.data(), u.data(), 4);
@@ -226,9 +264,16 @@ void DrmBackend::frame(const CellGrid& g) {
     if (facOk != okBefore) {
         const int idn = fac_.identity;
         const int p = mode_ == kModeE ? idn : idn == 1 ? 1 : idn == 2 ? 2 : 0;   // mode E: the four frames 00 .. 11; A to D: 11 is a first frame too
-        if (before >= 0 && p != before && sfValid_) dropData();     // the identity does not follow the sequence: what was collected may belong to another super frame
-        position = p;
-    }
+        if (before >= 0 && p != before) {
+            // The identity does not follow the sequence. Taken when the next block confirms it (then what was collected may belong to another super
+            // frame); a single odd block is more likely a FAC that was misread.
+            if (p == pendPos_) { if (sfValid_) dropData(); position = p; pendPos_ = -1; }
+            else { pendPos_ = (p + 1) % mp.frames; facRejected++; }
+        } else {
+            position = p;
+            pendPos_ = -1;
+        }
+    } else if (pendPos_ >= 0) pendPos_ = (pendPos_ + 1) % mp.frames;
     if (position < 0) { pos_ = -1; return; }
     pos_ = (position + 1) % mp.frames;
     if (!layout_ || g.kmin != layout_->kmin || g.kmax != layout_->kmax) return;
@@ -237,12 +282,14 @@ void DrmBackend::frame(const CellGrid& g) {
     if (q == 0) {
         sfZ_.assign((size_t)L.nSfa, cf32(0, 0)); sfW_.assign((size_t)L.nSfa, 0.f);
         sdcZ_.assign((size_t)L.nSdc, cf32(0, 0)); sdcW_.assign((size_t)L.nSdc, 0.f);
-        mscFilled_ = 0; framesInSf_ = 0; sfValid_ = true;
+        mscFilled_ = 0; framesInSf_ = 0; muxDone_ = 0; sfValid_ = true;
         for (int i = 0; i < L.nSdc; i++) {
             const auto& c = L.sdcCells[(size_t)i];
             sdcZ_[(size_t)i] = g.zAt(c.first, c.second);
             sdcW_[(size_t)i] = g.wAt(c.first, c.second);
         }
+        // the SDC is all in the first frame: read it now, so that the multiplex frames can be decoded as their cells come in
+        decodeSdc();
     }
     if (!sfValid_ || q != framesInSf_) { sfValid_ = false; return; }
     // MSC cells of this frame: those in symbols q * ns .. (q + 1) * ns - 1
@@ -257,18 +304,22 @@ void DrmBackend::frame(const CellGrid& g) {
     }
     mscFilled_ = (int)i1;
     framesInSf_++;
-    if (q != mp.frames - 1) return;
-    // a whole super frame: the SDC, then the multiplex frames
-    decodeSdc();
-    if (!mscCode_) { mscBad++; return; }
-    for (int f = 0; f < mp.frames; f++) {
-        MuxFrame m;
-        m.z.assign(sfZ_.begin() + (ptrdiff_t)f * L.nMux, sfZ_.begin() + (ptrdiff_t)(f + 1) * L.nMux);
-        m.w.assign(sfW_.begin() + (ptrdiff_t)f * L.nMux, sfW_.begin() + (ptrdiff_t)(f + 1) * L.nMux);
-        hist_.push_back(std::move(m));
-        while ((int)hist_.size() > depth_) hist_.pop_front();
-        decodeMux(f);
+    // The multiplex frames whose cells are all in (each one is a third of the super frame's MSC cells, not aligned with the transmission frames):
+    // decoded at once, so that the audio comes every 400 ms and not in bursts of a whole super frame.
+    if (mscCode_) {
+        while (muxDone_ < mp.frames && (muxDone_ + 1) * L.nMux <= mscFilled_) {
+            const int f = muxDone_++;
+            MuxFrame m;
+            m.z.assign(sfZ_.begin() + (ptrdiff_t)f * L.nMux, sfZ_.begin() + (ptrdiff_t)(f + 1) * L.nMux);
+            m.w.assign(sfW_.begin() + (ptrdiff_t)f * L.nMux, sfW_.begin() + (ptrdiff_t)(f + 1) * L.nMux);
+            hist_.push_back(std::move(m));
+            while ((int)hist_.size() > depth_) hist_.pop_front();
+            decodeMux(f);
+            if (!mscCode_) break;
+        }
     }
+    if (q != mp.frames - 1) return;
+    if (!mscCode_) mscBad++;
     sfValid_ = false;
 }
 

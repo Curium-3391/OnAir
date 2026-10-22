@@ -90,6 +90,17 @@ struct DrmTelemetry {
     int audioState = 0;          // 0 no audio stream, 1 frames received but no decoder for this format, 2 decoding
     std::string audioInfo;       // what is played, or why not
     uint64_t audioSamples = 0;   // 48 kHz samples produced
+    double audioConcealedSecs = 0;   // sound made up by the concealment (lost frames, gaps in the signal) since the start, above silence
+    double audioMutedSecs = 0;       // made up and faded to silence (losses longer than 220 ms)
+    double audioRealSecs = 0;        // decoded sound played
+    float audioConcealedPct = 0;     // share of made-up sound (concealed or muted) over the last 10 s
+    uint64_t audioConcealEvents = 0; // concealments started
+    float audioQueueSecs = 0;        // sound waiting in the playout's queue
+    float audioDriftPpm = 0;         // the playout's resampler: how much faster the sound card runs than the radio (ppm)
+    int audioUnderruns = 0;          // the sound device ran empty
+    bool holding = false;            // the signal is in a fade: the tracker holds its loops (frequency, timing, clock) until it comes back
+    uint64_t fades = 0;              // fades the tracker held through
+    uint64_t resyncs = 0;            // the tracker found the signal at another timing or frequency and synchronised again at once
     std::string textMessage;     // text message of the audio service
     uint64_t textSegmentsOk = 0, textSegmentsBad = 0;
     std::string status;          // one line: what the receiver is doing
