@@ -239,6 +239,7 @@ void sidebar(App& a) {
         tool("Data feeds...", a.feedsOpen, "Send decoded data to other programs and services");
         tool("Messages...", a.msgdbOpen, N_("Every decoded message in one searchable database, with filters and export"));
         tool("Protocol lab...", a.protolabOpen, N_("Work out an unknown digital signal: modulation, baud rate, sync word, CRC and fields, with an export"));
+        tool("TX studio...", a.txStudioOpen, N_("Make a transmit signal as a file: spectrum, waterfall, measurements and a decoder check. No radio, nothing is transmitted"));
         tool("Watchlists...", a.watchlistOpen, N_("Alerts when listed aircraft, ships, call signs, frequencies or words are heard: notification, sound, ntfy, Telegram or webhook"));
         tool("Automations...", a.automationOpen, N_("Rules and scripts: when something is decoded, notify, record, tune or call a webhook"));
         tool("Plugins...", a.pluginsOpen, N_("Add decoders and actions without rebuilding OnAir: install, enable and set up plugins"));
@@ -419,6 +420,8 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Data feeds..."), nullptr, &a.feedsOpen);
         ImGui::MenuItem(tr("Messages..."), nullptr, &a.msgdbOpen);
         ImGui::MenuItem(tr("Protocol lab..."), nullptr, &a.protolabOpen);
+        ImGui::MenuItem(tr("TX studio..."), nullptr, &a.txStudioOpen);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Make a transmit signal as a file, with spectrum, waterfall, measurements and a decoder check. No radio, nothing is transmitted."));
         ImGui::MenuItem(tr("Watchlists..."), nullptr, &a.watchlistOpen);
         ImGui::MenuItem(tr("Automations..."), nullptr, &a.automationOpen);
         ImGui::MenuItem(tr("Plugins..."), nullptr, &a.pluginsOpen);
