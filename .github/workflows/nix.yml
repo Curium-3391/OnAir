@@ -1,0 +1,13 @@
+name: nix
+# Disabled by default: runs only when started by hand (Actions tab, "Run workflow").
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix flake check
+      - run: nix build .#onair .#onair-server
