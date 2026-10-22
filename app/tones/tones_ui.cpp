@@ -20,8 +20,9 @@ struct State {
     bool listen = false;
     int gateMode = 0, gateKind = 0, gateTone = 12, gateCode = 0;   // tone: index into the CTCSS list, code: index into the standard list
     bool gateInv = false;
+    int demod = -1;               // -1 auto (USB below 30 MHz, FM above), else dect2::TonesDemod
     bool wasRunning = false;
-    int pushedListen = -1, pushedGate = -1;
+    int pushedListen = -1, pushedGate = -1, pushedDemod = -1;
     float pushedVol = -1; int pushedMute = -1;
 };
 State S;
@@ -40,6 +41,7 @@ void load() {
     S.gateTone = (int)std::max(0L, std::min((long)dect2::tones::kCtcssN - 1, (long)plat::prefs().getI("tonesGateTone", 12)));
     S.gateCode = (int)std::max(0L, std::min((long)kNumCodes - 1, (long)plat::prefs().getI("tonesGateCode", 0)));
     S.gateInv = plat::prefs().getB("tonesGateInv", false);
+    S.demod = (int)std::max(-1L, std::min((long)dect2::TonesDemodCount - 1, (long)plat::prefs().getI("tonesDemod", -1)));
 }
 void save() {
     plat::prefs().setI("tonesGateMode", S.gateMode);
@@ -47,6 +49,7 @@ void save() {
     plat::prefs().setI("tonesGateTone", S.gateTone);
     plat::prefs().setI("tonesGateCode", S.gateCode);
     plat::prefs().setB("tonesGateInv", S.gateInv);
+    plat::prefs().setI("tonesDemod", S.demod);
     plat::prefs().flush();
 }
 
@@ -168,6 +171,8 @@ void tick(App& a) {
     const int gate = S.gateMode | S.gateKind << 2 | S.gateTone << 4 | S.gateCode << 10 | (S.gateInv ? 1 << 18 : 0);
     if (!S.wasRunning || gate != S.pushedGate) { r.setGate(S.gateMode, S.gateKind, dect2::tones::ctcssHz(S.gateTone), kCodes[S.gateCode], S.gateInv); S.pushedGate = gate; }
     if (!S.wasRunning || a.volume != S.pushedVol || (int)a.muted != S.pushedMute) { r.setVolume(a.volume); r.setMuted(a.muted); S.pushedVol = a.volume; S.pushedMute = a.muted; }
+    const int dm = S.demod >= 0 ? S.demod : dect2::tonesAutoDemod(a.freqMhz * 1e6);
+    if (!S.wasRunning || dm != S.pushedDemod) { r.setDemod(dm); S.pushedDemod = dm; }
     S.wasRunning = true;
 }
 
@@ -192,8 +197,16 @@ void receiver(App& a) {
     const dect2::TonesTelemetry& t = a.rx.tones;
     kvRow(a, tr("state"), "%s", dect2::tonesSummary(t).c_str());
     if (t.audioInput) kvRow(a, tr("input"), "%.1f kHz, %s", t.inputRate / 1e3, tr("sound card audio"));
+    else if (t.demod != dect2::TonesFm) kvRow(a, tr("input"), "%.3f Msps, %s %s", t.inputRate / 1e6, dect2::tonesDemodName(t.demod), tr("channel"));
     else kvRow(a, tr("input"), "%.3f Msps, %s, %+.0f Hz, SNR %.1f dB", t.inputRate / 1e6, tr("FM channel"), t.cfoHz, t.snrDb);
     kvRow(a, tr("signal time"), "%.1f s", t.timeSec);
+    ImGui::Spacing();
+    {
+        int sel = S.demod + 1;
+        ImGui::SetNextItemWidth(220 * gUi);
+        if (ImGui::Combo(tr("Demodulation##tndemod"), &sel, (std::string(tr("auto (USB on HF, FM above 30 MHz)")) + '\0' + "FM" + '\0' + "USB" + '\0' + "LSB" + '\0' + "AM" + '\0').c_str())) { S.demod = sel - 1; save(); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How the radio's channel is turned into audio. SELCAL on the aeronautical HF channels (for example 8.879 MHz) is sent in USB: tune the dial frequency. FM for VHF / UHF radios, AM for the VHF airband."));
+    }
     ImGui::Spacing();
     ImGui::TextDisabled("%s", tr("Gate"));
     bool ch = false;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include "dect2/common/mathconst.h"
 
@@ -95,14 +96,15 @@ int bpcOnes(const uint8_t* s, int a, int b) { int n = 0; for (int i = a; i <= b;
 } // namespace
 
 const char* stationName(int s) {
-    static const char* n[] = {"DCF77", "MSF", "WWVB", "JJY 40 kHz", "JJY 60 kHz", "WWV / WWVH", "CHU", "BPM", "BPC", "HLA", "BPM coded"};
+    static const char* n[] = {"DCF77", "MSF", "WWVB", "JJY 40 kHz", "JJY 60 kHz", "WWV / WWVH", "CHU", "BPM", "BPC", "HLA", "BPM coded", "RWM"};
     return s >= 0 && s < kNumStations ? n[s] : "?";
 }
 double stationKhz(int s) {
-    static const double f[] = {77.5, 60, 60, 40, 60, 10000, 7850, 5000, 68.5, 5000, 5000};
+    static const double f[] = {77.5, 60, 60, 40, 60, 10000, 7850, 5000, 68.5, 5000, 5000, 9996};
     return s >= 0 && s < kNumStations ? f[s] : 0;
 }
-bool stationIsHf(int s) { return s == Wwv || s == Chu || s == Bpm || s == Hla || s == BpmC; }
+bool stationIsHf(int s) { return s == Wwv || s == Chu || s == Bpm || s == Hla || s == BpmC || s == Rwm; }
+bool stationKeysCarrier(int s) { return !stationIsHf(s) || s == Rwm; }
 const char* stationTimeZone(int s) {
     switch (s) { case Dcf77: return "CET / CEST"; case Msf: return "UK (GMT / BST)"; case Jjy40: case Jjy60: return "JST"; case Bpm: return "UTC / UT1"; case Bpc: return "CST (UTC+8)"; case Hla: return "KST (UTC+9)"; default: return "UTC"; }
 }
@@ -112,6 +114,7 @@ int stationForKhz(double khz, int pref60) {
     if (nearBy(40, 1.5)) return Jjy40;
     if (nearBy(68.5, 1.5)) return Bpc;
     if (nearBy(60, 1.5)) return pref60 == Msf || pref60 == Wwvb || pref60 == Jjy60 ? pref60 : Msf;
+    for (double f : {4996.0, 9996.0, 14996.0}) if (nearBy(f, 2)) return Rwm;   // 4 kHz below WWV's: before WWV's wider window
     for (double f : {2500.0, 5000.0, 10000.0, 15000.0, 20000.0}) if (nearBy(f, 8)) return Wwv;
     // CHU removed from the product (#150); 3.33 / 7.85 / 14.67 MHz are not auto-identified.
     return -1;
@@ -155,7 +158,33 @@ bool usDstOnDate(int y, int m, int d) {
     return t >= start && t < end;
 }
 
+// RWM: the doubled seconds of a value (+n: from first, -n: from neg), the CCIR / ITU-R TF.460 code
+static void rwmDouble(std::vector<uint8_t>& s, int v, int pos, int neg, int maxN) {
+    const int n = std::min(maxN, std::abs(v));
+    for (int k = 0; k < n; k++) s[(size_t)((v > 0 ? pos : neg) + k)] = S1;
+}
+// RWM: a value from its two runs of doubled seconds; false when both runs are set or a run has a gap
+static bool rwmValue(const uint8_t* s, int pos, int neg, int maxN, int& v) {
+    auto run = [&](int a, int& n) {
+        n = 0;
+        while (n < maxN && s[a + n] == S1) n++;
+        for (int k = n; k < maxN; k++) if (s[a + k] == S1) return false;
+        return true;
+    };
+    int p = 0, q = 0;
+    if (!run(pos, p) || !run(neg, q) || (p && q)) return false;
+    v = p ? p : -q;
+    return true;
+}
+
 std::vector<uint8_t> encodeMinute(int st, int64_t M, const EncodeOpts& o) {
+    if (st == Rwm) {
+        std::vector<uint8_t> s(60, S0);
+        s[0] = SMark;
+        rwmDouble(s, o.dut1, 1, 9, 8);
+        rwmDouble(s, o.dUt1, 21, 31, 4);
+        return s;
+    }
     int a[60] = {}, bb[60] = {};
     if (st == Dcf77) {
         const int64_t T = M + 60;
@@ -362,6 +391,18 @@ static bool decodeBpc(const uint8_t* sym, Fields& f, int yearHint) {
 bool decodeMinute(int st, const uint8_t* sym, Fields& f, int yearHint) {
     if (st == Bpc) return decodeBpc(sym, f, yearHint);
     f = Fields();
+    if (st == Rwm) {   // the minute pulse, then single or doubled pulses; the 10 pulse minutes carry no DUT1
+        if (sym[0] != SMark) return false;
+        bool ten = false;
+        for (int i = 1; i < 60; i++) {
+            if (sym[i] == SMark || sym[i] == SUnknown || sym[i] == SNone || sym[i] == SAB) return false;
+            ten |= sym[i] == SB;
+        }
+        if (ten) return true;
+        for (int i = 17; i < 60; i++) if (sym[i] == S1 && !((i >= 21 && i <= 24) || (i >= 31 && i <= 34))) return false;
+        if (!rwmValue(sym, 1, 9, 8, f.dut1) || !rwmValue(sym, 21, 31, 4, f.dUt1)) return false;
+        return true;
+    }
     int a[60] = {}, bb[60] = {};
     for (int i = 0; i < 60; i++) {
         if (sym[i] == SUnknown) return false;
@@ -533,6 +574,10 @@ std::string fieldsText(const Fields& f, int st) {
     } else if (st == BpmC && f.hasDut1Ms) {
         snprintf(b + n, sizeof b - (size_t)n, ", DUT1 %+.1f ms", f.dut1Ms);
     }
+    if (st == Rwm) {   // no time of day on air: the minute is the computer's
+        if (f.dut1 != 99) snprintf(b + n, sizeof b - (size_t)n, ", DUT1 %+.1f s, dUT1 %+.2f s", f.dut1 * 0.1, f.dUt1 != 99 ? f.dUt1 * 0.02 : 0.0);
+        else snprintf(b + n, sizeof b - (size_t)n, ", 10 pulse minute (no DUT1)");
+    }
     return b;
 }
 
@@ -574,6 +619,7 @@ void stationSite(int s, double& lat, double& lon, bool hawaii) {
     case Bpm: case BpmC: lat = 34.949; lon = 109.543; break;   // Pucheng
     case Bpc: lat = 34.457; lon = 115.837; break;        // Shangqiu
     case Hla: lat = 36.387; lon = 127.368; break;        // Daejeon
+    case Rwm: lat = 56.733; lon = 37.633; break;         // Taldom, Moscow region
     default: lat = lon = 0; break;
     }
 }

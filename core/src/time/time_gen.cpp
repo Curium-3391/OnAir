@@ -61,6 +61,25 @@ struct TimeGenerator::Impl {
         }
     }
 
+    // RWM: the keyed carrier at transmit time t (time_proto.h: the half hour's schedule, the doubled pulses in the 1 pulse minutes)
+    double rwmAmp(double t) {
+        const double sf = std::floor(t);
+        const int64_t sec = (int64_t)sf;
+        const double f = t - sf;
+        const int64_t M = sec - (((sec % 60) + 60) % 60);
+        const int i = (int)(sec - M);
+        const int mh = (int)(((M / 60) % 30 + 30) % 30);
+        if (mh < 8) return 1;                               // plain carrier
+        if (mh < 10) return 0;                              // off, then the call sign (not sent here)
+        if (i == 0) return f < 0.5 ? 1 : 0;
+        if (mh < 20) {
+            const uint8_t s = minute(M)[(size_t)i];
+            return f < 0.1 || (s == S1 && f >= 0.2 && f < 0.3) ? 1 : 0;
+        }
+        const double g = f * 10 - std::floor(f * 10);       // 10 pulses a second
+        return f < 0.04 || g < 0.2 ? 1 : 0;
+    }
+
     void chuPrepare(int64_t sec) {
         chuSec = sec;
         chuBits.clear();
@@ -157,13 +176,15 @@ TimeGenerator::~TimeGenerator() = default;
 void TimeGenerator::generate(cf32* out, size_t cnt) {
     Impl& m = *p_;
     const double dph = 2 * kPi * (m.c.dialOffsetHz + m.c.cfoHz) / m.c.rate;
-    const bool hf = stationIsHf(m.c.station);
+    const bool hf = !stationKeysCarrier(m.c.station);
     for (size_t k = 0; k < cnt; k++) {
         // the radio's sample n is taken at true time n / (rate (1 + ppm)); what arrives then left the station delayMs earlier
         const double t = m.c.startUtc + (double)m.n / (m.c.rate * (1 + m.c.clockPpm * 1e-6)) - m.c.delayMs * 1e-3;
         double a;
         if (hf) {
             a = 1 + m.audio(t);
+        } else if (m.c.station == Rwm) {
+            a = m.rwmAmp(t);
         } else {
             const double sf = std::floor(t);
             const int64_t sec = (int64_t)sf;

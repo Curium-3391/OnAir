@@ -21,6 +21,12 @@
 
 namespace dect2 {
 
+// How the radio's channel is demodulated: FM (VHF / UHF), USB / LSB (HF voice: SELCAL on the aeronautical HF channels is sent in USB)
+// or AM (VHF airband). SSB and AM: the channel at 8 kHz, 300 - 3000 Hz beside the dial (AM: +-3.4 kHz and the envelope), with an AGC.
+enum TonesDemod { TonesFm = 0, TonesUsb, TonesLsb, TonesAm, TonesDemodCount };
+const char* tonesDemodName(int d);                        // "FM", "USB", "LSB", "AM"
+int tonesAutoDemod(double dialHz);                        // USB below 30 MHz, FM above (the auto choice of the interface)
+
 class TonesReceiver {
 public:
     TonesReceiver();
@@ -29,6 +35,7 @@ public:
     void configure(double inputRateHz);
     void setSignalOffset(double hz);
     void setAudioInput(bool on);                          // real audio, not FM IQ (call before or after configure())
+    void setDemod(int d);                                 // TonesDemod for a radio's IQ (default FM); a change restarts the chain
     bool ready() const;
     void reset();                                         // the signal only: the detections stay
     void clearResults();

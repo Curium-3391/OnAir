@@ -25,6 +25,7 @@ namespace {
 
 using dect2::math::kPi;
 constexpr double kBlackHz = 1500.0, kWhiteHz = 2300.0, kCentreHz = 1900.0;
+constexpr double kWideSnrDb = 22.0;   // above this the picture comes through the wide filter (sharper); below, the narrow one (less noise)
 constexpr int kLpmChoices[] = {60, 90, 100, 120, 180, 240};
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 using cplx = std::complex<double>;
@@ -56,19 +57,20 @@ struct FaxDecoder::State {
     // Front end: audio -> complex baseband around 1900 Hz -> low pass -> instantaneous frequency f in Hz.
     double fs = 12000;
     bool ready = false;
-    std::vector<double> taps;
+    std::vector<double> taps, tapsW;             // narrow (sync, and the picture of a weak signal) and wide (the picture of a strong one), same length
     std::vector<cplx> dl;
     size_t dlPos = 0;
     double gd = 0;                               // group delay of the low pass in samples
     cplx osc{1, 0}, rot{1, 0};
     int oscCount = 0;
     double dcX = 0, dcY = 0, dcR = 0.99;
-    cplx zPrev{0, 0};
-    double avgPow = 0, alphaPow = 0, prevF = kCentreHz;
+    cplx zPrev{0, 0}, zPrevW{0, 0};
+    double avgPow = 0, alphaPow = 0, prevF = kCentreHz, avgPowW = 0, prevFW = kCentreHz;
 
     // History of f as running sums, so that the mean over any fractional interval costs two look-ups.
     // cum[i] = sum of f over samples [0, base + i); sample n covers [n - 0.5, n + 0.5).
     std::vector<double> cum{0.0}, cum2{0.0};
+    std::vector<double> cumW{0.0};               // the same for f through the wide filter (imageLines() above kWideSnrDb)
     int64_t base = 0;
     int64_t nAud = 0;                            // samples seen so far (= number of f values)
 
@@ -127,21 +129,27 @@ struct FaxDecoder::State {
     // ---- setup ----
     void configure(double rate) {
         fs = rate < 4000 ? 4000 : rate;
-        // Low pass: passband to about 1400 Hz, stopband from 2600 Hz (the mirror image of a real signal after mixing
-        // lies at -3800 Hz +-800), Kaiser window for 60 dB.
-        const double fc = 2000.0 / fs;
-        int N = static_cast<int>(std::ceil(3.62 * fs / 1200.0)) | 1;
-        taps.assign(N, 0.0);
-        const double beta = 5.65;
-        double sum = 0;
-        for (int i = 0; i < N; i++) {
-            const double m = i - (N - 1) / 2.0;
-            const double sinc = m == 0 ? 2 * fc : std::sin(2 * kPi * fc * m) / (kPi * m);
-            const double r = 2.0 * i / (N - 1) - 1.0;
-            taps[i] = sinc * bessel0(beta * std::sqrt(std::max(0.0, 1 - r * r))) / bessel0(beta);
-            sum += taps[i];
-        }
-        for (double& t : taps) t /= sum;
+        // Low passes around the 1900 Hz carrier, Kaiser window for 60 dB, both of the narrow one's length so they have the same delay.
+        // Narrow: passband to about 1000 Hz, stopband from 1600 Hz (1500 - 2300 Hz and the picture's sidebands, 4 dB less noise into the
+        // discriminator, which matters most near its threshold: issue #103). Wide: passband to about 1400 Hz (the sharper picture of a
+        // strong signal); the mirror image of the real audio after mixing lies at -3800 Hz +-800.
+        const int N = static_cast<int>(std::ceil(3.62 * fs / 600.0)) | 1;
+        auto design = [&](double cutHz, std::vector<double>& h) {
+            const double fc = cutHz / fs;
+            h.assign(N, 0.0);
+            const double beta = 5.65;
+            double sum = 0;
+            for (int i = 0; i < N; i++) {
+                const double m = i - (N - 1) / 2.0;
+                const double sinc = m == 0 ? 2 * fc : std::sin(2 * kPi * fc * m) / (kPi * m);
+                const double r = 2.0 * i / (N - 1) - 1.0;
+                h[i] = sinc * bessel0(beta * std::sqrt(std::max(0.0, 1 - r * r))) / bessel0(beta);
+                sum += h[i];
+            }
+            for (double& t : h) t /= sum;
+        };
+        design(1300.0, taps);
+        design(2000.0, tapsW);
         gd = (N - 1) / 2.0;
         dl.assign(N, cplx(0, 0));
         rot = std::polar(1.0, -2 * kPi * kCentreHz / fs);
@@ -176,12 +184,13 @@ struct FaxDecoder::State {
         dlPos = 0;
         osc = cplx(1, 0);
         oscCount = 0;
-        zPrev = cplx(0, 0);
+        zPrev = zPrevW = cplx(0, 0);
         dcX = dcY = 0;
-        avgPow = 0;
-        prevF = kCentreHz;
+        avgPow = avgPowW = 0;
+        prevF = prevFW = kCentreHz;
         cum.assign(1, 0.0);
         cum2.assign(1, 0.0);
+        cumW.assign(1, 0.0);
         base = 0;
         nAud = 0;
         sm.assign(smL, 0.0);
@@ -252,10 +261,26 @@ struct FaxDecoder::State {
         const size_t drop = cum.size() - static_cast<size_t>(keep);
         cum.erase(cum.begin(), cum.begin() + static_cast<std::ptrdiff_t>(drop));
         cum2.erase(cum2.begin(), cum2.begin() + static_cast<std::ptrdiff_t>(drop));
+        cumW.erase(cumW.begin(), cumW.begin() + static_cast<std::ptrdiff_t>(drop));
         base += static_cast<int64_t>(drop);
-        const double o1 = cum[0], o2 = cum2[0];      // keep the sums small
+        const double o1 = cum[0], o2 = cum2[0], o3 = cumW[0];      // keep the sums small
         for (double& v : cum) v -= o1;
         for (double& v : cum2) v -= o2;
+        for (double& v : cumW) v -= o3;
+    }
+
+    // FM discriminator; holds the last value in a fade or gap instead of passing noise on.
+    double discriminate(cplx y, cplx& zp, double& ap, double& pf) const {
+        const double pw = std::norm(y);
+        ap += (pw - ap) * alphaPow;
+        const cplx d = y * std::conj(zp);
+        double f;
+        if (std::abs(d) <= 0.002 * ap || pw < 1e-14) f = pf;
+        else f = kCentreHz + std::atan2(d.imag(), d.real()) * fs / (2 * kPi);
+        zp = y;
+        f = std::min(2550.0, std::max(1250.0, f));
+        pf = f;
+        return f;
     }
 
     // ---- per sample ----
@@ -275,25 +300,18 @@ struct FaxDecoder::State {
             if (++oscCount >= 4096) { oscCount = 0; osc /= std::abs(osc); }
             dl[dlPos] = osc * static_cast<double>(x);
             // Low pass (direct form, circular buffer).
-            cplx y(0, 0);
+            cplx y(0, 0), yW(0, 0);
             size_t idx = dlPos;
             for (size_t i = 0; i < N; i++) {
                 y += taps[i] * dl[idx];
+                yW += tapsW[i] * dl[idx];
                 idx = idx == 0 ? N - 1 : idx - 1;
             }
             if (++dlPos == N) dlPos = 0;
-            // FM discriminator; hold the last value in a fade or gap instead of passing noise on.
-            const double pw = std::norm(y);
-            avgPow += (pw - avgPow) * alphaPow;
-            const cplx d = y * std::conj(zPrev);
-            double f;
-            if (std::abs(d) <= 0.002 * avgPow || pw < 1e-14) f = prevF;
-            else f = kCentreHz + std::atan2(d.imag(), d.real()) * fs / (2 * kPi);
-            zPrev = y;
-            f = std::min(2550.0, std::max(1250.0, f));
-            prevF = f;
+            const double f = discriminate(y, zPrev, avgPow, prevF);
             cum.push_back(cum.back() + f);
             cum2.push_back(cum2.back() + f * f);
+            cumW.push_back(cumW.back() + discriminate(yW, zPrevW, avgPowW, prevFW));
             nAud++;
             edgeStep(f);
         }
@@ -694,10 +712,12 @@ struct FaxDecoder::State {
             if (rowIdx >= cap) { st.state = 3; break; }
             const double s = imgStart + rowIdx * Puse;
             const double spp = Puse / W;
-            double prev = integ(cum, s);
+            // the picture: through the narrow filter while the signal is weak (or not measured), the wide one when it is strong
+            const std::vector<double>& cp = snrAvg >= kWideSnrDb ? cumW : cum;
+            double prev = integ(cp, s);
             const double span = fwUse - fbUse;
             for (int j = 0; j < W; j++) {
-                const double nxt = integ(cum, s + (j + 1) * spp);
+                const double nxt = integ(cp, s + (j + 1) * spp);
                 const double f = (nxt - prev) / spp;
                 prev = nxt;
                 const double v = (f - fbUse) / span;

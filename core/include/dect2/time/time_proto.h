@@ -17,10 +17,11 @@
 namespace dect2 {
 namespace timesig {
 
-enum Station { Dcf77 = 0, Msf, Wwvb, Jjy40, Jjy60, Wwv, Chu, Bpm, Bpc, Hla, BpmC, kNumStations };
-const char* stationName(int s);      // "DCF77", "MSF", "WWVB", "JJY 40 kHz", "JJY 60 kHz", "WWV / WWVH", "CHU", "BPM", "BPC", "HLA", "BPM coded"
+enum Station { Dcf77 = 0, Msf, Wwvb, Jjy40, Jjy60, Wwv, Chu, Bpm, Bpc, Hla, BpmC, Rwm, kNumStations };
+const char* stationName(int s);      // "DCF77", "MSF", "WWVB", "JJY 40 kHz", "JJY 60 kHz", "WWV / WWVH", "CHU", "BPM", "BPC", "HLA", "BPM coded", "RWM"
 double stationKhz(int s);            // the usual frequency (WWV: 10 MHz, CHU: 7.85 MHz, BPM and BPM coded: 5 MHz, BPC 68.5 kHz, HLA 5 MHz)
-bool stationIsHf(int s);             // WWV / WWVH, CHU, BPM, HLA and BPM coded: AM voice stations with an audio time code (BPC is LF)
+bool stationIsHf(int s);             // WWV / WWVH, CHU, BPM, HLA, BPM coded and RWM: HF stations, sky wave (BPC is LF)
+bool stationKeysCarrier(int s);      // the time code keys the carrier itself (the LF stations and RWM), not an audio tone on AM
 int stationForKhz(double khz, int pref60);   // the station of a frequency (pref60: which of MSF / WWVB / JJY 60 at 60 kHz), -1 none
 const char* stationTimeZone(int s);  // the time the frame carries: "CET / CEST", "UK", "UTC", "JST"
 // BPM (Pucheng, China; 2.5 / 5 / 10 / 15 MHz, the same frequencies as WWV): 1 kHz ticks of 10 ms, a pulse-width coded second after each tick
@@ -37,6 +38,13 @@ const char* stationTimeZone(int s);  // the time the frame carries: "CET / CEST"
 // element, then sec, min, hour, day, month, year (LSB first, an odd parity bit after each) and DUT1 in ms; second 0 sends M (300 ms) and the
 // 0.1 ms DUT1 digit, the leap count and the leap second flag. Elements are plain 0 / 1 bytes below.
 
+// RWM (Moscow, 4996 / 9996 / 14996 kHz, UTC): the carrier itself is keyed (A1N), no time of day is sent. In the half hour: minutes 0 - 7
+// plain carrier, 8 off, 9 the call sign in Morse, 10 - 19 a 100 ms pulse at each second (500 ms at the minute), 20 - 29 10 pulses a second
+// (20 ms, 40 ms on the second, 500 ms at the minute). DUT1 and dUT1 by doubled pulses (CCIR / ITU-R TF.460 code: a second pulse 200 - 300 ms
+// after the second): DUT1 +n doubles seconds 1 .. n, -n seconds 9 .. 8 + n (0.1 s steps); dUT1 +n seconds 21 .. 20 + n, -n 31 .. 30 + n
+// (0.02 s steps). Symbols: S0 a single pulse, S1 a doubled one, SB a second of the 10 pulse minutes, SMark the minute pulse. decodeMinute()
+// gives only DUT1 / dUT1 (utcMinute 0): the minute itself comes from the computer clock.
+
 // Symbols, one a second. bit 0 is the bit (MSF: bit A), bit 1 MSF bit B.
 enum Sym : uint8_t { S0 = 0, S1 = 1, SB = 2, SAB = 3, SMark = 4, SNone = 5, SUnknown = 6 };
 
@@ -50,6 +58,7 @@ struct Fields {
     bool leapAnnounce = false;      // a leap second at the end of this month (DCF77 A2) or day (WWVB, WWV, JJY)
     int leapSign = 0;               // JJY: +1 insert, -1 delete
     int dut1 = 99;                  // UT1 - UTC in 0.1 s (99 not sent)
+    int dUt1 = 99;                  // RWM: the extra UT1 - UTC in 0.02 s (99 not sent)
     bool callBit = false;           // DCF77 R: the transmitter runs on its reserve antenna
     bool leapYear = false;          // WWVB
     bool ut1 = false;               // BPM: the ticks of this minute follow UT1, not UTC
@@ -65,7 +74,7 @@ struct Fields {
 };
 
 // Encode the minute that starts at UTC epoch second utcMinute (a multiple of 60): the symbols of its seconds 0 - 59.
-struct EncodeOpts { bool leapAnnounce = false; int leapSign = 1; int dut1 = 0; bool callBit = false; bool ut1 = false;
+struct EncodeOpts { bool leapAnnounce = false; int leapSign = 1; int dut1 = 0; int dUt1 = 0; bool callBit = false; bool ut1 = false;
                     double dut1Ms = -35.7; int leapCount = 37; bool leapAtMonthEnd = false; };   // the last three: BPM coded
 std::vector<uint8_t> encodeMinute(int station, int64_t utcMinute, const EncodeOpts& o = {});
 // Decode the 60 symbols of a received minute (second 0 first). False when a fixed bit, a parity, a range or a marker is wrong.

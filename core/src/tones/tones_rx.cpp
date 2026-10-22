@@ -82,6 +82,105 @@ void fft(std::vector<std::complex<double>>& a) {
 }
 
 std::string fmt(const char* f, ...) __attribute__((format(printf, 1, 2)));
+// USB / LSB / AM front end (HF voice channels, SELCAL): the channel mixed to 0 Hz, decimated to 8 kHz complex, then the sideband
+// (300 - 3000 Hz above or below the dial) as real audio, or the AM envelope without its carrier, with an AGC to the FM path's level
+struct SsbFront {
+    int demod = TonesUsb;
+    double fs = 0, offsetHz = 0, offPhase = 0;
+    bool ready = false;
+    std::vector<dmr::Fir<cf32>> stages;
+    ExactResampler rs;
+    bool rsPass = true;
+    dmr::Fir<cf32> side;
+    std::complex<double> sideRot{1, 0}, sidePh{1, 0};
+    double agcP = 0, dc = 0;
+    double inPower = 0; int64_t inN = 0;
+    std::vector<cf32> mix, bufA, bufB, sb, rot;
+    std::vector<float> out;
+
+    bool configure(double rate) {
+        fs = rate; ready = false; stages.clear();
+        if (fs < 8000) return false;
+        double r = fs;
+        while (true) {
+            const int f = std::min(8, (int)std::floor(r / 16000));
+            if (f < 2) break;
+            const double o = r / f;
+            stages.emplace_back();
+            stages.back().design(dmr::lowpassTaps(3400.0, std::min(o - 4500.0, r * 0.5), r, 60, 9), f);
+            r = o;
+        }
+        rsPass = std::fabs(r - kRate) < 0.01;
+        if (!rsPass && !rs.configure(r, kRate, 8)) return false;
+        // the sideband: a low-pass of +-1350 Hz around +-1650 Hz (USB / LSB), the AM channel +-3400 Hz
+        side.design(demod == TonesAm ? dmr::lowpassTaps(3400.0, 3900.0, kRate, 50, 9) : dmr::lowpassTaps(1300.0, 1600.0, kRate, 50, 9), 1);
+        sideRot = std::polar(1.0, 2 * kPi * (demod == TonesLsb ? -1650.0 : 1650.0) / kRate);
+        ready = true;
+        reset();
+        return true;
+    }
+    void reset() {
+        for (auto& s : stages) s.reset();
+        if (!rsPass) rs.reset();
+        side.reset();
+        offPhase = 0; sidePh = 1; agcP = 0; dc = 0; inPower = 0; inN = 0;
+    }
+    float takeLevelDb() { const float l = inN ? (float)(10 * std::log10(inPower / (double)inN + 1e-20)) : -200.f; inPower = 0; inN = 0; return l; }
+    // the audio at 8 kHz in the FM path's units (kFull is 0 dB)
+    const std::vector<float>& process(const cf32* x, size_t n) {
+        out.clear();
+        if (!ready || n == 0) return out;
+        mix.resize(n);
+        const double w = -2 * kPi * offsetHz / fs;
+        const cf32 stp((float)std::cos(w), (float)std::sin(w));
+        cf32 ph((float)std::cos(offPhase), (float)std::sin(offPhase));
+        for (size_t i = 0; i < n; i++) {
+            cf32 v = x[i];
+            if (!(std::fabs(v.real()) < 1e4f && std::fabs(v.imag()) < 1e4f)) v = cf32(0, 0);
+            inPower += (double)std::norm(v);
+            mix[i] = v * ph;
+            ph *= stp;
+            if ((i & 1023) == 1023) ph /= std::abs(ph);
+        }
+        offPhase = std::remainder(offPhase + w * (double)n, 2 * kPi);
+        inN += (int64_t)n;
+        std::vector<cf32>* cur = &mix;
+        for (auto& s : stages) {
+            std::vector<cf32>& o = cur == &bufA ? bufB : bufA;
+            o.clear();
+            s.process(cur->data(), cur->size(), o);
+            cur = &o;
+        }
+        if (!rsPass) {
+            std::vector<cf32>& o = cur == &bufA ? bufB : bufA;
+            o.clear();
+            rs.process(cur->data(), cur->size(), o);
+            cur = &o;
+        }
+        sb.clear();
+        rot.resize(cur->size());
+        if (demod != TonesAm) {   // down by the sideband's middle, low-pass, back up by the same rotor (one output per input): one sideband is left
+            for (size_t i = 0; i < cur->size(); i++) {
+                rot[i] = cf32((float)sidePh.real(), (float)sidePh.imag());
+                (*cur)[i] *= std::conj(rot[i]);
+                sidePh *= sideRot;
+            }
+            sidePh /= std::abs(sidePh);
+        }
+        side.process(cur->data(), cur->size(), sb);
+        out.resize(sb.size());
+        for (size_t i = 0; i < sb.size(); i++) {
+            double a;
+            if (demod == TonesAm) { const double m = std::abs(sb[i]); dc += (m - dc) * (dc == 0 ? 1.0 : 0.0005); a = m - dc; }
+            else a = (sb[i] * rot[i]).real();
+            const double p = a * a;
+            agcP += (p > agcP ? 0.02 : 0.0004) * (p - agcP);   // fast up, slow down (about 0.3 s)
+            out[i] = (float)(a * (0.25 * kFull) / std::sqrt(agcP + 1e-20));
+        }
+        return out;
+    }
+};
+
 std::string fmt(const char* f, ...) {
     char b[256];
     va_list ap; va_start(ap, f); vsnprintf(b, sizeof b, f, ap); va_end(ap);
@@ -95,7 +194,9 @@ struct TonesReceiver::Impl {
     std::function<void(const std::string&)> log;
     double fs = 0;
     bool isReady = false, audioIn = false;
+    int demod = TonesFm;
     pktdemod::FmFront fe;
+    SsbFront ssb;
     ExactResampler rs;
     hfdig::Listen listen;
     dmr::Fir<float> audio48, audio8;
@@ -168,6 +269,9 @@ struct TonesReceiver::Impl {
         if (audioIn) {
             if (fs < 7999) return;
             if (!rs.configure(fs, kRate, 8)) return;
+        } else if (demod != TonesFm) {
+            ssb.demod = demod; ssb.offsetHz = fe.offsetHz;
+            if (!ssb.configure(fs)) return;
         } else {
             if (!fe.configure(fs, tonesTuning().minSampleRate)) return;
             audio48.design(dmr::lowpassTaps(3300.0, 8000.0, pktdemod::kMidRate, 50, 9), 2);
@@ -181,6 +285,7 @@ struct TonesReceiver::Impl {
         const double off = fe.offsetHz;
         fe.reset(); fe.offsetHz = off;
         rs.reset(); audio48.reset(); audio8.reset(); listen.reset();
+        if (ssb.ready) { ssb.offsetHz = off; ssb.reset(); }
         std::fill(ring.begin(), ring.end(), 0.f); std::fill(ring1k.begin(), ring1k.end(), 0.f);
         lp1.reset(); lp2.reset(); hpListen.reset();
         n8 = n1k = 0; decimCnt = 0; sumsq = 0; cntsq = 0; audioDb = -200;
@@ -195,7 +300,7 @@ struct TonesReceiver::Impl {
         ctcssEv = dcsEv = dtmfEv = ltEv = -1;
         gateOpen = gateMode == 0; gateHold = 0; gateGain = gateOpen ? 1.f : 0.f;
         nextReport = 0; lastState = -1; lastDecodeSec = -1e9;
-        t = TonesTelemetry(); t.inputRate = fs; t.audioInput = audioIn;
+        t = TonesTelemetry(); t.inputRate = fs; t.audioInput = audioIn; t.demod = demod;
         publish();
     }
 
@@ -476,7 +581,17 @@ struct TonesReceiver::Impl {
         if (now() > dtmfOtherUntil && ew / kSelN >= 12.0 * 12.0) {
             const double nf = 3.0 / kSelN;
             double f[tones::kSelcalN];
-            for (int k = 0; k < tones::kSelcalN; k++) f[k] = nf * goertzel(tmp.data(), kSelN, tones::selcalHz(k), kRate) / ew;
+            // SSB: a mistuned radio moves every tone by the same few Hz; the shift (within +-25 Hz) where the two strongest tones are strongest
+            const int maxShift = !audioIn && (demod == TonesUsb || demod == TonesLsb) ? 25 : 0;
+            double bestTop = -1;
+            for (int d = -maxShift; d <= maxShift; d += 5) {
+                double g[tones::kSelcalN], t1 = 0, t2 = 0;
+                for (int k = 0; k < tones::kSelcalN; k++) {
+                    g[k] = nf * goertzel(tmp.data(), kSelN, tones::selcalHz(k) + d, kRate) / ew;
+                    if (g[k] > t1) { t2 = t1; t1 = g[k]; } else if (g[k] > t2) t2 = g[k];
+                }
+                if (t1 + t2 > bestTop) { bestTop = t1 + t2; std::copy(g, g + tones::kSelcalN, f); }
+            }
             int i1 = 0;
             for (int k = 1; k < tones::kSelcalN; k++) if (f[k] > f[i1]) i1 = k;
             int i2 = i1 == 0 ? 1 : 0;
@@ -577,12 +692,14 @@ struct TonesReceiver::Impl {
         if (ToneEvent* e = ev(dtmfEv)) if (e->active) e->durSec = tnow - e->timeSec;
         t.timeSec = tnow;
         t.audioInput = audioIn;
-        t.snrDb = audioIn ? 0.f : (float)fe.snrEma;
-        t.cfoHz = audioIn ? 0 : fe.cfoHz();
+        t.demod = demod;
+        const bool fm = !audioIn && demod == TonesFm;
+        t.snrDb = fm ? (float)fe.snrEma : 0.f;
+        t.cfoHz = fm ? fe.cfoHz() : 0;
         t.audioDb = audioDb;
-        t.levelDb = audioIn ? audioDb : fe.takeLevelDb();
+        t.levelDb = audioIn ? audioDb : fm ? fe.takeLevelDb() : ssb.takeLevelDb();
         t.dataValid = tnow - lastDecodeSec < 60.0;
-        const bool signal = audioDb > -45.f || (!audioIn && fe.carrierRecent(5.0));
+        const bool signal = audioDb > -45.f || (fm && fe.carrierRecent(5.0));
         t.state = t.dataValid ? 2 : (signal ? 1 : 0);
         if (t.state != lastState) {
             say(t.state == 2 ? "Tones: tone or code decoded" : t.state == 1 ? "Tones: audio, no tone" : "Tones: no signal");
@@ -647,6 +764,8 @@ struct TonesReceiver::Impl {
             rs.process(rsIn.data(), n, rsOut);
             a8.resize(rsOut.size());
             for (size_t i = 0; i < rsOut.size(); i++) a8[i] = rsOut[i].real();
+        } else if (demod != TonesFm) {
+            a8 = ssb.process(x, n);
         } else {
             const std::vector<float>& disc = fe.process(x, n);
             a48.clear();
@@ -671,7 +790,20 @@ void TonesReceiver::configure(double inputRateHz) {
 void TonesReceiver::setSignalOffset(double hz) {
     std::lock_guard<std::mutex> lk(p_->procMu);
     p_->fe.setOffset(hz);
+    p_->ssb.offsetHz = hz; p_->ssb.offPhase = 0;
 }
+void TonesReceiver::setDemod(int d) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    d = d >= 0 && d < TonesDemodCount ? d : TonesFm;
+    if (p_->demod == d) return;
+    p_->demod = d;
+    if (p_->fs > 0) p_->configure(p_->fs);
+}
+const char* tonesDemodName(int d) {
+    static const char* n[] = {"FM", "USB", "LSB", "AM"};
+    return d >= 0 && d < TonesDemodCount ? n[d] : "?";
+}
+int tonesAutoDemod(double dialHz) { return dialHz > 0 && dialHz < 30e6 ? TonesUsb : TonesFm; }
 void TonesReceiver::setAudioInput(bool on) {
     std::lock_guard<std::mutex> lk(p_->procMu);
     if (p_->audioIn == on) return;
@@ -727,7 +859,7 @@ void TonesReceiver::setLogCallback(std::function<void(const std::string&)> cb) {
 ModeTuning tonesTuning() {
     ModeTuning t;
     t.stdMode = 91; t.id = "tones"; t.name = "Tone decoders (CTCSS, DCS, DTMF, selcall)";
-    t.minMhz = 25; t.maxMhz = 1300; t.defMhz = 145.5;
+    t.minMhz = 1.5; t.maxMhz = 1300; t.defMhz = 145.5;   // HF: SELCAL and the voice band decoders in USB (setDemod)
     t.sampleRate = 2000000;
     t.basebandHz = 1750000;
     t.bandwidthMhz = 0.025;
