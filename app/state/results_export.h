@@ -14,7 +14,7 @@ struct Table {
 
 // Logbook formats. Columns are found by name (case-insensitive): call/callsign, grid/locator, frequency_hz/freq_hz/frequency_mhz, band,
 // mode, rst/rst_sent/snr/snr_db, lat/latitude, lon/longitude, alt_ft/alt_m, name/icao/mmsi/id, time.
-enum class Fmt { Csv, Json, Adif, Kml, Gpx };
+enum class Fmt { Csv, Json, Adif, Kml, Gpx, GeoJson };
 
 // locale-independent number text with '.', trimmed to `dec` decimals
 std::string num(double v, int dec = 3);
@@ -23,6 +23,7 @@ std::string toJson(const Table& t);   // array of objects keyed by column name; 
 std::string toAdif(const Table& t);   // ADIF 3 (.adi): rows with a call; CALL, QSO_DATE, TIME_ON, BAND, FREQ, MODE, GRIDSQUARE, RST_RCVD
 std::string toKml(const Table& t);    // KML 2.2 placemarks for rows with a lat/lon
 std::string toGpx(const Table& t);    // GPX 1.1 waypoints for rows with a lat/lon
+std::string toGeoJson(const Table& t);   // GeoJSON FeatureCollection (points, [lon,lat,alt]) for rows with a lat/lon; the writer is core/src/export
 std::string render(const Table& t, Fmt f);
 Table since(const Table& t, double t0);   // rows seen at or after t0 (rows without a time are dropped)
 Fmt fmtFromPath(const std::string& path); // by extension: .adi/.adif, .kml, .gpx, .json, else CSV

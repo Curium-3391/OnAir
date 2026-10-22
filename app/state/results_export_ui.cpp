@@ -13,15 +13,15 @@ static const double kStart = (double)std::time(nullptr);   // when OnAir started
 
 bool saveButton(const Table& t, const char* kind, std::string& note, const char* id) {
     static int fmt = 0, scope = 1;   // Fmt order below; scope 0 = since start, 1 = all
-    static const Fmt order[] = {Fmt::Csv, Fmt::Json, Fmt::Adif, Fmt::Kml, Fmt::Gpx};
+    static const Fmt order[] = {Fmt::Csv, Fmt::Json, Fmt::Adif, Fmt::Kml, Fmt::Gpx, Fmt::GeoJson};
     clips::tableLog().observe(kind, t, (double)std::time(nullptr));   // radio clips: remembers what the table showed (rate limited inside)
     ImGui::PushID(id);
-    bool hit = iconFlat(Ic::Save, "Save results: CSV, JSON, ADIF logbook (ham modes), KML or GPX (anything with positions)");
+    bool hit = iconFlat(Ic::Save, "Save results: CSV, JSON, ADIF logbook (ham modes), KML, GPX or GeoJSON (anything with positions)");
     ImGui::SameLine();
     if (ImGui::SmallButton("Save results...")) hit = true;
     ImGui::SameLine();
     ImGui::SetNextItemWidth(90);
-    ImGui::Combo("##fmt", &fmt, "CSV\0JSON\0ADIF\0KML\0GPX\0");
+    ImGui::Combo("##fmt", &fmt, "CSV\0JSON\0ADIF\0KML\0GPX\0GeoJSON\0");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(110);
     ImGui::Combo("##scope", &scope, "Since start\0All\0");

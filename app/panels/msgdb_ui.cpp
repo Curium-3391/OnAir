@@ -4,6 +4,7 @@
 #include "dect2/common/u8file.h"
 #include "dect2/automation/engine.h"
 #include "dect2/msgdb/msgdb.h"
+#include "dect2/export/exporters.h"
 #include <cmath>
 #include <ctime>
 #include <filesystem>
@@ -143,6 +144,36 @@ void exportButton(const char* label, const char* fmt, const char* ext) {
     S.note = o ? std::string(tr("saved")) + " " + path : std::string(tr("could not write")) + " " + path;
 }
 
+// positions / text log through the shared exporters (core/src/export): fmt is a dect2::xport::Format
+void exportGeoButton(const char* label, dect2::xport::Format fmt) {
+    if (!ImGui::Button(label)) return;
+    namespace xp = dect2::xport;
+    mdb::Filter f = filter();
+    f.oldestFirst = true; f.posOnly = fmt != xp::Format::Txt; f.limit = 100000; f.offset = 0;
+    const std::vector<mdb::Record> rows = mdb::global().query(f);
+    std::string data;
+    if (fmt == xp::Format::Txt) {
+        xp::Table t;
+        t.cols = {"mode", "identity", "MHz", "message"};
+        for (const mdb::Record& r : rows) t.add({r.mode, r.ident, r.freqHz > 0 ? xp::numText(r.freqHz / 1e6, 6) : "", r.text}, r.time);
+        data = xp::toText(t);
+    } else {
+        std::vector<xp::GeoPoint> pts;
+        for (const mdb::Record& r : rows) {
+            xp::GeoPoint g; g.name = r.ident.empty() ? r.mode : r.ident; g.desc = r.mode + (r.text.empty() ? "" : ": " + r.text.substr(0, 120));
+            g.lat = r.lat; g.lon = r.lon; g.time = r.time;
+            pts.push_back(g);
+        }
+        data = fmt == xp::Format::Kml ? xp::toKml(pts, {}, "OnAir messages") : fmt == xp::Format::Gpx ? xp::toGpx(pts, {}, "OnAir messages") : xp::toGeoJson(pts);
+    }
+    const std::string path = saveFileDialog((std::string("messages-") + std::to_string((long long)au::wallNow()) + xp::formatExt(fmt)).c_str());
+    if (path.empty()) return;
+    std::ofstream o(dect2::u8file(path), std::ios::binary);
+    o << data;
+    o.flush();
+    S.note = o ? std::string(tr("saved")) + " " + path : std::string(tr("could not write")) + " " + path;
+}
+
 void windowPanel(App& a) {
     ImGui::SetNextWindowSize(ImVec2(980, 620), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(tr("Messages"), &a.msgdbOpen)) { ImGui::End(); return; }
@@ -233,6 +264,14 @@ void windowPanel(App& a) {
     exportButton(tr("Export JSON"), "json", ".json");
     ImGui::SameLine();
     exportButton(tr("Export ADIF"), "adif", ".adi");
+    ImGui::SameLine();
+    exportGeoButton(tr("Export TXT"), dect2::xport::Format::Txt);
+    ImGui::SameLine();
+    exportGeoButton(tr("Export KML"), dect2::xport::Format::Kml);
+    ImGui::SameLine();
+    exportGeoButton(tr("Export GPX"), dect2::xport::Format::Gpx);
+    ImGui::SameLine();
+    exportGeoButton(tr("Export GeoJSON"), dect2::xport::Format::GeoJson);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", S.note.c_str());
     if (ImGui::CollapsingHeader(tr("Storage"))) {

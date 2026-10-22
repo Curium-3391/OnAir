@@ -61,6 +61,11 @@ int main() {
         CHECK(x.find("</gpx>") != std::string::npos);
         CHECK(resexp::since(g, 1770000000).rows.empty());
         CHECK(resexp::since(g, 1750000000).rows.size() == 2);
+        const std::string j = resexp::toGeoJson(g);   // GeoJSON: [lon,lat,alt], the row without a position left out, times kept
+        CHECK(j.find("\"coordinates\":[-6.25,53.5,10668]") != std::string::npos);
+        CHECK(j.find("NOPOS") == std::string::npos);
+        CHECK(j.find("\"time\":\"2025-10-09T08:53:20Z\"") != std::string::npos);
+        CHECK(resexp::fmtFromPath("a.geojson") == resexp::Fmt::GeoJson);
     }
     printf(fails ? "FAILED\n" : "ok\n");
     return fails;
