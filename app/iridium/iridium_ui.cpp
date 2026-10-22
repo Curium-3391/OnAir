@@ -4,7 +4,11 @@
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/iridium/iridium_tel.h"
+#include "dect2/iridium/iridium_voice.h"
+#include "dect2/codec/codec_registry.h"
+#include "../codec/speech_codec_ui.h"
 #include <algorithm>
+#include <filesystem>
 #include <cmath>
 #include <cstring>
 #include <ctime>
@@ -16,7 +20,8 @@ using dect2::IridiumTelemetry;
 
 struct State {
     bool loaded = false;
-    int view = 0;                    // 0 map, 1 messages, 2 ring alerts, 3 bursts
+    int view = 0;                    // 0 map, 1 messages, 2 ring alerts, 3 bursts, 4 calls
+    int listen = 0;                  // voice: -1 off, 0 first call with sound, else the call id
     int selSat = -1;                 // the selected satellite, -1 = none
     int selMsg = -1;                 // index into messages, newest = 0
     adsbmap::View map;
@@ -256,7 +261,54 @@ void counters(App& a) {
     }
     codecHelpButton(CodecHelp::IridiumAmbe);
     ImGui::SameLine();
-    ImGui::TextWrapped("Voice frames are counted only, never decoded.");
+    ImGui::TextWrapped("Voice slots are grouped into calls (Calls view); sound needs your own codec plug-in.");
+}
+
+// ---------------------------------------------------------------- voice calls
+// The call table, the Listen selector and the codec status. Unverified without real recordings: see core/include/dect2/iridium/iridium_voice.h.
+void callsView(App& a) {
+    const IridiumTelemetry& t = a.rx.iridium;
+    appcodec::voiceCodecLine("iridium", "AMBE-family (Iridium)");
+    ImGui::SameLine(); codecHelpButton(CodecHelp::IridiumAmbe);
+    appcodec::codecNoticePrompt("iridium");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Listen"); ImGui::SameLine(0, 5 * gUi);
+    ImGui::SetNextItemWidth(std::min(170 * gUi, ImGui::GetContentRegionAvail().x));
+    char cur[40];
+    if (S.listen < 0) snprintf(cur, sizeof cur, "Off"); else if (S.listen == 0) snprintf(cur, sizeof cur, "First call with sound"); else snprintf(cur, sizeof cur, "Call %d", S.listen);
+    if (ImGui::BeginCombo("##irlisten", cur)) {
+        if (ImGui::Selectable("Off", S.listen < 0)) S.listen = -1;
+        if (ImGui::Selectable("First call with sound", S.listen == 0)) S.listen = 0;
+        for (auto it = t.calls.rbegin(); it != t.calls.rend(); ++it) {
+            char l[48]; snprintf(l, sizeof l, "Call %d  %.4f MHz %s", it->id, it->freqHz / 1e6, it->downlink ? "down" : "up");
+            if (ImGui::Selectable(l, S.listen == it->id)) S.listen = it->id;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::TextWrapped("Each call is saved as a WAV file in the recordings folder when it ends and the plug-in produced sound. Frames that fail their checks, or that the plug-in refuses, are listed as not readable and stay silent. Encrypted or scrambled traffic is never decoded.");
+    if (!ImGui::BeginTable("##iri_calls", 9, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("#"); ImGui::TableSetupColumn("Time"); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Dir");
+    ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("Sat"); ImGui::TableSetupColumn("Beam");
+    ImGui::TableSetupColumn("Frames"); ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableHeadersRow();
+    for (auto it = t.calls.rbegin(); it != t.calls.rend(); ++it) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn(); ImGui::Text("%d", it->id);
+        ImGui::TableNextColumn();
+        if (t.hasTime) ImGui::TextUnformatted(utcText(t.iridiumUtc - (t.timeSec - it->start), false).c_str()); else ImGui::Text("%.1f s", it->start);
+        ImGui::TableNextColumn(); ImGui::Text("%.4f", it->freqHz / 1e6);
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(it->downlink ? "down" : "up");
+        ImGui::TableNextColumn(); ImGui::Text("%.1f s", it->last - it->start + 0.09);
+        ImGui::TableNextColumn(); if (it->sat >= 0) ImGui::Text("%d", it->sat); else ImGui::TextDisabled("-");
+        ImGui::TableNextColumn(); if (it->beam >= 0) ImGui::Text("%d", it->beam); else ImGui::TextDisabled("-");
+        ImGui::TableNextColumn(); ImGui::Text("%u/%u", it->readable, it->frames);
+        ImGui::TableNextColumn();
+        ImGui::Text("%s%s", it->active ? "live, " : "", it->status.c_str());
+        if (!it->file.empty()) { ImGui::SameLine(); ImGui::TextDisabled("(saved)"); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", it->file.c_str()); }
+    }
+    if (t.calls.empty()) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("no voice calls heard"); }
+    ImGui::EndTable();
 }
 
 // ---------------------------------------------------------------- burst scatter
@@ -455,8 +507,9 @@ void panels(App& a) {
 
 void tab(App& a) {
     loadState();
-    subNav("iriv", S.view, {"Map", "Messages", "Ring alerts", "Bursts"});
+    subNav("iriv", S.view, {"Map", "Messages", "Ring alerts", "Bursts", "Calls"});
     const float W = ImGui::GetContentRegionAvail().x, H = ImGui::GetContentRegionAvail().y;
+    if (S.view == 4) { callsView(a); return; }
     if (S.view == 1) { messages(a, W, H); return; }
     if (S.view == 2) { ringAlerts(a); return; }
     if (S.view == 3) {
@@ -542,6 +595,14 @@ void tick(App& a) {
     loadState();
     if (!a.engine.running()) { S.pushedCenter = 0; S.pushedThr = -1; return; }
     dect2::IridiumReceiver& r = a.engine.iridium();
+    if (live(a)) appcodec::voiceCodecTick("iridium");   // the user's codec plug-in (docs/CODECS.md), loaded whichever tab is shown
+    {
+        static bool dirMade = false;
+        const std::string rec = plat::dataDir() + "/recordings";
+        if (!dirMade) { std::error_code ec; std::filesystem::create_directories(rec, ec); dirMade = true; }
+        dect2::IridiumVoice& v = r.voice();
+        v.setVolume(a.volume); v.setMuted(a.muted); v.setListenCall(S.listen); v.setRecordFolder(rec);
+    }
     if (S.pushedCenter != a.freqMhz) { r.setCenterMhz(a.freqMhz); S.pushedCenter = a.freqMhz; }
     if (S.pushedThr != S.thrDb) { r.setThresholdDb(S.thrDb); S.pushedThr = S.thrDb; }
 }
@@ -553,7 +614,7 @@ void toolkitSave(App& a) {
     const bool on = r.bitsFileOpen();
     ImGui::Spacing();
     ImGui::TextDisabled("SAVE FOR IRIDIUM-TOOLKIT");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Writes every demodulated burst as gr-iridium iridium-extractor RAW lines.\nRun: iridium-parser.py output.bits > output.parsed\nOnAir never decodes voice; that is up to you, with the toolkit.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Writes every demodulated burst as gr-iridium iridium-extractor RAW lines.\nRun: iridium-parser.py output.bits > output.parsed\nVoice calls are also listed in the Calls view (sound needs your own codec plug-in).");
     ImGui::TextDisabled("format"); ImGui::SameLine(0, 5 * gUi);
     ImGui::SetNextItemWidth(std::min(120 * gUi, ImGui::GetContentRegionAvail().x));
     int fmt = 0;

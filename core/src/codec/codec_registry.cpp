@@ -16,11 +16,12 @@ const std::vector<CodecInfo>& codecTable() {
         {"ambe",  "AMBE (3600x2400)",   CodecKind::Patented, "D-STAR", "plug-in onair-codec-ambe, or libmbe in the codecs folder"},
         {"imbe",  "IMBE (7200x4400)",   CodecKind::Patented, "P25 phase 1, ProVoice / EDACS", "plug-in onair-codec-imbe, or libmbe in the codecs folder"},
         {"ysf",   "AMBE+2 (Yaesu)",     CodecKind::Patented, "Yaesu System Fusion (C4FM)", "plug-in onair-codec-ysf"},
+        {"iridium", "AMBE-family (Iridium)", CodecKind::Patented, "Iridium voice", "plug-in onair-codec-iridium; gets the 39 byte voice field of each frame as received (unverified without recordings)"},
         {"tetra", "TETRA ACELP",        CodecKind::Patented, "TETRA", "plug-in onair-codec-tetra (unencrypted calls only)"},
         {"",      "Codec 2",            CodecKind::Open,     "M17, FreeDV 700D / 700E / 1600", "built in (libcodec2 comes with OnAir)"},
         {"",      "RADE",               CodecKind::Open,     "FreeDV RADE", "optional librade"},
         {"",      "KA codecs",          CodecKind::Open,     "KAAL, KAPP, KAFT, KAVB, KAIT, KAWS", "built in"},
-        {"",      "TETRAPOL, DECT and satellite voice", CodecKind::Unsupported, "TETRAPOL, DECT, Iridium, Inmarsat, other satellite voice", "no voice decoder in OnAir (signalling and data only)"},
+        {"",      "TETRAPOL, DECT and satellite voice", CodecKind::Unsupported, "TETRAPOL, DECT, Inmarsat, other satellite voice", "no voice decoder in OnAir (signalling and data only)"},
     };
     return t;
 }
@@ -34,6 +35,7 @@ const CodecInfo* findCodec(const std::string& id) {
 size_t pluginFrameBytes(const std::string& id) {
     if (id == "ambe2" || id == "ambe") return 12;
     if (id == "imbe") return 23;
+    if (id == "iridium") return 39;
     return 0;
 }
 

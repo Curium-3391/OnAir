@@ -135,11 +135,12 @@ Text textOf(CodecHelp c) {
                 false};
     case CodecHelp::IridiumAmbe:
         return {"AMBE (Iridium voice)",
-                "Iridium voice uses an AMBE variant. OnAir counts voice frames but does not decode them. It can save the bursts as an "
-                "iridium-toolkit .bits file instead.",
-                "Save a .bits file (Save for iridium-toolkit), then use iridium-toolkit (github.com/muccc/iridium-toolkit) with the "
-                "ir77_ambe_decode program from osmo-ir77. Their README explains the steps.",
-                false};
+                "Iridium voice uses an AMBE-family vocoder, which is patented, so OnAir ships none. It lists the voice calls and hands each "
+                "frame's 39 byte voice field, as received, to a codec plug-in you install yourself. This is not verified against real Iridium "
+                "recordings; with no plug-in the calls stay silent. Encrypted or scrambled traffic is never decoded.",
+                "Put onair-codec-iridium (.dll, .dylib or .so) in the codecs folder below and accept the notice. You can also save a .bits file "
+                "(Save for iridium-toolkit) and use iridium-toolkit (github.com/muccc/iridium-toolkit) with ir77_ambe_decode from osmo-ir77.",
+                true};
     case CodecHelp::DstarAmbe:
         return {"mbelib (D-STAR AMBE voice)",
                 "D-STAR voice uses AMBE, a patented vocoder. OnAir does not ship it: calls, callsigns, messages and positions are shown without "
@@ -238,7 +239,7 @@ const char* codecNeedMbe() {
 
 // the plug-in codec id a help topic belongs to (the AMBE / IMBE family), or null
 static const char* pluginIdFor(CodecHelp c) {
-    return c == CodecHelp::DmrAmbe || c == CodecHelp::NxdnAmbe || c == CodecHelp::DpmrAmbe ? "ambe2" : c == CodecHelp::DstarAmbe ? "ambe" : c == CodecHelp::P25Imbe ? "imbe" : nullptr;
+    return c == CodecHelp::DmrAmbe || c == CodecHelp::NxdnAmbe || c == CodecHelp::DpmrAmbe ? "ambe2" : c == CodecHelp::DstarAmbe ? "ambe" : c == CodecHelp::P25Imbe ? "imbe" : c == CodecHelp::IridiumAmbe ? "iridium" : nullptr;
 }
 
 void codecHelpButton(CodecHelp c, const char* label) {

@@ -69,6 +69,21 @@ struct IridiumBurstDot {             // burst scatter: the last 2 s
     uint8_t kind = 0;                // 0 detected, 1 unique word found, 2 frame decoded
 };
 
+struct IridiumCall {                 // a voice call: the traffic frames on one channel, one direction
+    int id = 0;                      // 1, 2, ... by start
+    double start = 0, last = 0;      // receiver time, seconds
+    double freqHz = 0;               // last burst frequency
+    bool downlink = true;
+    bool active = false;             // frames within the last second
+    int sat = -1, beam = -1;         // from a frame heard on this frequency just before; -1 unknown
+    uint32_t frames = 0;             // voice frames
+    uint32_t readable = 0;           // frames whose link control word checked out
+    uint32_t decoded = 0;            // frames the codec plug-in turned into sound
+    double audioSec = 0;             // length of the sound
+    std::string status;              // "decoded", "codec needed", "not readable"
+    std::string file;                // the recording, when saved
+};
+
 struct IridiumTelemetry {
     uint64_t seq = 0;            // grows with every report
     int state = 0;               // 0 searching, 1 signal (bursts with a unique word), 2 decoding (frames with good codes)
@@ -87,7 +102,8 @@ struct IridiumTelemetry {
     float burstsPerSec = 0, demodPerSec = 0, uwPerSec = 0, framesPerSec = 0;
     float confidence = 0;        // mean demodulator confidence (percent of symbols within 22 degrees) over the last report
     uint64_t typeCount[kIridiumTypeSlots] = {};
-    uint64_t voiceFrames = 0;    // counted only: voice is never decoded or stored
+    uint64_t voiceFrames = 0;    // voice slots heard (iridium_voice.h: grouped into calls; decoded only through the user's plug-in)
+    std::vector<IridiumCall> calls;            // newest last, at most 100
     uint64_t pagedTotal = 0;     // TMSIs paged in all ring alerts heard
     // time from the broadcast channel
     bool hasTime = false;
