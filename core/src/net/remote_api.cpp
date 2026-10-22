@@ -2,6 +2,7 @@
 // silent client never holds up another one. Blocking sockets with select() for the waits, on top of the helpers of tcp_client.h.
 #include "dect2/common/thread_name.h"
 #include "dect2/net/remote_api.h"
+#include "dect2/net/api_policy.h"
 #include "dect2/common/str.h"
 #include "dect2/net/net_proto.h"
 #include "dect2/source/rotator.h"
@@ -49,12 +50,6 @@ constexpr size_t kMaxConns = 16, kMaxWs = 8, kMaxWsFrame = 4096;
 constexpr int kRequestMs = 5000;
 
 std::string lower(std::string s) { return dect2::str::lower(std::move(s)); }
-std::string trim(const std::string& s) {
-    size_t a = 0, b = s.size();
-    while (a < b && (s[a] == ' ' || s[a] == '\t')) a++;
-    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r')) b--;
-    return s.substr(a, b - a);
-}
 // The connection of this thread (every connection has a thread of its own): TLS when the server was given a certificate, else plain sockets
 thread_local tls::Conn* gTls = nullptr;
 bool ioSendAll(sock_t s, const void* d, size_t n) {
@@ -80,7 +75,6 @@ void sockSendTimeout(sock_t s, int ms) {
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
 #endif
 }
-bool ctEqual(const std::string& a, const std::string& b) { return netp::ctEqual(a, b); }
 std::string hostOnly(const std::string& h) { return netp::hostOnly(h); }
 bool loopbackName(const std::string& n) { return netp::loopbackName(n); }
 std::string urlDecode(const std::string& s) { return netp::urlDecode(s); }
@@ -95,7 +89,7 @@ struct Request {
 } // namespace
 
 struct RemoteApiServer::Impl {
-    struct Conn { sock_t s = kBadSock; std::thread th; std::atomic<bool> done{false}; std::atomic<bool> ws{false}; bool loopback = false; };
+    struct Conn { sock_t s = kBadSock; std::string peer; std::thread th; std::atomic<bool> done{false}; std::atomic<bool> ws{false}; bool loopback = false; };
     explicit Impl(RemoteApiHost& h) : host(h) {}
     RemoteApiHost& host;
     mutable std::mutex mu;
@@ -106,6 +100,8 @@ struct RemoteApiServer::Impl {
     std::thread th;
     std::atomic<bool> quit{false};
     std::atomic<uint64_t> requests{0}, rejected{0};
+    std::mutex limMu;
+    apipol::RateLimiter limiter;
 
     void stopAll() {
         quit = true;
@@ -186,15 +182,9 @@ struct RemoteApiServer::Impl {
             const size_t sch = org.find("://");
             if (sch == std::string::npos || lower(org.substr(sch + 3)) != lower(host)) { sendErr(s, 403, "cross-origin requests are refused"); return false; }
         }
-        if (rq.loopback) {
-            if (!loopbackName(lower(hostOnly(host)))) { sendErr(s, 403, "Host must be a loopback name"); return false; }   // DNS rebinding
-            return true;
-        }
-        std::string tok;
-        const std::string a = rq.hdr("authorization");
-        if (a.size() > 7 && lower(a.substr(0, 7)) == "bearer ") tok = trim(a.substr(7));
-        else tok = queryParam(rq.query, "token");
-        if (c.token.size() >= 16 && ctEqual(tok, c.token)) return true;
+        if (rq.loopback && !loopbackName(lower(hostOnly(host)))) { sendErr(s, 403, "Host must be a loopback name"); return false; }   // DNS rebinding
+        const apipol::Auth au = apipol::authorise(rq.loopback, c.requireTokenLocal, c.token, apipol::extractToken(rq.hdr("authorization"), rq.query));
+        if (au == apipol::Auth::Allow) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(300));   // guessing is slow
         sendErr(s, 401, "token required", "WWW-Authenticate: Bearer\r\n");
         return false;
@@ -207,6 +197,10 @@ struct RemoteApiServer::Impl {
         const std::string& p = rq.path;
         const bool isGet = rq.method == "GET", isPost = rq.method == "POST";
         if (!isGet && !isPost) { sendErr(s, 405, "method not allowed", "Allow: GET, POST\r\n"); return; }
+        const apipol::Route pr = apipol::parseRoute(rq.method, p);   // malformed paths, the refusal list, unknown API versions, wrong verbs
+        if (pr.status == 405) { sendErr(s, 405, pr.msg, "Allow: " + pr.allow + "\r\n"); return; }
+        if (pr.status != 200 && pr.status != 404) { sendErr(s, pr.status, pr.msg); return; }
+        if (pr.status == 404 && pr.msg != "no such endpoint") { sendErr(s, 404, pr.msg); return; }
         std::string err;
         uint64_t seq = 0;
         auto okJson = [&] { send(s, 200, "{\"ok\":true}"); };
@@ -225,9 +219,12 @@ struct RemoteApiServer::Impl {
             return;
         }
         if (p == "/api/v1" || p == "/api/v1/") {
-            getOnly([] { return std::string("{\"name\":\"OnAir remote API\",\"version\":1,\"endpoints\":[\"GET /api/v1/status\",\"GET /api/v1/devices\",\"GET /api/v1/modes\",\"GET /api/v1/telemetry\","
-                                            "\"GET /api/v1/spectrum?bins=N\",\"GET /api/v1/rotator\",\"GET /api/v1/ws\",\"POST /api/v1/start\",\"POST /api/v1/stop\",\"POST /api/v1/mode\",\"POST /api/v1/frequency\","
-                                            "\"POST /api/v1/samplerate\",\"POST /api/v1/gain\",\"POST /api/v1/rotator/goto\",\"POST /api/v1/rotator/stop\",\"POST /api/v1/rotator/park\"]}"); });
+            getOnly([] {
+                std::string o = "{\"name\":\"OnAir remote API\",\"version\":1,\"endpoints\":[";
+                bool first = true;
+                for (const std::string& e : apipol::endpointList()) { if (!first) o += ','; first = false; o += "\"" + e + "\""; }
+                return o + "]}";
+            });
             return;
         }
         if (p == "/api/v1/status") { getOnly([&] { return host.statusJson(); }); return; }
@@ -245,6 +242,26 @@ struct RemoteApiServer::Impl {
             getOnly([] { return Rotator::get().apiStatusJson(); });
             return;
         }
+        if (pr.ep == apipol::Ep::Memories || pr.ep == apipol::Ep::Scheduler || pr.ep == apipol::Ep::Audio || pr.ep == apipol::Ep::Recording) {
+            std::string j;
+            { std::lock_guard<std::mutex> lk(hostMu); j = pr.ep == apipol::Ep::Memories ? host.memoriesJson() : pr.ep == apipol::Ep::Scheduler ? host.schedulerJson() : pr.ep == apipol::Ep::Audio ? host.audioJson() : host.recordingJson(); }
+            if (j.empty()) sendErr(s, 501, "not available in this program"); else send(s, 200, j);
+            return;
+        }
+        if (pr.ep == apipol::Ep::Events) {   // polling: ?since=N (omitted: from now) &max=N
+            const std::string sn = queryParam(rq.query, "since"), mx = queryParam(rq.query, "max");
+            uint64_t cur = UINT64_MAX;
+            if (!sn.empty()) { if (sn.size() > 18 || sn.find_first_not_of("0123456789") != std::string::npos) { sendErr(s, 400, "since must be a number"); return; } cur = strtoull(sn.c_str(), nullptr, 10); }
+            const size_t maxN = mx.empty() ? 100 : (size_t)std::max(1, std::min(500, atoi(mx.c_str())));
+            std::vector<std::string> lines;
+            bool gap = false, have;
+            { std::lock_guard<std::mutex> lk(hostMu); have = host.eventsSince(cur, maxN, lines, gap); }
+            if (!have) { sendErr(s, 501, "no message stream in this program"); return; }
+            std::string o = std::string("{\"gap\":") + (gap ? "true" : "false") + ",\"next\":" + std::to_string(cur) + ",\"events\":[";
+            for (size_t i = 0; i < lines.size(); i++) { if (i) o += ','; o += lines[i]; }
+            send(s, 200, o + "]}");
+            return;
+        }
         if (p == "/api/v1/ws") { sendErr(s, 426, "WebSocket upgrade required", "Upgrade: websocket\r\n"); return; }   // a proper upgrade is handled before route()
         if (p.compare(0, 10, "/api/v1/x/") == 0) {   // the host program's own endpoints
             std::map<std::string, JsonVal> jb;
@@ -260,6 +277,8 @@ struct RemoteApiServer::Impl {
             return;
         }
         const bool known = p == "/api/v1/start" || p == "/api/v1/stop" || p == "/api/v1/mode" || p == "/api/v1/frequency" || p == "/api/v1/samplerate" || p == "/api/v1/gain"
+                         || p == "/api/v1/autogain" || p == "/api/v1/bandwidth" || p == "/api/v1/squelch" || p == "/api/v1/volume" || p == "/api/v1/mute"
+                         || p == "/api/v1/recording/start" || p == "/api/v1/recording/stop"
                          || p == "/api/v1/rotator/goto" || p == "/api/v1/rotator/stop" || p == "/api/v1/rotator/park";
         if (!known) { sendErr(s, 404, "no such endpoint"); return; }
         if (!isPost) { sendErr(s, 405, "use POST", "Allow: POST\r\n"); return; }
@@ -302,6 +321,32 @@ struct RemoteApiServer::Impl {
             if (!num("el", el) && !num("elevation", el)) el = 0;
             Rotator::get().gotoAzEl(az, el);
             okJson();
+        } else if (p == "/api/v1/volume") {
+            if (!num("level", v) || !(v >= 0 && v <= 1)) { fail("level must be a number from 0 to 1"); return; }
+            if (host.setVolume(v, err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/mute" || p == "/api/v1/autogain") {
+            auto it = j.find("on");
+            if (it == j.end() || it->second.kind != JsonVal::Bool) { fail("give \"on\": true or false"); return; }
+            const bool on = it->second.b;
+            if (p == "/api/v1/mute" ? host.setMute(on, err) : host.setAutoGain(on, err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/bandwidth") {
+            double hz = 0;
+            if (num("hz", v)) hz = v; else if (num("khz", v)) hz = v * 1e3; else { fail("give hz or khz"); return; }
+            if (!(hz > 0) || hz > 1e9) { fail("bandwidth out of range"); return; }
+            if (host.setBandwidthHz(hz, err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/squelch") {
+            auto on = j.find("on"), au = j.find("auto");
+            double db = -100;
+            if (on == j.end() || on->second.kind != JsonVal::Bool) { fail("give \"on\": true or false"); return; }
+            if (au != j.end() && au->second.kind != JsonVal::Bool) { fail("auto must be true or false"); return; }
+            if (j.count("db") && (!num("db", db) || db < -140 || db > 20)) { fail("db must be from -140 to 20"); return; }
+            if (host.setSquelch(on->second.b, au != j.end() && au->second.b, db, err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/recording/start") {
+            std::string kind = "iq";
+            if (j.count("kind")) { if (j["kind"].kind != JsonVal::Str || (j["kind"].str != "iq" && j["kind"].str != "audio")) { fail("kind must be \"iq\" or \"audio\""); return; } kind = j["kind"].str; }
+            if (host.recordStart(kind, err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/recording/stop") {
+            if (host.recordStop(err)) okJson(); else fail(err);
         } else {   // gain
             if (!num("db", v) || v < -100 || v > 200) { fail("db must be a number"); return; }
             if (host.setGainDb(v, err)) okJson(); else fail(err);
@@ -323,7 +368,8 @@ struct RemoteApiServer::Impl {
         bool wantTel = true, wantSpec = false, binSpec = false;
         int bins = 512, fps = 5, slow = 1, audioId = -1;   // slow: the spectrum interval is stretched by this while the client cannot keep up
         struct AudioGuard { RemoteApiHost& h; std::mutex& m; int& id; ~AudioGuard() { if (id >= 0) { std::lock_guard<std::mutex> lk(m); h.audioClose(id); } } } audioGuard{host, hostMu, audioId};
-        uint64_t telSeq = ~0ull, specSeq = ~0ull;
+        uint64_t telSeq = ~0ull, specSeq = ~0ull, evCursor = UINT64_MAX;
+        bool wantEv = false;
         auto lastTel = std::chrono::steady_clock::now() - std::chrono::seconds(1), lastSpec = lastTel;
         std::string in;
         auto closeWith = [&](int code) {
@@ -358,6 +404,14 @@ struct RemoteApiServer::Impl {
                 if (j.count("bins") && j["bins"].kind == JsonVal::Num) bins = std::max(16, std::min(2048, (int)j["bins"].num));
                 if (j.count("fps") && j["fps"].kind == JsonVal::Num) fps = std::max(1, std::min(30, (int)j["fps"].num));
                 if (j.count("fmt") && j["fmt"].kind == JsonVal::Str) binSpec = j["fmt"].str == "u8";   // bytes instead of JSON: about a tenth of the bandwidth
+                if (j.count("events") && j["events"].kind == JsonVal::Bool) {
+                    wantEv = j["events"].b;
+                    evCursor = UINT64_MAX;
+                    std::vector<std::string> none;
+                    bool gp = false, have;
+                    { std::lock_guard<std::mutex> lk(hostMu); have = host.eventsSince(evCursor, 0, none, gp); }
+                    if (wantEv && !have) { wantEv = false; if (!sendText("{\"type\":\"error\",\"error\":\"no message stream in this program\"}")) return; }
+                }
                 if (j.count("audio") && j["audio"].kind == JsonVal::Bool) {
                     std::lock_guard<std::mutex> lk(hostMu);
                     if (audioId >= 0) { host.audioClose(audioId); audioId = -1; }
@@ -399,6 +453,13 @@ struct RemoteApiServer::Impl {
                     else if (us < interval / 16 && slow > 1) slow--;
                 }
             }
+            if (wantEv) {
+                std::vector<std::string> lines;
+                bool gp = false;
+                { std::lock_guard<std::mutex> lk(hostMu); host.eventsSince(evCursor, 20, lines, gp); }
+                if (gp && !sendText("{\"type\":\"gap\"}")) return;
+                for (const std::string& l : lines) if (!sendText("{\"type\":\"event\",\"data\":" + l + "}")) return;
+            }
             if (audioId >= 0) {
                 std::string pcm;
                 bool alive;
@@ -427,7 +488,15 @@ struct RemoteApiServer::Impl {
         rq.loopback = cn->loopback;
         RemoteApiConfig c;
         { std::lock_guard<std::mutex> lk(mu); c = live; }
-        if (tlsOk && readRequest(s, rq) && authorise(s, rq, c)) {
+        bool rateOk = true;
+        if (tlsOk && readRequest(s, rq)) {
+            if (c.ratePerSec > 0) {
+                std::lock_guard<std::mutex> lk(limMu);
+                rateOk = limiter.allow(cn->peer, std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
+            }
+            if (!rateOk) sendErr(s, 429, "too many requests", "Retry-After: 1\r\n");
+        } else rateOk = false;
+        if (rateOk && authorise(s, rq, c)) {
             requests++;
             if (rq.method == "GET" && rq.path == "/api/v1/ws" && !rq.hdr("upgrade").empty()) serveWs(s, rq, *cn);
             else route(s, rq);
@@ -439,6 +508,7 @@ struct RemoteApiServer::Impl {
 
     void run(RemoteApiConfig c) {
         netInit();
+        { std::lock_guard<std::mutex> lk(limMu); limiter = apipol::RateLimiter(c.ratePerSec, std::max(1.0, c.rateBurst)); }
         if (!c.tlsCert.empty() || !c.tlsKey.empty()) {
             std::string terr;
             tctx = c.tlsCert.empty() || c.tlsKey.empty() ? nullptr : tls::makeCtx(c.tlsCert, c.tlsKey, terr);
@@ -495,6 +565,7 @@ struct RemoteApiServer::Impl {
                         auto cn = std::make_unique<Conn>();
                         cn->s = k;
                         cn->loopback = (ntohl(pa.sin_addr.s_addr) >> 24) == 127;
+                        { char ab[INET_ADDRSTRLEN] = {0}; inet_ntop(AF_INET, &pa.sin_addr, ab, sizeof ab); cn->peer = ab; }
                         Conn* raw = cn.get();
                         cn->th = dect2::namedThread("onair-api-c", [this, raw] { serve(raw); });
                         conns.push_back(std::move(cn));

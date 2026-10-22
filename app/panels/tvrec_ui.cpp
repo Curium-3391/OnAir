@@ -4,6 +4,7 @@
 #include "dect2/common/thread_name.h"
 #include "../app.h"
 #include "i18n/i18n.h"
+#include "dect2/net/remote_api.h"   // jsonEscape
 #include "dect2/tv/epg.h"
 #include "dect2/tv/playback.h"
 #include "dect2/tv/recorder.h"
@@ -540,6 +541,21 @@ void guideGrid(App& a) {
 
 // ---- public ---------------------------------------------------------------------------------------------------------------------------------------
 void tvRecTick(App& a) { tick(a); }
+
+std::string tvRecJobsJson() {
+    static const char* const names[] = {"scheduled", "recording", "done", "failed", "missed", "cancelled"};
+    std::string o = "{\"jobs\":[";
+    bool first = true;
+    for (const RecJob& j : S().rec.schedule().list()) {
+        if (!first) o += ',';
+        first = false;
+        char b[160];
+        snprintf(b, sizeof b, "\"id\":%d,\"start\":%lld,\"end\":%lld,\"state\":\"%s\",\"reminder\":%s,\"series\":%s", j.id, (long long)j.start, (long long)j.end,
+                 names[(size_t)j.state < 6 ? (size_t)j.state : 0], j.reminder ? "true" : "false", j.series ? "true" : "false");
+        o += "{" + std::string(b) + ",\"title\":\"" + jsonEscape(j.title) + "\",\"service\":\"" + jsonEscape(j.serviceName) + "\"}";
+    }
+    return o + "]}";
+}
 
 void tvRecOverrideTs(App& a) {
     TvRec& s = S();

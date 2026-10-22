@@ -2,7 +2,13 @@
 // published telemetry, the preferences and the settings panel (in View > Data feeds). Off by default; RX 1 only.
 #include "../app.h"
 #include "../ui/typography.h"
+#include "dect2/automation/engine.h"
+#include "dect2/general/general_rx.h"
+#include "dect2/net/api_policy.h"
+#include "dect2/net/api_servers.h"
 #include "dect2/net/remote_api.h"
+#include "../memory/memory_options.h"
+#include <filesystem>
 #include "dect2/results/rx_json.h"
 #include <chrono>
 #include <condition_variable>
@@ -99,6 +105,85 @@ struct Host : RemoteApiHost {
         for (auto& j : q) { std::lock_guard<std::mutex> l2(j->m); j->cancelled = true; j->cv.notify_all(); }
         q.clear();
     }
+
+    // ---- the rest of the control surface (docs/REMOTE-API.md). Nothing here transmits or touches keys, credentials or security settings.
+    apipol::EventRing ring{512};
+    std::string memoriesJson() override {
+        return query([](App&) {
+            std::string o = "{\"memories\":[";
+            size_t n = 0;
+            for (const dect2::Memory& m : memoryBank().all()) {
+                if (n++ >= 2000) break;
+                if (n > 1) o += ',';
+                o += "{\"id\":" + std::to_string(m.id) + ",\"name\":\"" + jsonEscape(m.name) + "\",\"freqHz\":" + std::to_string(m.freqHz) + ",\"mode\":\"" + jsonEscape(m.mode) + "\",\"group\":\"" + jsonEscape(m.group) +
+                     "\",\"tags\":\"" + jsonEscape(m.tags) + "\"}";
+            }
+            return o + "]}";
+        });
+    }
+    std::string schedulerJson() override { return query([](App&) { return tvRecJobsJson(); }); }
+    std::string audioJson() override {
+        return query([](App& a) { char b[96]; snprintf(b, sizeof b, "{\"volume\":%.3f,\"muted\":%s}", (double)a.volume, a.muted ? "true" : "false"); return std::string(b); });
+    }
+    std::string recordingJson() override {
+        return query([](App& a) {
+            const dect2::RecordingStats st = a.engine.recordingStats();
+            std::string name = st.path.substr(st.path.find_last_of("/\\") == std::string::npos ? 0 : st.path.find_last_of("/\\") + 1);   // the file name only
+            char b[160];
+            snprintf(b, sizeof b, "{\"iq\":{\"active\":%s,\"seconds\":%.1f,\"bytes\":%llu,\"file\":\"", st.active ? "true" : "false", st.seconds, (unsigned long long)st.bytes);
+            return std::string(b) + jsonEscape(name) + "\"},\"audio\":{\"active\":" + (a.engine.general().recording() ? "true" : "false") + "}}";
+        });
+    }
+    bool setVolume(double v, std::string& err) override { return run([v](App& a, std::string&) { a.volume = (float)std::max(0.0, std::min(1.0, v)); return true; }, err); }
+    bool setMute(bool on, std::string& err) override { return run([on](App& a, std::string&) { a.muted = on; return true; }, err); }
+    bool setSquelch(bool on, bool au, double db, std::string& err) override {
+        return run([=](App& a, std::string& e) {
+            if (a.family != 55) { e = "the squelch setting is for the General receiver; select that mode first"; return false; }
+            generalApiSquelch(on, au, db);
+            return true;
+        }, err);
+    }
+    bool setBandwidthHz(double hz, std::string& err) override {
+        return run([hz](App& a, std::string& e) {
+            if (a.family == 55) { e = "the General receiver has its own filter widths in the app"; return false; }
+            a.engine.setBandwidthAuto(false);
+            a.engine.setBandwidth(hz / 1e6);
+            return true;
+        }, err);
+    }
+    bool setAutoGain(bool on, std::string& err) override {
+        return run([on](App& a, std::string& e) {
+            if (!a.devices[(size_t)a.devIdx].isRadio()) { e = "this source has no gain control"; return false; }
+            a.agcOn = on;
+            savePrefs(a);
+            return true;
+        }, err);
+    }
+    bool recordStart(const std::string& kind, std::string& err) override {
+        return run([kind](App& a, std::string& e) {
+            if (!a.engine.running()) { e = "the receiver is not running"; return false; }
+            if (kind == "audio") {
+                if (a.family != 55) { e = "audio recording is for the General receiver"; return false; }
+                return generalApiRecord(a, true, e);
+            }
+            if (a.engine.recordingStats().active) { e = "already recording"; return false; }
+            const dect2::FileFormat f = a.recFormat == 1 ? dect2::FileFormat::CF32 : dect2::FileFormat::CS8;
+            std::error_code ec;
+            std::filesystem::create_directories(plat::dataDir() + "/recordings", ec);
+            if (!a.engine.startRecording(plat::dataDir() + "/recordings/" + a.engine.recordingName(f), f, e)) return false;
+            a.recDonePath.clear();
+            return true;
+        }, err);
+    }
+    bool recordStop(std::string& err) override {
+        return run([](App& a, std::string&) {
+            std::string ignored;
+            if (a.engine.recordingStats().active) a.engine.stopRecording();
+            if (a.engine.general().recording()) generalApiRecord(a, false, ignored);
+            return true;
+        }, err);
+    }
+    bool eventsSince(uint64_t& cursor, size_t maxN, std::vector<std::string>& out, bool& gap) override { ring.since(cursor, maxN, out, &gap); return true; }
 
     // ---- the API
     std::string statusJson() override {
@@ -234,29 +319,90 @@ struct Host : RemoteApiHost {
     }
 };
 
+// The rigctl commands, carried out on the main thread like every other command
+struct RigAdapter : apipol::RigctlRadio {
+    explicit RigAdapter(Host& h) : host(h) {}
+    Host& host;
+    static int demodOf(const std::string& m) { return m == "FM" || m == "FMN" || m == "NFM" || m == "PKTFM" ? dect2::GenNfm : m == "WFM" ? dect2::GenWfm : m == "AM" || m == "AMN" || m == "SAM" ? dect2::GenAm : m == "USB" || m == "PKTUSB" ? dect2::GenUsb : m == "LSB" || m == "PKTLSB" ? dect2::GenLsb : m == "CW" || m == "CWR" ? dect2::GenCw : -1; }
+    bool getFreq(double& hz) override { std::string e; return host.run([&](App& a, std::string&) { hz = a.freqMhz * 1e6; return true; }, e); }
+    bool setFreq(double hz) override { std::string e; return host.run([hz](App& a, std::string&) { tuneFreq(a, hz / 1e6); return true; }, e); }
+    bool getMode(std::string& m, int& pb) override {
+        std::string e;
+        return host.run([&](App& a, std::string&) {
+            if (a.family != 55) return false;   // only the General receiver has a demodulator that rigctl names
+            const std::string n = dect2::generalDemodName(generalApiDemod());
+            m = n == "NFM" ? "FM" : n;
+            pb = 0;
+            return true;
+        }, e);
+    }
+    bool setMode(const std::string& m, int) override {
+        const int d = demodOf(m);
+        std::string e;
+        return d >= 0 && host.run([d](App& a, std::string&) { return a.family == 55 && generalApiSetDemod(d); }, e);
+    }
+};
+
 struct State {
     Host host;
     RemoteApiServer srv{host};   // after the host: stopped first
     RemoteApiConfig cfg;
-    ~State() { host.abort(); }   // connection threads waiting for the (gone) main thread are released before the server joins them
+    RigAdapter rig{host};
+    RigctlServer rigSrv{rig};
+    RigctlConfig rigCfg;
+    UdpOut udp;
+    UdpOutConfig udpCfg;
+    ~State() {
+        dect2::automation::global().setStreamer(nullptr, 0);
+        host.abort();   // connection threads waiting for the (gone) main thread are released before the server joins them
+    }
 };
 State& st() { static State s; return s; }
+
+// The message stream (WebSocket / polling ring and UDP): one hook on the automation engine while either output is on. It runs on the decoder's thread and only
+// formats a line, pushes it into the ring and sends one datagram.
+void applyStreamer() {
+    State& s = st();
+    if (!s.cfg.on && !s.udpCfg.on) { dect2::automation::global().setStreamer(nullptr, 0); return; }
+    dect2::automation::global().setStreamer([](const dect2::automation::Event& e) {
+        State& t = st();
+        const std::string line = apipol::eventLine(e, 0, apipol::kMaxUdpLine - 1);
+        if (t.cfg.on) t.host.ring.push(line);
+        if (t.udpCfg.on) t.udp.send(line);
+    }, (1u << dect2::automation::kFamilies) - 1);
+}
+void applyAll() {
+    State& s = st();
+    s.srv.configure(s.cfg);
+    s.rigSrv.configure(s.rigCfg);
+    s.udp.configure(s.udpCfg);
+    applyStreamer();
+}
 
 } // namespace
 
 void remoteApiLoadPrefs(App& a) {
     if (a.rxId != 1) return;
     plat::Prefs& d = plat::prefs();
-    RemoteApiConfig& c = st().cfg;
+    State& s = st();
+    RemoteApiConfig& c = s.cfg;
     c.on = d.getB("apiOn", false); c.port = (int)d.getI("apiPort", c.port); c.lan = d.getI("apiLan", 0) != 0; c.token = d.getS("apiToken", "");
-    if (c.on) st().srv.configure(c);
+    c.requireTokenLocal = d.getB("apiLocalAuth", true);   // a program on this computer sends the token too
+    c.ratePerSec = 20; c.rateBurst = 40;
+    if (!apipol::tokenUsable(c.token)) { c.token = remoteApiNewToken(); d.setS("apiToken", c.token); }   // stored in the preferences only; never logged
+    s.rigCfg.on = d.getB("rigctlOn", false); s.rigCfg.port = (int)d.getI("rigctlPort", 4532); s.rigCfg.allowLan = d.getI("rigctlLan", 0) != 0;
+    s.udpCfg.on = d.getB("udpOn", false); s.udpCfg.host = d.getS("udpHost", "255.255.255.255"); s.udpCfg.port = (int)d.getI("udpPort", 0);
+    if (c.on || s.rigCfg.on || s.udpCfg.on) applyAll();
 }
 
 void remoteApiSavePrefs(const App& a) {
     if (a.rxId != 1) return;
     plat::Prefs& d = plat::prefs();
-    const RemoteApiConfig& c = st().cfg;
-    d.setB("apiOn", c.on); d.setI("apiPort", c.port); d.setI("apiLan", c.lan ? 1 : 0); d.setS("apiToken", c.token);
+    const State& s = st();
+    const RemoteApiConfig& c = s.cfg;
+    d.setB("apiOn", c.on); d.setI("apiPort", c.port); d.setI("apiLan", c.lan ? 1 : 0); d.setS("apiToken", c.token); d.setB("apiLocalAuth", c.requireTokenLocal);
+    d.setB("rigctlOn", s.rigCfg.on); d.setI("rigctlPort", s.rigCfg.port); d.setI("rigctlLan", s.rigCfg.allowLan ? 1 : 0);
+    d.setB("udpOn", s.udpCfg.on); d.setS("udpHost", s.udpCfg.host); d.setI("udpPort", s.udpCfg.port);
 }
 
 void remoteApiTick(App& a) {
@@ -298,10 +444,46 @@ void remoteApiSection(App& a) {
                            ss.httpClients, ss.wsClients, (int)ss.requests, (int)ss.rejected);
         if (!ss.lastError.empty()) ImGui::TextColored(pal::badRed(), "%s", ss.lastError.c_str());
     }
+    ch |= ImGui::Checkbox(tr("Programs on this computer need the token too"), &c.requireTokenLocal);
+    if (c.requireTokenLocal && !c.lan) {   // (with LAN on, the token field above is shown)
+        char tb[96];
+        snprintf(tb, sizeof tb, "%s", c.token.c_str());
+        ImGui::SetNextItemWidth(260 * gUi);
+        if (ImGui::InputText(tr("Token##api"), tb, sizeof tb)) c.token = tb;
+        ch |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("New token##api"))) { c.token = remoteApiNewToken(); ch = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Copy token##api"))) ImGui::SetClipboardText(c.token.c_str());
+    }
     ImGui::PushTextWrapPos(460 * gUi);
     ImGui::TextDisabled("%s", tr("Programs on this computer need no token; any other address must send it as 'Authorization: Bearer <token>'. The API lists the radios, starts and stops the receiver, "
                                  "sets mode, frequency, sample rate and gain, and gives the telemetry and the spectrum as JSON, also as a WebSocket stream. Endpoints: see README.md."));
     ImGui::PopTextWrapPos();
     ImGui::Unindent();
-    if (ch) { s.srv.configure(c); remoteApiSavePrefs(a); savePrefs(a); }
+    // rigctl (Hamlib rigctld subset) and the UDP output of decoded messages
+    bool ch2 = false;
+    ch2 |= ImGui::Checkbox(tr("rigctl server (Hamlib, for gpredict and logging programs)"), &s.rigCfg.on);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80 * gUi);
+    int rp = s.rigCfg.port;
+    ImGui::InputInt(tr("rigctl port"), &rp, 0, 0);
+    s.rigCfg.port = std::max(1, std::min(65535, rp));
+    ch2 |= ImGui::IsItemDeactivatedAfterEdit();
+    ch2 |= ImGui::Checkbox(tr("rigctl: let other computers connect (it has no login)"), &s.rigCfg.allowLan);
+    if (s.rigCfg.on && !s.rigSrv.error().empty()) ImGui::TextColored(pal::badRed(), "%s", s.rigSrv.error().c_str());
+    ch2 |= ImGui::Checkbox(tr("Send decoded messages as UDP JSON lines"), &s.udpCfg.on);
+    char hb[32];
+    snprintf(hb, sizeof hb, "%s", s.udpCfg.host.c_str());
+    ImGui::SetNextItemWidth(130 * gUi);
+    if (ImGui::InputText(tr("UDP address"), hb, sizeof hb)) s.udpCfg.host = hb;
+    ch2 |= ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80 * gUi);
+    int up = s.udpCfg.port;
+    ImGui::InputInt(tr("UDP port"), &up, 0, 0);
+    s.udpCfg.port = std::max(0, std::min(65535, up));
+    ch2 |= ImGui::IsItemDeactivatedAfterEdit();
+    if (s.udpCfg.on && !s.udp.error().empty()) ImGui::TextColored(pal::badRed(), "%s", s.udp.error().c_str());
+    if (ch || ch2) { s.srv.configure(c); s.rigSrv.configure(s.rigCfg); s.udp.configure(s.udpCfg); applyStreamer(); remoteApiSavePrefs(a); savePrefs(a); }
 }

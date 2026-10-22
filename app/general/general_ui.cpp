@@ -571,6 +571,18 @@ void synth(App& a, bool& changed) {
 // ---- the Memory panel (app/memory): the listening frequency and the options a memory keeps for this mode
 double generalListenHz(const App& a) { load(); return listenHz(a); }
 void generalRecallHz(App& a, double hz) { load(); S.chanOff = 0; a.freqMhz = hz / 1e6; S.lastDial = a.freqMhz; save(); }   // the channel back on the dial, the dial on hz
+// ---- the remote API (app/platform/remote_api_app.cpp): the demodulator and the squelch of the General receiver
+int generalApiDemod() { load(); return S.demod; }
+bool generalApiSetDemod(int d) { load(); if (d < 0 || d >= dect2::GenDemodCount) return false; setDemod(d); return true; }
+void generalApiSquelch(bool on, bool autoLevel, double db) { load(); S.sqOn = on; S.sqAuto = autoLevel; if (db > -140 && db < 20) S.sqDb = (float)db; save(); }
+bool generalApiRecord(App& a, bool on, std::string& err) {
+    load();
+    if (!on) { a.engine.general().stopRecording(); return true; }
+    if (a.engine.general().recording()) { err = "already recording"; return false; }
+    startRecording(a);
+    if (!S.recErr.empty()) { err = S.recErr; return false; }
+    return true;
+}
 
 namespace {
 std::string numS(double v) { char b[32]; snprintf(b, sizeof b, "%.6g", v); return b; }
