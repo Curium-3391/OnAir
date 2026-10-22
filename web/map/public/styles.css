@@ -290,3 +290,33 @@ kbd { font: 10.5px/1 var(--mono); padding: 2px 5px; border: 1px solid var(--line
 .jambar { display: flex; gap: 2px; height: 8px; margin-bottom: 4px; }
 .jambar i { flex: 1; border-radius: 2px; }
 .jamnote { font-size: 11px; color: var(--dim); line-height: 1.35; }
+
+/* ham contacts */
+.ham { flex: none; border-top: 1px solid var(--line); padding: 6px 12px; }
+.ham summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.ham summary .n { margin-left: auto; color: var(--dim); font-weight: 400; }
+.hamf { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.hamf select { flex: 1 1 70px; min-width: 0; background: var(--sunk); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 4px; font: inherit; font-size: 12px; }
+.hamlist { list-style: none; margin: 4px 0 0; padding: 0; max-height: 220px; overflow: auto; }
+.hamlist li { display: grid; grid-template-columns: 8px 1fr auto; column-gap: 8px; align-items: center; padding: 5px 2px; cursor: pointer; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; }
+.hamlist li:hover { background: var(--hover); }
+.hamlist li i { width: 8px; height: 8px; border-radius: 50%; grid-row: 1 / span 2; }
+.hamlist li b { grid-column: 2; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hamlist li span { grid-column: 2; color: var(--dim); font-size: 11.5px; }
+.hamlist li em { grid-column: 3; grid-row: 1; font-style: normal; color: var(--dim); font-variant-numeric: tabular-nums; }
+.hamlist li.empty { display: block; cursor: default; color: var(--dim); }
+
+/* consent popup */
+.consent {
+  position: absolute; z-index: 30; left: calc(var(--rail-w) + 12px); bottom: calc(var(--foot) + 12px); max-width: 360px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .35); font-size: 13px; line-height: 1.45;
+}
+.consent[hidden] { display: none; }
+.consent p { margin: 6px 0 10px; color: var(--dim); }
+.cbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.cbtns button { flex: 1 1 auto; min-height: 36px; border-radius: 6px; border: 1px solid var(--line); background: var(--sunk); color: var(--text); font: inherit; cursor: pointer; }
+.cbtns #consentAccept { background: var(--accent-bg); border-color: var(--accent); }
+.cbtns button:hover { background: var(--hover); }
+.cstate { margin-top: 8px; font-size: 12px; color: var(--dim); }
+.linkbtn { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }

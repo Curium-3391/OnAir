@@ -175,7 +175,7 @@ export function createCard(host, api) {
 
   /** Look up a photo of the aircraft once per card: by ICAO hex first, then by registration (Planespotters has either). Any failure leaves the illustration. */
   function maybeLoadPhoto(t) {
-    if (t.kind !== "aircraft" || api.demo || !api.loadPhoto) return;
+    if (t.kind !== "aircraft" || api.demo || !api.loadPhoto || (typeof api.loadPhoto === "function" && !api.loadPhoto())) return;
     const hex = String(t.id).split(":")[1] || "";
     if (!/^[0-9A-Fa-f]{6}$/.test(hex) || photoFor === hex) return;
     photoFor = hex;
