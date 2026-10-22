@@ -27,6 +27,10 @@ constexpr int kRmCoded = 480;
 void ldpcEncodeRm(const uint8_t* info, int k, uint8_t* out);   // info: k bits; out: 480 bits [info | parity]
 // llr: 480 values, positive = bit 0 more likely. info: k decoded bits. Returns true when all parity checks of the full code are satisfied.
 bool ldpcDecodeRm(const float* llr, int k, uint8_t* info, int maxIter = kLdpcIters, float alpha = kLdpcAlpha);
+// Layered (row-sequential) normalised min-sum for the same code, used by frame version 4. Converges in about half the iterations of the
+// flooding ldpcDecode. llr: 640 values; info: 320 bits; post (optional): 640 a-posteriori LLRs (same sign convention).
+bool ldpcDecodeLayered(const float* llr, uint8_t* info, int maxIter = kLdpcIters, float alpha = 0.9f, float* post = nullptr,
+                       int* iterationsUsed = nullptr);
 // Fraction of satisfied parity checks on the hard decisions of llr (alignment metric).
 float ldpcSyndromeScore(const float* llr);
 

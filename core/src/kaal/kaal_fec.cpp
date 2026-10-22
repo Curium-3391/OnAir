@@ -128,6 +128,48 @@ bool ldpcDecode(const float* llr, uint8_t* info, int maxIter, float alpha, int* 
     return ok;
 }
 
+bool ldpcDecodeLayered(const float* llr, uint8_t* info, int maxIter, float alpha, float* postOut, int* iterationsUsed) {
+    const Code& c = code();
+    static thread_local float R[kLdpcM][kMaxDc];
+    float post[kLdpcN];
+    std::memset(R, 0, sizeof(R));
+    for (int v = 0; v < kLdpcN; v++) post[v] = llr[v];
+    auto checksOk = [&]() {
+        for (int m = 0; m < kLdpcM; m++) {
+            int s = 0;
+            for (int k = 0; k < c.dc[m]; k++) s ^= post[c.var[m][k]] < 0;
+            if (s) return false;
+        }
+        return true;
+    };
+    bool ok = checksOk();
+    int it = 0;
+    for (; it < maxIter && !ok; it++) {
+        for (int m = 0; m < kLdpcM; m++) {   // rows of one base row touch every variable at most once, so row order = layer order
+            float q[kMaxDc], m1 = 1e30f, m2 = 1e30f, tsign = 1.f;
+            int i1 = 0;
+            const int dc = c.dc[m];
+            for (int k = 0; k < dc; k++) {
+                q[k] = post[c.var[m][k]] - R[m][k];
+                const float a = std::fabs(q[k]);
+                if (q[k] < 0) tsign = -tsign;
+                if (a < m1) { m2 = m1; m1 = a; i1 = k; } else if (a < m2) m2 = a;
+            }
+            for (int k = 0; k < dc; k++) {
+                const float sg = q[k] < 0 ? -1.f : 1.f;
+                const float r = alpha * tsign * sg * (k == i1 ? m2 : m1);
+                R[m][k] = r;
+                post[c.var[m][k]] = q[k] + r;
+            }
+        }
+        ok = checksOk();
+    }
+    for (int j = 0; j < kLdpcK; j++) info[j] = post[j] < 0;
+    if (postOut) for (int v = 0; v < kLdpcN; v++) postOut[v] = post[v];
+    if (iterationsUsed) *iterationsUsed = it;
+    return ok;
+}
+
 void ldpcEncodeRm(const uint8_t* info, int k, uint8_t* out) {
     uint8_t full[kLdpcK] = {}, cw[kLdpcN];
     for (int j = 0; j < k; j++) full[j] = info[j] & 1;
