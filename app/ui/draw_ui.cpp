@@ -145,7 +145,7 @@ static void classicRx(App& a, ImVec2 disp) {
     statusBar(a);
     ImGui::Separator();
 
-    float logH = (a.atsc3Mode ? 0 : 250) * gUi, rightW = 350 * gUi;   // ATSC 3.0 has no constellation panels yet
+    float logH = (a.atsc3Mode ? 0 : std::min(250.f * gUi, std::max(170.f * gUi, ImGui::GetContentRegionAvail().y * 0.32f))), rightW = 350 * gUi;   // a short window gives the main area more   // ATSC 3.0 has no constellation panels yet
     float mainH = ImGui::GetContentRegionAvail().y - logH - 6;
     ImGui::BeginChild("main", ImVec2(disp.x - rightW - 16 * gUi, mainH));
     a.tgMin[TgMain] = ImGui::GetWindowPos(); a.tgMax[TgMain] = ImVec2(a.tgMin[TgMain].x + ImGui::GetWindowSize().x, a.tgMin[TgMain].y + ImGui::GetWindowSize().y);

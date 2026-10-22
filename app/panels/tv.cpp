@@ -149,7 +149,7 @@ void tvRecordRow(App& a) {
     static float drag = 0; static bool dragging = false;
     const float maxS = (float)std::max(1.0, ss.bufferedSec);
     float v = dragging ? drag : (float)std::max(0.0, ss.bufferedSec - ss.behindSec);
-    ImGui::SetNextItemWidth(std::max(120.f * gUi, std::min(360.f * gUi, ImGui::GetContentRegionAvail().x - 260 * gUi)));
+    ImGui::SetNextItemWidth(std::max(120.f * gUi, ImGui::GetContentRegionAvail().x - 270 * gUi));   // the seek bar takes what the other controls leave
     char lab[48]; snprintf(lab, sizeof lab, ss.behind ? "-%s behind" : "live", clockText(dragging ? maxS - v : ss.behindSec).c_str());
     if (ImGui::SliderFloat("##tvseek", &v, 0, maxS, lab)) { drag = v; dragging = true; }
     if (ImGui::IsItemDeactivated()) { if (dragging) pl.seekBehind(v >= maxS - 0.5f ? 0 : maxS - v); dragging = false; }
@@ -446,8 +446,8 @@ void playerTab(App& a) {
             ImGui::SameLine();
             ImGui::Text("%s - %s  %s", fmtLocal(cur->start, "%H:%M").c_str(), fmtLocal(cur->end(), "%H:%M").c_str(), cur->title.c_str());
             char left[32]; snprintf(left, sizeof left, "%d min left", (int)std::max<int64_t>(0, (cur->end() - now + 30) / 60));
-            sameLineIf(160 * gUi);
-            ImGui::ProgressBar(f, ImVec2(160 * gUi, 12 * gUi), left);
+            sameLineIf(130 * gUi);   // the bar takes the rest of the line (or a line of its own), so the bar spans the width
+            ImGui::ProgressBar(f, ImVec2(-1, 12 * gUi), left);
             if (nx) { ImGui::TextDisabled("NEXT"); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str()); }
         } else if (nx) {
             ImGui::TextDisabled("NEXT"); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str());

@@ -407,7 +407,7 @@ void receiverGlance(App& a, float w, float h) {
         {
             const SampleLoss l = a.engine.sampleLoss();
             ImGui::TextDisabled("dropped"); kvColumn(112 * gUi);
-            ImGui::PushFont(a.mono, 0); ImGui::TextColored(lossColour(l), "%s", lossText(l).c_str()); ImGui::PopFont();
+            ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::TextColored(lossColour(l), "%s", lossText(l).c_str()); ImGui::PopTextWrapPos(); ImGui::PopFont();
             lossTooltip(l);
             if (l.live) {
                 ImGui::TextDisabled("arriving"); kvColumn(112 * gUi);
@@ -436,11 +436,19 @@ void constellationsTab(App& a) {
     const float glanceW = pal::dev() && availW * 0.36f >= 230 * gUi ? std::min(260.f * gUi, availW * 0.36f) : 0.f;
     const bool glance = glanceW > 0;
     const float roomH = availH - ImGui::GetTextLineHeightWithSpacing() - ImGui::GetFrameHeightWithSpacing();   // a caption above, the view buttons below
-    const float side = pal::dev() ? std::max(48.f * gUi, std::min(roomH, (availW - glanceW - (glance ? 6 : 5) * 12 * gUi) / 4.f))
-                                  : std::max(48.f * gUi, std::min(roomH, availW / 4.f - 16.f));
-    const float gap = pal::dev() ? 12 * gUi : std::max(6.f, (availW - 4 * side) / 5.f);
-    const ImVec2 sz(side, side);
+    // the plots share the width equally; on a small window the less useful ones go first (raw OFDM cells, then the TPS / P1 carriers, then the pilots)
+    const float gap0 = 8 * gUi, minPw = 84 * gUi;
+    const float usableW = availW - (glance ? glanceW + 2 * gap0 : 0.f);
+    bool show[4] = {true, true, true, true};
+    int nPlots = 4;
+    static const int dropOrder[3] = {3, 0, 1};
+    for (int k = 0; k < 3 && nPlots > 1 && (usableW - (nPlots + 1) * gap0) / nPlots < minPw; k++) { show[dropOrder[k]] = false; nPlots--; }
+    const float pw0 = std::max(48.f * gUi, (usableW - (nPlots + 1) * gap0) / nPlots);
+    const float side = std::min(pw0, std::max(48.f * gUi, roomH) * 1.6f);   // the plot width: as wide as the share, but not a thin strip next to a short row
+    const float gap = nPlots > 0 ? std::max(gap0, (usableW - nPlots * side) / (nPlots + 1)) : gap0;
+    const ImVec2 sz(side, std::max(48.f * gUi, std::min(roomH, side * 1.25f)));
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + gap);
+    int drawn = 0;
     char cap[96];
     auto caption = [&](const char* fmt, auto... args) {   // as wide as the plot below it at most: the whole caption on hover
         snprintf(cap, sizeof cap, fmt, args...);
@@ -448,16 +456,22 @@ void constellationsTab(App& a) {
         ImGui::TextDisabled("%s", c.c_str());
         if (c != cap && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", cap);
     };
+    if (show[0]) {
+    drawn++;
     ImGui::BeginGroup();
     if (rx.standard == 5) caption("TMCC carriers, DBPSK (%zu cells)", rx.p1Const.size()); else if (rx.standard == 1) caption("TPS carriers, DBPSK (%zu cells)", rx.p1Const.size()); else caption("P1 carriers (%zu cells)", rx.p1Const.size());
     scatter("##c1", rx.p1Const, sz, 2.5, pal::accent(0.9f));
     ImGui::EndGroup();
-    ImGui::SameLine(0, gap);
+    }
+    if (show[1]) {
+    if (drawn++) ImGui::SameLine(0, gap);
     ImGui::BeginGroup();
     if (rx.standard == 1 || rx.standard == 5) caption("Pilots, equalised (%zu cells)", rx.eqCells.size()); else caption("P2 cells, equalised (%zu cells)", rx.eqCells.size());
     scatter("##ceq", rx.eqCells, sz, 2.0, pal::accent(0.8f));
     ImGui::EndGroup();
-    ImGui::SameLine(0, gap);
+    }
+    {
+    if (drawn++) ImGui::SameLine(0, gap);
     ImGui::BeginGroup();
     if (!rx.plpConst.empty()) caption("PLP %d, decoded cells  MER %.1f dB", rx.plpId, rx.plpMerDb);
     else if (rx.standard == 1 || rx.standard == 5) caption("Data cells, equalised (%zu cells)", rx.eqData.size());
@@ -529,11 +543,14 @@ void constellationsTab(App& a) {
     } else
         scatter("##c2", rx.eqData, sz, 1.8, pal::accent(0.6f));
     ImGui::EndGroup();
-    ImGui::SameLine(0, gap);
+    }
+    if (show[3]) {
+    if (drawn++) ImGui::SameLine(0, gap);
     ImGui::BeginGroup();
     caption("OFDM cells, raw (%zu cells)", rx.rawCells.size());
     scatter("##c3", rx.rawCells, sz, 3.0, pal::accent(0.7f));
     ImGui::EndGroup();
+    }
     if (glance) {
         ImGui::SameLine(0, 2 * gap);
         ImGui::BeginGroup();
