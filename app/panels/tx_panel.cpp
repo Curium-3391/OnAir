@@ -28,7 +28,8 @@ void banner(Note kind, const char* text) {
     ImGui::PushTextWrapPos(p0.x + w - pad - ImGui::GetWindowPos().x + ImGui::GetScrollX());
     ImGui::TextUnformatted(text);
     ImGui::PopTextWrapPos();
-    ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + h + 4 * gUi));
+    ImGui::SetCursorScreenPos(p0);
+    ImGui::Dummy(ImVec2(w, h));   // an item the size of the box: the window grows to hold it (a bare cursor move would not)
 }
 
 } // namespace txui

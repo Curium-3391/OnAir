@@ -52,7 +52,7 @@ static float identifyButton(App& a, ImVec2 plotMin, ImVec2 plotSize, float right
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(q.x - 6 * gUi, q.y - 2 * gUi), ImVec2(q.x + hs.x + 6 * gUi, q.y + hs.y + 2 * gUi), IM_COL32(20, 22, 26, 210), 3.f * gUi);
         ImGui::GetWindowDrawList()->AddText(q, IM_COL32(150, 200, 255, 255), hint);
     }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
     return w + m;
 }
 
@@ -225,7 +225,7 @@ void channelWidthButton(App& a, ImVec2 plotMin, ImVec2 plotSize, const char* yLa
                           tr("Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset."));
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2 * gUi), ImGuiCond_Appearing, ImVec2(1, 0));   // under the button, right-aligned
     if (ImGui::BeginPopup("##bwpop")) { channelWidthPopup(a); ImGui::EndPopup(); }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
 }
 
 // "Whole span" switch left of the BW button, for the modes that declare support (modeSupportsWide): decode every signal in the span
@@ -261,7 +261,7 @@ void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
         }
         if (n >= cap && hovered) ImGui::SetTooltip("%s", tr("The limit of decoders is reached: the weakest carriers are not decoded. Each decoder uses CPU."));
     }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
 }
 
 // "Multi-channel" switch (DVB-T2 / DVB-T): when the capture holds more than one channel of the chosen width, decode every occupied channel of it, one
@@ -310,7 +310,7 @@ void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
         }
         ImGui::EndPopup();
     }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
 }
 
 // The channels of multi-channel TV: the channel edges and the centre of each on the spectrum (the playing one in the accent colour)
@@ -512,7 +512,7 @@ static void dbRangeSliders(App& a, ImVec2 colMin, float colW, float h) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Bottom of the dB range (raises or lowers the trace on screen)"));
     ImGui::PopID();
 
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
     if (save) savePrefs(a);
 }
 
@@ -578,7 +578,7 @@ static float cornerPopup(App& a, const char* label, const char* popId, ImVec2 pl
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2 * gUi), ImGuiCond_Appearing, ImVec2(1, 0));
     if (ImGui::BeginPopup(popId)) { body(a); ImGui::EndPopup(); }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
     return w + m;
 }
 
@@ -849,7 +849,7 @@ static float tuneStyleButtons(App& a, ImVec2 plotMin, ImVec2 plotSize, float rig
         if (hov) ImGui::SetTooltip("%s", i == 1 ? tr("Centre tuning: a click retunes the radio so the clicked frequency is in the middle of the spectrum")
                                                 : tr("Normal tuning (default): a click moves the tuned frequency inside the captured band and keeps the radio centre; outside the band the radio retunes"));
     }
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
     return w + m;
 }
 

@@ -422,7 +422,7 @@ void drawWindow(App& a) {
         const ImVec2 keep = ImGui::GetCursorScreenPos();   // the shared full-screen button in the map's corner
         ImGui::SetCursorScreenPos(ImVec2(mp.x + ms.x - ImGui::CalcTextSize(gFull ? tr("Exit full screen") : tr("Full screen")).x - 2 * ImGui::GetStyle().FramePadding.x - 8 * gUi, mp.y + 8 * gUi));
         if (adsbmap::fullButton(gFull, "screen")) gFull = !gFull;
-        ImGui::SetCursorScreenPos(keep);
+        restoreCursor(keep);
     }
     ImGui::EndChild();
     ImGui::SameLine();

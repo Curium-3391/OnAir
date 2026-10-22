@@ -689,6 +689,10 @@ struct App {
 // ------------------------------------------------------------------ the panels and helpers (defined in the .cpp files)
 // widgets.cpp
 bool tabItem(const char* name, Ic icon);
+// puts the layout cursor back where it was before an overlay (buttons drawn over a plot) without "extending" the window: the saved spot is
+// below the last item, so a plain SetCursorScreenPos() there followed by the end of the window is the ImGui error "Code uses SetCursorPos()
+// to extend window/parent boundaries" (seen in ##main2)
+void restoreCursor(ImVec2 screenPos);
 // the interface language: menu items (View > Language) or a small button with a list (the classic interface); both save the choice
 void languageMenuItems(App& a);
 void languageButton(App& a);

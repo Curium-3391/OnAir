@@ -26,6 +26,12 @@ bool freqStepArrow(const char* id, ImGuiDir dir) {
     return false;
 }
 
+void restoreCursor(ImVec2 screenPos) {
+    ImGui::SetCursorScreenPos(screenPos);
+    // the spot came from the layout (GetCursorScreenPos after the last item): nothing is extended, so the check at End()/EndChild() is not wanted
+    ImGui::GetCurrentWindow()->DC.IsSetPos = false;
+}
+
 bool gTightTabs = false;
 void setUiLanguage(App& a, const std::string& code) {
     a.uiLang = code;
