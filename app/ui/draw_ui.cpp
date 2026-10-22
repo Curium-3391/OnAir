@@ -55,6 +55,7 @@ static void tickReceiver(App& a) {
     tvRecTick(a);
     audioCleanupTick(a);
     voiceInversionTick(a);
+    voiceKeysTick(a);
     timeMachineTick(a);
     gainControl(a);
     followBandwidth(a);

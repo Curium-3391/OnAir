@@ -126,10 +126,14 @@ void nowView(App& a) {
     ImGui::PopFont();
     kvRow(a, "call", "%s, NAC %03X%s", n.group ? "group" : "unit to unit", n.nac < 0 ? 0 : n.nac, n.lateEntry ? ", joined late" : "");
     if (n.emergency) { ImGui::TextDisabled("note"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "EMERGENCY"); }
-    if (n.encrypted) { ImGui::TextDisabled("encryption"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "%s: no sound (not decrypted)", cryptoOf(n).c_str()); }
+    if (n.encrypted) {
+        ImGui::TextDisabled("encryption"); kvColumn(130 * gUi);
+        if (n.decrypt.empty()) ImGui::TextColored(pal::warnAmber(), "%s: no sound (not decrypted)", cryptoOf(n).c_str());
+        else { ImGui::TextUnformatted(cryptoOf(n).c_str()); ImGui::SameLine(); voiceKeysStatus(a, n.decrypt); }   // the key status and the way to the Keys window
+    }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
     kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
-    kvRow(a, "voice", "%s", n.encrypted ? "-" : n.voice ? "playing (IMBE through mbelib)" : t.imbe ? "-" : "no mbelib: frames counted only");
+    kvRow(a, "voice", "%s", n.encrypted ? (n.decrypt.compare(0, 9, "decrypted") == 0 ? "playing (decrypted with your key)" : "-") : n.voice ? "playing (IMBE through mbelib)" : t.imbe ? "-" : "no mbelib: frames counted only");
 }
 
 void callsView(App& a) {

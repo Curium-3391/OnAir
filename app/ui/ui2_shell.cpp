@@ -436,6 +436,8 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Propagation..."), nullptr, &a.propOpen);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Where a transmitter can be received: predicted SNR on the map from power, frequency, time and the SNR you need. No terrain."));
         ImGui::MenuItem(tr("Antenna rotator..."), nullptr, &a.rotatorOpen);
+        ImGui::MenuItem(tr("Voice keys..."), nullptr, &a.voiceKeysOpen);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Your own decryption keys for digital voice (P25, NXDN). Nothing is decrypted without a key you add."));
         ImGui::EndMenu();
     }
 }
@@ -554,6 +556,7 @@ float menuBar(App& a) {
     workspaceDialogs(a);
     creditsWindow(a);
     appcodec::voiceCodecsWindow(a);
+    voiceKeysWindow(a);
     tx::windowPanel(a);
     reportProblemWindow(a);
     tx::captionsWindow(a);

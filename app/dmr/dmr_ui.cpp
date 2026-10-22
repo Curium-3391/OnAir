@@ -256,6 +256,7 @@ void tab(App& a) {
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
         if (mbe) ImGui::TextDisabled("%s", vp.c_str());
+        voiceKeysLink(a);   // encrypted DMR is detected and skipped (docs/KEYS.md); the Keys window explains what is supported
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Listen to");
         ImGui::SameLine();

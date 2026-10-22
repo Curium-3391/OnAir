@@ -15,6 +15,7 @@
 #include "dect2/hfdig/hfdig_freedv.h"
 #include "fixit.h"
 #include "dect2/engine/crash_report.h"
+#include "dect2/voicekeys/key_guard.h"
 #include <fstream>
 #include <iterator>
 #include <cstring>
@@ -434,7 +435,10 @@ void put16(std::string& o, uint32_t v) { o.push_back((char)(v & 255)); o.push_ba
 void put32(std::string& o, uint32_t v) { put16(o, v & 0xFFFF); put16(o, v >> 16); }
 bool writeZip(const std::string& path, const std::vector<std::pair<std::string, std::string>>& files) {
     std::string out, dir;
+    uint32_t nEntries = 0;
     for (const auto& f : files) {
+        if (dect2::voicekeys::isKeyMaterialPath(f.first)) continue;   // a voice key file never goes into a zip (key_guard.h)
+        nEntries++;
         const uint32_t crc = crc32z(f.second), off = (uint32_t)out.size(), n = (uint32_t)f.second.size();
         put32(out, 0x04034b50); put16(out, 20); put16(out, 0x0800); put16(out, 0); put16(out, 0); put16(out, 0x21);
         put32(out, crc); put32(out, n); put32(out, n); put16(out, (uint32_t)f.first.size()); put16(out, 0);
@@ -445,7 +449,7 @@ bool writeZip(const std::string& path, const std::vector<std::pair<std::string, 
     }
     const uint32_t dirOff = (uint32_t)out.size();
     out += dir;
-    put32(out, 0x06054b50); put16(out, 0); put16(out, 0); put16(out, (uint32_t)files.size()); put16(out, (uint32_t)files.size());
+    put32(out, 0x06054b50); put16(out, 0); put16(out, 0); put16(out, nEntries); put16(out, nEntries);
     put32(out, (uint32_t)dir.size()); put32(out, dirOff); put16(out, 0);
     std::ofstream o(std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size())), std::ios::binary);
     o.write(out.data(), (std::streamsize)out.size());

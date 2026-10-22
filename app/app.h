@@ -281,6 +281,7 @@ struct App {
     bool wizOpen = false, wizStart = false, wizAcked = false;
     int wizTour = -1;           // the guided tour on screen (index in tour::tours), -1 for the first-run tour
     int creditsTab = 0;         // 0 Contributors, 1 Projects and licences (the tab the Credits window opens on)
+    bool voiceKeysOpen = false;     // the Voice keys window (Tools menu, the "encrypted: add your key" buttons; app/keys)
     bool voiceCodecsOpen = false;   // the Voice codecs overview window (Help menu)
     bool creditsOpen = false;   // the Credits window (Help menu, the "by: ..." button)
     bool reportOpen = false;    // Help > Report a problem (app/panels/report_problem.cpp)
@@ -787,6 +788,7 @@ int audioCleanupProfileOf(const App& a);   // the kind of audio of the mode (Aud
 bool voiceInversionButton(App& a);
 void voiceInversionTick(App& a);
 void voiceInversionDevOpen();   // dev flag --voiceinv: the pop-up opens at the start   // dev flag --audioclean [adv]: the pop-up opens at the start
+#include "keys/keys_ui.h"   // the Voice keys window and the per-call key status (keys_ui.cpp)
 // A new file path in the "audio-streams" folder of the user data folder, without extension: "<stem>_<date>_<time>" (the stem cleaned for a file name)
 std::string streamSavePath(const std::string& stem);
 // "voice: needs mbelib (libmbe.dll, ...)": the exact file names tried, for the status line of the mbelib modes
