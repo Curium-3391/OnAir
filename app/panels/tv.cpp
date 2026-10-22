@@ -547,6 +547,10 @@ void rightPanel(App& a) {
     if (a.fmMode) { fmRadioPanel(a); return; }
     if (a.engine.multiChannelActive()) multiChannelTable(a);
     sectionHeader(Ic::Tv, "Services");
+    if (run) {   // empties the live list; the receiver fills it again from this multiplex's PAT / SDT (scan results are kept)
+        if (ImGui::SmallButton(tr("Clear list"))) { a.engine.clearServices(); a.ts = TsSnapshot(); a.mtvSvc.clear(); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Empties the service list. It fills again from the multiplex being received. The Scan tab's results are not touched."));
+    }
     // ---- service cards
     const float cardH = 68 * gUi;
     ImGui::BeginChild("svcs", ImVec2(0, std::max(140.f * gUi, ImGui::GetContentRegionAvail().y * 0.40f)));

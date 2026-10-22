@@ -1,6 +1,7 @@
 #include "dect2/tv/ts.h"
 #include "dect2/tv/dvb_text.h"
 #include "dect2/tv/epg.h"
+#include "dect2/tv/mux_change.h"
 #include "dect2/tv/ts_proto.h"
 #include <algorithm>
 #include <cstring>
@@ -49,7 +50,19 @@ bool ServiceFilter::process(const uint8_t* in, const TsSnapshot* snap, uint8_t* 
     return false;
 }
 
-void TsDemux::reset() { *this = TsDemux(); }
+void TsDemux::reset() { const bool gb = gbText_; *this = TsDemux(); gbText_ = gb; }
+
+// A new transport stream id (or network id) on the same input means another multiplex: the services of the old one are dropped.
+void TsDemux::noteIds(int tsid, int onid) {
+    MuxId prev, cur;
+    prev.tsid = tsid_; prev.onid = onid_;
+    cur.tsid = tsid; cur.onid = onid;
+    if (isDifferentMux(prev, cur)) {   // only the service state: the section being parsed lives in sec_ and must stay
+        services_.clear(); pmtToService_.clear(); epg_.clear(); epgExt_.clear(); network_.clear();
+    }
+    tsid_ = tsid;
+    if (onid > 0) onid_ = onid;
+}
 
 void TsDemux::markLoss() { for (auto& kv : pids_) kv.second.resync = true; for (auto& kv : sec_) kv.second.active = false; }
 
@@ -136,7 +149,7 @@ void TsDemux::parseTvct(const uint8_t* s, int len) {
     int tsid;
     std::vector<tsp::Tvct> ch;
     if (!tsp::parseTvct(s, len, tsid, ch)) return;
-    tsid_ = tsid;
+    noteIds(tsid, 0);
     for (const tsp::Tvct& c : ch) {
         TsService& sv = services_[c.prog];
         sv.id = c.prog;
@@ -154,7 +167,7 @@ void TsDemux::parsePat(const uint8_t* s, int len) {
     int tsid;
     std::vector<tsp::PatEntry> e;
     if (!tsp::parsePat(s, len, tsid, e)) return;
-    tsid_ = tsid;
+    noteIds(tsid, 0);
     for (const tsp::PatEntry& pe : e) {
         TsService& sv = services_[pe.prog];
         sv.id = pe.prog;
@@ -189,8 +202,7 @@ void TsDemux::parseSdt(const uint8_t* s, int len) {
     int tsid, onid;
     std::vector<tsp::SdtService> v;
     if (!tsp::parseSdt(s, len, tsid, onid, v)) return;
-    tsid_ = tsid;
-    onid_ = onid;
+    noteIds(tsid, onid);
     for (const tsp::SdtService& e : v) {
         TsService& sv = services_[e.sid];
         sv.id = e.sid;

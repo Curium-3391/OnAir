@@ -96,6 +96,7 @@ private:
     struct SectionBuf { std::vector<uint8_t> data; bool active = false; };
     struct PidState { uint64_t packets = 0, bytesWin = 0, ccErrors = 0, tei = 0; int lastCc = -1; double kbps = 0; bool scrambled = false; bool resync = true; };
     void section(int pid, const uint8_t* s, int len);
+    void noteIds(int tsid, int onid);   // a changed transport stream / network id empties the service list
     void parsePat(const uint8_t* s, int len);
     void parsePmt(int pid, const uint8_t* s, int len);
     void parseSdt(const uint8_t* s, int len);

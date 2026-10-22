@@ -30,6 +30,7 @@
 #include "dect2/common/timecompat.h"
 #include "dect2/common/platform.h"
 #include "dect2/engine/scanner.h"
+#include "dect2/tv/mux_change.h"
 #include "dect2/engine/updater.h"
 #include "dect2/source/gain.h"
 #include "dect2/source/gain_opt.h"
@@ -590,6 +591,8 @@ struct App {
     int scanPreset = 0;
     std::string bandPlan;     // the active band plan (bandplan_ui.cpp): empty = automatic from the language and region, "none" = the built-in ranges
     bool scanWasRunning = false;
+    bool scanShowAll = true;            // the TV scan list: the services of every scanned transponder (off: only the tuned one)
+    MuxId liveMux; bool liveMuxValid = false;   // what the live service list belongs to (a change empties it)
     std::unique_ptr<Updater> upd;      // update check and installer
     bool updCheck = true, updAuto = true, updPre = false, updStarted = false;   // official updates on; betas off until asked
     double updLast = 0;                // when the last check was made (seconds since 1970)
@@ -1004,6 +1007,7 @@ void spectrumTune(App& a, double absMhz);              // spectrum / waterfall c
 void uplinkNoteAdsb(const dect2::AdsbTelemetry& t);   // uplink_ui.cpp: callsigns heard by the ADS-B mode in this session
 double meshSampleRate(App& a);                  // mesh_ui.cpp: the radio rate the selected LoRa bandwidth needs (2 Msps; 4 above 500 kHz)
 void dvbsStatusRows(App& a, const DvbsTelemetry& t, bool on, bool run);   // dvbs_ui.cpp: the lock lamps and readouts of a report (QO-100's decoder panel)
+double dvbsSymbolRateMsym();   // dvbs_ui.cpp: the manual DVB-S/S2 symbol rate in Msym/s (0 = from the spectrum)
 void dvbsSetSymbolRate(App& a, double msym);   // dvbs_ui.cpp: the DVB-S/S2 symbol rate, set from elsewhere (the spectrum explorer)
 // wb_ui.cpp: the Signal workbench. A file dropped on the window opens in it (the mode is selected); the dev flags open and drive it for --shot runs
 void wbQueueDrop(const char* path);
