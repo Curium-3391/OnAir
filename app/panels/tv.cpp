@@ -395,23 +395,26 @@ void playerTab(App& a) {
         if (ImGui::IsKeyPressed(ImGuiKey_R, false)) { if (pl.recording().active) pl.stopRecording(); else tvRecordStart(a); }
     }
     const float ctlY = ImGui::GetCursorPosY();
-    if (ImGui::Button(pl.selected() >= 0 ? "Stop" : "Play")) { if (pl.selected() >= 0) pl.select(-1); else if (a.playReq < 0 && !a.ts.services.empty()) { int sid = a.ts.services[0].id; pl.select(sid); pl.setVolume(a.volume); } }
+    if (ImGui::Button(pl.selected() >= 0 ? tr("Stop##tvplay") : tr("Play##tvplay"))) { if (pl.selected() >= 0) pl.select(-1); else if (a.playReq < 0 && !a.ts.services.empty()) { int sid = a.ts.services[0].id; pl.select(sid); pl.setVolume(a.volume); } }
     flowNext();
     ImGui::SetNextItemWidth(160 * gUi);
-    if (ImGui::SliderFloat("volume", &a.volume, 0, 1, "%.2f")) pl.setVolume(a.volume);
+    if (ImGui::SliderFloat(tr("Volume##tvvol"), &a.volume, 0, 1, "%.2f")) pl.setVolume(a.volume);
     flowNext();
-    if (ImGui::Checkbox("mute", &a.muted)) pl.setMuted(a.muted);
+    if (ImGui::Checkbox(tr("Mute##tvmute"), &a.muted)) pl.setMuted(a.muted);
     flowNext();
-    ImGui::Checkbox("pop out", &a.popOut);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the video in a window of its own (double-click it for full screen, Esc to leave)");
+    ImGui::Checkbox(tr("Pop out##tvpop"), &a.popOut);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Show the video in a window of its own (double-click it for full screen, Esc to leave)"));
     flowNext();
-    if (ImGui::Checkbox("on top", &a.popTop)) savePrefs(a);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Keep the pop-out video window above other windows");
+    ImGui::BeginDisabled(!a.popOut);   // only means something for the pop-out window
+    if (ImGui::Checkbox(tr("On top##tvtop"), &a.popTop)) savePrefs(a);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Keep the pop-out video window above other windows"));
     flowNext();
-    if (ImGui::Button("Fullscreen")) { a.videoOnly = true; if (!glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Video fills the screen (press F or Esc to leave)");
+    if (ImGui::Button(tr("Full screen##tvfull"))) { a.videoOnly = true; if (!glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Video fills the screen (press F or Esc to leave)"));
     flowNext();
-    ImGui::Checkbox("deinterlace", &a.video.deint);
+    ImGui::Checkbox(tr("Deinterlace##tvdeint"), &a.video.deint);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Removes the comb lines of an interlaced picture (576i, 1080i); a progressive picture is shown as it is"));
     flowNext();
     auto tracks = pl.audioTracks();
     if (!tracks.empty()) {
@@ -419,7 +422,7 @@ void playerTab(App& a) {
         cur = std::min(cur, (int)tracks.size() - 1);
         std::string lab = tracks[cur].codec + " " + tracks[cur].lang;
         ImGui::SetNextItemWidth(170 * gUi);
-        if (ImGui::BeginCombo("audio", lab.c_str())) {
+        if (ImGui::BeginCombo(tr("Audio##tvaudio"), lab.c_str())) {
             for (int i = 0; i < (int)tracks.size(); i++) {
                 std::string l = tracks[i].codec + " " + tracks[i].lang + " (" + std::to_string(tracks[i].channels) + " ch)";
                 if (ImGui::Selectable(l.c_str(), i == cur)) { cur = i; pl.setAudioTrack(i); }
@@ -441,16 +444,16 @@ void playerTab(App& a) {
         if (cur) {
             const int64_t now = utcNowOf(a);
             const float f = std::min(1.f, std::max(0.f, (float)(now - cur->start) / (float)cur->duration));
-            ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.4f, 1), "NOW");
+            ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.4f, 1), "%s", tr("NOW"));
             ImGui::SameLine();
             ImGui::Text("%s - %s  %s", fmtLocal(cur->start, "%H:%M").c_str(), fmtLocal(cur->end(), "%H:%M").c_str(), cur->title.c_str());
-            char left[32]; snprintf(left, sizeof left, "%d min left", (int)std::max<int64_t>(0, (cur->end() - now + 30) / 60));
+            char left[64]; snprintf(left, sizeof left, tr("%d min left"), (int)std::max<int64_t>(0, (cur->end() - now + 30) / 60));
             sameLineIf(160 * gUi);
             ImGui::ProgressBar(f, ImVec2(160 * gUi, 12 * gUi), left);
-            if (nx) { ImGui::TextDisabled("NEXT"); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str()); }
+            if (nx) { ImGui::TextDisabled("%s", tr("NEXT")); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str()); }
         } else if (nx) {
-            ImGui::TextDisabled("NEXT"); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str());
-        } else { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("no programme information is broadcast for this service"); ImGui::PopTextWrapPos(); }
+            ImGui::TextDisabled("%s", tr("NEXT")); ImGui::SameLine(); ImGui::Text("%s  %s", fmtLocal(nx->start, "%H:%M").c_str(), nx->title.c_str());
+        } else { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("no programme information is broadcast for this service")); ImGui::PopTextWrapPos(); }
     }
     stor->SetFloat(ctlKey, ImGui::GetCursorPosY() - ctlY);
 }
