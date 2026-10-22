@@ -87,7 +87,7 @@ public:
         const ftx::Spec& s = ftx::spec(mode);
         const size_t n = (size_t)std::lround(s.period * kHfdigAudioRate);
         slot_.assign(n, 0.f);
-        ftxAddTransmission(mode, msg, hz, 0.5, kHfdigAudioRate, s.t0, mir, slot_);
+        ok_ = ftxAddTransmission(mode, msg, hz, 0.5, kHfdigAudioRate, s.t0, mir, slot_);
         if (utc) {
             const double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
             pos_ = (size_t)(std::fmod(now, s.period) * kHfdigAudioRate) % slot_.size();
@@ -96,15 +96,19 @@ public:
     void generate(float* out, size_t n) override {
         for (size_t i = 0; i < n; i++) { out[i] = std::max(-1.f, std::min(1.f, slot_[pos_])); if (++pos_ >= slot_.size()) pos_ = 0; }
     }
+    bool ok() const { return ok_; }
 private:
     std::vector<float> slot_;
     size_t pos_ = 0;
+    bool ok_ = false;
 };
 }
 
 std::unique_ptr<HfdigTestAudio> makeFtxTxAudio(int mode, const std::string& msg, double hz, bool mirrored, bool utcAlign) {
     if (mode < 0 || mode >= kFtxModes || msg.empty()) return nullptr;
-    return std::make_unique<FtxTxAudio>(mode, msg, hz, mirrored, utcAlign);
+    auto a = std::make_unique<FtxTxAudio>(mode, msg, hz, mirrored, utcAlign);
+    if (!a->ok()) return nullptr;   // the message cannot be packed (a call with a 4-letter suffix, too long a text): no silent slot
+    return a;
 }
 
 } // namespace dect2

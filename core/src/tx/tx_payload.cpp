@@ -329,6 +329,7 @@ std::unique_ptr<ModeSynth> makeTxPayloadSynth(const TxModeSpec& m, const TxReque
             const std::string msg = txFtxMessage(r);
             if (msg.empty()) return nullptr;
             auto audio = makeFtxTxAudio(ftxm, msg, r.toneHz > 100 ? r.toneHz : 1500, r.variant == 1, r.loop);
+            if (!audio) return nullptr;   // not encodable: makeTxGenerator says so instead of sending the demo
             return makeHfdigSynthFromAudio(std::move(audio), s, rate, r.variant == 1);
         }
         if (which == 0) {
@@ -379,7 +380,7 @@ std::unique_ptr<ModeSynth> makeTxPayloadSynth(const TxModeSpec& m, const TxReque
                 if (c.name.size() > 24) c.name.resize(24);
             }
             auto audio = makeHamdrmTx(c, file);
-            return makeHfdigSynthFromAudio(std::move(audio), s, rate, false);
+            return makeHfdigSynthFromAudio(std::move(audio), s, rate, false, 0.65f);   // OFDM: peaks about 1.85 x the tone level, kept under the limiter's knee
         }
         return nullptr;
     }
@@ -664,7 +665,8 @@ std::unique_ptr<ModeSynth> makeTxPayloadSynth(const TxModeSpec& m, const TxReque
         AleGenConfig c;
         c.rate = rate;
         c.dialOffsetHz = -aleTuning().tuneOffsetHz;
-        c.snrDb = 20;
+        c.snrDb = 20;          // sets the tone level against the 0.02 reference (unchanged)
+        c.noiseSigma = 0;      // but no noise: it filled the whole span, above the signal's own power
         c.repeat = true;
         AleGenCall g;
         g.kind = AleGenCall::Amd;
