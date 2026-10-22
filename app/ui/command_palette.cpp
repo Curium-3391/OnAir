@@ -15,6 +15,7 @@ struct Cmd {
     std::string label;   // English text, translated when drawn
     const char* kind;    // "Tab", "Panel", "Mode" or "Action"
     std::function<void(App&)> run;
+    bool hidden = false;   // a mode left out by Modes shown: listed only once something is typed, tagged "hidden"
 };
 
 // the tabs the tab bar drew in the current frame (paletteNoteTab)
@@ -42,7 +43,8 @@ std::vector<Cmd> collect(App& a) {
         x.muted = !x.muted; x.engine.player().setMuted(x.muted); x.engine.dabAudio().setMuted(x.muted);
     }});
     for (const Panel& p : kPanels) c.push_back({p.name, "Panel", [p](App& x) { x.*p.on = !(x.*p.on); }});
-    for (int i = 0; i < kNumModes; i++) c.push_back({kModes[i].name, "Mode", [f = kModes[i].family, s = kModes[i].subId](App& x) { selectMode(x, f, s); }});
+    c.push_back({"Modes shown", "Action", [](App& x) { x.modeVisOpen = true; }});
+    for (int i = 0; i < kNumModes; i++) c.push_back({modeHiddenNow(a, kModes[i]) ? std::string(kModes[i].name) + " (hidden)" : std::string(kModes[i].name), "Mode", [f = kModes[i].family, s = kModes[i].subId](App& x) { selectMode(x, f, s); }, modeHiddenNow(a, kModes[i])});
     c.push_back({"Voice codecs", "Action", [](App& x) { x.voiceCodecsOpen = true; }});
     c.push_back({"Credits", "Action", [](App& x) { x.creditsOpen = true; x.creditsTab = 0; }});
     c.push_back({"Credits and licences", "Action", [](App& x) { x.creditsOpen = true; x.creditsTab = 1; }});
@@ -108,7 +110,7 @@ void commandPalette(App& a) {
     const std::string query = lower(q);
     std::vector<int> shown;
     for (int i = 0; i < (int)cmds.size(); i++)
-        if (matchAll(cmds[i].label, query) || matchAll(tr(cmds[i].label.c_str()), query)) shown.push_back(i);
+        if ((!cmds[i].hidden || !query.empty()) && (matchAll(cmds[i].label, query) || matchAll(tr(cmds[i].label.c_str()), query))) shown.push_back(i);
 
     const int n = (int)shown.size();
     sel = std::max(0, std::min(sel, n - 1));

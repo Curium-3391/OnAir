@@ -118,6 +118,8 @@ const std::vector<PrefKey>& keyTable() {
         shared(scaled("splitBottom", AT(a.splitBottom), 1, 0, 1, 0, false)), shared(scaled("splitDock", AT(a.splitDock), 1, 0, 1, 0, false)),
         shared(scaled("splitBot2", AT(a.splitBot2), 1, 0, 1, 0, false)),
         shared(text("modeGroupsOpen", AT(a.modeGroupsOpen))),
+        shared(text("modeHidden", AT(a.modeHidden))), shared(text("modeHiddenGroups", AT(a.modeHiddenGroups))), shared(text("modeFavs", AT(a.modeFavs))),
+        shared(flagB("modeFavsOnly", AT(a.modeFavsOnly), false)),
         shared(num("uiVariant", AT(a.uiVariant), 0, 0, 7, true)),
         shared(numFix("dtmbBw", AT(a.dtmbBwMhz), 8, fixDtmbBw)),
         shared(numFix("isdbtBw", AT(a.isdbtBwMhz), 6, fixIsdbtBw)),

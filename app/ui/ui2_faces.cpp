@@ -259,10 +259,11 @@ void modeKeys(App& a) {
     const bool running = a.engine.running();
     const ImVec2 first = ImGui::GetCursorScreenPos();
     for (int g = 0; g < kNumGroups; g++) {
+        if (!modeGroupListed(a, g)) continue;
         ImGui::TextDisabled("%s", tr(kGroupNames[g]));
         for (int i = 0; i < kNumModes; i++) {
             const ModeDef& m = kModes[i];
-            if (m.group != g) continue;
+            if (m.group != g || !modeListed(a, m)) continue;
             const float h = 26 * gUi, w = ImGui::GetContentRegionAvail().x - 2 * gUi;   // twelve keys have to fit: the name on the left, the short description on the right
             ImGui::PushID(i);
             const bool clicked = ImGui::InvisibleButton("##key", ImVec2(w, h));
