@@ -120,16 +120,19 @@ const std::vector<float>& FmFront::process(const cf32* x, size_t n) {
         const float re = x[i].real(), im = x[i].imag();
         if (!(std::fabs(re) < 1e4f && std::fabs(im) < 1e4f)) { bad = true; break; }
     }
-    if (bad) {
+    if (bad || afInput) {
         clean.assign(x, x + n);
-        for (auto& v : clean) if (!(std::fabs(v.real()) < 1e4f && std::fabs(v.imag()) < 1e4f)) v = cf32(0, 0);
+        for (auto& v : clean) {
+            if (!(std::fabs(v.real()) < 1e4f && std::fabs(v.imag()) < 1e4f)) v = cf32(0, 0);
+            if (afInput) v = cf32(v.real(), 0.f);
+        }
         x = clean.data();
     }
     for (size_t i = 0; i < n; i++) inPower += (double)std::norm(x[i]);
     inN += (int64_t)n;
     const cf32* cur = x;
     size_t cn = n;
-    if (offsetHz != 0) {
+    if (offsetHz != 0 && !afInput) {
         mixBuf.resize(n);
         const double w = -2 * kPi * offsetHz / fs;
         const cf32 stp((float)std::cos(w), (float)std::sin(w));
@@ -153,7 +156,7 @@ const std::vector<float>& FmFront::process(const cf32* x, size_t n) {
         rs.process(cur, cn, o2);
         cur = o2.data(); cn = o2.size();
     }
-    if (afcHz != 0) {
+    if (afcHz != 0 && !afInput) {
         afcBuf.resize(cn);
         const double w = -2 * kPi * afcHz / kMidRate;
         for (size_t i = 0; i < cn; i++) {
@@ -171,7 +174,7 @@ const std::vector<float>& FmFront::process(const cf32* x, size_t n) {
     for (size_t i = 0; i < ch.size(); i++) {
         const cf32 y = ch[i];
         const cf32 z = y * std::conj(prevY);
-        float d = (z.real() == 0.f && z.imag() == 0.f) ? 0.f : std::atan2(z.imag(), z.real()) * k;
+        float d = afInput ? y.real() * 4000.f : (z.real() == 0.f && z.imag() == 0.f) ? 0.f : std::atan2(z.imag(), z.real()) * k;
         blkDisc += std::max(-wide, std::min(wide, d));   // the carrier error from a wider clip: clipHz would hide most of a large one
         d = std::max(-clipHz, std::min(clipHz, d));
         prevY = y;

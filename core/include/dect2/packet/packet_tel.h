@@ -57,6 +57,10 @@ struct PacketTelemetry {
     double last1200Sec = -1e9, last9600Sec = -1e9, lastAprsSec = -1e9;
     uint64_t aprsFrames = 0;
     bool carrier = false;
+    uint64_t fixedFrames = 0;    // frames that passed only after "fix bits" changed a bit or two
+    uint64_t digiCopies = 0;     // packets heard again through a digipeater (listed, not counted as new)
+    float twistDb = 0;           // 1200 baud tone balance, mark against space (dB), over the recent frames: about -5 a pre-emphasised transmitter
+    uint32_t twistFrames = 0;    // (heard on the radio's discriminator) or +5 de-emphasised speaker audio; 0 frames = not measured yet
     // results (the newest frame last; the stations newest first)
     std::vector<PacketFrameInfo> frames;
     std::vector<PacketStation> stations;

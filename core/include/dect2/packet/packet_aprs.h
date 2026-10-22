@@ -38,6 +38,9 @@ struct Info {
 // destCall: the destination address of the frame (Mic-E carries the latitude in it); info: the information field.
 // False when the field is empty or the type byte is not understood at all.
 bool parse(const std::string& destCall, const std::string& info, Info& out);
+// parse() and what a receiver needs on top (packet_aprs_full.cpp): a '!' position after up to 40 characters of other text, the position of a
+// raw NMEA sentence ($GPRMC / $GPGGA), and the packet inside a third-party header ('}'): out is then the inner packet and innerFrom its source
+bool parseFull(const std::string& destCall, const std::string& info, Info& out, std::string* innerFrom = nullptr, int depth = 0);
 
 // Latitude / longitude as "25.2000N" / "55.3000E"
 std::string fmtLat(double lat);

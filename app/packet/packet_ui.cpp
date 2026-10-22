@@ -18,6 +18,8 @@ struct State {
     bool mapFollow = true;           // the map fits the stations until the user drags it
     bool logScroll = true;
     int pushedNarrow = -1;
+    int fixBits = 0, emphasis = 0; bool audioIn = false;   // saved as packetFixBits, packetEmphasis, packetAudioIn (docs/PACKET.md)
+    int pushedFix = -1, pushedEmph = -1, pushedAudioIn = -1;
     bool listen = false; int pushedListen = -1; float pushedVol = -1; int pushedMute = -1;
 };
 State S;
@@ -29,6 +31,9 @@ void loadState() {
     S.loaded = true;
     S.map.zoom = (int)plat::prefs().getI("packetZoom", 9);
     S.listen = plat::prefs().getB("packetListen", false);
+    S.fixBits = std::max(0, std::min(2, (int)plat::prefs().getI("packetFixBits", 0)));
+    S.emphasis = std::max(0, std::min(2, (int)plat::prefs().getI("packetEmphasis", 0)));
+    S.audioIn = plat::prefs().getB("packetAudioIn", false);
 }
 
 std::string ageText(double s) {
@@ -287,6 +292,9 @@ void tick(App& a) {
     dect2::PacketReceiver& r = a.engine.packet();
     if ((int)a.packetNarrow != S.pushedNarrow) { r.setNarrowChannel(a.packetNarrow); S.pushedNarrow = a.packetNarrow; }
     if ((int)S.listen != S.pushedListen) { r.setListen(S.listen); S.pushedListen = S.listen; }
+    if (S.fixBits != S.pushedFix) { r.setFixBits(S.fixBits); S.pushedFix = S.fixBits; }
+    if (S.emphasis != S.pushedEmph) { r.setEmphasis(S.emphasis); S.pushedEmph = S.emphasis; }
+    if ((int)S.audioIn != S.pushedAudioIn) { r.setAudioInput(S.audioIn); S.pushedAudioIn = S.audioIn; }
     if (a.volume != S.pushedVol || (int)a.muted != S.pushedMute) {
         r.setVolume(a.volume); r.setMuted(a.muted);
         S.pushedVol = a.volume; S.pushedMute = a.muted;
@@ -307,6 +315,44 @@ void tab(App& a) {
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter."));
     flowNext(10 * gUi);
+    {
+        static const char* kEmph[] = {"Auto", "De-emphasis", "Pre-emphasis"};
+        ImGui::TextDisabled("%s", tr("Emphasis")); ImGui::SameLine(0, 5 * gUi);
+        ImGui::SetNextItemWidth(110 * gUi);
+        if (ImGui::BeginCombo("##pktemph", tr(kEmph[S.emphasis]))) {
+            for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(kEmph[i]), S.emphasis == i)) { S.emphasis = i; plat::prefs().setI("packetEmphasis", i); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) {
+            const dect2::PacketTelemetry& t = a.rx.packet;
+            std::string tip = tr("1200 baud tone balance. Auto (best for most): the receiver tries several mark / space weights at once and covers +-6 dB. De-emphasis: for stations sending through a microphone input (pre-emphasised; the 2200 Hz tone louder). Pre-emphasis: for a sound card on a radio's speaker output (de-emphasised; the 1200 Hz tone louder).");
+            if (t.twistFrames) {
+                char b[160];
+                snprintf(b, sizeof b, tr("\nMeasured on the last frames: 1200 Hz %+.1f dB against 2200 Hz."), t.twistDb);
+                tip += b;
+            }
+            ImGui::SetTooltip("%s", tip.c_str());
+        }
+        flowNext(10 * gUi);
+        static const char* kFix[] = {"Off", "1 bit", "2 bits"};
+        ImGui::TextDisabled("%s", tr("Fix bits")); ImGui::SameLine(0, 5 * gUi);
+        ImGui::SetNextItemWidth(80 * gUi);
+        if (ImGui::BeginCombo("##pktfix", tr(kFix[S.fixBits]))) {
+            for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(kFix[i]), S.fixBits == i)) { S.fixBits = i; plat::prefs().setI("packetFixBits", i); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A frame that fails its check is tried again with one wrong bit (or two in a row) corrected. More frames from weak stations; a repaired frame is marked [1 bit fixed]. Off by default: a few repaired frames could be wrong."));
+        flowNext(10 * gUi);
+        ImGui::TextDisabled("%s", tr("Input")); ImGui::SameLine(0, 5 * gUi);
+        ImGui::SetNextItemWidth(120 * gUi);
+        if (ImGui::BeginCombo("##pktin", S.audioIn ? tr("FM audio") : tr("Radio IQ"))) {
+            if (ImGui::Selectable(tr("Radio IQ"), !S.audioIn)) { S.audioIn = false; plat::prefs().setB("packetAudioIn", false); }
+            if (ImGui::Selectable(tr("FM audio"), S.audioIn)) { S.audioIn = true; plat::prefs().setB("packetAudioIn", true); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Radio IQ: an SDR (or a sound card carrying IQ). FM audio: a sound card on a radio's discriminator (9600 baud too) or speaker output (1200 baud), with the sound card chosen as the radio."));
+        flowNext(10 * gUi);
+    }
     subNav("pktv", S.view, {"Stations", "Map", "Packets"});
     if (S.view == 2) { packetLog(a); return; }
     if (S.view == 1) { mapView(a, ImGui::GetContentRegionAvail()); return; }

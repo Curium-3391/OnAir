@@ -68,16 +68,38 @@ public:
     using Callback = std::function<void(const std::vector<uint8_t>& data, bool ok)>;
     explicit HdlcRx(Callback cb = nullptr, bool nrzi = true) : cb_(std::move(cb)), nrzi_(nrzi) {}
     void setCallback(Callback cb) { cb_ = std::move(cb); }
-    void reset() { hdlcReset(st_); }
+    // "Fix bits": with a raw callback set, the receiver also keeps the bits between two flags (after NRZI, still bit-stuffed) and hands
+    // over every stretch of a frame's length that did not give a good frame, for repairFrame()
+    using RawCallback = std::function<void(const std::vector<uint8_t>& stuffedBits)>;
+    void setRawCallback(RawCallback cb) { rawCb_ = std::move(cb); raw_.clear(); rawOk_ = false; }
+    void reset() { hdlcReset(st_); raw_.clear(); rawOk_ = false; rprev_ = 0; rpat_ = 0; }
     void bit(int level);
     bool inFrame() const { return st_.inFrame; }
     bool flagSeen() const { return st_.flagRecent > 0; }   // a flag came a short while ago
     bool takeClockResync() { const bool r = st_.resyncClock; st_.resyncClock = false; return r; }
 private:
     Callback cb_;
+    RawCallback rawCb_;
     bool nrzi_;
     HdlcState st_;
+    std::vector<uint8_t> raw_;
+    bool rawOk_ = false;
+    int rprev_ = 0;
+    uint8_t rpat_ = 0;
 };
+
+// Destuffs the bits between two flags and checks the FCS: true with the frame (without FCS) in out
+bool frameFromStuffedBits(const std::vector<uint8_t>& bits, std::vector<uint8_t>& out);
+// The bit patterns "fix bits" tries, as offsets in the received bits: one wrong decision of the demodulator (level 1), and also two in a
+// row (level 2). After NRZI one wrong line bit is two wrong bits in a row; with the G3RUH scrambler (scrambled = true) also 12 and 17 bits later.
+std::vector<std::vector<int>> fixPatterns(int level, bool scrambled);
+// Tries to repair a frame that failed: each pattern at every position, until one gives a good FCS and passes sane(). Returns the
+// 1-based index of the pattern that worked (0 = no repair found); out is the frame without FCS.
+int repairFrame(const std::vector<uint8_t>& stuffedBits, const std::vector<std::vector<int>>& patterns, std::vector<uint8_t>& out,
+                const std::function<bool(const std::vector<uint8_t>&)>& sane);
+// A plausible AX.25 frame for a repaired one: addresses of capital letters and digits (space padded), a known control field, and an
+// information field without control characters other than CR, LF and tab (Mic-E's 0x1C-0x1F allowed)
+bool plausibleFrame(const std::vector<uint8_t>& frameNoFcs);
 
 } // namespace ax25
 } // namespace dect2
