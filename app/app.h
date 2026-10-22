@@ -300,6 +300,7 @@ struct App {
     bool memoryTab = false;             // the Memory panel as a tab of the main screen (View > Memory as a tab; saved as memTab)
     bool propOpen = false;              // Tools > Propagation (app/prop): predicted coverage of a transmitter on the map
     bool mapOpen = false;               // the map window (View > Map): positions and Maidenhead locators
+    bool antdOpen = false;              // Tools > Antenna designer (app/antd): wire antenna modeller, method of moments (docs/ANTENNA.md)
     bool rotatorOpen = false;           // View > Antenna rotator (rotator_ui.cpp)
     int wizStep = 0;
     bool setupOpen = false;             // the setup wizard (language, radio, location, goals); Help > Setup wizard
@@ -711,6 +712,7 @@ void cellMapTowers(const dect2::CellTelemetry& t, std::vector<MapCellTower>& out
 void mapWindow(App& a);                             // map_ui.cpp: View > Map (a.mapOpen): coordinates, Maidenhead locators, distance and bearing
 void propagationWindow(App& a);                     // prop_ui.cpp: Tools > Propagation (a.propOpen): coverage heat map, range and a probe point (no terrain)
 void mapSendServerMenu(App& a);                     // map_send.cpp: Server menu (opt-in public map)
+void antennaDesignerWindow(App& a);                 // antd_ui.cpp: Tools > Antenna designer (a.antdOpen): templates, wires, SWR, pattern, optimiser
 void mapSendButton(App& a);                         // classic interface: the same choice as a button
 void mapSendTick(App& a);                           // POST current decoded positions when opted in
 bool mapPauseForTransmit(App& a);                   // turn the map connection off before the radio is keyed; true if it was on
