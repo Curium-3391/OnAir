@@ -1,6 +1,7 @@
 // HF digital, the FT8 / FT4 / FT2 / WSPR view of the main tab (called by hfdig_ui.cpp): which modes decode, the slot clock and its
 // error, and the decodes: a list per slot (UTC, dB, DT, Hz, mode, message; CQ calls highlighted), the stations on the map (the ADS-B
 // map, by their locators) and the WSPR spots.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/hfdig/hfdig_ftx.h"
@@ -34,14 +35,7 @@ struct State {
 State S;
 
 void utcText(double t, char* out, size_t n, bool seconds = true) {
-    const time_t tt = (time_t)std::floor(t);
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    strftime(out, n, seconds ? "%H:%M:%S" : "%H:%M", &g);
+    snprintf(out, n, "%s", dect2::timefmt::format((int64_t)std::floor(t), dect2::timefmt::zone(), seconds ? dect2::timefmt::Style::Clock : dect2::timefmt::Style::ClockShort, false).c_str());
 }
 
 ImVec4 modeColour(int m) {

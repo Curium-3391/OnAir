@@ -2,6 +2,7 @@
 // last seen), the live frame log with a frames-per-second plot, the statistics (frames by width, MCS, streams, preamble), the channel strip with the
 // radio's span over the region's band, the region (ten plans, halow_chan.h), channel and receive-width pickers (Auto, or one of 1 / 2 / 4 / 8 / 16 MHz),
 // and the channel scan. Receive only: nothing is ever sent, joined or answered; nothing is decrypted, the security type is only what the beacon announces.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/halow/halow_proto.h"
 #include "dect2/halow/halow_rx.h"
@@ -62,16 +63,7 @@ bool live(const App& a) { return a.rx.standard == 71; }   // the engine reports 
 // UTC time of day of a wall-clock time.
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 // A key and its value on one row.
@@ -325,7 +317,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(tr("Time UTC")); ImGui::TableSetupColumn(tr("Width")); ImGui::TableSetupColumn("MCS"); ImGui::TableSetupColumn("NSS"); ImGui::TableSetupColumn(tr("Preamble"));
+    ImGui::TableSetupColumn(tr(dect2::timefmt::headTime())); ImGui::TableSetupColumn(tr("Width")); ImGui::TableSetupColumn("MCS"); ImGui::TableSetupColumn("NSS"); ImGui::TableSetupColumn(tr("Preamble"));
     ImGui::TableSetupColumn("SNR"); ImGui::TableSetupColumn(tr("Type")); ImGui::TableSetupColumn("BSSID"); ImGui::TableSetupColumn(tr("Len")); ImGui::TableSetupColumn(tr("Details"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;

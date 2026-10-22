@@ -1,4 +1,5 @@
 // ACARS screens: the message list with a detail pane, the aircraft table and the channel bars.
+#include "dect2/common/time_fmt.h"
 #include "../panels/photo_links_ui.h"
 #include "../adsb/adsb_map.h"
 #include "app.h"
@@ -55,16 +56,7 @@ bool contains(const std::string& hay, const char* needle) {
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string ago(double now, double then) {
@@ -170,7 +162,7 @@ bool passes(const dect2::AcarsMessage& m) {
 void detailPane(const App& a, const dect2::AcarsMessage* m) {
     if (!m) { { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Click a message to read all of it."); ImGui::PopTextWrapPos(); } return; }
     auto kv = [&](const char* k, const char* fmt, auto... v) { ImGui::TextDisabled("%s", k); kvColumn(110 * gUi); ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::Text(fmt, v...); ImGui::PopTextWrapPos(); ImGui::PopFont(); };
-    kv("time", "%s UTC  %.4f MHz  %.0f dB", clock(m->wallTime).c_str(), m->freqHz / 1e6, m->levelDb);
+    kv("time", "%s%s  %.4f MHz  %.0f dB", clock(m->wallTime).c_str(), dect2::timefmt::sfx(), m->freqHz / 1e6, m->levelDb);
     kv("aircraft", "%s%s%s", m->reg.empty() ? "-" : m->reg.c_str(), m->flightId.empty() ? "" : "  flight ", m->flightId.c_str());
     kv("direction", "%s, mode %c, block id %c, %s", m->downlink ? "downlink" : "uplink", m->mode ? m->mode : '-', m->blockId ? m->blockId : '-', m->finalBlock ? "last block" : "more blocks follow");
     kv("label", "%s  %s", m->label.c_str(), m->labelText.empty() ? "(not in the table)" : m->labelText.c_str());
@@ -214,7 +206,7 @@ void messageView(App& a) {
     const float listH = std::max(120.f * gUi, H * 0.58f);
     if (ImGui::BeginTable("##acmsg", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Reg"); ImGui::TableSetupColumn("Flight");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Reg"); ImGui::TableSetupColumn("Flight");
         ImGui::TableSetupColumn("Label"); ImGui::TableSetupColumn("Meaning"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         int shown = 0;
@@ -417,7 +409,7 @@ void mapSide(App& a) {
         kv("source", "%s", c->posKind.c_str());
         if (c->reportSecPastHour >= 0) { const int s = (int)c->reportSecPastHour; kv("report", "at xx:%02d:%02d (minutes past the hour)", s / 60, s % 60); }
         else if (c->reportSecOfDay >= 0) { const int s = c->reportSecOfDay; kv("report", "at %02d:%02d:%02d UTC", s / 3600, s / 60 % 60, s % 60); }
-        kv("received", "%s UTC, %s ago", clock(c->posWall).c_str(), ago(t.nowSec, c->posTime).c_str());
+        kv("received", "%s%s, %s ago", clock(c->posWall).c_str(), dect2::timefmt::sfx(), ago(t.nowSec, c->posTime).c_str());
         kv("reports", "%u, track of %zu points", c->positions, c->track.size());
     } else {
         { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("no position from this aircraft yet"); ImGui::PopTextWrapPos(); }

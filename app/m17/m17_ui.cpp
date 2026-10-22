@@ -1,6 +1,7 @@
 // M17 screens: the current transmission (callsigns, CAN, stream type, encryption, duration, META text and position), the activity log,
 // the text messages, the positions on a map (the ADS-B map underneath, as for APRS), the European calling-frequency presets, and a "?"
 // about the Codec 2 library the voice needs.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/m17/m17_codec2.h"
@@ -38,16 +39,7 @@ void load() {
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 // the "?" next to the voice state: what the voice needs
@@ -114,7 +106,7 @@ void nowView(App& a) {
     kvRow(a, "CAN", n.can >= 0 ? "%d" : "?", n.can);
     if (!n.enc.empty()) { ImGui::TextDisabled("encryption"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "encrypted (%s): not decoded", n.enc.c_str()); }
     kvRow(a, "duration", "%.1f s, %u frames%s", n.durSec, n.frames, n.badFrames ? (" (" + std::to_string(n.badFrames) + " lost)").c_str() : "");
-    kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
+    kvRow(a, "started", "%s%s", clock(n.wallTime).c_str(), dect2::timefmt::sfx());
     if (!n.packet && n.enc.empty()) kvRow(a, "voice", "%s", n.voice ? "playing (Codec 2)" : t.codec2 ? "-" : "no libcodec2: frames only");
     if (!n.text.empty()) kvRow(a, n.packet ? "message" : "text", "%s", n.text.c_str());
     if (!n.data.empty()) kvRow(a, "data", "%s", n.data.c_str());
@@ -138,7 +130,7 @@ void activityView(App& a) {
     }
     if (!ImGui::BeginTable("##m17log", 7 + (wideActive(a) ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To"); ImGui::TableSetupColumn("Type");
+    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To"); ImGui::TableSetupColumn("Type");
     ImGui::TableSetupColumn("CAN"); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("Notes", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& e : log) {
@@ -163,7 +155,7 @@ void messageView(App& a) {
     const auto& m = a.rx.m17.messages;
     if (!ImGui::BeginTable("##m17msg", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& e : m) {
         ImGui::TableNextRow();

@@ -1,6 +1,7 @@
 // BLE tracker detector screens: the trackers heard (kind, state, how long and how close each stays, level trend), the alerts for a tracker that
 // follows you, and the settings of the alert. Receive only: trackers are recognised from their public advertisements; nothing is sent to them.
 // Identifiers are kept in memory for a short window and shown as the last two address bytes.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/ble/ble_proto.h"
 #include "dect2/bletrk/bletrk_live.h"
@@ -44,16 +45,7 @@ void kvRow(const App& a, const char* k, const char* fmt, ...) {
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string span(double sec) {
@@ -109,7 +101,7 @@ void trackersView(App& a) {
         if (ImGui::Selectable(d.label.c_str(), S.sel == d.id, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) S.sel = d.id;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s\n%llu packets, first heard %s UTC, peak %.0f dBFS", dect2::bletrk::kindName(d.kind), (unsigned long long)d.packets, clock(d.firstWall).c_str(), (double)d.rssiPeak);
+            ImGui::SetTooltip("%s\n%llu packets, first heard %s%s, peak %.0f dBFS", dect2::bletrk::kindName(d.kind), (unsigned long long)d.packets, clock(d.firstWall).c_str(), dect2::timefmt::sfx(), (double)d.rssiPeak);
         ImGui::TableNextColumn(); ImGui::TextUnformatted(stateText(d));
         ImGui::TableNextColumn(); ImGui::TextUnformatted(span(d.lastSec - d.firstSec).c_str());
         ImGui::TableNextColumn(); ImGui::Text("%.0f%%", (double)(d.nearFrac * 100));

@@ -360,7 +360,7 @@ void windowPanel(App& a) {
             ImGui::TableNextColumn(); ImGui::Text("%.1f", r.snrDb);
             ImGui::TableNextColumn(); ImGui::Text("%.1f", r.maxSnrDb);
             ImGui::TableNextColumn(); ImGui::Text("%d", r.count);
-            ImGui::TableNextColumn(); ImGui::Text("%s", dect2::utcClockText((int64_t)r.lastSeen).c_str());
+            ImGui::TableNextColumn(); ImGui::Text("%s", dect2::timefmt::clock((int64_t)r.lastSeen).c_str());
         }
         ImGui::EndTable();
     }

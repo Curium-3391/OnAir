@@ -1,6 +1,7 @@
 // HF digital screens: the shell. One main tab with a view per decoder (RTTY, SSTV, FreeDV); each view is drawn by that decoder's own
 // file (hfdig_rtty_ui.cpp, hfdig_sstv_ui.cpp, hfdig_freedv_ui.cpp). The shell also keeps the sound controls in step for FreeDV's speech,
 // lists what happened (ACTIVITY, on the right) and draws the spectrum and waterfall of the 8 kHz audio at the bottom, to tune the tones by eye.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../hfbeacon/hfprop_ui.h"
 #include "gfx/gfx.h"
@@ -61,14 +62,7 @@ std::vector<float> gAud;
 double wallNow() { return (double)time(nullptr); }
 
 void clock(int64_t t, char* out, size_t n) {
-    const time_t tt = (time_t)t;
-    struct tm lt;
-#ifdef _WIN32
-    localtime_s(&lt, &tt);
-#else
-    localtime_r(&tt, &lt);
-#endif
-    strftime(out, n, "%H:%M:%S", &lt);
+    snprintf(out, n, "%s", dect2::timefmt::clock(t).c_str());
 }
 
 // takes the new audio into spectrum frames

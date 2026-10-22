@@ -1,5 +1,6 @@
 // The Messages window (View > Messages): the unified database of decoded messages (core/src/msgdb) with search, filters, a timeline, export and the
 // retention settings. The database is fed by a tap on the automation event bus; voice and encrypted content never reaches it.
+#include "dect2/common/time_fmt.h"
 #include "../app.h"
 #include "dect2/common/u8file.h"
 #include "dect2/automation/engine.h"
@@ -88,16 +89,7 @@ void start() {
 }
 
 std::string when(double t) {
-    time_t s = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &s);
-#else
-    gmtime_r(&s, &g);
-#endif
-    char b[40];
-    strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::show((int64_t)t, dect2::timefmt::Style::DateClock);
 }
 
 mdb::Filter filter() {

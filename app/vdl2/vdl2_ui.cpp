@@ -1,5 +1,6 @@
 // VDL Mode 2 screens: the message log with a filter and a detail pane, a map of the positions the messages carry, the aircraft and
 // ground stations, and the channel list with its activity.
+#include "dect2/common/time_fmt.h"
 #include "../adsb/adsb_map.h"
 #include "app.h"
 #include "map/pos_predict.h"
@@ -69,16 +70,7 @@ std::string hex6(uint32_t a) { char b[8]; snprintf(b, sizeof b, "%06X", a & 0xFF
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string ago(double now, double then) {
@@ -207,7 +199,7 @@ void filterRow() {
 void detailPane(const App& a, const dect2::Vdl2Telemetry& t, const dect2::Vdl2Message* m) {
     if (!m) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Click a message to see every layer of it."); ImGui::PopTextWrapPos(); return; }
     auto kv = [&](const char* k, const char* fmt, auto... v) { ImGui::TextDisabled("%s", k); kvColumn(100 * gUi); ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::Text(fmt, v...); ImGui::PopTextWrapPos(); ImGui::PopFont(); };
-    kv("time", "%s UTC  %.3f MHz  %.0f dBFS  SNR %.0f dB  %+.0f Hz", clock(m->wallTime).c_str(), m->freqHz / 1e6, m->levelDb, m->snrDb, m->cfoHz);
+    kv("time", "%s%s  %.3f MHz  %.0f dBFS  SNR %.0f dB  %+.0f Hz", clock(m->wallTime).c_str(), dect2::timefmt::sfx(), m->freqHz / 1e6, m->levelDb, m->snrDb, m->cfoHz);
     kv("from", "%s  (%s)", who(t, m->src, m->srcType).c_str(), m->srcType == 1 ? "aircraft" : m->srcType == 4 || m->srcType == 5 ? "ground station" : m->srcType == 7 ? "all stations" : "reserved");
     kv("to", "%s  (%s)", who(t, m->dst, m->dstType).c_str(), m->dstType == 1 ? "aircraft" : m->dstType == 4 || m->dstType == 5 ? "ground station" : m->dstType == 7 ? "all stations" : "reserved");
     if (m->rsFixed) kv("repaired", "%d octet%s by the Reed-Solomon code", m->rsFixed, m->rsFixed == 1 ? "" : "s");
@@ -242,7 +234,7 @@ void messageView(App& a) {
     const dect2::Vdl2Message* sel = nullptr;
     if (ImGui::BeginTable("##vdmsg", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
         ImGui::TableSetupColumn("Frame"); ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         int shown = 0;

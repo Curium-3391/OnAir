@@ -2,6 +2,7 @@
 // downlink or the narrowband transponder, the beacon lock (LNB error in kHz and ppm, drift), the narrowband transponder as a zoomable
 // spectrum over a waterfall (a click puts the SSB dial there) with Listen, the wideband transponder with its DATV carriers and a
 // hand-over to DVB-S/S2, and the drift history. Every frequency shown is the corrected downlink frequency once the beacons are locked.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "state/results_export.h"
 #include "panels/gallery.h"
@@ -493,15 +494,7 @@ void driftView(App& a, float h) {
 // ---- the auto decoder ---------------------------------------------------------------------------------------------------------------------------
 
 std::string utcText(double utc) {
-    const std::time_t tt = (std::time_t)utc;
-    struct tm g {};
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[24]; strftime(b, sizeof b, "%H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::clock((int64_t)utc);
 }
 
 std::string decNames(int mask) {

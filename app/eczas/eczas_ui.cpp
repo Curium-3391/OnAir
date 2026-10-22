@@ -212,7 +212,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(tr("Computer UTC")); ImGui::TableSetupColumn(tr("Frame"), ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn(tr("Result"));
+    ImGui::TableSetupColumn(tr(dect2::timefmt::headComputer())); ImGui::TableSetupColumn(tr("Frame"), ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn(tr("Result"));
     ImGui::TableHeadersRow();
     for (const auto& l : t.log) {
         ImGui::TableNextRow();

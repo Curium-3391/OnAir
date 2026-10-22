@@ -130,7 +130,7 @@ void autoSave(const App& a) {
     std::filesystem::create_directories(S.autoDir, ec);
     const std::string path = std::string(S.autoDir) + "/" + nm;
     char when[32];
-    std::strftime(when, sizeof when, "%H:%M:%S", std::localtime(&now));
+    snprintf(when, sizeof when, "%s", dect2::timefmt::clock((int64_t)now).c_str());
     S.autoBusy = true;
     S.autoTh = dect2::namedThread("onair-specan", [g, live = t.live, peak = t.peak, avg = t.avg, path, w = std::string(when)] {
         const bool ok = dect2::saCsvWriteFile(path, g, live, peak, avg);
@@ -496,7 +496,7 @@ void leoMonitor(App& a) {
     for (const auto& c : S.leoFound) {
         const std::time_t seen = now - (std::time_t)((nowMs - c.firstSeenMs) / 1000.0);
         char when[16] = "";
-        std::strftime(when, sizeof when, "%H:%M:%S", std::localtime(&seen));
+        snprintf(when, sizeof when, "%s", dect2::timefmt::clock((int64_t)seen).c_str());
         ImGui::Text("%s  %10.3f  %+11.1f  %11.1f", when, c.carrierHz / 1e6, c.driftHzPerS, c.durationMs / 1000.0);
     }
 }
@@ -530,7 +530,7 @@ void monitor(App& a) {
     for (size_t i = S.monLog.size(); i-- > 0;) {
         const auto& e = S.monLog[i];
         char when[16] = "";
-        std::strftime(when, sizeof when, "%H:%M:%S", std::localtime(&e.wall));
+        snprintf(when, sizeof when, "%s", dect2::timefmt::clock((int64_t)e.wall).c_str());
         ImGui::Text("%s  %10.3f  %8.1f  %9.1f  %11.0f", when, e.mhz, e.ev.peakDb, e.ev.baseDb, e.ev.durationMs);
     }
 }

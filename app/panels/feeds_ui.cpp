@@ -287,7 +287,7 @@ void feedsWindow(App& a) {
         if (!r.on) ImGui::TextDisabled("%s", tr("off"));
         else {
             ImGui::TextColored(s.active ? pal::okGreen() : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), tr("%s, %llu spots sent in %llu packets, %llu duplicates skipped"), s.state.c_str(), (unsigned long long)s.spotsSent, (unsigned long long)s.packets, (unsigned long long)s.duplicates);
-            if (s.lastSend) { char b[32]; const time_t t = (time_t)s.lastSend; strftime(b, sizeof b, "%H:%M:%S", localtime(&t)); ImGui::Text(tr("last send %s"), b); }
+            if (s.lastSend) { char b[32]; const time_t t = (time_t)s.lastSend; snprintf(b, sizeof b, "%s", dect2::timefmt::clock((int64_t)t).c_str()); ImGui::Text(tr("last send %s"), b); }
             if (!s.lastError.empty()) ImGui::TextColored(pal::badRed(), "%s", s.lastError.c_str());
         }
         ImGui::PushTextWrapPos(460 * gUi);
@@ -322,7 +322,7 @@ void feedsWindow(App& a) {
         if (!wn.on) ImGui::TextDisabled("%s", tr("off"));
         else {
             ImGui::TextColored(ws.active ? pal::okGreen() : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), tr("%s, %llu spots sent, %llu duplicates skipped, %llu failed"), ws.state.c_str(), (unsigned long long)ws.spotsSent, (unsigned long long)ws.duplicates, (unsigned long long)ws.failures);
-            if (ws.lastSend) { char b[32]; const time_t t = (time_t)ws.lastSend; strftime(b, sizeof b, "%H:%M:%S", localtime(&t)); ImGui::Text(tr("last send %s"), b); }
+            if (ws.lastSend) { char b[32]; const time_t t = (time_t)ws.lastSend; snprintf(b, sizeof b, "%s", dect2::timefmt::clock((int64_t)t).c_str()); ImGui::Text(tr("last send %s"), b); }
             if (!ws.lastError.empty()) ImGui::TextColored(pal::badRed(), "%s", ws.lastError.c_str());
         }
         ImGui::PushTextWrapPos(460 * gUi);

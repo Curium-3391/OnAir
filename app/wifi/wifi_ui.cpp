@@ -3,6 +3,7 @@
 // probe responses, FILS discovery), and the channels view. The band selector, channel list and hop scan are in wifi_ui_scan.cpp, the channel
 // occupancy chart in wifi_ui_charts.cpp.
 // Passive: only the beacons, probe responses and FILS discovery frames access points broadcast openly are read; nothing is sent, probed, joined or decrypted.
+#include "dect2/common/time_fmt.h"
 #include "wifi_ui_int.h"
 #include "ui/ui_common.h"
 #include "dect2/wifi/wifi_chan.h"
@@ -99,8 +100,8 @@ void networksView(App& a) {
         ImGui::TableNextColumn();
         if (d.ssid.empty()) ImGui::TextDisabled("(hidden)"); else ImGui::TextColored(c, "%s", d.ssid.c_str());
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s%s\nfirst heard %s UTC%s%s\ncapabilities %04X", d.hidden ? "hidden network: its beacons carry no name" : "network name from its beacons",
-                              d.hidden && !d.ssid.empty() ? " (the name came from a probe response)" : "", clockText(d.firstWall).c_str(),
+            ImGui::SetTooltip("%s%s\nfirst heard %s%s%s%s\ncapabilities %04X", d.hidden ? "hidden network: its beacons carry no name" : "network name from its beacons",
+                              d.hidden && !d.ssid.empty() ? " (the name came from a probe response)" : "", clockText(d.firstWall).c_str(), dect2::timefmt::sfx(),
                               d.probeResps ? "\nprobe responses: " : "", d.probeResps ? std::to_string(d.probeResps).c_str() : "", d.cap);
         ImGui::TableNextColumn(); ImGui::PushFont(a.mono, 0); ImGui::TextUnformatted(d.bssid.c_str()); ImGui::PopFont();
         ImGui::TableNextColumn(); ImGui::TextUnformatted(d.vendor == "local" ? "(local)" : d.vendor.c_str());
@@ -163,7 +164,7 @@ void beaconsView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("BSSID"); ImGui::TableSetupColumn("Level");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("BSSID"); ImGui::TableSetupColumn("Level");
     ImGui::TableSetupColumn("Bytes"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;

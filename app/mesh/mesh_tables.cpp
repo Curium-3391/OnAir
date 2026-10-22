@@ -1,5 +1,6 @@
 // Mesh (LoRa) screens: the node table, telemetry table, packet log and the APRS station table.
 // Split from mesh_ui.cpp; the shared state is declared in mesh_internal.h.
+#include "dect2/common/time_fmt.h"
 #include "mesh_internal.h"
 #include "ui/ui_common.h"
 #include <algorithm>
@@ -34,7 +35,7 @@ std::string meshTime(double epoch) {
     if (epoch <= 0) return "";
     const std::time_t tt = (std::time_t)epoch;
     char b[24];
-    std::strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
+    snprintf(b, sizeof b, "%s", dect2::timefmt::show((int64_t)tt, dect2::timefmt::Style::DateClock).c_str());
     return b;
 }
 

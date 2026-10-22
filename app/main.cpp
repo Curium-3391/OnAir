@@ -277,6 +277,10 @@ int main(int argc, char** argv) {
         const long v = plat::prefs().getI("uiTypography", 0);
         typo::setVariant(v == 1 ? typo::Clean : v == 2 ? typo::Compact : typo::Classic);
     }
+    {   // View > Time display: UTC (default) or the computer's local time, with an optional (UTC)/(local) label
+        dect2::timefmt::setZone(plat::prefs().getB("timeLocal", false) ? dect2::timefmt::Zone::Local : dect2::timefmt::Zone::Utc);
+        dect2::timefmt::setLabel(plat::prefs().getB("timeLabel", false));
+    }
     applyTheme();
     typo::applyStyle(ImGui::GetStyle());
     static ImGuiStyle baseStyle = ImGui::GetStyle();   // the style at scale 1

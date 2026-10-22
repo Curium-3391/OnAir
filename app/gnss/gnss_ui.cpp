@@ -675,7 +675,7 @@ void interfView(App& a) {
     for (const auto& e : r.events) {
         char ts[16];
         const std::time_t tt = (std::time_t)e.unixS;
-        std::strftime(ts, sizeof ts, "%H:%M:%S", std::localtime(&tt));
+        snprintf(ts, sizeof ts, "%s", dect2::timefmt::clock((int64_t)tt).c_str());
         ImGui::TextDisabled("%s", ts); ImGui::SameLine();
         ImGui::PushTextWrapPos(0);
         if (e.level == 0) ImGui::TextUnformatted(e.text.c_str());

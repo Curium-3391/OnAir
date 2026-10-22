@@ -1,5 +1,6 @@
 // Z-Wave screens: the frame log (home ID, source > destination, command class and command), the nodes, the networks (home IDs) and the channels of
 // the region with what each carried; the region picker. Receive only: S0 and S2 payloads are named as encrypted and stay so.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/zwave/zwave_proto.h"
 #include "dect2/zwave/zwave_rx.h"
@@ -36,16 +37,7 @@ void loadState() {
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -94,7 +86,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Rate"); ImGui::TableSetupColumn("Home ID");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Rate"); ImGui::TableSetupColumn("Home ID");
     ImGui::TableSetupColumn("Source > destination"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Seq"); ImGui::TableSetupColumn("Level");
     ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();

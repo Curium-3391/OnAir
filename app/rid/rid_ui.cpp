@@ -1,6 +1,7 @@
 // Drone Remote ID screens: the drone table (serial number or session ID, UA type, position, altitude and height, speed and track, operator
 // position, last seen), a map with each drone, its trail and a line to its operator, the message log, and the band picker.
 // Receive only: Remote ID (ASTM F3411 / ASD-STAN EN 4709-002) is a public broadcast meant for anyone to read; nothing is transmitted.
+#include "dect2/common/time_fmt.h"
 #include "../adsb/adsb_map.h"
 #include "app.h"
 #include "dect2/ble/ble_proto.h"
@@ -39,16 +40,7 @@ bool live(const App& a) { return a.rx.standard == 57; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -122,10 +114,10 @@ void dronesView(App& a) {
         if (ImGui::Selectable(idOf(d).c_str(), S.sel == d.mac, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) S.sel = d.mac;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("address %s\nserial %s\nsession ID %s\nCAA registration %s\noperator ID %s\nSelf-ID %s\nEU %s, class %s\n%llu messages, first heard %s UTC%s",
+            ImGui::SetTooltip("address %s\nserial %s\nsession ID %s\nCAA registration %s\noperator ID %s\nSelf-ID %s\nEU %s, class %s\n%llu messages, first heard %s%s%s",
                               d.mac.c_str(), d.serial.empty() ? "-" : d.serial.c_str(), d.sessionId.empty() ? "-" : d.sessionId.c_str(), d.caaId.empty() ? "-" : d.caaId.c_str(),
                               d.operatorId.empty() ? "-" : d.operatorId.c_str(), d.selfId.empty() ? "-" : d.selfId.c_str(), dect2::rid::categoryName(d.category),
-                              dect2::rid::className(d.uaClass).c_str(), (unsigned long long)d.messages, clock(d.firstWall).c_str(),
+                              dect2::rid::className(d.uaClass).c_str(), (unsigned long long)d.messages, clock(d.firstWall).c_str(), dect2::timefmt::sfx(),
                               d.authType > 0 ? (std::string("\nauthentication: ") + dect2::rid::authTypeName(d.authType)).c_str() : "");
         ImGui::TableNextColumn(); ImGui::TextUnformatted(d.uaType < 0 ? "-" : dect2::rid::uaTypeName(d.uaType));
         ImGui::TableNextColumn();
@@ -289,7 +281,7 @@ void messagesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Via"); ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Level");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Via"); ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Level");
     ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;

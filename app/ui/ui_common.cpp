@@ -1,22 +1,14 @@
 // Helpers shared by several screens (see ui_common.h): clock text, key / value rows, the status-line IQ lamp and State label,
 // the map's zoom buttons and the wrapped-text tooltip.
 // Only screens that had the same lines written out use them; more can move here later.
+#include "dect2/common/time_fmt.h"
 #include "ui_common.h"
 #include <cstdarg>
 #include <ctime>
 
 std::string clockText(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {

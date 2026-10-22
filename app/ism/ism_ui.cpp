@@ -1,5 +1,6 @@
 // ISM sensors screens: the device table (sortable, with a history sparkline per device), the live log, the unknown signals with a pulse
 // viewer for reporting them, band presets and the privacy note.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/ism/ism_rx.h"
 #include "dect2/ism/ism_tel.h"
@@ -26,17 +27,7 @@ const char* const kKinds[] = {"All", "Weather", "TPMS", "Remote", "Energy", "Met
 bool live(const App& a) { return a.rx.standard == 29; }   // the engine reports its standard code minus one
 
 std::string hhmmss(int64_t t) {
-    if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    localtime_s(&g, &tt);
-#else
-    localtime_r(&tt, &g);
-#endif
-    char b[16];
-    strftime(b, sizeof b, "%H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string ago(int64_t t) {

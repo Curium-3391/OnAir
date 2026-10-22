@@ -1,6 +1,7 @@
 // CODAR / HF ocean radar screens: the radars heard (centre, width, rate, direction, repetition, level, first / last heard, SNR history, ID),
 // the chirp waterfall with the sweeps marked, the "heard on band X at time Y" history, band presets and a scan over the radar bands.
 // Receive only: broadcast radar signals; nothing is decrypted or transmitted. The ID text is always labelled unverified.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/codar/codar_rx.h"
 #include "dect2/codar/codar_tel.h"
@@ -35,16 +36,7 @@ bool live(const App& a) { return a.rx.standard == 73; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -182,12 +174,12 @@ void heardView(App& a) {
     ImGui::PopTextWrapPos();
     if (ImGui::Button("Copy")) {
         std::string txt;
-        for (const auto& e : t.events) { char b[200]; snprintf(b, sizeof b, "%s UTC\tradar %d\t%.4f MHz\t%s\t%.1f dB\n", clock(e.wall).c_str(), e.station, e.centreMhz, e.band.c_str(), e.snrDb); txt += b; }
+        for (const auto& e : t.events) { char b[200]; snprintf(b, sizeof b, "%s%s\tradar %d\t%.4f MHz\t%s\t%.1f dB\n", clock(e.wall).c_str(), dect2::timefmt::sfx(), e.station, e.centreMhz, e.band.c_str(), e.snrDb); txt += b; }
         ImGui::SetClipboardText(txt.c_str());
     }
     if (!ImGui::BeginTable("##cdev", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Radar"); ImGui::TableSetupColumn("Frequency"); ImGui::TableSetupColumn("Band"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Radar"); ImGui::TableSetupColumn("Frequency"); ImGui::TableSetupColumn("Band"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& e : t.events) {
         ImGui::TableNextRow();

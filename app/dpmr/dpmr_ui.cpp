@@ -1,6 +1,7 @@
 // dPMR screens: the current call (own / called id, call type, colour code, voice), the call log (voice, status, short messages, packet
 // data), the decoded headers and end frames, the PMR446 channel presets with "scan all 16", and a "?" about the mbelib library the
 // voice needs (docs/CODECS.md).
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/codec/codec_registry.h"
 #include "../codec/speech_codec_ui.h"
@@ -35,16 +36,7 @@ bool live(const App& a) { return a.rx.standard == 46; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 const char* kindOf(const dect2::DpmrCall& c) { return c.kind == 1 ? "status" : c.kind == 2 ? "message" : c.kind == 3 ? "packet" : "voice"; }
@@ -80,7 +72,7 @@ void nowView(App& a) {
     if (n.channel) kvRow(a, "channel", "PMR446 %d (%.5f MHz)", n.channel, dect2::dpmr::pmr446Mhz(n.channel));
     if (n.emergency) { ImGui::TextDisabled("note"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "emergency call"); }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
-    kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
+    kvRow(a, "started", "%s%s", clock(n.wallTime).c_str(), dect2::timefmt::sfx());
     kvRow(a, "voice", "%s", n.voice ? "playing (AMBE+2 through mbelib)" : t.ambe ? "-" : "no mbelib: frames counted only");
     kvRow(a, "bit errors", "%.2f %% (corrected by the Hamming code)", n.berPct);
 }
@@ -100,7 +92,7 @@ void callsView(App& a) {
     }
     if (!ImGui::BeginTable("##dpmrlog", 8 + (wideActive(a) ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
+    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
     ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("CC"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn("Duration");
     ImGui::TableHeadersRow();
     auto row = [&](const dect2::DpmrCall& e, bool on) {

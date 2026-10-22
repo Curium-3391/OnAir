@@ -1,6 +1,7 @@
 // Bluetooth LE screens: the device table (address and its type, name, level with a short history, last seen, packets, vendor, beacon and
 // services) with name and level filters, the packet log, the advertising channel picker and the hop between 37, 38 and 39.
 // Receive only: what devices broadcast openly, as a scanner app shows it; nothing is ever sent, connected to or paired with.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/ble/ble_proto.h"
 #include "dect2/ble/ble_rx.h"
@@ -41,16 +42,7 @@ bool live(const App& a) { return a.rx.standard == 52; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -148,9 +140,9 @@ void devicesView(App& a) {
         if (ImGui::IsItemHovered()) {
             std::string pdus;
             for (int i = 0; i < 8; i++) if (d.pduMask >> i & 1) { if (!pdus.empty()) pdus += ", "; pdus += dect2::ble::pduTypeName(i); }
-            ImGui::SetTooltip("%s address\n%s%s%s\nchannels:%s%s%s\nfirst heard %s UTC%s%s", dect2::ble::addrKindName(d.kind), pdus.c_str(), d.connectable ? "\nconnectable" : "",
+            ImGui::SetTooltip("%s address\n%s%s%s\nchannels:%s%s%s\nfirst heard %s%s%s%s", dect2::ble::addrKindName(d.kind), pdus.c_str(), d.connectable ? "\nconnectable" : "",
                               d.scanned ? "\nscanned by another device" : "", d.chanMask & 1 ? " 37" : "", d.chanMask & 2 ? " 38" : "", d.chanMask & 4 ? " 39" : "",
-                              clock(d.firstWall).c_str(), d.mfrHex.empty() ? "" : "\nmanufacturer data ", d.mfrHex.c_str());
+                              clock(d.firstWall).c_str(), dect2::timefmt::sfx(), d.mfrHex.empty() ? "" : "\nmanufacturer data ", d.mfrHex.c_str());
         }
         ImGui::TableNextColumn(); ImGui::TextUnformatted(kindShort(d.kind));
         ImGui::TableNextColumn(); ImGui::TextUnformatted(d.name.empty() ? "" : d.name.c_str());
@@ -206,7 +198,7 @@ void packetsView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("PDU"); ImGui::TableSetupColumn("Address");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("PDU"); ImGui::TableSetupColumn("Address");
     ImGui::TableSetupColumn("Level"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;
