@@ -2,6 +2,7 @@
 #include "../app.h"
 #include "plot_util.h"
 #include "tune_drag.h"
+#include "spec_axis.h"
 #include "dect2/specan/specan_dsp.h"
 
 // Click on the spectrum or the waterfall to tune to that frequency (a drag still pans). The grid follows the mode: FM 0.1 MHz, DMR 12.5 kHz, else 1 kHz.
@@ -56,9 +57,41 @@ static float identifyButton(App& a, ImVec2 plotMin, ImVec2 plotSize, float right
     return w + m;
 }
 
+// The edges of the channel band can be dragged where the width is a free choice (#274): FM's channel filter (the general receiver has its
+// own handles, general_ui.cpp). True while the mouse is on an edge or holds one: the click then does not tune.
+static int gEdgeDrag = -1, gEdgePlot = -1;
+static bool bandEdgeDragging(int plotId) { return gEdgeDrag >= 0 && gEdgePlot == plotId; }
+static bool bandEdgeDrag(App& a, int plotId) {
+    if (!a.fmMode || a.touchUi || a.identifyTool) return false;
+    const ChanWidth cw = channelWidth(a);
+    if (cw.mhz <= 0 || !cw.settable) return false;
+    const plt::Rect lim = plt::GetPlotLimits();
+    const ImVec2 pp = plt::GetPlotPos(), ps = plt::GetPlotSize();
+    const double mx = ImGui::GetIO().MousePos.x, mhz = plt::GetPlotMousePos().x;
+    if (bandEdgeDragging(plotId)) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        if (ImGui::IsMouseDown(0)) {
+            const double w = specaxis::widthFromEdge(a.freqMhz, mhz, FmReceiver::kMinChannelWidthHz / 1e6, FmReceiver::kMaxChannelWidthHz / 1e6, 0.01);   // 10 kHz steps
+            a.fmChanKhz = (int)std::lround(w * 1e3);
+            ImGui::SetTooltip(tr("channel filter %d kHz"), a.fmChanKhz);
+        } else { gEdgeDrag = gEdgePlot = -1; savePrefs(a); }
+        return true;
+    }
+    if (!plt::IsPlotHovered() || gEdgeDrag >= 0 || (ImGui::IsMouseDown(0) && !ImGui::IsMouseClicked(0))) return false;
+    const double pLo = specaxis::mhzToPx(a.freqMhz - cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max), pHi = specaxis::mhzToPx(a.freqMhz + cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max);
+    if (pHi - pLo < 12 * gUi) return false;   // zoomed out so far that the edges touch: the click tunes
+    const int e = specaxis::edgeUnder(mx, pLo, pHi, 4 * gUi);
+    if (e < 0) return false;
+    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    if (ImGui::IsMouseClicked(0)) { gEdgeDrag = e; gEdgePlot = plotId; }
+    else ImGui::SetTooltip(tr("drag to change the channel filter (%s)"), widthText(cw.mhz).c_str());
+    return true;
+}
+
 static void clickToTune(App& a, int plotId) {
     if (autoLabelsHovered()) return;   // the mouse is on a name: it tunes (autolabel.cpp)
     if (a.family == 55) { generalPlotMouse(a, plotId); return; }   // the general receiver: its channel marker, without retuning the radio
+    if (bandEdgeDrag(a, plotId)) return;
     if (!plt::IsPlotHovered() || a.fmScan.running) return;
     if (a.identifyTool || ImGui::GetIO().KeyShift) return;   // the Identify tool and Shift+drag select a signal instead of tuning (identifyPlotInput)
     double mhz = plt::GetPlotMousePos().x;
@@ -343,6 +376,26 @@ static void wideMarkers(App& a) {
         plt::Spec s; s.LineColor = w.selected ? pal::accent(0.9f) : ImVec4(0.55f, 0.85f, 0.55f, w.active ? 0.6f : 0.3f); s.LineWeight = w.selected ? 1.5f : 1.f;
         char id[24]; snprintf(id, sizeof id, "##wc%d", k++);
         plt::PlotLine(id, xx, yy, 2, s);
+    }
+}
+
+// The user's frequency markers: a dashed-looking line on both plots, on the spectrum with its number and frequency at the top
+static const std::vector<double>& markers(const App& a) {
+    static std::string text = "\x01"; static std::vector<double> v;
+    if (text != a.specMarkers) { text = a.specMarkers; v = specaxis::parseMarkers(text); }
+    return v;
+}
+static void markerLayer(const App& a, bool labels) {
+    const std::vector<double>& m = markers(a);
+    if (m.empty()) return;
+    const plt::Rect lim = plt::GetPlotLimits();
+    plt::Spec ms; ms.LineColor = ImVec4(1.0f, 0.82f, 0.25f, labels ? 0.75f : 0.45f); ms.LineWeight = 1.f;
+    plt::PlotInfLines("##markers", m.data(), (int)m.size(), ms);
+    if (!labels) return;
+    for (size_t i = 0; i < m.size(); i++) {
+        if (m[i] < lim.X.Min || m[i] > lim.X.Max) continue;
+        char lb[48]; snprintf(lb, sizeof lb, "M%zu %s", i + 1, plt::formatFreqUnit(m[i]).c_str());
+        plt::PlotText(lb, m[i], lim.Y.Max, ImVec2(0, bandPlanStripHeight() * 0.5f + 16 * gUi + (float)(i % 2) * ImGui::GetTextLineHeight()));
     }
 }
 
@@ -658,45 +711,162 @@ void wfAutoButton(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)"));
 }
 
-// the colour maps as a list with a strip of each one's colours
+// The waterfall colours that live outside the Waterfall: the custom gradient (the setting wfCustom) and, with "each mode its own colours"
+// on, the map the mode used last (wfMapMode<family>). Called every frame before the waterfall is drawn.
+static void waterfallColourSync(App& a) {
+    static std::string applied = "\x01";
+    if (a.wfCustom != applied) {
+        applied = a.wfCustom;
+        if (!a.wfCustom.empty() && cmap::custom().parse(a.wfCustom)) Waterfall::customGen()++;
+    }
+    if (!a.wfPerMode) { a.wfMapFamily = -1; return; }
+    if (a.family == a.wfMapFamily) return;
+    a.wfMapFamily = a.family;
+    char k[32]; snprintf(k, sizeof k, "wfMapMode%d", a.family);
+    const int m = (int)plat::prefs().getD(k, -2);
+    if (m >= -1 && m < Waterfall::NumMaps && m != a.wf.map) { a.wf.map = m; a.wf.palette(); }
+}
+
+static void setWaterfallMap(App& a, int m) {
+    a.wf.map = m; a.wf.palette();
+    if (a.wfPerMode) { char k[32]; snprintf(k, sizeof k, "wfMapMode%d", a.family); plat::prefs().setI(k, m); a.wfMapFamily = a.family; }
+    savePrefs(a);
+}
+
+// a strip of a map's colours
+static void mapStrip(ImDrawList* dl, int m, float x0, float y0, float w, float y1) {
+    const int seg = 24;
+    for (int s = 0; s < seg; s++)
+        dl->AddRectFilledMultiColor(ImVec2(x0 + w * s / seg, y0), ImVec2(x0 + w * (s + 1) / seg, y1),
+                                    Waterfall::color(m, (float)s / seg), Waterfall::color(m, (float)(s + 1) / seg), Waterfall::color(m, (float)(s + 1) / seg), Waterfall::color(m, (float)s / seg));
+}
+
+// the colour maps in two columns, each with a strip of its colours; "CB" marks the ones that read the same with colour blindness
 static void colourMapList(App& a) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float h = ImGui::GetFrameHeight(), nameW = 96 * gUi, w = 96 * gUi;
     for (int i = 0; i < Waterfall::NumMaps; i++) {
         ImGui::PushID(i);
+        if (i % 2) ImGui::SameLine(0, 8 * gUi);
         const bool sel = a.wf.effMap() == i;
-        const float h = ImGui::GetFrameHeight(), w = 130 * gUi;
         const ImVec2 p = ImGui::GetCursorScreenPos();
-        if (ImGui::Selectable("##map", sel, 0, ImVec2(w + 80 * gUi, h))) { a.wf.map = i; a.wf.palette(); savePrefs(a); }
+        if (ImGui::Selectable("##map", sel, 0, ImVec2(nameW + w + 4 * gUi, h))) setWaterfallMap(a, i);
+        if (ImGui::IsItemHovered() && cmap::colourBlindSafe(i)) ImGui::SetTooltip("%s", tr("Reads the same with the common colour blindnesses"));
         dl->AddText(ImVec2(p.x + 4 * gUi, p.y + (h - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(ImGuiCol_Text), tr(Waterfall::mapName(i)));
-        const float x0 = p.x + 80 * gUi, y0 = p.y + 3 * gUi, y1 = p.y + h - 3 * gUi;
-        const int seg = 16;
-        for (int s = 0; s < seg; s++)
-            dl->AddRectFilledMultiColor(ImVec2(x0 + w * s / seg, y0), ImVec2(x0 + w * (s + 1) / seg, y1),
-                                        Waterfall::color(i, (float)s / seg), Waterfall::color(i, (float)(s + 1) / seg), Waterfall::color(i, (float)(s + 1) / seg), Waterfall::color(i, (float)s / seg));
+        mapStrip(dl, i, p.x + nameW, p.y + 3 * gUi, w, p.y + h - 3 * gUi);
+        if (cmap::colourBlindSafe(i)) {
+            const float fs = ImGui::GetFontSize() * 0.7f;
+            dl->AddText(ImGui::GetFont(), fs, ImVec2(p.x + nameW + w - fs * 1.6f, p.y + 1 * gUi), IM_COL32(255, 255, 255, 200), "CB");
+        }
         ImGui::PopID();
     }
+}
+
+// the custom gradient: presets to start from, then each stop's colour and place (a stop stays between its neighbours), add and remove
+static void customGradientEditor(App& a) {
+    cmap::Gradient& g = cmap::custom();
+    bool changed = false, done = false;
+    ImGui::TextDisabled("%s", tr("Start from"));
+    for (int i = 0; i < (int)(sizeof cmap::kGradientPresets / sizeof *cmap::kGradientPresets); i++) {
+        if (i % 3) ImGui::SameLine(0, 4 * gUi);
+        if (ImGui::SmallButton(tr(cmap::kGradientPresets[i].name))) { g.parse(cmap::kGradientPresets[i].stops); changed = done = true; }
+    }
+    {
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const float w = 200 * gUi, hh = 12 * gUi;
+        ImGui::Dummy(ImVec2(w, hh));
+        mapStrip(ImGui::GetWindowDrawList(), cmap::Custom, p.x, p.y, w, p.y + hh);
+    }
+    int remove = -1;
+    for (int i = 0; i < g.n; i++) {
+        ImGui::PushID(i);
+        float c[3] = {g.rgb[i][0] / 255.f, g.rgb[i][1] / 255.f, g.rgb[i][2] / 255.f};
+        if (ImGui::ColorEdit3("##c", c, ImGuiColorEditFlags_NoInputs)) { for (int k = 0; k < 3; k++) g.rgb[i][k] = std::round(c[k] * 255.f); changed = true; }
+        if (ImGui::IsItemDeactivatedAfterEdit()) done = true;
+        ImGui::SameLine(0, 6 * gUi);
+        ImGui::SetNextItemWidth(120 * gUi);
+        const float lo = i > 0 ? g.pos[i - 1] : 0.f, hi = i + 1 < g.n ? g.pos[i + 1] : 1.f;
+        if (ImGui::SliderFloat("##p", &g.pos[i], 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) { g.pos[i] = std::min(hi, std::max(lo, g.pos[i])); changed = true; }
+        if (ImGui::IsItemDeactivatedAfterEdit()) done = true;
+        if (g.n > 2) { ImGui::SameLine(0, 4 * gUi); if (ImGui::SmallButton("x")) remove = i; }
+        ImGui::PopID();
+    }
+    if (remove >= 0) {
+        for (int i = remove; i + 1 < g.n; i++) { g.pos[i] = g.pos[i + 1]; for (int k = 0; k < 3; k++) g.rgb[i][k] = g.rgb[i + 1][k]; }
+        g.n--; changed = done = true;
+    }
+    if (g.n < cmap::Gradient::Max && g.n >= 2 && ImGui::SmallButton(tr("Add a stop"))) {   // in the middle of the widest gap, in the colour there
+        int gi = 0;
+        for (int i = 1; i + 1 < g.n; i++) if (g.pos[i + 1] - g.pos[i] > g.pos[gi + 1] - g.pos[gi]) gi = i;
+        const float at = (g.pos[gi] + g.pos[gi + 1]) * 0.5f;
+        const uint32_t col = g.at(at);
+        for (int i = g.n; i > gi + 1; i--) { g.pos[i] = g.pos[i - 1]; for (int k = 0; k < 3; k++) g.rgb[i][k] = g.rgb[i - 1][k]; }
+        g.pos[gi + 1] = at; g.rgb[gi + 1][0] = (float)(col & 255); g.rgb[gi + 1][1] = (float)((col >> 8) & 255); g.rgb[gi + 1][2] = (float)((col >> 16) & 255);
+        g.n++; changed = done = true;
+    }
+    if (changed) {
+        a.wfCustom = g.text(); Waterfall::customGen()++;
+        if (a.wf.map != Waterfall::Custom) a.wf.map = Waterfall::Custom;
+        a.wf.palette();
+    }
+    if (done) setWaterfallMap(a, Waterfall::Custom);
+}
+
+// a slider with a double click back to its default
+static bool levelSlider(const char* id, float* v, float lo, float hi, const char* fmt, float def, const char* tip, int flags = 0) {
+    ImGui::SetNextItemWidth(150 * gUi);
+    bool ch = ImGui::SliderFloat(id, v, lo, hi, fmt, flags | ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tip);
+        if (ImGui::IsMouseDoubleClicked(0)) { *v = def; ch = true; }
+    }
+    return ch;
 }
 
 void wfDisplayPopup(App& a) {
     if (ImGui::Button(tr("Reset spectrum"))) resetSpectrum(a);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
     ImGui::Separator();
-    ImGui::TextDisabled("%s", tr("Colour map"));
-    colourMapList(a);
-    ImGui::Separator();
-    ImGui::TextDisabled("%s", tr("Contrast"));
-    ImGui::SetNextItemWidth(170 * gUi);
-    if (ImGui::SliderFloat("##wfgam", &a.wf.gamma, 0.4f, 2.5f, "%.2f")) a.wf.palette();
-    if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)"));
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) { a.wf.gamma = 1.f; a.wf.palette(); savePrefs(a); }
-    ImGui::Separator();
+    // the levels first: they are what is changed most
     ImGui::TextDisabled("%s", tr("Intensity (dB)"));
     ImGui::SetNextItemWidth(170 * gUi);
     if (ImGui::DragFloatRange2("##wfdbp", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
     if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
     ImGui::SameLine(0, 6 * gUi);
     wfAutoButton(a);
+    bool lv = false;
+    lv |= levelSlider(tr("Brightness"), &a.wf.brightness, -0.5f, 0.5f, "%+.2f", 0.f, tr("Moves every level up or down the colour scale (double click: 0)"));
+    if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
+    lv |= levelSlider(tr("Contrast"), &a.wf.contrast, 0.25f, 4.f, "%.2fx", 1.f, tr("Spreads the levels apart (above 1) or together (below 1) around the middle (double click: 1)"), ImGuiSliderFlags_Logarithmic);
+    if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
+    lv |= levelSlider(tr("Gamma"), &a.wf.gamma, 0.4f, 2.5f, "%.2f", 1.f, tr("Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)"));
+    if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
+    if (lv) a.wf.palette();
+    if (a.wf.brightness != 0.f || a.wf.contrast != 1.f || a.wf.gamma != 1.f) {
+        if (ImGui::SmallButton(tr("Reset levels"))) { a.wf.brightness = 0; a.wf.contrast = 1; a.wf.gamma = 1; a.wf.palette(); savePrefs(a); }
+    }
+    ImGui::Separator();
+    ImGui::TextDisabled("%s", tr("Colour map"));
+    colourMapList(a);
+    if (ImGui::Checkbox(tr("Each mode keeps its own colours"), &a.wfPerMode)) {
+        if (a.wfPerMode) setWaterfallMap(a, a.wf.map); else savePrefs(a);
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The colour map chosen in a mode comes back the next time that mode is chosen"));
+    if (ImGui::TreeNode(tr("Custom gradient"))) { customGradientEditor(a); ImGui::TreePop(); }
+    ImGui::Separator();
+    ImGui::TextDisabled("%s", tr("Detail (columns across the band)"));
+    {
+        static const int det[] = {0, 16384, 32768, Waterfall::kMaxCols};
+        for (int i = 0; i < 4; i++) {
+            if (i) ImGui::SameLine(0, 4 * gUi);
+            char lb[24]; if (det[i] == 0) snprintf(lb, sizeof lb, "%s", tr("Standard")); else snprintf(lb, sizeof lb, "%dk", det[i] / 1024);
+            if (ImGui::RadioButton(lb, a.wf.detail == det[i])) { a.wf.detail = det[i]; savePrefs(a); }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Finer columns keep narrow signals sharp when zoomed in (NFM, SSB, DMR, TETRA). Up to 64k columns (32 MB); never more than the FFT has bins."));
+        const int want = specaxis::historyCols(a.wf.detail, (size_t)Waterfall::kMaxCols, Waterfall::kMaxCols);
+        if (a.wf.detail > 0 && a.wf.cols < want)
+            ImGui::TextDisabled(tr("Now %d columns: the FFT has %zu bins. A bigger FFT size (Spectrum menu) gives more."), a.wf.cols, a.spec.dbfs.size());
+    }
     ImGui::Separator();
     ImGui::TextDisabled("%s", tr("Speed (rows a second)"));
     static const float rates[] = {0, 0.1f, 0.2f, 0.5f, 1, 2, 5, 10, 15};
@@ -725,6 +895,11 @@ void specDisplayPopup(App& a) {
     ImGui::SliderFloat(tr("Average"), &a.specAvgSec, 0.f, 2.f, a.specAvgSec <= 0.001f ? tr("off") : "%.2f s", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Time constant of the averaged line: longer is calmer"));
+    if (a.specAvgSec > 0.001f) {
+        ImGui::SameLine(0, 8 * gUi);
+        if (ImGui::Checkbox(tr("Live line too"), &a.showLive)) save = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The unaveraged spectrum, faint, under the averaged line"));
+    }
     if (ImGui::Checkbox(tr("Max hold"), &a.peakHold)) save = true;
     if (a.peakHold) {
         ImGui::SameLine(0, 8 * gUi);
@@ -733,7 +908,20 @@ void specDisplayPopup(App& a) {
         if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How fast the max-hold line falls; 0: it stays until reset"));
         ImGui::SameLine(0, 8 * gUi);
-        if (ImGui::SmallButton(tr("Reset"))) a.peak = a.smooth;
+        if (ImGui::SmallButton(tr("Reset"))) { a.peak = a.smooth; a.minPk.clear(); }
+    }
+    if (ImGui::Checkbox(tr("Min hold"), &a.minHold)) { a.minPk.clear(); save = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The lowest level of each bin: the noise floor under the signals (it rises back at the max-hold fall rate)"));
+    if (a.peakHold || a.minHold) {
+        ImGui::SameLine(0, 8 * gUi);
+        ImGui::SetNextItemWidth(130 * gUi);
+        const char* cur = a.holdColor < 0 ? tr("Grey") : tr(cmap::kTracePresets[a.holdColor].name);
+        if (ImGui::BeginCombo("##holdcol", cur)) {
+            if (ImGui::Selectable(tr("Grey"), a.holdColor < 0)) { a.holdColor = -1; save = true; }
+            for (int i = 1; i < cmap::kNumTracePresets; i++) if (ImGui::Selectable(tr(cmap::kTracePresets[i].name), a.holdColor == i)) { a.holdColor = i; save = true; }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Colour of the hold lines"));
     }
     if (ImGui::Checkbox(tr("Peak markers"), &a.specPeaks)) save = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Frequency and level of the strongest peaks in view"));
@@ -741,8 +929,23 @@ void specDisplayPopup(App& a) {
     if (ImGui::Checkbox(tr("Fill under the line"), &a.specFill)) save = true;
     ImGui::SetNextItemWidth(110 * gUi);
     if (ImGui::SliderFloat(tr("Line thickness"), &a.specLine, 0.6f, 3.f, "%.1f", ImGuiSliderFlags_AlwaysClamp)) save = true;
+    {   // the trace colour: presets that read on the dark and the light theme alike
+        const bool light = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg).x > 0.6f;
+        ImGui::SetNextItemWidth(150 * gUi);
+        if (ImGui::BeginCombo(tr("Trace colour"), tr(cmap::kTracePresets[std::max(0, std::min(cmap::kNumTracePresets - 1, a.traceColor))].name))) {
+            for (int i = 0; i < cmap::kNumTracePresets; i++) {
+                const float* c = cmap::traceRgb(i, light);
+                ImGui::ColorButton("##tc", ImVec4(c[0], c[1], c[2], 1), ImGuiColorEditFlags_NoTooltip, ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()));
+                ImGui::SameLine(0, 6 * gUi);
+                ImGui::PushID(i);
+                if (ImGui::Selectable(tr(cmap::kTracePresets[i].name), a.traceColor == i)) { a.traceColor = i; save = true; }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+    }
     {
-        static const int kFft[] = {0, 4096, 8192, 16384, 32768, 65536};
+        static const int kFft[] = {0, 4096, 8192, 16384, 32768, 65536, 131072, 262144};   // 262144: the cap (SpectrumAnalyzer::kMaxFft)
         char cur[24]; if (a.specFft == 0) snprintf(cur, sizeof cur, "%s (%zu)", tr("Auto"), a.spec.dbfs.size()); else snprintf(cur, sizeof cur, "%d", a.specFft);
         ImGui::SetNextItemWidth(110 * gUi);
         if (ImGui::BeginCombo(tr("FFT size"), cur)) {
@@ -752,9 +955,28 @@ void specDisplayPopup(App& a) {
             }
             ImGui::EndCombo();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Bins in the spectrum: more is finer but costs more CPU. Auto follows the sample rate."));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Bins in the spectrum: more is finer but costs more CPU. Auto follows the sample rate. 128k and 256k are for zooming into narrow signals; they update slower and cost the most."));
     }
     if (ImGui::Checkbox(tr("Grid"), &a.specGrid)) save = true;
+    ImGui::Separator();
+    ImGui::TextDisabled("%s", tr("Noise blanker"));
+    {
+        bool nb = false;
+        if (ImGui::Checkbox(tr("Blank impulse noise"), &a.nbOn)) nb = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Removes short strong clicks (ignition, power lines, switching supplies) from the samples before the spectrum and the decoder. Off by default: it can hurt strong wideband signals."));
+        if (a.nbOn) {
+            if (a.engine.running()) { ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled(tr("%.2f%% blanked"), a.engine.nbBlankedPct()); }
+            ImGui::SetNextItemWidth(130 * gUi);
+            ImGui::SliderFloat(tr("Threshold"), &a.nbThr, 2.f, 40.f, "%.1fx", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemDeactivatedAfterEdit()) nb = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A sample this many times the mean level starts a blank: lower catches weaker clicks but may cut signal peaks"));
+            ImGui::SetNextItemWidth(130 * gUi);
+            ImGui::SliderFloat(tr("Width"), &a.nbWidthUs, 2.f, 2000.f, "%.0f us", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemDeactivatedAfterEdit()) nb = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How long each blank lasts after a click: as short as removes the click"));
+        }
+        if (nb) save = true;
+    }
     ImGui::Separator();
     ImGui::TextDisabled("%s", tr("Spectrum click (drag pans; dragging past the band retunes the radio)"));
     if (ImGui::RadioButton(tr("Retune radio"), a.tuningMode == 0)) { a.tuningMode = 0; save = true; }
@@ -879,7 +1101,7 @@ static void dragRetune(App& a) {
     a.freqMhz = r.tuned;
     a.engine.retune(a.tune);
     a.engine.setDecodeShiftHz((r.tuned - r.centre) * 1e6);
-    a.peak.clear();
+    a.peak.clear(); a.minPk.clear();
     dragSaved = false;
 }
 
@@ -891,7 +1113,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
     bool drawn = false, openCtx = false;
     double visLo = 0, visHi = 0;
     static double ctxMhz = 0;
-    if (plt::BeginPlot("##spec", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | plt::Flags_SmoothZoom | extraFlags | (a.family == 55 && generalDragging(0) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
+    if (plt::BeginPlot("##spec", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | plt::Flags_SmoothZoom | extraFlags | ((a.family == 55 && generalDragging(0)) || bandEdgeDragging(0) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
         drawn = true;
         plt::SetupAxes(nullptr, kYLabel, (a.specGrid ? 0 : plt::AxisFlags_NoGridLines), plt::AxisFlags_Inside | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines));   // the frequencies along the bottom edge, inside, as in SDR++
         setupFreqAxis(a);
@@ -926,12 +1148,25 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
             const double fsMhz = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6, rc = radioCenterMhz(a);
             const double x0 = rc - fsMhz / 2, dx = fsMhz / (double)nb;   // bin i sits at x0 + i * dx (the same positions xs() lists)
             const bool lightBg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg).x > 0.6f;
-            const ImVec4 trc = lightBg ? ImVec4(0.18f, 0.19f, 0.21f, 1.f) : ImVec4(0.93f, 0.94f, 0.95f, 1.f);   // soft white trace; dark grey on a light background
+            const float* tc = cmap::traceRgb(a.traceColor, lightBg);   // the preset: soft white (dark grey on a light background) unless chosen
+            const ImVec4 trc(tc[0], tc[1], tc[2], 1.f);
             static std::vector<double> ex, ey;   // kept between frames: no allocation per frame
+            ImVec4 holdC = lightBg ? ImVec4(0.45f, 0.46f, 0.48f, 0.8f) : ImVec4(0.55f, 0.56f, 0.58f, 0.8f);   // grey hold lines
+            if (a.holdColor >= 0) { const float* hc = cmap::traceRgb(a.holdColor, lightBg); holdC = ImVec4(hc[0], hc[1], hc[2], 0.75f); }
             if (a.peakHold && a.peak.size() == nb) {
-                plt::Spec ps; ps.LineColor = lightBg ? ImVec4(0.45f, 0.46f, 0.48f, 0.8f) : ImVec4(0.55f, 0.56f, 0.58f, 0.8f); ps.LineWeight = 1.0f;   // grey peak hold
+                plt::Spec ps; ps.LineColor = holdC; ps.LineWeight = 1.0f;
                 plt::envelope(a.peak, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey);
                 plt::PlotLine("peak", ex.data(), ey.data(), (int)ex.size(), ps);
+            }
+            if (a.minHold && a.minPk.size() == nb) {
+                plt::Spec ps; ps.LineColor = ImVec4(holdC.x, holdC.y, holdC.z, holdC.w * 0.7f); ps.LineWeight = 1.0f;
+                plt::envelope(a.minPk, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey);
+                plt::PlotLine("minhold", ex.data(), ey.data(), (int)ex.size(), ps);
+            }
+            if (a.showLive && a.specAvgSec > 0.001f && a.spec.dbfs.size() == nb) {   // the live frame, faint, under the average
+                plt::Spec ls; ls.LineColor = ImVec4(trc.x, trc.y, trc.z, 0.28f); ls.LineWeight = 1.0f;
+                plt::envelope(a.spec.dbfs, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey);
+                plt::PlotLine("live", ex.data(), ey.data(), (int)ex.size(), ls);
             }
             plt::envelope(a.smooth, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey);
             if (a.specFill && !ex.empty()) {
@@ -984,6 +1219,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
         }
         wideMarkers(a);
         multiMarkers(a);
+        markerLayer(a, true);
         autoLabelsDraw(a, 0, plotMin, plotSize, plt::GetPlotLimits().X.Min, plt::GetPlotLimits().X.Max);
         clickToTune(a, 0);
         identifyPlotInput(a, 0);
@@ -1010,6 +1246,15 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
         if (ImGui::MenuItem(trw("Identify this signal"), nullptr, false, a.engine.running())) identifyAt(a, ctxMhz);
         if (!a.engine.running() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Start the receiver first"));
         if (ImGui::MenuItem(trw("Identify all signals"), nullptr, false, a.engine.running())) identifyAll(a);
+        ImGui::Separator();
+        {   // the marker layer
+            std::vector<double> m = markers(a);
+            const double perPx = (gXHi - gXLo) / std::max(1.0, (double)ImGui::GetMainViewport()->Size.x);
+            const int near = specaxis::markerNear(m, ctxMhz, perPx * 8 * gUi);
+            if (ImGui::MenuItem(tr("Add a marker here"), nullptr, false, (int)m.size() < specaxis::kMaxMarkers)) { m.push_back(ctxMhz); a.specMarkers = specaxis::markersText(m); savePrefs(a); }
+            if (near >= 0 && ImGui::MenuItem(tr("Remove this marker"))) { m.erase(m.begin() + near); a.specMarkers = specaxis::markersText(m); savePrefs(a); }
+            if (!m.empty() && ImGui::MenuItem(tr("Clear all markers"))) { a.specMarkers.clear(); savePrefs(a); }
+        }
         ImGui::EndPopup();
     }
 }
@@ -1042,6 +1287,7 @@ static void wfScaleBar(const App& a, ImVec2 plotMin, ImVec2 plotSize) {
 
 static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
     const int H = Waterfall::H;
+    waterfallColourSync(a);
     // The time scale is worked out once and kept until the plot changes size (or the first real measure of the row time is in),
     // so the labels never move while the picture scrolls under them.
     struct Scale { ImVec2 avail{-1, -1}; bool measured = false; double dt = 0; std::vector<double> pos; std::vector<std::string> lab; std::vector<const char*> cstr; };
@@ -1064,12 +1310,13 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
     }
     ImVec2 plotMin, plotSize;
     bool drawn = false;
-    if (plt::BeginPlot("##wf", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | plt::Flags_SmoothZoom | extraFlags | (a.family == 55 && generalDragging(1) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
+    if (plt::BeginPlot("##wf", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | plt::Flags_SmoothZoom | extraFlags | ((a.family == 55 && generalDragging(1)) || bandEdgeDragging(1) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
         drawn = true;
         plt::SetupAxes(nullptr, tr("seconds ago"), plt::AxisFlags_NoTickLabels | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines), plt::AxisFlags_Inside | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines));   // the spectrum above shows the frequencies
         double fs = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
         const double rc = radioCenterMhz(a);
-        double x0 = rc - fs / 2, x1 = rc + fs / 2;
+        // the picture starts half a bin left of the band edge, so each bin's colour sits under the trace point of that bin (#270)
+        const double x0 = specaxis::imageLo(rc, fs, a.smooth.empty() ? (size_t)a.wf.cols : a.smooth.size()), x1 = x0 + fs;
         setupFreqAxis(a);
         // y is in rows, so the picture keeps its size while the measured row time wanders; the labels are the fixed scale above.
         // Paused, the view is free to scroll and zoom back through the rows (but not past the oldest or the newest), with ordinary tick labels.
@@ -1085,22 +1332,23 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
         const ImVec2 psz = plt::GetPlotSize();   // first: it finishes the setup, after which the limits are this frame's
         const plt::Rect vis = plt::GetPlotLimits();
         const ImVec2 fbs = ImGui::GetIO().DisplayFramebufferScale;
-        const int W = Waterfall::W;
-        const int c0 = (int)std::floor((vis.X.Min - x0) / (x1 - x0) * W), c1 = (int)std::ceil((vis.X.Max - x0) / (x1 - x0) * W);
+        const int W = a.wf.cols, texW = Waterfall::W;   // the history (8192 or finer) and the view texture (at most a pixel a column)
+        int c0 = 0, c1 = W;
+        specaxis::visibleCols(vis.X.Min, vis.X.Max, x0, fs, W, c0, c1);
         const int k = plt::WfView::groupRows(vis.Y.Max - vis.Y.Min, psz.y * std::max(1.f, fbs.y), H);
-        if (!a.wf.viewImg && gGfx) a.wf.viewImg = gGfx->createImage(W, H, 0xFF000000u);
+        if (!a.wf.viewImg && gGfx) a.wf.viewImg = gGfx->createImage(texW, H, 0xFF000000u);
         bool full = false;
         static std::vector<int> dirty;
         plt::WfView& v = a.wf.view;
         if (a.wf.viewImg && a.wf.view.update(a.wf.lv.data(), W, H, a.wf.writeRow, a.wf.rows - 1, a.wf.filled, a.wf.lut, a.wf.lutGen,
-                                              c0, c1, std::max(1, (int)(psz.x * std::max(1.f, fbs.x))), k, full, dirty)) {
+                                              c0, c1, std::max(1, std::min(texW - 1, (int)(psz.x * std::max(1.f, fbs.x)))), k, full, dirty)) {
             if (full) a.wf.viewImg->update(0, 0, v.stride, v.rowsAlloc, v.px.data());
             else for (int r : dirty) a.wf.viewImg->update(0, r, v.stride, 1, v.px.data() + (size_t)r * v.stride);
         }
         if (a.wf.viewImg && v.cols > 0 && a.wf.rows > 0) {
             ImTextureID tex = a.wf.viewImg->texture();
             const double vx0 = x0 + (x1 - x0) * v.c0 / W, vx1 = x0 + (x1 - x0) * v.c1 / W;
-            const float u1 = (float)v.cols / W;
+            const float u1 = (float)v.cols / texW;
             const long long R = a.wf.rows - 1, gN = R / v.k;
             const int w = v.rowOf(gN);
             // row r takes y from -(R - r) - 1 - frac to -(R - r) - frac: the newest group's top is that of its last row (still to come
@@ -1112,6 +1360,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
             if (top < 0) plt::PlotImage("top", tex, plt::Point(vx0, top), plt::Point(vx1, 0), ImVec2(0, vNew), ImVec2(u1, vNew));
         }
         channelBand(a, false);
+        markerLayer(a, false);
         plotMin = plt::GetPlotPos(); plotSize = plt::GetPlotSize();
         wfScaleBar(a, plotMin, plotSize);
         autoLabelsDraw(a, 1, plotMin, plotSize, plt::GetPlotLimits().X.Min, plt::GetPlotLimits().X.Max);
@@ -1154,10 +1403,23 @@ void spectrumWaterfall(App& a, float& frac, bool drag) {
             savePrefs(a);
         }
     }
-    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + stripH));
-    spectrumPlot(a, ImVec2(w, std::max(40.f, hs - stripH)), plt::Flags_Flush | plt::Flags_OpenBottom);
-    ImGui::SetCursorScreenPos(ImVec2(p.x, y));
-    waterfallPlot(a, ImVec2(w, std::max(60.f, h - hs)), plt::Flags_Flush | plt::Flags_OpenTop);
+    // The plot under the mouse goes first: its pan or zoom is on the shared axis before the other one draws, so both show the same range in
+    // the same frame (#270: the spectrum ran a frame behind a waterfall drag or wheel). The order is kept while a button is held.
+    static bool wfFirst = false;
+    if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1)) {
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        wfFirst = mp.y >= y && mp.y < p.y + h && mp.x >= p.x && mp.x < p.x + w;
+    }
+    auto specPart = [&] {
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + stripH));
+        spectrumPlot(a, ImVec2(w, std::max(40.f, hs - stripH)), plt::Flags_Flush | plt::Flags_OpenBottom);
+    };
+    auto wfPart = [&] {
+        ImGui::SetCursorScreenPos(ImVec2(p.x, y));
+        waterfallPlot(a, ImVec2(w, std::max(60.f, h - hs)), plt::Flags_Flush | plt::Flags_OpenTop);
+        dragRetune(a);   // a drag on the waterfall that runs past the band retunes too (its overflow is gone once the next plot begins)
+    };
+    if (wfFirst) { wfPart(); specPart(); } else { specPart(); wfPart(); }
     ImGui::GetWindowDrawList()->AddLine(ImVec2(p.x, y), ImVec2(p.x + w, y), hot ? IM_COL32(200, 200, 200, 160) : IM_COL32(110, 110, 110, 110), hot ? 2.f : 1.f);
     if (sliderCol > 0) dbRangeSliders(a, ImVec2(p.x + w, p.y + stripH), sliderCol, std::max(40.f, h - stripH));
     // DECT2_FPS=1: what the spectrum and the waterfall cost on the CPU per frame (building their draw lists), every 2 seconds on stderr

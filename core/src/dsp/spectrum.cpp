@@ -146,7 +146,7 @@ size_t SpectrumAnalyzer::autoSize(double fs) {
 }
 
 void SpectrumAnalyzer::resize(size_t fftSize) {
-    fftSize = std::min<size_t>(65536, std::max<size_t>(1024, fftSize));
+    fftSize = std::min<size_t>(SpectrumAnalyzer::kMaxFft, std::max<size_t>(1024, fftSize));
     size_t pw = 1024; while (pw < fftSize) pw *= 2;
     Impl& s = *p_;
     std::lock_guard<std::mutex> lk(s.mu);

@@ -2,6 +2,7 @@
 #include "plot.h"
 #include "plot_util.h"
 #include "plot_batch.h"
+#include "spec_axis.h"
 #include "../ui/touch.h"
 #include "imgui_internal.h"
 #include <algorithm>
@@ -203,7 +204,7 @@ void finishSetup() {
         left += w + tickLen * 0.5f + pad;
     }
     if (yLab && C.frame.GetWidth() - left - right - (xLab ? 12 * sc : 0) < 4.f * th) { left = edge; C.noYTicks = true; }   // a narrow plot keeps its room for the trace
-    if (xLab) right += 12 * sc;   // the last x label sticks out to the right
+    right += specaxis::rightOverhang(xLab, (C.flags & Flags_Flush) != 0, sc);   // the last x label sticks out to the right (not on the flush spectrum over the waterfall: #270)
     C.plot = ImRect(ImVec2(C.frame.Min.x + left, C.frame.Min.y + top), ImVec2(C.frame.Max.x - right, C.frame.Max.y - bottom));
     if (C.plot.GetWidth() < 20) C.plot.Max.x = C.plot.Min.x + 20;
     if (C.plot.GetHeight() < 20) C.plot.Max.y = C.plot.Min.y + 20;
