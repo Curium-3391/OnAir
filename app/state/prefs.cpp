@@ -90,6 +90,8 @@ const std::vector<PrefKey>& keyTable() {
         early(flagB("amp", AT(a.tune.ampOn), false)),
         shared(scaled("uiTextScale", AT(a.uiTextScale), 100, 100, 0.8, 2, true)),
         shared(flagI("touchUi", AT(a.touchUi), false)), shared(scaled("touchScale", AT(a.touchScale), 100, 135, 1.0, 2, true)),
+        num("tetraSlotMode", AT(a.tetraSlotMode), 0, 0, 3, true), num("tetraSlotNum", AT(a.tetraSlotNum), 1, 1, 4, true),
+        num("tetraSlotId", AT(a.tetraSlotId), 0, 0, 16777215, true),
         num("wfMap", AT(a.wf.map), -1, -1, (int)Waterfall::NumMaps - 1, true),
         flagB("wfAuto", AT(a.wf.autoTrack), false),
         real("wfGamma", AT(a.wf.gamma), 0.4, 2.5),

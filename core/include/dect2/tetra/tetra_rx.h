@@ -14,6 +14,7 @@
 // Written to the engine's contract: configure() once the sample rate is known, feed() from the analysis thread (never blocks),
 // telemetry() and the setters from the interface thread.
 #pragma once
+#include "dect2/tetra/tetra_slots.h"
 #include "dect2/tetra/tetra_voice.h"
 #include "dect2/engine/mode_tuning.h"
 #include "dect2/common/ring.h"
@@ -25,6 +26,7 @@
 #include <string>
 
 namespace dect2 {
+using tetra::SlotSelect;
 using tetra::SpeechFrameSink;   // tetra_voice.h declares it in dect2::tetra
 
 struct TetraTelemetry;   // tetra_tel.h
@@ -51,6 +53,9 @@ public:
     void setLogCallback(std::function<void(const std::string&)> cb);
     // Where unencrypted traffic bursts go (tetra_voice_codec.h). The sink must outlive the receiver; null: voice frames are dropped.
     void setVoiceSink(SpeechFrameSink* s);
+    // Which traffic slot is listened to (tetra_slots.h): Auto (the first clear voice), a slot 1..4, or the slot carrying a talkgroup / ISSI.
+    // Encrypted and unknown-state slots stay undecoded whatever is chosen.
+    void setVoiceSlot(const SlotSelect& s);
     bool busy() const;                 // a block is captured or being searched (tools: feed a file only as fast as it is searched)
 
 private:
@@ -82,6 +87,7 @@ struct CarrierDecode {
     int voiceGaps = 0;                           // frames of the followed timeslot given to the sink as silence (no clear burst, or lost between captures)
     std::vector<MacBlock> macs;
     int tsUsage[4] = {-1, -1, -1, -1};
+    SlotState slot[4] = {SlotState::Idle, SlotState::Idle, SlotState::Idle, SlotState::Idle};   // what each timeslot held in this capture (tetra_slots.h)
 };
 // knownMcc etc.: the identity of a cell already heard on this carrier, used when this capture has no synchronisation burst (-1: none)
 // calls: the per-call encryption state of this carrier, kept across captures by the caller (null: no call state, so no traffic burst is ever decoded);

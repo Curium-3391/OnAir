@@ -4,6 +4,7 @@
 // identity, no call, no short data content and no voice is decoded or kept; encrypted signalling is only counted.
 // The first members of TetraTelemetry are copied into RxTelemetry (history plot, top bar): keep them and their meaning.
 #pragma once
+#include "dect2/tetra/tetra_slots.h"
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -51,6 +52,7 @@ struct TetraCell {
     std::vector<TetraNeighbourInfo> neighbours;
     // ACCESS-ASSIGN: downlink use of timeslots 1 - 4 (-1 not seen; see tetra::dlUsageText)
     int tsUsage[4] = {-1, -1, -1, -1};
+    tetra::SlotInfo slots[4];          // per timeslot: idle / control / voice / encrypted, talkgroup and ISSI when known, last heard (tetra_slots.h)
     uint64_t clearPdus = 0;            // clear MLE messages seen (counted only)
     // measurements (dBFS: relative to the radio's full scale, not calibrated)
     float levelDb = -200, snrDb = -99;

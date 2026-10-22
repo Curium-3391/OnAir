@@ -335,8 +335,13 @@ CarrierDecode decodeCarrier(const cf32* x, size_t n, int kMcc, int kMnc, int kCc
             const VoiceVerdict v = voiceVerdict(ce);
             out.voiceStatus = voiceVerdictText(v);
             if (v == VoiceVerdict::Passed) out.voicePassed++; else out.voiceNotDecoded++;
+            if (traffic[k].tn >= 1 && traffic[k].tn <= 4) {
+                SlotState& st = out.slot[traffic[k].tn - 1];
+                if (v == VoiceVerdict::Passed) st = SlotState::Voice; else if (st != SlotState::Voice) st = SlotState::Encrypted;   // not decoded: encrypted or unknown, shown muted
+            }
         }
     }
+    for (int i = 0; i < 4; i++) if (out.slot[i] == SlotState::Idle && (out.tsUsage[i] == 1 || out.tsUsage[i] == 2)) out.slot[i] = SlotState::Control;
     if (!sink) return out;
     if (voiceTn == 0) {   // every clear burst, in the order of the air, nothing else
         for (size_t k = 0; k < traffic.size(); k++)
@@ -385,6 +390,13 @@ struct TetraReceiver::Impl {
     std::atomic<bool> idle{true};
     std::atomic<bool> clearReq{false};
     std::atomic<SpeechFrameSink*> voiceSink{nullptr};
+    std::atomic<uint32_t> slotSel{0};   // SlotSelect: mode | slot << 8; the id is kept apart
+    std::atomic<uint32_t> slotId{0};
+    tetra::SlotSelect slotSelect() const {
+        const uint32_t v = slotSel.load();
+        tetra::SlotSelect s; s.mode = (tetra::SlotMode)(v & 0xff); s.slot = (int)((v >> 8) & 0xff); s.id = slotId.load();
+        return s;
+    }
     // per-call encryption state of each carrier (analysis thread only), keyed by the carrier's 25 kHz channel
     std::map<long, tetra::CallTracker> callTrackers;
     tetra::VoiceStreamPicker voicePick;   // the one carrier and timeslot whose voice is played
@@ -491,16 +503,25 @@ struct TetraReceiver::Impl {
         for (const auto& c : car) {
             if (gen.load() != g) return;   // retuned meanwhile: these samples belong to another frequency
             int kMcc = -1, kMnc = -1, kCc = -1;
+            tetra::SlotInfo known[4];   // what this carrier's cell showed so far, for following a talkgroup / ISSI
             {
                 std::lock_guard<std::mutex> lk(mu);
                 const double f = (center > 0 ? center : 0.0) + c.off;
-                for (const auto& t : tel.cells) if (std::fabs(t.freqHz - f) < 5e3 && t.mcc >= 0) { kMcc = t.mcc; kMnc = t.mnc; kCc = t.colourCode; break; }
+                for (const auto& t : tel.cells) if (std::fabs(t.freqHz - f) < 5e3 && t.mcc >= 0) {
+                    kMcc = t.mcc; kMnc = t.mnc; kCc = t.colourCode;
+                    for (int i = 0; i < 4; i++) known[i] = t.slots[i];
+                    break;
+                }
             }
             const std::vector<cf32> s = tetra::channelize(x.data(), x.size(), fs, c.off);
             if (callTrackers.size() > 64) callTrackers.clear();
             const long key = callKey(center, c.off);
             int voiceTn = 0;
-            const bool voice = voicePick.offer(key, sec, voiceTn);
+            bool voice = voicePick.offer(key, sec, voiceTn);
+            if (voice) {   // the listener's choice of timeslot (tetra_slots.h); the encryption gate in decodeCarrier still decides what is decoded
+                const int want = tetra::pickSlot(slotSelect(), known, (double)wallNow());
+                if (want == tetra::kFollowNothing) voice = false; else if (want > 0) voiceTn = want;
+            }
             if (voice && voiceTimeline.key != key) { voiceTimeline = tetra::VoiceTimeline{}; voiceTimeline.key = key; }   // another carrier: a new stream
             tetra::CarrierDecode d = tetra::decodeCarrier(s.data(), s.size(), kMcc, kMnc, kCc, voice ? voiceSink.load() : nullptr, &callTrackers[key], (double)wallNow(), voiceTn,
                                                           voice ? &voiceTimeline : nullptr);
@@ -565,6 +586,7 @@ struct TetraReceiver::Impl {
         t->blocksOk += (uint64_t)d.blocksOk; t->blocksBad += (uint64_t)d.blocksBad;
         tel.blocksOk += (uint64_t)d.blocksOk; tel.blocksBad += (uint64_t)d.blocksBad;
         for (int i = 0; i < 4; i++) if (d.tsUsage[i] >= 0) t->tsUsage[i] = d.tsUsage[i];
+        for (int i = 0; i < 4; i++) tetra::updateSlot(t->slots[i], d.slot[i], (double)wallNow());
         if (d.synced) {
             const tetra::Sync& s = d.sync;
             t->mcc = s.mcc; t->mnc = s.mnc; t->colourCode = s.colourCode; t->systemCode = s.systemCode; t->sharingMode = s.sharingMode;
@@ -671,6 +693,10 @@ void TetraReceiver::setCenterHz(double hz) {
 }
 bool TetraReceiver::ready() const { std::lock_guard<std::mutex> lk(p_->mu); return p_->rateSet >= tetraTuning().minSampleRate - 1; }
 void TetraReceiver::setVoiceSink(SpeechFrameSink* s) { p_->voiceSink.store(s); }
+void TetraReceiver::setVoiceSlot(const SlotSelect& s) {
+    p_->slotId.store(s.id);
+    p_->slotSel.store((uint32_t)s.mode | ((uint32_t)(s.slot & 0xff) << 8));
+}
 void TetraReceiver::reset() { p_->gen++; }
 void TetraReceiver::clearCells() { std::lock_guard<std::mutex> lk(p_->mu); p_->tel.cells.clear(); p_->tel.events.clear(); p_->tel.blocksOk = p_->tel.blocksBad = 0; p_->publish(); }
 void TetraReceiver::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }

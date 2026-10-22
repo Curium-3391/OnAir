@@ -11,11 +11,13 @@
 #include "dect2/gsmr/gsmr_rx.h"
 #include "dect2/tetra/tetra_pdu.h"
 #include "dect2/tetra/tetra_rx.h"
+#include "dect2/tetra/tetra_slots.h"
 #include "dect2/tetra/tetra_tel.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <mutex>
 #include <string>
@@ -124,6 +126,55 @@ void voiceStrip(App& a) {
     ImGui::SameLine();
     ImGui::TextDisabled("(clear calls only; %s / %s)", dect2::tetra::voiceVerdictText(dect2::tetra::VoiceVerdict::EncryptedNotDecoded),
                         dect2::tetra::voiceVerdictText(dect2::tetra::VoiceVerdict::StateUnknownNotDecoded));
+}
+
+bool live(const App& a);
+
+// "Listen to": which timeslot of the carrier is played (the choice is saved). Encrypted slots are shown muted and are never decoded.
+void slotPanel(App& a) {
+    namespace T = dect2::tetra;
+    static const char* modes[] = {"first clear voice", "slot 1", "slot 2", "slot 3", "slot 4", "talkgroup", "ISSI"};
+    int cur = a.tetraSlotMode == 1 ? a.tetraSlotNum + 0 : a.tetraSlotMode == 2 ? 5 : a.tetraSlotMode == 3 ? 6 : 0;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Listen to");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150 * gUi);
+    if (ImGui::BeginCombo("##tetraslot", modes[cur])) {
+        for (int i = 0; i < 7; i++) if (ImGui::Selectable(modes[i], cur == i)) {
+            if (i == 0) a.tetraSlotMode = 0;
+            else if (i <= 4) { a.tetraSlotMode = 1; a.tetraSlotNum = i; }
+            else a.tetraSlotMode = i == 5 ? 2 : 3;
+        }
+        ImGui::EndCombo();
+    }
+    if (a.tetraSlotMode >= 2) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110 * gUi);
+        ImGui::InputInt("##tetraid", &a.tetraSlotId, 0, 0);
+        if (a.tetraSlotId < 0) a.tetraSlotId = 0;
+        if (a.tetraSlotId == 0) { ImGui::SameLine(); ImGui::TextDisabled("enter the id"); }
+    }
+    if (a.tetraSlotMode >= 2)
+        ImGui::TextDisabled("Talkgroup and ISSI are not read from the signalling yet (only the call identifier is), so these stay silent until they are.");
+    if (!live(a)) return;
+    // the strongest recently heard cell with a main carrier shows its four slots
+    const dect2::TetraCell* best = nullptr;
+    for (const auto& c : a.rx.tetra.cells) if (!best || c.lastSec > best->lastSec) best = &c;
+    if (!best) return;
+    const double now = (double)std::time(nullptr);
+    for (int i = 0; i < 4; i++) {
+        const T::SlotInfo& k = best->slots[i];
+        char heard[32] = "never";
+        if (k.lastHeardSec >= 0) snprintf(heard, sizeof heard, "%.0f s ago", std::max(0.0, now - k.lastHeardSec));
+        char ids[64] = "";
+        if (k.talkgroup) snprintf(ids, sizeof ids, " TG %u", k.talkgroup);
+        if (k.issi) snprintf(ids + strlen(ids), sizeof ids - strlen(ids), " ISSI %u", k.issi);
+        const bool enc = k.state == T::SlotState::Encrypted;
+        if (enc) ImGui::PushStyleColor(ImGuiCol_Text, pal::warnAmber());
+        ImGui::Text("slot %d: %s%s, last heard %s%s", i + 1, T::slotStateText(k.state), ids, heard,
+                    (a.tetraSlotMode == 1 && a.tetraSlotNum == i + 1) ? "  <- listening" : "");
+        if (enc) ImGui::PopStyleColor();
+    }
 }
 
 const char* airEncShort(const dect2::TetraCell& c) {
@@ -331,6 +382,10 @@ void tick(App& a) {
         std::unique_ptr<dect2::codec::SpeechCodec> c;
         if (appcodec::speechCodecPoll("tetra", c).status == dect2::codec::CodecStatus::Ready && c) gVoice.setCodec(std::move(c));
     }
+    if (a.engine.running()) {   // the saved 'Listen to' choice reaches the receiver whichever tab is drawn
+        dect2::tetra::SlotSelect sel; sel.mode = (dect2::tetra::SlotMode)a.tetraSlotMode; sel.slot = a.tetraSlotNum; sel.id = (uint32_t)a.tetraSlotId;
+        a.engine.tetra().setVoiceSlot(sel);
+    }
     if (!S.scanning) return;
     if (!a.engine.running()) { S.scanning = false; return; }
     const double now = ImGui::GetTime();
@@ -348,6 +403,7 @@ void tab(App& a) {
     ImGui::TextDisabled("Receive only: the public information every TETRA base station broadcasts to all terminals (network code, location area, services, encryption advertised). Nothing is decrypted; no messages or identities are decoded. Clear (unencrypted) voice can be played only with a speech codec you install yourself; encrypted calls are never decoded.");
     ImGui::PopTextWrapPos();
     voiceStrip(a);
+    slotPanel(a);
     subNav("tetrav", S.view, {"Cells", "Neighbours", "Carriers", "Log"});
     if (!live(a)) { ImGui::TextDisabled("%s", a.engine.running() ? "starting" : "start the receiver to find the TETRA base stations around you"); return; }
     if (S.view == 0) {
