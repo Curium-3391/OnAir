@@ -3,6 +3,7 @@
 // Split from ui2.cpp; the shared declarations are in ui2_internal.h.
 #include <functional>
 #include "ui2_internal.h"
+#include "setpos_guard.h"
 
 using namespace ui2;
 
@@ -40,6 +41,7 @@ void endPane() {
     gPanes.pop_back();
     // the height of what was drawn: down to the last line, and the padding below it
     const float need = p.autoH ? ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y + ImGui::GetStyle().WindowPadding.y : 0.f;
+    ui::closeCursorMove();   // a mode body that ends with SetCursorPos and no item: grow the pane instead of the Debug-build assert (#104)
     ImGui::EndChild();
     if (p.autoH) {
         ImGuiStorage* st = ImGui::GetStateStorage();
