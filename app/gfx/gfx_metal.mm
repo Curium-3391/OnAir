@@ -161,21 +161,28 @@ struct MtlBackend : Backend {
     }
     Image* createImage(int w, int h, uint32_t fill) override { return new MtlImage(w, h, fill); }
     Video* createVideo(int w, int h) override { return new MtlVideo(w, h); }
-    void newFrame(int fbW, int fbH, const float c[4]) override {
+    float clear[4] = {0, 0, 0, 1};
+    int fbW = 0, fbH = 0;
+    // The drawable is taken when the frame is drawn, not before the interface is built: nextDrawable can wait for the display (all
+    // drawables in flight), and that wait no longer comes before the input is read; the drawable is held for the encoding only.
+    void newFrame(int w, int h, const float c[4]) override {
+        fbW = w; fbH = h;
+        for (int i = 0; i < 4; i++) clear[i] = c[i];
+    }
+    bool canSkipFrame() const override { return true; }
+    void skipFrame() override {}
+    void endFrame(ImDrawData* dd, const char* shotPath) override {
       @autoreleasepool {
         if ((int)layer.drawableSize.width != fbW || (int)layer.drawableSize.height != fbH) layer.drawableSize = CGSizeMake(fbW, fbH);
         drawable = [layer nextDrawable];
+        if (!drawable) return;   // none came in time (the window cannot be seen): the frame is dropped
         cb = [gQueue commandBuffer];
-        rpd.colorAttachments[0].clearColor = MTLClearColorMake(c[0], c[1], c[2], c[3]);
+        rpd.colorAttachments[0].clearColor = MTLClearColorMake(clear[0], clear[1], clear[2], clear[3]);
         rpd.colorAttachments[0].texture = drawable.texture;
         rpd.colorAttachments[0].loadAction = MTLLoadActionClear;
         rpd.colorAttachments[0].storeAction = MTLStoreActionStore;
         enc = [cb renderCommandEncoderWithDescriptor:rpd];
         ImGui_ImplMetal_NewFrame(rpd);
-      }
-    }
-    void endFrame(ImDrawData* dd, const char* shotPath) override {
-      @autoreleasepool {
         ImGui_ImplMetal_RenderDrawData(dd, cb, enc);
         [enc endEncoding];
         [cb presentDrawable:drawable];

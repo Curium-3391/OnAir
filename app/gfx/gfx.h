@@ -37,6 +37,10 @@ struct Backend {
     virtual void newFrame(int fbW, int fbH, const float clear[4]) = 0;   // before ImGui::NewFrame(); sizes in pixels
     // render the draw data and present; if shotPath is set the finished frame is written there as a PNG
     virtual void endFrame(ImDrawData* dd, const char* shotPath) = 0;
+    // A frame that nobody can see (the window is covered): true when the back end can end it without drawing (skipFrame() instead of
+    // endFrame()), so the interface keeps running but the GPU does nothing. Metal; the OpenGL back end draws every frame.
+    virtual bool canSkipFrame() const { return false; }
+    virtual void skipFrame() {}
     // The window a new Surface's window must share its context with (OpenGL), or null (Metal: the window has no context).
     virtual GLFWwindow* shareWindow() const { return nullptr; }
     // After the window exists (created after windowHints() and with shareWindow()); delete the Surface before destroying the window.

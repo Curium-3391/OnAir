@@ -390,6 +390,8 @@ static void viewMenu(App& a) {
         if (ImGui::BeginMenu(tr("Language"))) { languageMenuItems(a); ImGui::EndMenu(); }
         ImGui::Separator();
         if (ImGui::MenuItem(tr("Reduce CPU when hidden"), nullptr, &a.reduceCpuHidden)) savePrefs(a);
+        if (ImGui::MenuItem(tr("Save power on battery"), nullptr, &a.batterySaver)) savePrefs(a);
+        if (ImGui::MenuItem(tr("Performance overlay"), nullptr, &a.perfOverlay)) savePrefs(a);
         {   // opt-in Discord Rich Presence
             const bool have = *discord::appId() != 0;
             ImGui::BeginDisabled(!have);
