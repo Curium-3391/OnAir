@@ -5,6 +5,7 @@
 #include "../app.h"
 #include "dect2/source/converter.h"
 #include "dect2/selfcal/selfcal.h"
+#include "dect2/selfcal/ppmcal.h"
 #include <cmath>
 #include <map>
 
@@ -136,17 +137,24 @@ bool converterUi(App& a, bool vertical) {
     return changed;
 }
 
-// ---- Calibrate: the frequency self-calibration dialog (selfcal.h, docs/self-calibration.md)
+// ---- Calibrate frequency: the frequency self-calibration dialog (selfcal.h, ppmcal.h, docs/self-calibration.md)
 struct CalState {
     std::unique_ptr<selfcal::LiveCal> live;
-    selfcal::Wizard wiz{0.2, 120};
+    selfcal::Wizard wiz{0.05, 180};   // 1-sigma 0.05 ppm = a 95 % interval under 0.1 ppm
     selfcal::Store store;
-    bool loaded = false, open = false, running = false;
-    int kind = 0;                 // 0 FM station at the tuned frequency, 1 carrier of known frequency
-    double carrierMhz = 0;
+    selfcal::PpmAverager avg;         // the finished measurements of this session (several stations / repeats)
+    selfcal::DriftTrack drift;        // the optional 10 minute track
+    bool loaded = false, open = false, running = false, quick = false, tracking = false;
+    int method = 0;                   // 0 FM station, 1 ATSC pilot, 2 time signal / AM carrier, 3 manual
+    int fmIdx = 0, atscIdx = 0, timeIdx = 0;
+    bool useTuned = true;             // FM: the station the receiver is tuned to
+    double carrierMhz = 0;            // 2: a typed AM carrier (MHz), 0 = use the list
+    double manExpMhz = 0, manObsMhz = 0;
     double t0 = 0;
-    double basePpm = 0;           // the radio's ppm setting while measuring (the result is the error left on top of it)
+    double basePpm = 0;               // the radio's ppm setting while measuring (the result is the error left on top of it)
     selfcal::Estimate result;
+    selfcal::QuickResult quickRes;
+    bool haveQuick = false, subCarrier = false;
     std::string serial;
 };
 CalState& cal() { static CalState c; return c; }
@@ -157,14 +165,40 @@ void calStop(App& a) {
     c.running = false;
 }
 
-void calStart(App& a, const std::string& serial) {
+// the chosen reference: nominal frequency (Hz) and whether it is a sub-carrier
+bool calReference(const App& a, double& hz, bool& sub) {
+    CalState& c = cal();
+    static const auto fm = selfcal::fmChannels();
+    static const auto at = selfcal::atscChannels();
+    static const auto tm = selfcal::timeCarriers();
+    if (c.method == 0) {
+        sub = true;
+        hz = c.useTuned ? a.freqMhz * 1e6 : fm[std::max(0, std::min((int)fm.size() - 1, c.fmIdx))].nominalHz;
+    } else if (c.method == 1) {
+        sub = false; hz = at[std::max(0, std::min((int)at.size() - 1, c.atscIdx))].nominalHz;
+    } else {
+        sub = false;
+        hz = c.carrierMhz > 0 ? c.carrierMhz * 1e6 : tm[std::max(0, std::min((int)tm.size() - 1, c.timeIdx))].nominalHz;
+    }
+    return hz > 0;
+}
+
+void calStart(App& a, const std::string& serial, bool quick, bool tracking) {
     CalState& c = cal();
     auto it = a.tune.radio.find("ppm");
     c.basePpm = it != a.tune.radio.end() ? atof(it->second.c_str()) : 0;
     c.serial = serial;
     c.result = selfcal::Estimate();
-    c.live.reset(new selfcal::LiveCal(c.kind == 0 ? selfcal::LiveCal::FmStation : selfcal::LiveCal::Carrier,
-                                      (c.kind == 0 ? a.freqMhz : c.carrierMhz) * 1e6));
+    c.quick = quick; c.tracking = tracking; c.haveQuick = false;
+    double hz = 0; bool sub = false;
+    if (!calReference(a, hz, sub)) return;
+    c.subCarrier = sub;
+    if (std::fabs(hz - a.freqMhz * 1e6) > 1.0 && !(c.method == 0 && c.useTuned)) {   // tune to the chosen reference
+        a.freqMhz = hz / 1e6;
+        if (a.engine.running()) { a.tune.centerHz = hz; a.engine.retune(a.tune); }
+    }
+    c.live.reset(new selfcal::LiveCal(c.method == 0 ? selfcal::LiveCal::FmStation : selfcal::LiveCal::Carrier, hz));
+    c.wiz = (quick || tracking) ? selfcal::Wizard(0.3, 60) : selfcal::Wizard(0.05, 180);
     c.wiz.start();
     c.t0 = ImGui::GetTime();
     selfcal::LiveCal* lc = c.live.get();
@@ -200,74 +234,172 @@ void calHistoryPlot(const std::vector<selfcal::Entry>& h) {
     snprintf(b, sizeof b, "%+.2f", lo); dl->AddText(ImVec2(p0.x + 8, p0.y + hgt - 16), IM_COL32(170, 170, 170, 255), b);
 }
 
+// a finished full measurement: into the history of this radio (kept in the preferences, per radio key)
+void calRecord(App& a, const std::string& serial, const selfcal::Estimate& e) {
+    CalState& c = cal();
+    selfcal::Entry en;
+    en.serial = serial; en.utc = (double)utcNowOf(a); en.ppm = c.basePpm + e.ppm; en.sigmaPpm = e.sigmaPpm; en.source = e.source;
+    c.store.add(en);
+    plat::prefs().setS("selfcal.hist", c.store.toText());
+    plat::prefs().flush();
+}
+
 // the dialog; true when it changed the radio's ppm setting
 bool calibrateDialog(App& a, const DeviceInfo& d) {
     CalState& c = cal();
     bool changed = false;
-    if (!c.loaded) { c.store.fromText(plat::prefs().getS("selfcal.hist", "")); c.loaded = true; c.carrierMhz = a.freqMhz; }
-    const std::string serial = radioKeyOf(d);
+    if (!c.loaded) { c.store.fromText(plat::prefs().getS("selfcal.hist", "")); c.loaded = true; c.manExpMhz = a.freqMhz; c.manObsMhz = a.freqMhz; }
+    const std::string serial = radioKeyOf(d);   // the radio's own key (its serial when it has one): history and the stored ppm are per radio
     if (c.open) { ImGui::OpenPopup(tr("Frequency calibration")); c.open = false; }
-    ImGui::SetNextWindowSize(ImVec2(440 * gUi, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(470 * gUi, 0), ImGuiCond_Appearing);
     bool keep = true;
     if (!ImGui::BeginPopupModal(tr("Frequency calibration"), &keep, ImGuiWindowFlags_AlwaysAutoResize)) return false;
-    ImGui::PushTextWrapPos(420 * gUi);
-    ImGui::TextDisabled("%s", tr("Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction."));
+    ImGui::PushTextWrapPos(450 * gUi);
+    ImGui::TextDisabled("%s", tr("Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction for this radio. Let the radio warm up for about 10 minutes first."));
     ImGui::PopTextWrapPos();
     const bool conv = converterFromRadio(a.tune.radio).active;
+    bool hasPpm = false;
+    for (const auto& r : d.settings) if (r.key == "ppm") hasPpm = true;
     if (conv) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "%s", tr("Not with a converter in front of the radio."));
-    else if (!a.engine.running() && !c.running) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "%s", tr("Start the receiver first."));
+    else if (!a.engine.running() && !c.running && c.method != 3) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "%s", tr("Start the receiver first."));
+    if (!hasPpm) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "%s", tr("This radio has no frequency correction setting: the result cannot be applied."));
     ImGui::BeginDisabled(c.running);
-    ImGui::RadioButton(tr("FM station (stereo pilot) at the tuned frequency"), &c.kind, 0);
-    ImGui::RadioButton(tr("Carrier of known frequency (MHz)"), &c.kind, 1);
-    if (c.kind == 1) { ImGui::SameLine(); ImGui::SetNextItemWidth(110 * gUi); ImGui::InputDouble("##calcar", &c.carrierMhz, 0, 0, "%.6f"); }
+    static const char* kMethods[] = {"FM station (stereo pilot)", "ATSC pilot (US TV channel)", "Time signal or AM carrier", "Manual: type what you see"};
+    ImGui::SetNextItemWidth(260 * gUi);
+    if (ImGui::BeginCombo(tr("Method"), tr(kMethods[c.method]))) {
+        for (int i = 0; i < 4; i++)
+            if (ImGui::Selectable(tr(kMethods[i]), c.method == i)) { c.method = i; c.wiz = selfcal::Wizard(0.05, 180); c.result = selfcal::Estimate(); c.haveQuick = false; }
+        ImGui::EndCombo();
+    }
+    {
+        static const auto fm = selfcal::fmChannels();
+        static const auto at = selfcal::atscChannels();
+        static const auto tm = selfcal::timeCarriers();
+        if (c.method == 0) {
+            ImGui::Checkbox(tr("The station the receiver is tuned to"), &c.useTuned);
+            if (!c.useTuned) {
+                ImGui::SetNextItemWidth(260 * gUi);
+                if (ImGui::BeginCombo("##calfm", fm[c.fmIdx].label.c_str())) {
+                    for (int i = 0; i < (int)fm.size(); i++) if (ImGui::Selectable(fm[i].label.c_str(), c.fmIdx == i)) c.fmIdx = i;
+                    ImGui::EndCombo();
+                }
+            }
+        } else if (c.method == 1) {
+            ImGui::SetNextItemWidth(260 * gUi);
+            if (ImGui::BeginCombo("##calat", at[c.atscIdx].label.c_str())) {
+                for (int i = 0; i < (int)at.size(); i++) if (ImGui::Selectable(at[i].label.c_str(), c.atscIdx == i)) c.atscIdx = i;
+                ImGui::EndCombo();
+            }
+        } else if (c.method == 2) {
+            ImGui::SetNextItemWidth(260 * gUi);
+            if (ImGui::BeginCombo("##caltm", c.carrierMhz > 0 ? tr("Typed carrier") : tm[c.timeIdx].label.c_str())) {
+                for (int i = 0; i < (int)tm.size(); i++) if (ImGui::Selectable(tm[i].label.c_str(), c.carrierMhz <= 0 && c.timeIdx == i)) { c.timeIdx = i; c.carrierMhz = 0; }
+                ImGui::EndCombo();
+            }
+            ImGui::SetNextItemWidth(120 * gUi);
+            ImGui::InputDouble(tr("or an AM carrier of known frequency (MHz, 0 = list)"), &c.carrierMhz, 0, 0, "%.6f");
+        }
+    }
     ImGui::EndDisabled();
-    if (c.kind == 0) {
-        ImGui::PushTextWrapPos(420 * gUi);
-        ImGui::TextDisabled("%s", tr("Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations."));
+    ImGui::PushTextWrapPos(450 * gUi);
+    if (c.method == 0) ImGui::TextDisabled("%s", tr("A station's pilot is not always exact: repeat on two or three stations. Strong, steady stations are best."));
+    else if (c.method == 1) ImGui::TextDisabled("%s", tr("The ATSC pilot sits 309.44 kHz above the lower channel edge; the radio is tuned to it. A main carrier, accurate to a fraction of a ppm."));
+    else if (c.method == 2) ImGui::TextDisabled("%s", tr("Time stations and long/medium-wave broadcast carriers are exact. The radio must reach the frequency (direct sampling or an upconverter below 24 MHz)."));
+    ImGui::PopTextWrapPos();
+
+    char b[240];
+    if (c.method == 3) {
+        ImGui::SetNextItemWidth(130 * gUi); ImGui::InputDouble(tr("Expected frequency (MHz)"), &c.manExpMhz, 0, 0, "%.6f");
+        ImGui::SetNextItemWidth(130 * gUi); ImGui::InputDouble(tr("Observed frequency (MHz)"), &c.manObsMhz, 0, 0, "%.6f");
+        if (ImGui::Button(tr("Compute"))) {
+            selfcal::Estimate e;
+            e.valid = true; e.ppm = selfcal::ppmFromObserved(c.manExpMhz * 1e6, c.manObsMhz * 1e6); e.sigmaPpm = 0.1; e.source = "manual";
+            auto it = a.tune.radio.find("ppm");
+            c.basePpm = it != a.tune.radio.end() ? atof(it->second.c_str()) : 0;
+            c.subCarrier = false; c.serial = serial; c.result = e; c.haveQuick = false; c.quick = false; c.tracking = false;
+            c.wiz = selfcal::Wizard(1.0, 1.0);
+            c.wiz.start();
+            c.wiz.update(e, 1.0);   // a typed pair needs no integration: the wizard goes straight to Done
+            calRecord(a, serial, e);
+            c.avg.add(c.basePpm + e.ppm, 0.3);
+        }
+        ImGui::SameLine();
+        ImGui::PushTextWrapPos(450 * gUi);
+        ImGui::TextDisabled("%s", tr("Type the frequency a signal shows with the present setting, and the frequency it should have."));
         ImGui::PopTextWrapPos();
     }
+
     if (c.running) {
         const double sec = ImGui::GetTime() - c.t0;
         const auto e = c.live->estimate();
         const auto st = c.wiz.update(e, sec);
-        if (!a.engine.running() || conv) { calStop(a); c.wiz.start(); }
+        if (!a.engine.running() || conv) { calStop(a); c.wiz.start(); c.tracking = false; }
         else if (st == selfcal::Wizard::Done || st == selfcal::Wizard::Failed) {
             calStop(a);
             if (st == selfcal::Wizard::Done) {
                 c.result = c.wiz.result();
-                selfcal::Entry en;
-                en.serial = serial; en.utc = (double)utcNowOf(a); en.ppm = c.basePpm + c.result.ppm; en.sigmaPpm = c.result.sigmaPpm; en.source = c.result.source;
-                c.store.add(en);
-                plat::prefs().setS("selfcal.hist", c.store.toText());
-                plat::prefs().flush();
-            }
+                if (c.quick) { c.quickRes = selfcal::quickCheck(c.result.ppm, c.result.sigmaPpm); c.haveQuick = true; }
+                else if (c.tracking) {
+                    const double now = ImGui::GetTime();
+                    c.drift.add(now, c.basePpm + c.result.ppm, c.result.sigmaPpm);
+                    if (!c.drift.finished(now) && a.engine.running()) calStart(a, serial, false, true);   // the next point
+                    else c.tracking = false;
+                } else {
+                    calRecord(a, serial, c.result);
+                    c.avg.add(c.basePpm + c.result.ppm, std::max(0.02, c.result.sigmaPpm));
+                }
+            } else c.tracking = false;
         }
         ImGui::ProgressBar((float)c.wiz.progress(), ImVec2(-1, 0));
     }
-    char b[200];
     switch (c.wiz.stage()) {
     case selfcal::Wizard::Idle: ImGui::TextUnformatted(tr("Ready.")); break;
     case selfcal::Wizard::Searching: ImGui::TextUnformatted(tr("Looking for a reference signal.")); break;
     case selfcal::Wizard::Integrating:
         snprintf(b, sizeof b, tr("Measuring: %+.2f ppm, uncertainty %.2f ppm."), c.wiz.result().ppm, c.wiz.result().sigmaPpm); ImGui::TextUnformatted(b); break;
     case selfcal::Wizard::Done:
-        snprintf(b, sizeof b, tr("Done: %+.2f ppm (uncertainty %.2f ppm)."), c.wiz.result().ppm, c.wiz.result().sigmaPpm); ImGui::TextUnformatted(b); break;
+        snprintf(b, sizeof b, tr("Done: %+.2f ppm (95%% interval +-%.2f ppm)."), c.wiz.result().ppm, 1.96 * c.wiz.result().sigmaPpm); ImGui::TextUnformatted(b); break;
     case selfcal::Wizard::Failed: ImGui::TextUnformatted(tr("No usable reference signal was found.")); break;
     }
-    ImGui::BeginDisabled(conv || (!a.engine.running() && !c.running));
-    if (!c.running) { if (ImGui::Button(tr("Start"))) calStart(a, serial); }
-    else if (ImGui::Button(tr("Stop"))) { calStop(a); c.wiz.start(); }
-    ImGui::EndDisabled();
-    if (!c.running && c.wiz.stage() == selfcal::Wizard::Done) {
+    if (c.haveQuick) ImGui::TextColored(c.quickRes.verdict == selfcal::QuickVerdict::Good ? ImVec4(0.5f, 1, 0.5f, 1) : ImVec4(1, 0.7f, 0.3f, 1), "%s", c.quickRes.text.c_str());
+    if (c.method != 3) {
+        ImGui::BeginDisabled(conv || (!a.engine.running() && !c.running));
+        if (!c.running) {
+            if (ImGui::Button(tr("Start"))) { c.drift.reset(); calStart(a, serial, false, false); }
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Quick check"))) { c.drift.reset(); calStart(a, serial, true, false); }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("A short measurement with the present correction: does it still hold? Nothing is stored."));
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Track drift (10 min)"))) { c.drift.reset(); calStart(a, serial, false, true); }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Measure every minute or so for 10 minutes and draw the drift: shows when the radio has warmed up."));
+        } else if (ImGui::Button(tr("Stop"))) { calStop(a); c.wiz.start(); c.tracking = false; }
+        ImGui::EndDisabled();
+    }
+    if (c.drift.size() > 0) {
+        std::vector<selfcal::Entry> dv;
+        for (size_t i = 0; i < c.drift.size(); i++) { selfcal::Entry e; e.utc = c.drift.time(i); e.ppm = c.drift.ppm(i); e.sigmaPpm = c.drift.sigma(i); dv.push_back(e); }
+        ImGui::TextUnformatted(tr("Drift track (ppm over time)"));
+        calHistoryPlot(dv);
+        ImGui::TextDisabled("%s", c.drift.note().c_str());
+    }
+    if (!c.running && !c.tracking && !c.quick && c.wiz.stage() == selfcal::Wizard::Done && c.result.valid) {
         const double np = c.basePpm + c.result.ppm;
-        ImGui::SameLine();
-        snprintf(b, sizeof b, tr("Apply %+.2f ppm"), np);
+        const auto san = selfcal::checkPpm(np, selfcal::Tcxo::Unknown, c.subCarrier, 1.96 * c.result.sigmaPpm);
+        for (const auto& n : san.notes) { ImGui::PushTextWrapPos(450 * gUi); ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "%s", n.c_str()); ImGui::PopTextWrapPos(); }
+        if (c.avg.count() > 1) {
+            snprintf(b, sizeof b, tr("%d measurements this session: %+.2f ppm, 95%% interval +-%.2f ppm."), c.avg.count(), c.avg.mean(), c.avg.ci95());
+            ImGui::TextDisabled("%s", b);
+        }
+        ImGui::BeginDisabled(!san.accepted || !hasPpm);
+        snprintf(b, sizeof b, tr("Apply %+.2f ppm to this radio"), np);
         if (ImGui::Button(b)) {
             selfcal::applyPpm(a.tune.radio, np);
-            saveRadioSettings(a);
+            saveRadioSettings(a);   // stored with this radio's settings, which come back with the radio
             changed = true;
-            c.wiz = selfcal::Wizard(0.2, 120);
+            c.wiz = selfcal::Wizard(0.05, 180);
+            c.result = selfcal::Estimate();
         }
+        ImGui::EndDisabled();
     }
     {
         auto it = a.tune.radio.find("ppm");
@@ -284,12 +416,22 @@ bool calibrateDialog(App& a, const DeviceInfo& d) {
         if (c.store.drift(serial, 3600, dr)) { snprintf(b, sizeof b, tr("Drift: %+.3f ppm per minute"), dr); ImGui::TextDisabled("%s", b); }
     }
     if (ImGui::Button(tr("Close"))) keep = false;
-    if (!keep) { calStop(a); ImGui::CloseCurrentPopup(); }
+    if (!keep) { calStop(a); c.tracking = false; ImGui::CloseCurrentPopup(); }
     ImGui::EndPopup();
     return changed;
 }
 
 }   // namespace
+
+// Tools > Calibrate frequency: opens the dialog; calibrateFrequencyDraw() (once per frame, draw_ui.cpp) draws it for the selected radio
+void calibrateFrequencyOpen(App&) { cal().open = true; }
+void calibrateFrequencyDraw(App& a) {
+    if (a.devIdx < 0 || a.devIdx >= (int)a.devices.size()) { cal().open = false; return; }
+    const DeviceInfo& d = a.devices[a.devIdx];
+    if (!d.isRadio()) { cal().open = false; return; }
+    syncRadioSettings(a);
+    if (calibrateDialog(a, d) && a.engine.running()) { a.tune.centerHz = a.freqMhz * 1e6; a.engine.retune(a.tune); }
+}
 
 void radioSettingsUi(App& a, bool vertical) {
     if (a.devIdx < 0 || a.devIdx >= (int)a.devices.size()) return;
@@ -328,7 +470,6 @@ void radioSettingsUi(App& a, bool vertical) {
             if (ImGui::SmallButton(tr("Calibrate..."))) cal().open = true;
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Measure this radio's frequency error against an FM station or a carrier of known frequency"));
         }
-        if (calibrateDialog(a, d)) retune = true;
     }
     {   // the level offset of this radio, for the spectrum in dBm (plots.cpp): only the picture changes, the radio is not touched
         float off = dbmOffset(a);

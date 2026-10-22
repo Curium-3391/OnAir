@@ -436,6 +436,8 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Propagation..."), nullptr, &a.propOpen);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Where a transmitter can be received: predicted SNR on the map from power, frequency, time and the SNR you need. No terrain."));
         ImGui::MenuItem(tr("Antenna rotator..."), nullptr, &a.rotatorOpen);
+        if (ImGui::MenuItem(tr("Calibrate frequency..."))) calibrateFrequencyOpen(a);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Measure this radio's frequency error (ppm) against an FM station, an ATSC pilot, a time-signal carrier, or by typing what you see"));
         ImGui::EndMenu();
     }
 }
