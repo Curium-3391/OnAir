@@ -253,7 +253,7 @@ void illuminatorSection() {
 
 void windowPanel(App& a) {
     load();
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 680 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 680 * gUi);
     if (!ImGui::Begin(trw("Passive radar"), &a.passiveRadarOpen)) { ImGui::End(); return; }
     bool ch = false, rebuild = !S.radar;
     {

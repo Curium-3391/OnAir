@@ -233,7 +233,7 @@ void body() {
 
 void packsWindow(App& a) {
     if (!a.packsOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 520 * gUi);
     if (!ImGui::Begin(trw("Data packs"), &a.packsOpen)) { ImGui::End(); return; }
     body();
     ImGui::End();

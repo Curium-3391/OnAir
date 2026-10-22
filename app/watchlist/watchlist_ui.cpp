@@ -374,7 +374,7 @@ void historyTab() {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(820 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(820 * gUi, 520 * gUi);
     if (!ImGui::Begin(trw("Watchlists"), &a.watchlistOpen)) { ImGui::End(); return; }
     if (ImGui::Checkbox(tr("Watch for these"), &S.set.enabled)) S.dirty = true;
     if (!S.note.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.note.c_str()); }

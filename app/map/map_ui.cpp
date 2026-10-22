@@ -310,7 +310,7 @@ void mapView(App& a) {
 void mapWindow(App& a) {
     if (!a.mapOpen) return;
     load();
-    ImGui::SetNextWindowSize(ImVec2(820 * gUi, 600 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(820 * gUi, 600 * gUi);
     if (!ImGui::Begin("Map", &a.mapOpen)) { ImGui::End(); return; }
     inputs();
     markerInfo(a);

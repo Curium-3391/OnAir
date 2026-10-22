@@ -521,7 +521,7 @@ void pluginShutdown() {
 void pluginManagerWindow(App& a) {
     if (!a.pluginsOpen || a.rxId != 1) return;
     if (!P.inited) init(a);
-    ImGui::SetNextWindowSize(ImVec2(820 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(820 * gUi, 520 * gUi);
     if (!ImGui::Begin(trw("Plugins"), &a.pluginsOpen)) { ImGui::End(); return; }
     managerPanel(a);
     ImGui::End();

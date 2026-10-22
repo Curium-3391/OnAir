@@ -398,7 +398,7 @@ void propagationWindow(App& a) {
         return;
     }
     load(a);
-    ImGui::SetNextWindowSize(ImVec2(920 * gUi, 760 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(920 * gUi, 760 * gUi);
     if (!ImGui::Begin("Propagation", &a.propOpen)) { ImGui::End(); return; }
     inputsUi(a);
     schedule();

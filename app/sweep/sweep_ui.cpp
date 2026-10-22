@@ -233,7 +233,7 @@ void surveyPanel(App& a) {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(900 * gUi, 760 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(900 * gUi, 760 * gUi);
     if (!ImGui::Begin(trw("Sweep scanner"), &a.sweepOpen)) { ImGui::End(); return; }
     const bool run = S.running.load();
     if (S.th.joinable() && !run) S.th.join();

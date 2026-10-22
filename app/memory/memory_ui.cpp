@@ -338,7 +338,7 @@ void memoryWindow(App& a) {
     if ((io.KeyCtrl || io.KeySuper) && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_M, false)) a.memoryOpen = !a.memoryOpen;
     if (!u.tabLoaded) { u.tabLoaded = true; a.memoryTab = a.memoryTab || plat::prefs().getB("memTab", false); }
     if (!a.memoryOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(720 * gUi, 460 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(720 * gUi, 460 * gUi);
     if (!ImGui::Begin(trw("Memory"), &a.memoryOpen)) { ImGui::End(); return; }
     panelBody(a, true);
     ImGui::End();

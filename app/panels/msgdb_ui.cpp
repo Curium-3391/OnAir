@@ -1,7 +1,6 @@
 // The Messages window (View > Messages): the unified database of decoded messages (core/src/msgdb) with search, filters, a timeline, export and the
 // retention settings. The database is fed by a tap on the automation event bus; voice and encrypted content never reaches it.
 #include "../app.h"
-#include "../ui/window_fit.h"
 #include "dect2/common/u8file.h"
 #include "dect2/automation/engine.h"
 #include "dect2/msgdb/msgdb.h"
@@ -140,11 +139,7 @@ void exportButton(const char* label, const char* fmt, const char* ext) {
 }
 
 void windowPanel(App& a) {
-    {
-        const ImVec2 d = ImGui::GetIO().DisplaySize;
-        const winfit::V2 sz = winfit::firstSize({980 * gUi, 620 * gUi}, {d.x, d.y}, 24 * gUi);
-        ImGui::SetNextWindowSize(ImVec2(sz.x, sz.y), ImGuiCond_FirstUseEver);
-    }
+    firstWindowSize(980 * gUi, 620 * gUi);
     if (!ImGui::Begin(trw("Messages"), &a.msgdbOpen)) { ImGui::End(); return; }
     mdb::Db& db = mdb::global();
     if (!db.isOpen()) {

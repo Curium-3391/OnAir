@@ -338,7 +338,7 @@ void txPanel(App& a) {
         ImGui::Dummy(ImVec2(1, 8 * gUi));
         ImGui::TextWrapped("%s", tr("The transmit panel is in its own window."));
         if (ImGui::Button(tr("Bring it back here"))) s.popped = false;
-        ImGui::SetNextWindowSize(ImVec2(560 * gUi, 720 * gUi), ImGuiCond_FirstUseEver);
+        firstWindowSize(560 * gUi, 720 * gUi);
         bool open = true;
         if (ImGui::Begin(trw("Transmit##txpop"), &open, ImGuiWindowFlags_NoSavedSettings)) {
             if (gBarFrame != ImGui::GetFrameCount()) fallbackBar(a);

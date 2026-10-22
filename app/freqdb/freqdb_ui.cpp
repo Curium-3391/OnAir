@@ -399,7 +399,7 @@ void freqdbWindow(App& a) {
     if ((io.KeyCtrl || io.KeySuper) && io.KeyShift && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F, false)) a.freqOpen = !a.freqOpen;
     if (!u.tabLoaded) { u.tabLoaded = true; a.freqTab = a.freqTab || plat::prefs().getB("freqTab", false); }
     if (!a.freqOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(820 * gUi, 480 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(820 * gUi, 480 * gUi);
     if (!ImGui::Begin(trw("Frequencies"), &a.freqOpen)) { ImGui::End(); return; }
     panelBody(a);
     ImGui::End();

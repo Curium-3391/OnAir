@@ -101,7 +101,7 @@ void recordingLibraryUi(App& a) {
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "The recordings in the recordings folder: open one as the source, or re-analyse it in a mode");
     if (!gLib.open) return;
-    ImGui::SetNextWindowSize(ImVec2(900 * gUi, 440 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(900 * gUi, 440 * gUi);
     if (!ImGui::Begin("Recording library###reclib", &gLib.open)) { ImGui::End(); return; }
     if (ImGui::Button("Refresh")) reload(dir);
     ImGui::SameLine();

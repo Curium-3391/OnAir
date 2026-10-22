@@ -444,7 +444,7 @@ void walkTab() {
 
 void windowPanel(App& a) {
     load();
-    ImGui::SetNextWindowSize(ImVec2(940 * gUi, 780 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(940 * gUi, 780 * gUi);
     if (!ImGui::Begin(trw("Interference hunter"), &a.rfiOpen)) { ImGui::End(); return; }
     pump();
     controls(a);

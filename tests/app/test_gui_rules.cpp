@@ -3,7 +3,8 @@
 //     to extend window/parent boundaries" (##main2). Restore a saved spot with restoreCursor(), or submit a Dummy().
 //  2. windows, tabs, tree nodes, collapsing headers and modal popups are named with trw(), not tr(): their open state and saved place are kept
 //     by the ID, which tr() changes with the language (i18n.h)
-//  3. no bare pixel sizes where a scaled one is meant: SetNextItemWidth(<number>), WidthFixed columns, SetNextWindowSize(ImVec2(<n>, <n>))
+//  3. no bare pixel sizes where a scaled one is meant: SetNextItemWidth(<number>), WidthFixed columns, SetNextWindowSize(ImVec2(<n>, <n>));
+//     first-use window sizes go through firstWindowSize(), which fits them to the display
 //  4. no two widgets with the same literal label (the same ImGui ID) in one function without PushID, except in branches that never run together
 //  5. every modal popup that is begun with a literal name is opened somewhere with that name
 //  6. the translations of short labels stay within a length budget (they sit in buttons, pills and table headers)
@@ -109,10 +110,14 @@ static void ruleScaledSizes(const std::vector<Src>& srcs) {
     const std::regex width(R"(SetNextItemWidth\(\s*[0-9]{2,}(\.[0-9]*)?f?\s*\))");
     const std::regex column(R"(WidthFixed\s*,\s*[0-9]{2,}(\.[0-9]*)?f?\s*\))");
     const std::regex window(R"(SetNextWindowSize\(\s*ImVec2\(\s*[0-9]{2,}(\.[0-9]*)?f?\s*,\s*[0-9]{2,}(\.[0-9]*)?f?\s*\))");
+    const std::regex firstUse(R"(SetNextWindowSize\([^;]*ImGuiCond_FirstUseEver)");
     for (const Src& s : srcs) {
         for (const std::regex* r : {&width, &column, &window})
             for (auto it = std::sregex_iterator(s.text.begin(), s.text.end(), *r); it != std::sregex_iterator(); ++it)
                 CHECK(false, "%s:%d: a size in bare pixels (multiply by gUi): %s", s.rel.c_str(), lineOf(s.text, (size_t)it->position()), it->str().c_str());
+        if (s.rel == "app/ui/widgets.cpp") continue;   // firstWindowSize() itself
+        for (auto it = std::sregex_iterator(s.text.begin(), s.text.end(), firstUse); it != std::sregex_iterator(); ++it)
+            CHECK(false, "%s:%d: a first-use window size that may not fit the display: use firstWindowSize()", s.rel.c_str(), lineOf(s.text, (size_t)it->position()));
     }
 }
 

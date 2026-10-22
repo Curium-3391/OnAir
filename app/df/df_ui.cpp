@@ -376,7 +376,7 @@ void drawWindow(App& a) {
     { static bool af = std::getenv("ONAIR_MAP_FULL") != nullptr; if (af) { af = false; gFull = true; } }   // dev: --shot enters full screen
     if (gFull && !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) gFull = false;
     if (gFull) { ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize); }
-    else ImGui::SetNextWindowSize(ImVec2(900 * gUi, 640 * gUi), ImGuiCond_FirstUseEver);
+    else firstWindowSize(900 * gUi, 640 * gUi);
     if (!ImGui::Begin(trw("Direction finder"), &a.dfOpen, gFull ? ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse : 0)) { ImGui::End(); return; }
     const double hz = tunedHz(a);
     bool ch = false;

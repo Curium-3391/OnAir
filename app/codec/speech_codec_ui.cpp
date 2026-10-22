@@ -173,7 +173,7 @@ void codecInstallHelper(const char* id) {
 
 void voiceCodecsWindow(App& a) {
     if (!a.voiceCodecsOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(760 * gUi, 460 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(760 * gUi, 460 * gUi);
     if (!ImGui::Begin("Voice codecs", &a.voiceCodecsOpen)) { ImGui::End(); return; }
     for (const char* id : {"ambe2", "ambe", "imbe"}) voiceCodecTick(id);
     ImGui::PushTextWrapPos(0);

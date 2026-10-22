@@ -4,7 +4,6 @@
 // core/src/protolab; this file is the window only. Nothing here decrypts anything.
 #include "dect2/common/thread_name.h"
 #include "../app.h"
-#include "../ui/window_fit.h"
 #include "dect2/common/u8file.h"
 #include "dect2/protolab/protolab.h"
 #include "dect2/source/source.h"
@@ -488,11 +487,7 @@ void resultPanel() {
 }
 
 void windowPanel(App& a) {
-    {
-        const ImVec2 d = ImGui::GetIO().DisplaySize;
-        const winfit::V2 sz = winfit::firstSize({900 * gUi, 700 * gUi}, {d.x, d.y}, 24 * gUi);
-        ImGui::SetNextWindowSize(ImVec2(sz.x, sz.y), ImGuiCond_FirstUseEver);
-    }
+    firstWindowSize(900 * gUi, 700 * gUi);
     if (!ImGui::Begin(trw("Protocol lab"), &a.protolabOpen)) { ImGui::End(); return; }
     if (S.run == 2) {
         if (S.worker.joinable()) S.worker.join();

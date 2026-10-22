@@ -996,7 +996,7 @@ void captionsWindow(App& a) {
     bool open = true;
     char id[64];
     snprintf(id, sizeof id, "%s###caption%d", tr("Captions"), h->rxId);
-    ImGui::SetNextWindowSize(ImVec2(560 * gUi, 110 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(560 * gUi, 110 * gUi);
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Pos.x + 80 * gUi, ImGui::GetMainViewport()->Pos.y + ImGui::GetMainViewport()->Size.y - 220 * gUi), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha((float)st.bgAlpha / 100.f);
     if (ImGui::Begin(id, &open, ImGuiWindowFlags_NoCollapse)) {

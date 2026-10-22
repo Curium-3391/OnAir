@@ -68,6 +68,12 @@ bool runningButton(const App& a, const char* label, bool small) {
     return hit && run;
 }
 
+void firstWindowSize(float w, float h) {
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    const winfit::V2 s = d.x > 0 && d.y > 0 ? winfit::firstSize({w, h}, {d.x, d.y}, 24 * gUi) : winfit::V2{w, h};
+    ImGui::SetNextWindowSize(ImVec2(s.x, s.y), ImGuiCond_FirstUseEver);
+}
+
 int gSpaceClaimFrame = -10;
 bool gTightTabs = false;
 void setUiLanguage(App& a, const std::string& code) {

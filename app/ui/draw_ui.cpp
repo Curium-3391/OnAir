@@ -244,7 +244,7 @@ static void crashNotePopup(ImVec2 disp) {
 // --hidden: the pop-out video is a panel inside the main window (popout.cpp makes the real window otherwise)
 static void hiddenPopOut(App& a) {
     if (a.popOut && gNoOsWindows) {   // --hidden: no OS window, the pop-out is a panel (popout.cpp makes the real window)
-        ImGui::SetNextWindowSize(ImVec2(640 * gUi, 380 * gUi), ImGuiCond_FirstUseEver);
+        firstWindowSize(640 * gUi, 380 * gUi);
         ImGui::SetNextWindowPos(ImVec2(200, 160), ImGuiCond_FirstUseEver);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 1));
         if (ImGui::Begin(trw("Video"), &a.popOut)) {
