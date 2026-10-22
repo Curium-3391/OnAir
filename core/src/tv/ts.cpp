@@ -64,7 +64,11 @@ void TsDemux::feed(const uint8_t* p) {
     if (pid == 0x1FFF) { nulls_++; nullWin_++; return; }
     if (tei) { tei_++; st.tei++; return; }
     // (only packets with a payload: the adaptation field is never scrambled, and a PCR-only packet of a scrambled stream may say 00)
-    if (afc & 1) st.scrambled = scr != 0;
+    if (afc & 1) {
+        if (scr) st.scrWin++; else st.clrWin++;
+        if (st.scrWin + st.clrWin >= 512) { st.scrWin /= 2; st.clrWin /= 2; }   // a sliding window: old packets fade
+        st.scrambled = st.scrWin > st.clrWin;
+    }
     if (afc & 1) {
         if (!st.resync && st.lastCc >= 0 && cc != ((st.lastCc + 1) & 15) && !(cc == st.lastCc && afc == 2)) { st.ccErrors++; ccErr_++; }
         st.lastCc = cc;
@@ -287,12 +291,15 @@ TsSnapshot TsDemux::snapshot() const {
         TsService sv = kv.second;
         // scrambled: what the streams' packets say, not the CA signalling (a free channel can carry CA descriptors or free_CA_mode)
         sv.scrambled = false;
+        CaEvidence ev; ev.flagged = sv.caFlag;
         for (auto& st : sv.streams) {
             auto it = pids_.find(st.pid);
-            if (it != pids_.end()) { st.kbps = it->second.kbps; st.scrambled = it->second.scrambled; }
-            sv.scrambled = sv.scrambled || st.scrambled;
+            if (it != pids_.end()) { st.kbps = it->second.kbps; st.scrambled = it->second.scrambled; st.scrPackets = it->second.scrWin; st.clrPackets = it->second.clrWin; }
+            if (st.kind == "video" || st.kind == "audio") { CaStreamEvidence se; se.video = st.kind == "video"; se.scrambledPackets = st.scrPackets; se.clearPackets = st.clrPackets; ev.streams.push_back(se); }
             label[st.pid] = (sv.name.empty() ? "service " + std::to_string(sv.id) : sv.name) + " " + st.kind + " (" + st.codec + ")";
         }
+        sv.caState = classifyCa(ev);
+        sv.scrambled = sv.caState == CaState::Scrambled;
         label[sv.pmtPid] = "PMT " + (sv.name.empty() ? std::to_string(sv.id) : sv.name);
         if (sv.pmtPid || sv.haveSdt || sv.havePmt) sn.services.push_back(sv);
     }

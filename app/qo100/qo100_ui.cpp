@@ -449,7 +449,7 @@ void decodePanel(App& a, float h) {
             if (sv.id == pl.selected()) pl.select(-1); else { pl.select(sv.id); pl.setVolume(a.volume); }
             S.autoPlay = false;
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s%s%s\nclick: play or stop", sv.provider.c_str(), sv.provider.empty() ? "" : "\n", sv.scrambled ? "scrambled" : "free to air");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s%s%s\nclick: play or stop", sv.provider.c_str(), sv.provider.empty() ? "" : "\n", sv.scrambled ? "scrambled" : sv.caState == CaState::CaFlagClear ? "CA flag set, stream clear" : "free to air");
     }
     if (pl.selected() >= 0) {
         if (ps.hasVideo) ImGui::TextDisabled("%s  %dx%d  %.1f fps", ps.videoCodec.c_str(), ps.width, ps.height, ps.fps);

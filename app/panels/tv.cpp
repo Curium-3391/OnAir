@@ -533,8 +533,14 @@ void rightPanel(App& a) {
     const int playSlot = multi ? a.engine.selectedTvChannel() : 0;
     if (svRows.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled(run ? "waiting for PAT / SDT..." : "start the receiver to see services"); ImGui::PopTextWrapPos(); }
     const PlayerStats cardPs = a.engine.player().stats();
+    static bool hideScrambled = false;   // uses the confirmed state only: a CA flag on a clear stream is never hidden
+    if (!svRows.empty()) ImGui::Checkbox(tr("Hide scrambled services"), &hideScrambled);
     for (const SvRow& rw : svRows) {
         const TsService& sv = *rw.sv;
+        // what is shown: the packets' scrambling bits (TsDemux), overruled by the playing service decoding fine
+        CaState caSt = sv.caState;
+        if (sv.id == a.engine.player().selected() && rw.slot == playSlot && (cardPs.decoded > 0 || cardPs.audioChannels > 0)) caSt = sv.caFlag ? CaState::CaFlagClear : CaState::Clear;
+        if (hideScrambled && caSt == CaState::Scrambled) continue;
         std::string vc, ac;
         int vType = -1;
         double kb = 0;
@@ -586,7 +592,8 @@ void rightPanel(App& a) {
         const int avsProf = sel && cardPs.videoStreamType == vType ? cardPs.avsProfile : -1;
         const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);
         if (avsUndecodable) x += tagAt(dl, ImVec2(x, ty), tr("no picture"), IM_COL32(112, 52, 50, 255)) + 4;
-        if (sv.scrambled) x += tagAt(dl, ImVec2(x, ty), "scrambled", IM_COL32(112, 52, 50, 255)) + 4;
+        if (caSt == CaState::Scrambled) x += tagAt(dl, ImVec2(x, ty), "scrambled", IM_COL32(112, 52, 50, 255)) + 4;
+        else if (caSt == CaState::CaFlagClear) x += tagAt(dl, ImVec2(x, ty), "CA flag", IM_COL32(38, 46, 58, 255), IM_COL32(150, 158, 168, 255)) + 4;
         if (multi) { char cb[40]; snprintf(cb, sizeof cb, "channel %.3f MHz", radioCenterMhz(a) + rw.offHz / 1e6); x += tagAt(dl, ImVec2(x, ty), cb, IM_COL32(58, 74, 44, 255)) + 4; }
         // what is on
         const EpgEvent* cur = epgCurrent(a, sv.id);
@@ -611,6 +618,7 @@ void rightPanel(App& a) {
                 if (st.kbps > 0) { snprintf(b, sizeof b, ", %.0f kbit/s", st.kbps); t += b; }
                 t += "\n";
             }
+            if (caSt != CaState::Clear) t += std::string("Conditional access: ") + caStateName(caSt) + (caSt == CaState::CaFlagClear ? " (the broadcaster sets the flag on free services too)" : "") + "\n";
             if (avsUndecodable) {
                 char b[260]; const std::string fam = avsFamilyName(vType, avsProf);
                 snprintf(b, sizeof b, tr("Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work"), fam.c_str());

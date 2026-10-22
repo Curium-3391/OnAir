@@ -343,11 +343,14 @@ int main() {
             CHECK(sv.streams[2].kind == "audio" && sv.streams[2].codec == "DRA", "DRA1: %s %s", sv.streams[2].kind.c_str(), sv.streams[2].codec.c_str());
             CHECK(sv.streams[3].kind == "video" && sv.streams[3].codec == "AVS2", "stream type 0xD2: %s %s", sv.streams[3].kind.c_str(), sv.streams[3].codec.c_str());
         }
-        esPacket(0x201, 2, 1);   // scrambled with the even key
-        CHECK(find(sv) && sv.scrambled, "scrambled video packets did not mark the service scrambled");
+        CHECK(find(sv) && sv.caState == CaState::CaFlagClear, "CA flag on clear streams: state %d", (int)sv.caState);
+        esPacket(0x201, 2, 1);   // one stray packet with scrambling bits does not make a clear stream scrambled
+        CHECK(find(sv) && !sv.scrambled, "one stray scrambled packet marked the service scrambled");
+        for (int k = 0; k < 20; k++) esPacket(0x201, 2, 1);   // scrambled with the even key
+        CHECK(find(sv) && sv.scrambled && sv.caState == CaState::Scrambled, "scrambled video packets did not mark the service scrambled");
         esPacket(0x201, 0, 2);   // a PCR-only packet says 00: the stream is still scrambled
         CHECK(find(sv) && sv.scrambled, "a PCR-only packet cleared the scrambled state");
-        esPacket(0x201, 0, 1);
+        for (int k = 0; k < 60; k++) esPacket(0x201, 0, 1);
         CHECK(find(sv) && !sv.scrambled, "the stream is clear again");
         printf("CA signalling on clear streams is not shown as scrambled; AVS / AVS2 / DRA named\n");
     }
