@@ -1,4 +1,5 @@
 #include "dect2/ham/ham.h"
+#include "dect2/ham/ham_safety.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -121,7 +122,10 @@ bool hamTxAllowed(const HamTxCheck& c, std::string& why) {
     else if (!c.armed) why = "TX is not armed";
     else if (!hamCallValid(c.call)) why = "enter a valid callsign";
     else if (!hamGridValid(c.grid)) why = "enter a valid grid locator";
+    else if (!std::isfinite(c.dialHz) || !std::isfinite(c.audioHz) || !std::isfinite(c.bwHz) || c.dialHz <= 0 || c.bwHz < 0)
+        why = "the frequency is not valid";
     else if (!hamSignalInBand(c.dialHz, c.audioHz, c.bwHz)) why = "the frequency is outside the amateur bands";
+    else if (!c.country.empty()) hamSignalInCountryBand(c.country, c.dialHz, c.audioHz, c.bwHz, why);
     return why.empty();
 }
 

@@ -18,10 +18,13 @@ const HamBand* hamBandAt(double hz);                         // the band contain
 bool hamSignalInBand(double dialHz, double audioHz, double bwHz);
 
 // The one gate every ham transmission passes. Needs: licence confirmed, an explicit Arm, the signal inside an amateur band, a callsign and a locator.
+// country: an ISO 3166 code ("LT", "US") or a band-plan id ("eu"): the signal must also lie inside one of that country's amateur bands
+// (data/bandplans/builtin.json, see ham_safety.h). "" = only the union of the ITU regions below (the operator's own plan still applies).
 struct HamTxCheck {
     bool licenceConfirmed = false, armed = false;
     std::string call, grid;
     double dialHz = 0, audioHz = 0, bwHz = 50;
+    std::string country;
 };
 bool hamTxAllowed(const HamTxCheck& c, std::string& why);    // why: the reason when false (empty when true)
 bool hamCallValid(const std::string& call);                  // plain callsign shape (prefix, digit, suffix), optional /P /M style suffix
@@ -156,33 +159,50 @@ private:
 };
 
 // ---- the slot transmitter: one FT8 / FT4 / FT2 burst through a rig (PTT + audio) ----
-struct HamRigIo {   // the app's real one is Hamlib PTT + the sound card; tests use a fake
+struct HamRigIo {   // the real ones: CatRigIo (rig_control.h: Hamlib CAT / RTS / DTR PTT or VOX + a sound card) and SdrHamIo (ham_sdr.h); tests use fakes
     virtual ~HamRigIo() = default;
+    // Called by HamSlotTx after the gate passed and before any audio or PTT, with the exact check that passed: the radio is set to gate.dialHz
+    // here (a radio that tunes itself must use this frequency and no other). False refuses the burst; nothing is keyed.
+    virtual bool prepare(const HamTxCheck& gate, std::string& err) { (void)gate; (void)err; return true; }
     virtual bool ptt(bool on, std::string& err) = 0;
     virtual bool beginAudio(int rate, std::string& err) = 0;
-    virtual int write(const float* mono, int frames) = 0;   // frames accepted (may be fewer than offered)
+    virtual int write(const float* mono, int frames) = 0;   // frames accepted (may be fewer than offered); < 0: the output failed (the burst stops)
     virtual int pending() = 0;                              // frames queued and not yet played
     virtual void flushAudio() = 0;                          // drop what is queued
     virtual void endAudio() = 0;
+    virtual double latencySec() const { return 0; }         // from write() to the antenna (a caller starts this much before the slot)
+    virtual const char* kind() const { return "rig"; }      // "rig", "sdr", "test": what the audit log names
+    virtual std::string lastError() const { return {}; }    // why write() returned < 0
 };
 class HamSlotTx {
 public:
     explicit HamSlotTx(HamRigIo& io) : io_(io) {}
     // Blocking (run it on a worker thread): gate, modulate, PTT on, play, PTT off. True only when the whole burst was played.
-    // PTT is released on every exit path. Nothing is keyed when the gate refuses.
+    // PTT is released on every exit path. Nothing is keyed when the gate refuses, the duty-cycle limit is reached or the radio refuses prepare().
     // mode: FT8 / FT4 / FT2 / WSPR / JT65 / JT9 / JT4 (hfdig numbers); sub: JT65 A B C, JT4 A .. G. The gate's bandwidth is raised to the mode's own.
     bool send(const HamTxCheck& gate, int mode, const std::string& msg, double audioHz, double level, std::string& err, int sub = 0);
     // Any other audio (the keyboard modes): the same gate, PTT, drain and release as send(). audio is mono at 48000 Hz; bwHz raises the gate's width;
-    // it is scaled to peak `level` first.
-    bool sendAudio(const HamTxCheck& gate, std::vector<float> audio, double bwHz, double level, std::string& err);
+    // it is scaled to peak `level` first. label names the mode in the audit log.
+    bool sendAudio(const HamTxCheck& gate, std::vector<float> audio, double bwHz, double level, std::string& err, const std::string& label = "audio");
     void abort();        // Halt TX, any thread: audio dropped, PTT released at once
     bool busy() const;
+    // Sleeps until startUtc minus the radio's latency (abortable). False when aborted or more than lateSec late already (the slot is missed).
+    bool waitForSlot(double startUtc, std::string& err, double lateSec = 2.0);
+    // The clock the duty-cycle limit and the audit use (seconds; default: the system UTC clock). Tests pass their own.
+    void setClock(std::function<double()> nowUtc) { clock_ = std::move(nowUtc); }
+    double onAirSec(int mode) const;     // seconds on air in the duty window of that mode (-1: the keyboard / audio modes)
 private:
     bool pttSet(bool on, std::string& err);
-    bool play(const std::vector<float>& a, size_t n, int rate, std::string& err);   // after the gate: PTT on, audio, drain, PTT off
+    bool play(const std::vector<float>& a, size_t n, int rate, std::string& err, size_t& played);   // after the gate: PTT on, audio, drain, PTT off
+    bool run(const HamTxCheck& gate, int dutyMode, const std::string& label, const std::string& msg, const std::vector<float>& a, size_t n,
+             std::string& err);
+    double now() const;
     HamRigIo& io_;
     std::mutex mu_;
     std::atomic<bool> abort_{false}, busy_{false}, pttOn_{false};
+    std::function<double()> clock_;
+    mutable std::mutex dutyMu_;
+    std::vector<std::pair<double, double>> dutyLog_[2];   // [0] slot modes, [1] keyboard / audio: start, seconds
 };
 
 }  // namespace dect2::ham
