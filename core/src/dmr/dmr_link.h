@@ -27,6 +27,20 @@ public:
     std::function<void(int, int, const Bits&)> onVoiceBurst;
     // the call on this slot (1 or 2) is marked private/encrypted by its service options: its voice must not be decoded
     bool slotEncrypted(int slot) const { for (const auto& t : tr_) if (t.inCall && slotOf(t) == slot && t.call.privacy) return true; return false; }
+    // the call on this slot as the voice monitor lists it (voice_monitor.h): IDs, kind, flags, colour code, bit error rate (-1 not known)
+    struct VoiceCtx { bool inCall = false; uint32_t src = 0, dst = 0; int kind = 0; bool emergency = false, privacy = false; int cc = -1; float ber = -1.f; std::string alias; };
+    VoiceCtx slotContext(int slot) const {
+        VoiceCtx v;
+        for (const auto& t : tr_) {
+            if (!t.used || slotOf(t) != slot || !t.inCall) continue;
+            v.inCall = true; v.src = t.call.idsKnown ? t.call.src : 0; v.dst = t.call.idsKnown ? t.call.dst : 0; v.kind = t.call.kind;
+            v.emergency = t.call.emergency; v.privacy = t.call.privacy; v.cc = t.cc >= 0 ? t.cc : cc_;
+            v.ber = t.berDen > 50 ? (float)(t.berNum / t.berDen) : -1.f;
+            v.alias = !t.call.alias.empty() ? t.call.alias : t.alias;
+            break;
+        }
+        return v;
+    }
     uint64_t samples() const { return n_; }
     double cfoResidualHz() const;                   // offset the slicer still corrects for
     bool locked() const;                            // at least one slot is being followed (a track has decoded bursts)
