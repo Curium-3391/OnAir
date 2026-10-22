@@ -39,6 +39,7 @@ void tab(App& a) {
         ImGui::EndTable();
     }
     if (!t.dataValid) ImGui::TextDisabled("listening: no frame with agreeing copies yet");
+    wideCarriersTable(a, 0);   // whole span: every control channel in the span
 }
 
 void receiver(App& a) {

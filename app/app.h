@@ -398,6 +398,9 @@ struct App {
     bool identifyTool = false;   // the Identify tool (key I): a click or a drag on the spectrum identifies the signal instead of tuning (never saved)
     bool wideDecode = false;  // "Whole span": decode every carrier in the visible span, not only the tuned one (only for modes that opt in: modeSupportsWide)
     uint64_t wideFamMask = 0; // the switch per mode family (bit = family); wideDecode is the current mode's bit
+    uint64_t wideFamMaskHi[2] = {0, 0};   // the same for families 64-127 and 128-191 (wideFamOn / setWideFam read and write all three)
+    dect2::WideTuning wideTuning;         // the whole-span detector's settings (the carriers table's settings button)
+    bool wideTuningDirty = true;          // sent to the engine at the next frame
     int wideSel = 0;          // the carrier the sound and the detail follow (0: the best locked one)
     bool mtvOn = false;       // "Multi-channel": decode two or three adjacent TV channels of a wide capture (DVB-T2 / DVB-T)
     int mtvMax = 0;           // receivers at once (0: 2 on a laptop, 3 on a desktop)
@@ -910,6 +913,8 @@ void resetSpectrum(App& a);                    // plots.cpp: default dB ranges, 
 // Whole-span decoding (modeui.cpp). A mode opts in with registerWideMode(family); the switch is drawn by the spectrum (plots.cpp) for those only.
 bool modeSupportsWide(int family);
 void registerWideMode(int family);
+bool wideFamOn(const App& a, int family);                 // the whole-span switch of a mode family (kept per family)
+void setWideFam(App& a, int family, bool on);
 bool wideActive(const App& a);                          // the switch is on for this mode and the engine runs it
 void wideSync(App& a);                                  // once a frame: pushes the switch, the selected carrier and the mute to the engine
 void wideCarrierCell(const App& a, int carrierId, double relHz);   // a table cell with the carrier's frequency (MHz); "-" for a single channel
@@ -1156,6 +1161,7 @@ bool dabChannelCombo(App& a);
 // the channel list of the TV modes sets a.freqMhz; the scan ranges are the TV bands of the active plan for the mode (empty: use the built-in lists)
 struct TvRange { std::string label; double startMhz = 0, stopMhz = 0, stepMhz = 0, bwMhz = 0; };
 bool bandPlanPicker(App& a);
+std::vector<double> bandPlanChannels(const App& a, double loHz, double hiHz);   // the plan's channels of the current mode's bands in the range (whole-span priors)
 bool tvChannelCombo(App& a);
 std::vector<TvRange> tvBandRanges(App& a);
 void dabStatus(App& a);

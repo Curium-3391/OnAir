@@ -92,7 +92,7 @@ void Engine::ingest(cf32* x, size_t n) {
     nSamp_ += n;
 }
 
-Engine::Engine() : t0_(std::chrono::steady_clock::now()) {}
+Engine::Engine() : t0_(std::chrono::steady_clock::now()) { wide_.setTuning(WideTuning()); }   // the whole-span banks get the CPU limit
 Engine::~Engine() { stop(); flushResults(); }
 
 void Engine::stop() {

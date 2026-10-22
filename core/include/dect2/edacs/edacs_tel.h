@@ -14,6 +14,8 @@ struct EdacsFrame {
     uint32_t msgA = 0, msgB = 0;      // the 28 data bits of the two messages of the frame, after majority voting over the three copies
     int errA = 0, errB = 0;           // bits (of 40) on which the three copies of each message disagreed
     bool good = false;
+    int carrierId = 0;          // whole-span decoding: 1 when the row came from a carrier of the span (carrierHz: its offset from the centre)
+    double carrierHz = 0;
 };
 
 struct EdacsWordCount {

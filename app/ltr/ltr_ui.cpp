@@ -42,6 +42,7 @@ void tab(App& a) {
         ImGui::EndTable();
     }
     if (!t.dataValid) ImGui::TextDisabled("listening: no word with a good sync and plausible fields yet");
+    wideCarriersTable(a, 0);   // whole span: every repeater of the site in the span
 }
 
 void receiver(App& a) {

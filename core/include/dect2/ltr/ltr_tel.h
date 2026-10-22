@@ -16,6 +16,8 @@ struct LtrMessage {
     bool plausible = false;                                    // the fields are in their documented ranges
     std::string talkgroup;                                     // A-HH-GGG
     std::string kind;                                          // idle, callsign ID, busy, token, or empty
+    int carrierId = 0;          // whole-span decoding: 1 when the row came from a carrier of the span (carrierHz: its offset from the centre)
+    double carrierHz = 0;
 };
 
 struct LtrRepeater {
