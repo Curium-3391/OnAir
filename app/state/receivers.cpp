@@ -273,6 +273,7 @@ void strip(App& first, ImVec2 disp, float h) {
 }  // namespace
 
 App* receiverHeard() { return receiverById(gAudio); }
+void receiverHear(int id) { if (receiverById(id)) gAudio = id; }
 
 App* receiverById(int id) {
     if (id == 1) return gFirst;
