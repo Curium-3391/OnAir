@@ -33,6 +33,7 @@ struct MeshDecoderInfo {
 // One received LoRa frame
 struct MeshPacket {
     double timeSec = 0;
+    double unixTime = 0;         // the computer clock when it was decoded (0: not known): lost samples and Stop / Start do not move it
     int protocol = 1;
     std::string preset;
     double freqHz = 0;           // channel centre + measured carrier offset

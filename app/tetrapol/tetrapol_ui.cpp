@@ -2,13 +2,16 @@
 #include "app.h"
 #include "dect2/tetrapol/tetrapol_rx.h"
 #include "dect2/tetrapol/tetrapol_tel.h"
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <string>
 
+bool freqStepArrow(const char* id, ImGuiDir dir);
+
 namespace {
 
-struct State { int sel = -1; };
+struct State { int sel = -1; int spacing = 0; };
 State S;
 
 const char* kHelp =
@@ -75,7 +78,37 @@ void tab(App& a) {
     }
 }
 
-void receiver(App&) {}
+int spacingHz() {   // 12500 or 10000: the channel raster of the country (saved)
+    if (!S.spacing) S.spacing = plat::prefs().getI("tpolSpacing", 12500) == 10000 ? 10000 : 12500;
+    return S.spacing;
+}
+
+// the channel raster beside the frequency box: the arrows step by one channel (hold for a continuous change), and the choice is saved
+void tuner(App& a, bool& retune) {
+    int sp = spacingHz();
+    ImGui::TextDisabled("Channels");
+    ImGui::SameLine(0, 5 * gUi);
+    static const char* const items[] = {"12.5 kHz", "10 kHz"};
+    int cur = sp == 10000 ? 1 : 0;
+    ImGui::SetNextItemWidth(90 * gUi);
+    if (ImGui::Combo("##tpolsp", &cur, items, 2)) {
+        S.spacing = cur == 1 ? 10000 : 12500;
+        plat::prefs().setI("tpolSpacing", S.spacing);
+        a.engine.tetrapol().setSpacingHz(S.spacing);
+        sp = S.spacing;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Channel spacing of the network: 12.5 kHz (France and most of Europe) or 10 kHz. The arrows step by one channel.");
+    const double stepMhz = sp / 1e6;
+    auto snap = [&](double mhz) { return std::round(mhz / stepMhz) * stepMhz; };
+    ImGui::SameLine(0, 6 * gUi);
+    if (freqStepArrow("##tpoldn", ImGuiDir_Left)) { tuneFreq(a, snap(snap(a.freqMhz) - stepMhz)); retune = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("the channel below. Hold for a continuous change.");
+    ImGui::SameLine(0, 4 * gUi);
+    if (freqStepArrow("##tpolup", ImGuiDir_Right)) { tuneFreq(a, snap(snap(a.freqMhz) + stepMhz)); retune = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("the channel above. Hold for a continuous change.");
+}
+
+void receiver(App& a) { a.engine.tetrapol().setSpacingHz(spacingHz()); }
 void list(App&) {}
 void tick(App&) {}
 void status(App& a) {
@@ -96,6 +129,7 @@ const ModeUi kTetrapolUi = {
     .tabName = "TETRAPOL",
     .tabIcon = Ic::Radio,
     .tab = tab,
+    .tuner = tuner,
     .receiver = receiver,
     .list = list,
     .status = status,

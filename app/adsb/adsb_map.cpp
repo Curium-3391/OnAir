@@ -38,6 +38,7 @@ std::mutex mu;
 std::condition_variable cv;
 std::map<uint64_t, Tile> tiles;
 std::deque<uint64_t> queue;
+int failStreak = 0;   // tiles failed in a row (mu): a server that says no is asked again only every 10 minutes
 std::thread worker;
 std::atomic<bool> stopping{false};
 bool started = false, inited = false;
@@ -172,7 +173,7 @@ void run() {
             char url[128];
             snprintf(url, sizeof url, "https://tile.openstreetmap.org/%d/%d/%d.png", z, x, y);
             const std::string part = path + ".part";
-            if (!ec && plat::fetchUrl(url, part, std::string("OnAir/") + ONAIR_VERSION + " (ADS-B map)")) {
+            if (!ec && plat::fetchUrl(url, part, std::string("OnAir/") + ONAIR_VERSION + " (+https://github.com/adswill/OnAir; ADS-B map)")) {
                 fs::rename(fsPath(part), fsPath(path), ec);
                 ok = !ec && exists(path);
             }
@@ -182,6 +183,7 @@ void run() {
         std::lock_guard<std::mutex> lk(mu);
         tiles[k].state = ok ? 2 : 4;
         tiles[k].failedAt = glfwGetTime();
+        failStreak = ok ? 0 : failStreak + 1;   // under mu
     }
 }
 
@@ -258,7 +260,7 @@ ImTextureID tileTexture(int z, int x, int y, bool online, bool& failed) {
     }
     if (t.state == 4) {
         failed = true;
-        if (online && glfwGetTime() - t.failedAt > 30) { t.state = 0; t.failedAt = 1e18; queue.push_back(k); cv.notify_one(); }   // try again later
+        if (online && glfwGetTime() - t.failedAt > (failStreak >= 8 ? 600 : 30)) { t.state = 0; t.failedAt = 1e18; queue.push_back(k); cv.notify_one(); }   // try again later
         return 0;
     }
     return t.state == 3 && t.img ? t.img->texture() : (ImTextureID)0;
@@ -499,7 +501,7 @@ void dlStart(std::vector<dect2::TileKey> list) {
             snprintf(url, sizeof url, "https://tile.openstreetmap.org/%d/%d/%d.png", t.z, t.x, t.y);
             const std::string part = path + ".part";
             bool ok = false;
-            if (!ec && plat::fetchUrl(url, part, std::string("OnAir/") + ONAIR_VERSION + " (offline area)")) {
+            if (!ec && plat::fetchUrl(url, part, std::string("OnAir/") + ONAIR_VERSION + " (+https://github.com/adswill/OnAir; offline area)")) {
                 fs::rename(fsPath(part), fsPath(path), ec);
                 ok = !ec && exists(path);
             }
