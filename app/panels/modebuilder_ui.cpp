@@ -158,6 +158,7 @@ struct State {
     mb::Definition resultDef;
     bool haveResult = false;
     mb::RxStats resultStats;
+    bool openRequest = false;
     // library
     std::vector<mb::Saved> saved;
     bool savedListed = false;
@@ -939,7 +940,15 @@ void modeBuilderFrame(App& a) {
     while (V.frames.size() > kMaxFrames) V.frames.pop_front();
 }
 
+void modeBuilderOpenText(const std::string& json) {
+    if (!S.inited) init();
+    setText(json);
+    S.msg = tr("From the Protocol lab: check the frame length, the fields and the check value, then test it on the recording.");
+    S.openRequest = true;
+}
+
 void modeBuilderWindow(App& a) {
+    if (S.openRequest && a.rxId == 1) { S.openRequest = false; a.modeBuilderOpen = true; }
     if (a.rxId != 1) {   // one Mode Builder for the program: RX 1's window
         if (App* f = receiverById(1)) { f->modeBuilderOpen = a.modeBuilderOpen; modeBuilderWindow(*f); a.modeBuilderOpen = f->modeBuilderOpen; }
         return;
