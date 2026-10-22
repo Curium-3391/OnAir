@@ -58,10 +58,13 @@ char symChar(uint8_t s, int st) {
     if (s == SMark) return 'M';
     if (s == SNone) return '-';
     if (s == SUnknown) return '?';
+    if (st == Rwm && s == SB) return 't';   // a second of the 10 pulse minutes
     return st == Msf || st == Bpc ? (char)('0' + (s & 3)) : (char)('0' + (s & 1));
 }
 
 bool isJjy(int s) { return s == Jjy40 || s == Jjy60; }
+bool risesOnSecond(int s) { return isJjy(s) || s == Rwm; }   // the carrier comes up on the second (the others drop it)
+bool amAudio(int s) { return !stationKeysCarrier(s); }        // the code is in the AM audio (WWV, CHU, BPM, HLA): otherwise the carrier is keyed
 } // namespace
 
 struct TimeReceiver::Impl {
@@ -153,7 +156,7 @@ struct TimeReceiver::Impl {
         { std::lock_guard<std::mutex> lk(mu); rateRaw = rateSet; rate = rateSet * clockScale.load(); offset = offsetSet; }
         st = resolveStation();
         stationNow = st;
-        if (audioIn.load()) offset = stationIsHf(st) ? 0.0 : audioTone.load();   // demodulated audio: HF is used as it is, an LF carrier is a tone
+        if (audioIn.load()) offset = amAudio(st) ? 0.0 : audioTone.load();   // demodulated audio: HF is used as it is, an LF carrier is a tone
         mcTenth = mcLeap = -1; mcLs = 0; mcS = -1; mcUtc = -1; lastLogCount = -1000;
         nIn = 0; lo = 1; loStep = rate > 0 ? std::polar(1.0, -2 * kPi * offset / rate) : cd(1, 0); loCount = 0;
         acc = 0; accN = 0; k8 = 0; binEnd = rate / kW;
@@ -178,7 +181,7 @@ struct TimeReceiver::Impl {
     void sample8(cd x) {
         const int64_t j = k8++;
         const cd c = car.push(x);
-        const bool hf = stationIsHf(st);
+        const bool hf = amAudio(st);
         if (hf) {
             const double am = std::abs(x);
             dc += (am - dc) * (j < 800 ? 0.01 : 1.0 / 4000);
@@ -233,13 +236,14 @@ struct TimeReceiver::Impl {
         case Msf: h0 = 600; h1 = 950; l0 = 15; l1 = 85; break;
         case Wwvb: h0 = 850; h1 = 985; l0 = 20; l1 = 180; break;
         case Bpc: h0 = 450; h1 = 950; l0 = 20; l1 = 90; break;   // low for 100 - 400 ms from the second
+        case Rwm: h0 = 12; h1 = 28; l0 = 400; l1 = 950; break;   // the pulse (40 ms in the 10 pulse minutes); the doubled pulse ends by 300 ms
         default: h0 = 20; h1 = 180; l0 = 850; l1 = 985; break;   // JJY
         }
         h0 += b; h1 += b; l0 += b; l1 += b;
     }
 
     void estimateLf() {
-        const int sgn = isJjy(st) ? -1 : 1;
+        const int sgn = risesOnSecond(st) ? -1 : 1;
         // prefix sums for the edge score
         std::vector<double> ps(2001, 0.0);
         for (int k = 0; k < 2000; k++) ps[(size_t)k + 1] = ps[(size_t)k] + prof[(size_t)(k % 1000)];
@@ -247,12 +251,17 @@ struct TimeReceiver::Impl {
         int best = 0;
         double bs = -1e300;
         for (int b = 0; b < 1000; b++) {
-            const double s = sgn * (mean(b - 12, b - 3) - mean(b + 3, b + 12));
+            // RWM: the pulse on the second stays up longest (40 / 100 / 500 ms against the 20 ms pulses of the 10 pulse minutes)
+            const double s = st == Rwm ? mean(b + 3, b + 35) - mean(b - 15, b - 3) : sgn * (mean(b - 12, b - 3) - mean(b + 3, b + 12));
             if (s > bs) { bs = s; best = b; }
         }
         int h0, h1, l0, l1;
         lfRegions(best, h0, h1, l0, l1);
         hi = circMean(prof, h0, h1); lo2 = circMean(prof, l0, l1);
+        if (st == Rwm) {   // the low level between the 20 ms pulses of the 10 pulse minutes (quiet in the 1 pulse minutes as well)
+            lo2 = 0;
+            for (int k = 4; k <= 9; k++) lo2 += circMean(prof, best + k * 100 + 50, best + k * 100 + 90) / 6;
+        }
         depth = hi > 1e-12 ? (hi - lo2) / hi : 0;
         const double lvl = (hi + lo2) / 2;
         double cross = best, bestD = 1e9;
@@ -339,9 +348,9 @@ struct TimeReceiver::Impl {
         const double cf = std::arg(cfoAcc) / (2 * kPi * 1e-3);
         cfo = std::abs(cfoAcc) > 0 ? cf : 0;
         cfoAcc = 0;
-        if (stationIsHf(st)) estimateHf(); else estimateLf();
+        if (amAudio(st)) estimateHf(); else estimateLf();
         const bool was = locked;
-        const double need = stationIsHf(st) ? 0.5 : 0.3;
+        const double need = amAudio(st) ? 0.5 : 0.3;
         if (profSecs >= 4) locked = locked ? depth > need * 0.7 : depth > need;
         if (!locked) {
             if (was) unlockedSince = tNow();
@@ -389,7 +398,7 @@ struct TimeReceiver::Impl {
         if (std::fabs(span) < 1e-12) return SUnknown;
         for (int k = 0; k < 10; k++) u[k] = (envMean(r, S, k * 100 + (hf ? 40 : 15), k * 100 + (hf ? 90 : 85)) - Lo) / span;
         // noise in an always-high part of this second
-        if (!stationIsHf(st)) {
+        if (stationKeysCarrier(st)) {
             int h0, h1, l0, l1;
             lfRegions(0, h0, h1, l0, l1);
             const int64_t i0 = (int64_t)std::llround(S * 1000) + kEnvLag;
@@ -400,6 +409,7 @@ struct TimeReceiver::Impl {
             const double sd = std::sqrt(std::max(1e-24, q / n - m * m));
             snrOut = (float)std::min(60.0, 20 * std::log10(std::max(1e-12, span) / sd));
         }
+        if (st == Rwm) return rwmClassify(S);
         auto avg = [&](int a, int b) { double s = 0; for (int k = a; k <= b; k++) s += u[k]; return s / (b - a + 1); };
         switch (st) {
         case Dcf77: return u[0] > 0.5 ? SNone : (u[1] < 0.5 ? S1 : S0);
@@ -433,9 +443,25 @@ struct TimeReceiver::Impl {
         }
     }
 
+    // RWM: the minute pulse, a 10 pulse second, a doubled or a single pulse, against the gaps of this second (300 - 400 and 600 - 1000 ms
+    // are quiet in the 1 pulse minutes, and between the 20 ms pulses in the 10 pulse minutes)
+    uint8_t rwmClassify(double S) {
+        const double P = envMean(env, S, 12, 28);
+        double G = 0, T = 0;
+        for (int k = 6; k <= 9; k++) { G += envMean(env, S, k * 100 + 50, k * 100 + 90); T += envMean(env, S, k * 100 + 4, k * 100 + 16); }
+        G /= 4; T /= 4;
+        const double span = P - G;
+        if (span < 0.3 * hi) return SUnknown;
+        auto u = [&](double v) { return (v - G) / span; };
+        if (u(envMean(env, S, 320, 480)) > 0.5) return SMark;
+        if (u(T) > 0.4) return SB;
+        if (u(envMean(env, S, 120, 180)) > 0.5) return SUnknown;   // a single pulse is down by 120 ms
+        return u(envMean(env, S, 215, 285)) > 0.5 ? S1 : S0;
+    }
+
     // the edge of this one second (ms from S), NAN if none
     double edgeOf(double S) const {   // HLA: the tick is 32 ms before the second
-        if (stationIsHf(st)) {
+        if (amAudio(st)) {
             const std::vector<float>& r = hawaii ? tk1 : tk0;
             const double lvl = (top + base) / 2;
             if (st == Hla) S -= 0.032;
@@ -446,7 +472,7 @@ struct TimeReceiver::Impl {
             }
             return NAN;
         }
-        const int sgn = isJjy(st) ? -1 : 1;
+        const int sgn = risesOnSecond(st) ? -1 : 1;
         const double lvl = (hi + lo2) / 2;
         const int64_t c = (int64_t)std::llround(S * 1000) + kEnvLag;
         double best = NAN;
@@ -564,7 +590,7 @@ struct TimeReceiver::Impl {
         lastS = S; lastCount = c;
         float sn = snr;
         const uint8_t s = st == Chu ? (uint8_t)SUnknown : st == BpmC ? bpmcSecond(S, c) : classify(S, sn);
-        if (stationIsHf(st)) {   // the tick against the noise between ticks
+        if (amAudio(st)) {   // the tick against the noise between ticks
             const std::vector<float>& r = hawaii ? tk1 : tk0;
             const int64_t j0 = (int64_t)std::llround(S * kW);
             double m = 0, q = 0;
@@ -635,13 +661,23 @@ struct TimeReceiver::Impl {
             case Dcf77: cand = w[59] == SNone; break;
             case Msf: cand = w[0] == SMark; break;
             case Wwv: case Hla: cand = w[0] == SNone && w[59] == SMark; break;
+            case Rwm: cand = w[0] == SMark; break;
             default: cand = w[0] == SMark && w[59] == SMark; break;
             }
             if (cand) {
                 std::string bits(60, ' ');
                 for (int k = 0; k < 60; k++) bits[(size_t)k] = symChar(w[k], st);
                 Fields f;
-                if (decodeMinute(st, w, f, yearHint())) {
+                if (st == Rwm && decodeMinute(st, w, f)) {   // no time of day on air: the minute from the computer clock, the second from the pulses
+                    okN++;
+                    fields = f;
+                    const double w0 = wallOf(S - 59) - propMs() * 1e-3;
+                    if (!std::isnan(w0)) { f.utcMinute = (int64_t)std::llround(w0 / 60) * 60; fields = f; setAnchor(c - 59, f.utcMinute); }
+                    addLog(true, std::isnan(w0) ? "minute pulse" + fieldsText(f, st).substr(std::string("1970-01-01 00:00 UTC").size()) : fieldsText(f, st), bits);
+                } else if (st == Rwm) {
+                    badN++;
+                    addLog(false, "the doubled pulses are not a DUT1 / dUT1 code", bits);
+                } else if (decodeMinute(st, w, f, yearHint())) {
                     okN++;
                     fields = f;
                     setAnchor(c - 59, f.utcMinute);
@@ -789,7 +825,7 @@ void TimeReceiver::feed(const cf32* x, size_t n) {
     for (size_t i = 0; i < n; i++) {
         float re = x[i].real(), im = x[i].imag();
         if (!std::isfinite(re) || !std::isfinite(im)) re = im = 0;
-        if (audioIn) { im = 0; if (stationIsHf(m.st)) re += 1.f; }   // demodulated audio: an AM envelope around 1 (HF) or a real tone (LF)
+        if (audioIn) { im = 0; if (amAudio(m.st)) re += 1.f; }   // demodulated audio: an AM envelope around 1 (HF) or a real tone (LF)
         m.acc += cd(re, im) * m.lo;
         m.accN++;
         m.lo *= m.loStep;

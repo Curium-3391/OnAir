@@ -253,15 +253,15 @@ void tuner(App& a, bool& retune) {
         }
         ImGui::EndCombo();
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("DCF77 Germany, MSF UK, WWVB and WWV USA, WWVH Hawaii, JJY Japan, BPM China (ticks, and the coded signal), BPC China (68.5 kHz, needs an LF radio or an upconverter), HLA Korea.\nIn Europe DCF77 and MSF are heard across the continent at night and in the day.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("DCF77 Germany, MSF UK, WWVB and WWV USA, WWVH Hawaii, JJY Japan, BPM China (ticks, and the coded signal), BPC China (68.5 kHz, needs an LF radio or an upconverter), HLA Korea, RWM Russia.\nIn Europe DCF77 and MSF are heard across the continent at night and in the day.");
     const int st = S.station >= 0 ? S.station : stationForKhz(a.freqMhz * 1e3, S.pref60);
-    if (st == Wwv || st == Bpm || st == BpmC || st == Hla) {
+    if (st == Wwv || st == Bpm || st == BpmC || st == Hla || st == Rwm) {
         ImGui::SameLine(0, 8 * gUi);
         ImGui::SetNextItemWidth(std::min(100 * gUi, ImGui::GetContentRegionAvail().x));
         char lb[32];
         snprintf(lb, sizeof lb, "%.3g MHz", a.freqMhz);
         if (ImGui::BeginCombo("##tmfq", lb)) {
-            const std::vector<double> fs = st == Wwv ? std::vector<double>{2.5, 5, 10, 15, 20} : st == Bpm ? std::vector<double>{2.5, 5, 10, 15} : st == BpmC ? std::vector<double>{2.5, 5} : std::vector<double>{5};
+            const std::vector<double> fs = st == Wwv ? std::vector<double>{2.5, 5, 10, 15, 20} : st == Bpm ? std::vector<double>{2.5, 5, 10, 15} : st == BpmC ? std::vector<double>{2.5, 5} : st == Rwm ? std::vector<double>{4.996, 9.996, 14.996} : std::vector<double>{5};
             for (double f : fs) {
                 char b[24];
                 snprintf(b, sizeof b, "%g MHz", f);
@@ -269,7 +269,7 @@ void tuner(App& a, bool& retune) {
             }
             ImGui::EndCombo();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", st == Wwv ? "WWV and WWVH share 2.5, 5, 10 and 15 MHz (WWV also 20 MHz); the 1000 / 1200 Hz ticks tell them apart" : st == Bpm ? "BPM (China, Pucheng) shares 2.5, 5, 10 and 15 MHz with WWV: choose the station by hand, the frequency cannot tell them apart" : st == BpmC ? "BPM's coded time signal (2.5 and 5 MHz, in the 5 minute pure carrier slots of every half hour)" : "HLA (Korea) 5 MHz");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", st == Wwv ? "WWV and WWVH share 2.5, 5, 10 and 15 MHz (WWV also 20 MHz); the 1000 / 1200 Hz ticks tell them apart" : st == Bpm ? "BPM (China, Pucheng) shares 2.5, 5, 10 and 15 MHz with WWV: choose the station by hand, the frequency cannot tell them apart" : st == BpmC ? "BPM's coded time signal (2.5 and 5 MHz, in the 5 minute pure carrier slots of every half hour)" : st == Rwm ? "RWM (Russia, Moscow region): 4.996, 9.996 and 14.996 MHz. No time of day is sent: the seconds, the minute pulse and DUT1 are read, the minute comes from the computer clock" : "HLA (Korea) 5 MHz");
     }
     if (st < 0) { ImGui::SameLine(0, 8 * gUi); ImGui::TextColored(pal::warnAmber(), "no station at this frequency"); }
     ImGui::SameLine(0, 8 * gUi);
