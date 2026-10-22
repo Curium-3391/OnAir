@@ -9,6 +9,7 @@
 #include "dect2/source/iq_record.h"
 #include "dect2/source/time_machine.h"
 #include "dect2/dsp/spectrum.h"
+#include "dect2/dsp/noise_blanker.h"
 #include "dect2/t2/t2rx.h"
 #include "dect2/dvbt/dvbt_rx.h"
 #include "dect2/atsc/atsc_rx.h"
@@ -252,6 +253,12 @@ public:
     bool latestSpectrum(SpectrumFrame& out, uint64_t lastSeq);
     // no spectrum fft when headless, autobw needs it
     void setSpectrumEnabled(bool on) { analyzer_.setTransform(on); }
+    // The impulse noise blanker on the samples, before the spectrum and every decoder (#264; off by default). threshold: times the mean
+    // magnitude; widthUs: the blank after a click. nbBlankedPct: the share of samples blanked over the last second or so.
+    void setNoiseBlanker(bool on, float threshold, float widthUs) { nbThr_ = threshold; nbWidthUs_ = widthUs; nbOn_ = on; nbDirty_ = true; }
+    bool noiseBlankerOn() const { return nbOn_.load(); }
+    float nbBlankedPct() const { return nbPct_.load(); }
+    int spectrumFft() const { return specFft_.load(); }   // the choice (0: automatic)
     void setSpectrumFft(int n) { specFft_ = n; if (n > 0) analyzer_.resize((size_t)n); else analyzer_.resize(SpectrumAnalyzer::autoSize(rate_.load())); }   // 0: automatic from the sample rate
 
     bool latestRx(RxTelemetry& out, uint64_t lastSeq);
@@ -617,6 +624,10 @@ private:
     std::unique_ptr<IqSource> src_;
     SpectrumAnalyzer analyzer_{8192};
     std::atomic<int> specFft_{0};
+    NoiseBlanker nb_;   // the analysis thread's; set from the atomics below when nbDirty_
+    std::atomic<bool> nbOn_{false}, nbDirty_{true};
+    std::atomic<float> nbThr_{8.f}, nbWidthUs_{20.f}, nbPct_{0.f};
+    double nbRate_ = 0; uint64_t nbSeen0_ = 0, nbBlank0_ = 0; bool nbWas_ = false;
     T2Receiver rx_;
     DvbtReceiver rxT_;
     AtscReceiver rxA_;
