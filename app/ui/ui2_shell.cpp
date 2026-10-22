@@ -5,6 +5,7 @@
 #include "dect2/dsp/baseband_filter.h"
 #include "ui2_internal.h"
 #include "../codec/speech_codec_ui.h"
+#include "../voice/voice_monitor_ui.h"
 #include "ui_common.h"
 #include "tour_logic.h"
 #include "../state/workspace.h"
@@ -540,6 +541,7 @@ float menuBar(App& a) {
             if (ImGui::MenuItem(tr("Documentation"))) dect2::openUrl("https://on-air.dev/docs/");
             if (ImGui::MenuItem(tr("Troubleshooting"))) dect2::openUrl("https://on-air.dev/docs/troubleshooting/");
             if (ImGui::MenuItem(tr("Voice codecs"))) a.voiceCodecsOpen = true;
+            if (ImGui::MenuItem(tr("Voice monitor"))) voiceui::open();
             if (ImGui::MenuItem(tr("Website"))) dect2::openUrl("https://on-air.dev/");
             if (ImGui::MenuItem(tr("Credits and licences"))) { a.creditsOpen = true; a.creditsTab = 1; }
             ImGui::Separator();
@@ -554,6 +556,7 @@ float menuBar(App& a) {
     workspaceDialogs(a);
     creditsWindow(a);
     appcodec::voiceCodecsWindow(a);
+    voiceui::window(a);
     tx::windowPanel(a);
     reportProblemWindow(a);
     tx::captionsWindow(a);

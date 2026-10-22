@@ -2,6 +2,7 @@
 #include "app.h"
 #include "dect2/dmr/dmr_ambe.h"
 #include "../codec/speech_codec_ui.h"
+#include "../voice/voice_monitor_ui.h"
 #include "dect2/codec/codec_registry.h"
 #include "dect2/dmr/dmr_proto.h"
 #include <algorithm>
@@ -238,6 +239,13 @@ void tab(App& a) {
     const float gap = 8 * gUi;
     const float cardH = ImGui::GetTextLineHeightWithSpacing() * 4.f + ImGui::GetFrameHeight() + 14 * gUi;
     const float cw = (W - gap) * 0.5f;
+    {   // the voice monitor's strip, the same in every voice mode
+        voiceui::Link l;
+        l.live = on; l.locked = on && t.state == 2; l.codecName = "AMBE+2";
+        l.codecReady = dect2::codec::pluginLoaded("ambe2") || dect2::dmrAmbeAvailable(nullptr);
+        l.errorRate = on && t.dataValid ? t.ber : -1.f;
+        voiceui::strip(a, "dmr", "DMR", l);
+    }
     slotCard(a, 0, cw, cardH);
     ImGui::SameLine(0, gap);
     slotCard(a, 1, cw, cardH);

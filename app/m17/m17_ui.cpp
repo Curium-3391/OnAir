@@ -2,6 +2,7 @@
 // the text messages, the positions on a map (the ADS-B map underneath, as for APRS), the European calling-frequency presets, and a "?"
 // about the Codec 2 library the voice needs.
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/m17/m17_codec2.h"
 #include "dect2/m17/m17_rx.h"
@@ -246,6 +247,14 @@ void tick(App& a) {
 
 void tab(App& a) {
     load();
+    {   // the voice monitor's strip, the same in every voice mode
+        const dect2::M17Telemetry& t = a.rx.m17;
+        voiceui::Link l;
+        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "Codec 2";
+        l.codecReady = t.codec2;
+        l.errorRate = l.locked ? t.berPct / 100.f : -1.f;
+        voiceui::strip(a, "m17", "M17", l);
+    }
     subNav("m17v", S.view, {"Now", "Activity", "Messages", "Map"});
     if (S.view == 0) nowView(a); else if (S.view == 1) activityView(a); else if (S.view == 2) messageView(a); else mapView(a);
 }

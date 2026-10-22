@@ -2,6 +2,8 @@
 // the selected carrier, its neighbour cells, the carriers seen in the spectrum, a scan over a span, and the log. Only what base stations
 // broadcast in the clear to every terminal is shown: nothing is decrypted, no voice, no short data, no subscriber identities.
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
+#include "dect2/voice/voice_monitor.h"
 #include "codec/speech_codec_ui.h"
 #include "dect2/audio/audioout.h"
 #include "dect2/dsp/resampler.h"
@@ -50,6 +52,8 @@ struct VoicePlayout {
     std::chrono::steady_clock::time_point holdSince{};
     std::vector<float> out;
 } gPlayout;
+std::string gVoiceAccess;   // "MCC 234 MNC 10 CC 5" of the cell whose voice is played (under gPlayout.mu)
+struct Listen { int mode = 0, tn = 0; double carrierHz = 0; bool pushed = false; } gListen;   // issue #267: whole span / one channel, timeslot, carrier
 
 // the capture is decoded (or, from the UI, its end never came): the held audio goes to the speaker with its lead of silence. gPlayout.mu held.
 void voiceRelease() {
@@ -70,11 +74,25 @@ void wireVoice(App& a) {
         static dect2::RationalResampler rs;
         static int rsRate = 0;
         static std::vector<dect2::cf32> in, out;
+        static std::vector<float> rec;
         if (rate <= 0) return;
+        // the voice monitor (voice_monitor.h): the stream is named by its carrier and timeslot (TETRA identities are not decoded)
+        dect2::voice::Monitor& mon = dect2::voice::monitor("tetra");
+        dect2::voice::CallInfo ci;
+        ci.slot = a.engine.tetra().voiceTimeslot();
+        ci.carrierHz = a.engine.tetra().voiceCarrierHz();
+        if (ci.carrierHz > 0 && ci.slot > 0) { char b[48]; snprintf(b, sizeof b, "%.4f/TS%d", ci.carrierHz / 1e6, ci.slot); ci.dstText = b; }
+        { std::lock_guard<std::mutex> lk(gPlayout.mu); ci.access = gVoiceAccess; }
+        if (mon.offer(ci) != dect2::voice::Verdict::Play) return;
+        rec.resize(n);
+        for (size_t i = 0; i < n; i++) rec[i] = pcm[i] / 32768.f;
+        mon.audio(ci, rec.data(), n, 1, rate);   // the call's recording (when on), at the codec's rate
         if (rate != rsRate) { rsRate = rate; rs.configure(rate, kVoiceOutRate); }
-        if (!gVoiceOut.running()) gVoiceOut.start(kVoiceOutRate);
-        gVoiceOut.setVolume(a.volume); gVoiceOut.setMuted(a.muted);
+        const std::string dev = mon.settings().device;
         std::lock_guard<std::mutex> lk(gPlayout.mu);
+        if (gVoiceOut.running() && gVoiceOut.device() != dev) gVoiceOut.stop();   // the user picked another output for TETRA
+        if (!gVoiceOut.running()) { gVoiceOut.setDevice(dev); gVoiceOut.start(kVoiceOutRate); }
+        gVoiceOut.setVolume(a.volume * mon.volume()); gVoiceOut.setMuted(a.muted);
         const bool idle = !gVoiceOut.playing() && gVoiceOut.bufferedFrames() == 0;
         if (idle && !gPlayout.lead.holding()) {   // a stream starts: its first capture waits for its end
             rs.reset();
@@ -100,6 +118,66 @@ void voiceStrip(App& a) {
     {   // audio held for the end of a capture that never came (a retune in the middle of it): out after a second
         std::lock_guard<std::mutex> lk(gPlayout.mu);
         if (gPlayout.lead.holding() && std::chrono::steady_clock::now() - gPlayout.holdSince > std::chrono::seconds(1)) voiceRelease();
+    }
+    const dect2::TetraTelemetry& t = a.rx.tetra;
+    const double playHz = a.engine.tetra().voiceCarrierHz();
+    {   // the cell of the stream being played, for the monitor's card
+        std::string acc;
+        for (const auto& c : t.cells) if (playHz > 0 && std::fabs(c.freqHz - playHz) < 6e3 && c.mcc >= 0) {
+            char b[64]; snprintf(b, sizeof b, "MCC %d MNC %d CC %d", c.mcc, c.mnc, c.colourCode); acc = b; break;
+        }
+        std::lock_guard<std::mutex> lk(gPlayout.mu);
+        gVoiceAccess = acc;
+    }
+    {   // the voice monitor's strip, the same in every voice mode
+        voiceui::Link l;
+        l.live = a.rx.standard == 47; l.locked = l.live && t.dataValid; l.codecName = "TETRA ACELP";   // 47: TETRA (live() below) l.codecReady = gVoice.hasCodec();
+        const double tot = (double)t.blocksOk + (double)t.blocksBad;
+        l.errorRate = l.locked && tot > 20 ? (float)(t.blocksBad / tot) : -1.f;   // signalling blocks that failed their CRC
+        voiceui::strip(a, "tetra", "TETRA", l);
+    }
+    {   // what is listened to (issue #267): the whole span or one 25 kHz channel, the timeslot, the carrier
+        bool ch = !gListen.pushed;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Listen to");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(190 * gUi);
+        const char* lm[2] = {"the whole span", "this channel only (25 kHz)"};
+        if (ImGui::BeginCombo("##tetralisten", lm[gListen.mode])) {
+            for (int i = 0; i < 2; i++) if (ImGui::Selectable(lm[i], gListen.mode == i)) { gListen.mode = i; ch = true; }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("This channel only: only the carrier at the dial frequency is decoded. The same call sent by other sites in the span\n"
+                                                      "is not heard again, and a capture is decoded much faster, so less speech is lost between captures.");
+        flowNext(8 * gUi);
+        ImGui::SetNextItemWidth(110 * gUi);
+        const char* ts[5] = {"any timeslot", "timeslot 1", "timeslot 2", "timeslot 3", "timeslot 4"};
+        if (ImGui::BeginCombo("##tetrats", ts[gListen.tn])) {
+            for (int i = 0; i < 5; i++) if (ImGui::Selectable(ts[i], gListen.tn == i)) { gListen.tn = i; ch = true; }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Any: the first timeslot with clear voice is followed. A number: only that timeslot is played.");
+        flowNext(8 * gUi);
+        ImGui::SetNextItemWidth(170 * gUi);
+        char cur[48];
+        if (gListen.carrierHz > 0) snprintf(cur, sizeof cur, "%.4f MHz", gListen.carrierHz / 1e6); else snprintf(cur, sizeof cur, "strongest carrier");
+        if (ImGui::BeginCombo("##tetracar", cur)) {
+            if (ImGui::Selectable("strongest carrier", gListen.carrierHz <= 0)) { gListen.carrierHz = 0; ch = true; }
+            for (const auto& c : t.cells) {
+                char b[96]; snprintf(b, sizeof b, "%.4f MHz%s", c.freqHz / 1e6, c.encryption() ? "  (encryption)" : "");
+                if (ImGui::Selectable(b, std::fabs(gListen.carrierHz - c.freqHz) < 1e3)) { gListen.carrierHz = c.freqHz; ch = true; }
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Strongest: the strongest carrier with clear voice is followed. A carrier: only its voice is played.");
+        if (playHz > 0) { flowNext(8 * gUi); ImGui::TextDisabled("playing %.4f MHz, timeslot %d", playHz / 1e6, a.engine.tetra().voiceTimeslot()); }
+        flowEnd();
+        if (ch) {
+            a.engine.tetra().setSingleCarrier(gListen.mode == 1);
+            a.engine.tetra().setVoiceTimeslot(gListen.tn);
+            a.engine.tetra().setVoiceCarrier(gListen.carrierHz);
+            gListen.pushed = true;
+        }
     }
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Voice");
