@@ -3,6 +3,7 @@
 #include "dect2/common/endian.h"
 #include "dect2/audio/audioout.h"
 #include "dect2/dab/dab_pad.h"
+#include "dect2/dab/dab_playout.h"
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -99,6 +100,19 @@ struct DabAudio::Impl {
     uint64_t logoEpoch = 0;
     uint64_t slideEpoch = 0;     // pictures of the services selected before, so that the sequence number never goes back
     std::function<void(const uint8_t*, int, uint8_t)> auTap;
+    std::function<void(const float*, int)> pcmTap;
+    // playout: concealment, rate control and gap filling (dab_playout.h)
+    DabPlayout play;
+    std::vector<float> pout;
+    std::function<int()> fillProbe;      // tests: the frames queued in a simulated output (else the real one's)
+    bool everFull = false;               // the output has once been filled to the start level (it plays)
+    bool filling = false;                // gaps were filled since the last audio
+    // After a loss that went silent, one good frame alone is not played: a stretch of bad reception would otherwise come out as short blips
+    // between the silences. Two good ones in a row are.
+    int goodRun = 0;
+    bool hold = false;
+    int auFrames = 1920;                 // 48 kHz frames of one access unit of the current stream
+    int lastNau = 3;
     float volume = 1.f; bool muted = false;
 
     // DAB+ superframe assembly
@@ -337,24 +351,57 @@ struct DabAudio::Impl {
             }
         }
         if (rec.active && rec.fmt == DabRecFormat::Wav) recWav(stereo, frames);
+        if (pcmTap) pcmTap(stereo, frames);
         if (silent) return;
         if (!outStarted) {
-            out.setStartThreshold(12000);
+            out.setStartThreshold(DabAudio::kStartFrames);
             if (out.start(48000)) outStarted = true;
             out.setVolume(volume); out.setMuted(muted);
         }
         if (outStarted) out.write(stereo, frames);
     }
 
+    // frames queued in the output, -1 when there is none (tests without a probe)
+    int fillNow() const {
+        if (fillProbe) return fillProbe();
+        if (outStarted) return out.bufferedFrames();
+        return -1;
+    }
+    void deliverPlayout() {
+        if (!pout.empty()) emit(pout.data(), (int)(pout.size() / 2));
+        pout.clear();
+    }
+    // decoded audio, 48 kHz stereo: through the playout (splice, rate control) to the output
+    void audioGood(const float* stereo, int frames) {
+        if (hold) { play.lost(frames, pout); deliverPlayout(); return; }
+        const int fill = fillNow();
+        if (fill >= 0) {
+            play.setFill(fill);
+            if (fill >= DabAudio::kStartFrames) everFull = true;
+            // after the gaps were filled: back up to the working level with silence before the audio fades in, so the next burst
+            // spacing does not empty the buffer again
+            if (filling && fill < DabPlayout::kTarget - 2400) play.lost(DabPlayout::kTarget - fill, pout);
+        }
+        filling = false;
+        play.good(stereo, frames, pout);
+        deliverPlayout();
+    }
+    // `frames` of audio lost: concealment
+    void audioLost(int frames) {
+        goodRun = 0;
+        play.lost(frames, pout);
+        deliverPlayout();
+    }
+
     // float samples of any rate and one or two channels to the 48 kHz stereo of the output
-    void emitFloat(const float* in, int frames, int ch, int rate) {
-        if (rate == 48000 && ch == 2) { emit(in, frames); return; }
+    int emitFloat(const float* in, int frames, int ch, int rate) {
+        if (rate == 48000 && ch == 2) { audioGood(in, frames); return frames; }
         if (!swrF || swrFRate != rate || swrFCh != ch) {
             if (swrF) swr_free(&swrF);
             AVChannelLayout inL, outL = AV_CHANNEL_LAYOUT_STEREO;
             av_channel_layout_default(&inL, ch);
             swr_alloc_set_opts2(&swrF, &outL, AV_SAMPLE_FMT_FLT, 48000, &inL, AV_SAMPLE_FMT_FLT, rate, 0, nullptr);
-            if (!swrF || swr_init(swrF) < 0) { if (swrF) swr_free(&swrF); return; }
+            if (!swrF || swr_init(swrF) < 0) { if (swrF) swr_free(&swrF); return 0; }
             swrFRate = rate; swrFCh = ch;
             st.sampleRate = rate; st.channels = ch;
         }
@@ -363,10 +410,12 @@ struct DabAudio::Impl {
         uint8_t* o[1] = {(uint8_t*)pcm.data()};
         const uint8_t* ip[1] = {(const uint8_t*)in};
         const int got = swr_convert(swrF, o, maxOut, ip, frames);
-        if (got > 0) emit(pcm.data(), got);
+        if (got > 0) audioGood(pcm.data(), got);
+        return std::max(0, got);
     }
 
-    void decodePacket(const uint8_t* data, int n) {
+    // decodes one access unit or MP2 frame; returns the 48 kHz frames put out (0: it did not decode)
+    int decodePacket(const uint8_t* data, int n) {
         if (faad) {
             FaadFrameInfo fi;
             std::memset(&fi, 0, sizeof fi);
@@ -374,25 +423,26 @@ struct DabAudio::Impl {
             const void* out = Faad::get().decode(faad, &fi, in.data(), (unsigned long)n);
             if (fi.error == 0 && out && fi.samples > 0 && fi.channels >= 1 && fi.channels <= 2) {
                 st.sbrDecoded = fi.sbr != 0; st.psDecoded = fi.ps != 0;
-                emitFloat((const float*)out, (int)(fi.samples / fi.channels), fi.channels, (int)fi.samplerate);
+                return emitFloat((const float*)out, (int)(fi.samples / fi.channels), fi.channels, (int)fi.samplerate);
             }
-            return;
+            return 0;
         }
-        if (!ctx) return;
+        if (!ctx) return 0;
         if (!pkt) pkt = av_packet_alloc();
         if (!frame) frame = av_frame_alloc();
-        if (av_new_packet(pkt, n) < 0) return;
+        if (av_new_packet(pkt, n) < 0) return 0;
         std::memcpy(pkt->data, data, (size_t)n);
         const int s = avcodec_send_packet(ctx, pkt);
         av_packet_unref(pkt);
-        if (s < 0) return;
+        if (s < 0) return 0;
+        int put = 0;
         while (avcodec_receive_frame(ctx, frame) == 0) {
             const int nb = frame->nb_samples, ch = frame->ch_layout.nb_channels;
             if (!swr || swrRate != frame->sample_rate || swrFmt != frame->format || swrCh != ch) {
                 if (swr) swr_free(&swr);
                 AVChannelLayout outL = AV_CHANNEL_LAYOUT_STEREO;
                 swr_alloc_set_opts2(&swr, &outL, AV_SAMPLE_FMT_FLT, 48000, &frame->ch_layout, (AVSampleFormat)frame->format, frame->sample_rate, 0, nullptr);
-                if (!swr || swr_init(swr) < 0) { if (swr) swr_free(&swr); av_frame_unref(frame); return; }
+                if (!swr || swr_init(swr) < 0) { if (swr) swr_free(&swr); av_frame_unref(frame); return put; }
                 swrRate = frame->sample_rate; swrFmt = frame->format; swrCh = ch;
                 st.sampleRate = frame->sample_rate; st.channels = ch;
             }
@@ -400,9 +450,10 @@ struct DabAudio::Impl {
             pcm.resize((size_t)maxOut * 2);
             uint8_t* o[1] = {(uint8_t*)pcm.data()};
             const int got = swr_convert(swr, o, maxOut, (const uint8_t**)frame->extended_data, nb);
-            if (got > 0) emit(pcm.data(), got);
+            if (got > 0) { audioGood(pcm.data(), got); put += got; }
             av_frame_unref(frame);
         }
+        return put;
     }
 
     // ---- DAB+ superframe
@@ -412,13 +463,15 @@ struct DabAudio::Impl {
         if (total % 120 || N < 1 || N > 24) return false;
         std::vector<uint8_t> sf((size_t)total), payload((size_t)N * 110);
         for (int f = 0; f < 5; f++) std::memcpy(&sf[(size_t)f * fb], frames[(size_t)f].data(), (size_t)fb);
-        int corrected = 0;
+        // A code word beyond repair does not end the superframe: its bytes are spread over all of it (one in every N), and the access units it
+        // did not touch still pass their CRC. The Fire code and the CRCs say what can be used.
+        int corrected = 0, failed = 0;
         for (int i = 0; i < N; i++) {
             uint8_t cw[120];
             for (int j = 0; j < 120; j++) cw[j] = sf[(size_t)j * N + i];
             const int r = dab::rsDecode120(cw);
-            if (r < 0) return false;
-            corrected += r;
+            if (r < 0) failed++;
+            else corrected += r;
             for (int j = 0; j < 110; j++) payload[(size_t)j * N + i] = cw[j];
         }
         if (dab::fireCode(&payload[2], 9) != (uint16_t)((payload[0] << 8) | payload[1])) return false;
@@ -437,7 +490,10 @@ struct DabAudio::Impl {
         for (int k = 0; k < nAu; k++) if (starts[(size_t)k + 1] <= starts[(size_t)k] || starts[(size_t)k + 1] > (int)payload.size()) return false;
         std::lock_guard<std::mutex> lk(mu);
         st.rsCorrected += (uint64_t)corrected;
+        st.rsUncorrectable += (uint64_t)failed;
         st.aac = dabAacParams(hdr);
+        lastNau = nAu;
+        auFrames = 5760 / nAu;
         if (openHeader != (hdr & 0x7F)) { if (!openAac(hdr & 0x7F)) return true; openHeader = hdr & 0x7F; }
         for (int k = 0; k < nAu; k++) {
             const uint8_t* au = &payload[(size_t)starts[(size_t)k]];
@@ -447,8 +503,12 @@ struct DabAudio::Impl {
                 if (auTap) auTap(au, len - 2, hdr);
                 pad.accessUnit(au, len - 2);
                 if (rec.active) { if (rec.fmt == DabRecFormat::Encoded) recAu(au, len - 2, hdr); recLabel(); }
-                decodePacket(au, len - 2);
-            } else st.auBad++;
+                hold = play.quiet() && ++goodRun < 2;
+                if (!play.quiet()) goodRun++;
+                const int got = decodePacket(au, len - 2);
+                hold = false;
+                if (got <= 0) { st.concealedFrames++; audioLost(auFrames); }
+            } else { st.auBad++; st.concealedFrames++; audioLost(auFrames); }
         }
         return true;
     }
@@ -472,7 +532,11 @@ void DabAudio::select(int sub, bool dabPlus, int bitrate) {
     I.pad.reset();
     I.st.sub = sub; I.st.dabPlus = dabPlus; I.st.bitrate = bitrate;
     if (!dabPlus && sub >= 0) I.openMp2();
-    if (I.outStarted) I.out.flush();
+    I.play.reset();
+    I.pout.clear();
+    I.everFull = false; I.filling = false;
+    I.auFrames = dabPlus ? 1920 : 1152; I.lastNau = 3;
+    if (I.outStarted) { I.out.flush(); I.out.setStartThreshold(DabAudio::kStartFrames); }   // AudioOut waits for 0.8 s after a flush otherwise
 }
 
 void DabAudio::flushSync() {
@@ -480,22 +544,29 @@ void DabAudio::flushSync() {
     p_->frames.clear(); p_->synced = false; p_->since = 0;
 }
 
-void DabAudio::push(const uint8_t* frame, int n) {
+void DabAudio::push(const uint8_t* frame, int n, bool erased) {
     Impl& I = *p_;
     if (I.st.sub < 0) return;
     if (!I.dabPlus) {
         std::lock_guard<std::mutex> lk(I.mu);
         I.st.frames++;
+        // a frame lost on the way (erased by the receiver) or one that does not decode is concealed: 1152 samples at 48 kHz
+        if (erased) { if (I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); } return; }
         if (I.rec.active && I.rec.fmt == DabRecFormat::Encoded) I.recMp2(frame, n);
         if (const int fl = Impl::mp2FrameLen(frame, n)) { I.pad.mp2Frame(frame, fl); if (I.rec.active) I.recLabel(); }   // the PAD at the end of the audio frame
-        I.decodePacket(frame, n);
+        I.hold = I.play.quiet() && ++I.goodRun < 2;
+        if (!I.play.quiet()) I.goodRun++;
+        const int got = I.decodePacket(frame, n);
+        I.hold = false;
+        if (got <= 0 && I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); }
         return;
     }
     std::deque<std::vector<uint8_t>> window;
     {
         std::lock_guard<std::mutex> lk(I.mu);
         I.st.frames++;
-        I.frames.emplace_back(frame, frame + n);
+        if (erased) I.frames.emplace_back((size_t)n, (uint8_t)0);   // keeps the superframe phase: the superframe it belongs to is concealed
+        else I.frames.emplace_back(frame, frame + n);
         if (I.frames.size() > 5) I.frames.pop_front();
         if (I.frames.size() < 5) return;
         if (I.synced && ++I.since < 5) return;
@@ -504,12 +575,35 @@ void DabAudio::push(const uint8_t* frame, int n) {
     const bool ok = I.superframe(window);
     std::lock_guard<std::mutex> lk(I.mu);
     if (ok) { I.st.superframesOk++; I.synced = true; I.since = 0; I.consecBad = 0; }
-    else if (I.synced) { I.st.superframesBad++; I.since = 0; if (++I.consecBad >= 3) { I.synced = false; I.consecBad = 0; } }
+    else if (I.synced) {
+        I.st.superframesBad++; I.since = 0;
+        I.st.concealedFrames += (uint64_t)I.lastNau;
+        I.st.auBad += (uint64_t)I.lastNau;   // the access units of a superframe that did not decode are lost too
+        I.audioLost(5760);                    // 120 ms
+        // the superframe phase is only searched again after a long run of bad ones: a fade or an erased stretch keeps it
+        if (++I.consecBad >= 8) { I.synced = false; I.consecBad = 0; }
+    }
 }
+
+void DabAudio::tick() {
+    Impl& I = *p_;
+    std::lock_guard<std::mutex> lk(I.mu);
+    if (I.st.sub < 0 || !I.everFull) return;
+    const int fill = I.fillNow();
+    if (fill < 0 || fill >= DabPlayout::kLow) return;
+    // nothing arriving (the sync is lost, the signal gone): the output is kept from running dry, the concealment fades to silence
+    I.audioLost(DabPlayout::kTarget - fill);
+    I.filling = true;
+}
+
+void DabAudio::setFillProbe(std::function<int()> probe) { std::lock_guard<std::mutex> lk(p_->mu); p_->fillProbe = std::move(probe); }
 
 DabAudioStats DabAudio::stats() const {
     std::lock_guard<std::mutex> lk(p_->mu);
     DabAudioStats s = p_->st;
+    s.concealMs = p_->play.concealFrames() / 48;
+    s.silenceMs = p_->play.silentFrames() / 48;
+    s.rateCorrPpm = (p_->play.ratio() - 1.0) * 1e6;
     if (p_->outStarted) { s.bufferedMs = p_->out.bufferedFrames() / 48; s.underruns = p_->out.underruns(); }
     return s;
 }
@@ -533,6 +627,7 @@ void DabAudio::setMuted(bool m) { p_->muted = m; if (p_->outStarted) p_->out.set
 void DabAudio::setMotSink(std::function<void(const MotObject&)> cb) { p_->pad.setMotSink(std::move(cb)); }
 void DabAudio::setDataGroupSink(std::function<void(const uint8_t*, size_t)> cb) { p_->pad.setDataGroupSink(std::move(cb)); }
 void DabAudio::setAuTap(std::function<void(const uint8_t*, int, uint8_t)> cb) { p_->auTap = std::move(cb); }
+void DabAudio::setPcmTap(std::function<void(const float*, int)> cb) { p_->pcmTap = std::move(cb); }
 bool DabAudio::slide(DabSlide& out, uint64_t lastSeq) const {
     std::lock_guard<std::mutex> lk(p_->mu);
     const uint64_t seq = p_->slideEpoch + p_->pad.seq();

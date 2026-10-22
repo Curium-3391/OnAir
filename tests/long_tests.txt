@@ -12,6 +12,7 @@ atv_secam
 atv_sound
 atv_systems
 cw_wide
+dab_audit
 datawell_engine
 dmr_engine
 drm_engine
