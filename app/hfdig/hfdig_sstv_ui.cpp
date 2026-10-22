@@ -3,6 +3,7 @@
 // Save (PNG) and Clear, and "Save every picture" (PNG files in <data folder>/sstv/, named by the time and the mode).
 #include "app.h"
 #include "panels/gallery.h"
+#include "panels/enhance_ui.h"
 #include "gfx/gfx.h"
 #include "ui/icons.h"
 #include "platform/platform.h"
@@ -37,6 +38,9 @@ struct State {
     uint64_t lastId = 0;                 // newest finished picture taken into the list
     uint64_t hideId = 0;                 // the live picture the user cleared
     std::string msg;
+    enhui::LiveTex enh;                  // the Enhance control: the picture on show, enhanced
+    const void* enhIm = nullptr;         // the picture last given to it
+    uint64_t enhSeq = ~0ull;
 };
 State S;
 
@@ -99,7 +103,7 @@ void dropItem(Item& it) { delete it.tex; it.tex = nullptr; }
 
 // takes the pictures that finished since the last frame into the list, updates the live texture
 void update(const dect2::HfdigSstvTelemetry& t) {
-    if (!S.loaded) { S.loaded = true; S.autoSave = plat::prefs().getB("hfdigSstvAutoSave", false); }
+    if (!S.loaded) { S.loaded = true; S.autoSave = plat::prefs().getB("hfdigSstvAutoSave", false); S.enh.e.setSource("SSTV"); }
     for (size_t k = t.history.size(); k-- > 0;) {
         const auto& h = t.history[k];
         if (!h || h->id <= S.lastId) continue;
@@ -144,6 +148,17 @@ void picture(dect2::HfdigSstvTelemetry const& t, bool running, ImVec2 size) {
     const HfdigSstvImage* im = showLive ? t.image.get() : (S.sel < (int)S.items.size() ? S.items[(size_t)S.sel].im.get() : nullptr);
     gfx::Image* tex = showLive ? S.live : (S.sel < (int)S.items.size() ? S.items[(size_t)S.sel].tex : nullptr);
     if (showLive && im && im->id == S.hideId) { im = nullptr; tex = nullptr; }
+    if (im && tex) {   // the enhancement of the picture on show (the live one while it builds: the cheap preview path)
+        const uint64_t seq = showLive ? t.imageSeq : (uint64_t)S.sel;
+        if (im != S.enhIm || seq != S.enhSeq) {
+            S.enhIm = im; S.enhSeq = seq;
+            std::vector<uint32_t> px;
+            toRgba(*im, px);
+            S.enh.e.setSaveName(fileFor(*im).insert(fileFor(*im).size() - 4, "-enhanced"));
+            S.enh.feed(px.data(), im->width, im->height, !showLive || t.lines >= im->height);
+        }
+        tex = S.enh.texture(tex);
+    }
     const float textH = ImGui::GetFrameHeightWithSpacing() * 2;
     const ImVec2 box(size.x, std::max(40.f, size.y - textH));
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
@@ -164,6 +179,7 @@ void picture(dect2::HfdigSstvTelemetry const& t, bool running, ImVec2 size) {
     char ov[48];
     snprintf(ov, sizeof ov, "%d / %d lines", lines, total);
     ImGui::ProgressBar(frac, ImVec2(box.x, 0), ov);
+    if (im) S.enh.controls("sstvenh");
     ImGui::PushTextWrapPos(0);
     if (im) {
         const double slant = showLive ? t.slantPpm : im->slantPpm;

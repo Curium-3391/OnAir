@@ -1,6 +1,7 @@
 // KAIT screens: the receiver tab (the picture as it decodes, layer by layer, with the link numbers) and the transmit options (callsign, picture file, profile)
 // that the TX panel draws for the KAIT signal. English texts only.
 #include "app.h"
+#include "../panels/enhance_ui.h"
 #include "../panels/tx_state.h"
 #include "dect2/kait/kait_frame.h"
 #include "dect2/kait/kait_image.h"
@@ -22,6 +23,7 @@ struct Pic {
     int w = 0, h = 0;
     uint64_t seq = 0;
     std::string saveMsg;
+    enhui::LiveTex enh;   // the Enhance control on the picture
 } P;
 
 void uploadPicture(const dect2::KaitTelemetry& t) {
@@ -39,6 +41,8 @@ void uploadPicture(const dect2::KaitTelemetry& t) {
         px[i] = 0xFF000000u | ((uint32_t)c[2] << 16) | ((uint32_t)c[1] << 8) | c[0];
     }
     P.img->update(0, 0, P.w, P.h, px.data());
+    P.enh.e.setSource("KAIT picture");
+    P.enh.feed(px.data(), P.w, P.h, t.state >= 3);
     P.seq = t.imageSeq;
 }
 
@@ -82,7 +86,8 @@ void tab(App& a) {
         const float maxH = std::max(120.f * gUi, avail.y * 0.62f);
         float sc = std::min(avail.x / (float)P.w, maxH / (float)P.h);
         sc = std::max(0.05f, sc);
-        ImGui::Image(P.img->texture(), ImVec2((float)P.w * sc, (float)P.h * sc));
+        ImGui::Image(P.enh.texture(P.img)->texture(), ImVec2((float)P.w * sc, (float)P.h * sc));
+        P.enh.controls("kaitenh");
     } else {
         ImGui::TextDisabled("%s", "no picture yet");
     }
