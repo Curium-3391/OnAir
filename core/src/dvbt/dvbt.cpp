@@ -1,4 +1,6 @@
 #include "dect2/common/thread_name.h"
+#include "dect2/common/stage_prof.h"
+#include "dect2/common/threadpool.h"
 #include "dect2/fec/fec_proto.h"
 #include "dect2/dvbt/dvbt.h"
 #include <algorithm>
@@ -662,20 +664,22 @@ void Viterbi::decode(const std::vector<int8_t>& soft, std::vector<uint8_t>& out,
     const size_t chunks = (steps + C - 1) / C;
     std::vector<long> metrics(chunks, 0);
     auto work = [&](size_t ci) {
+        DECT2_STAGE("dvbt.viterbi");
         const size_t a = ci * C, b = std::min(steps, a + C);
         const size_t lo = a > L ? a - L : 0, hi = std::min(steps, b + L);
-        std::vector<uint8_t> bits;
+        static thread_local std::vector<uint8_t> bits;   // (one per thread: no allocation per chunk)
         long mt = 0;
         fecp::viterbiRange(soft.data() + 2 * lo, hi - lo, bits, &mt);   // 64-state K = 7 trellis: core/src/fec/fec_proto.cpp (C++) or the Rust crate onair_fec (aarch64)
         metrics[ci] = mt;
-        for (size_t t = a; t < b; t++) out[t] = bits[t - lo];
+        std::copy(bits.begin() + (a - lo), bits.begin() + (b - lo), out.begin() + a);
     };
+    // The chunks on the shared worker pool (common/threadpool.h), the calling thread helping: the four threads started and joined for every
+    // block before cost more than a tenth of the decoding. Each chunk writes only its own part of the output: the result is the same for
+    // any number of workers (DECT2_THREADS=0: in order on this thread).
     if (threads <= 1 || chunks <= 1) { for (size_t c = 0; c < chunks; c++) work(c); }
-    else {
+    else {   // at most `threads` at a time, as before, each taking the next chunk
         std::atomic<size_t> next{0};
-        std::vector<std::thread> ts;
-        for (int t = 0; t < std::min<size_t>(threads, chunks); t++) ts.emplace_back(dect2::namedThread("onair-dvbt-w", [&] { for (size_t c; (c = next++) < chunks;) work(c); }));
-        for (auto& t : ts) t.join();
+        ThreadPool::shared().parallelFor(std::min<size_t>((size_t)threads, chunks), [&](size_t) { for (size_t c; (c = next++) < chunks;) work(c); });
     }
     if (metric) { long s = 0; for (long m : metrics) s += m; *metric = s; }
 }
