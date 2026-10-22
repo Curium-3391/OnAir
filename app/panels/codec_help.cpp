@@ -66,7 +66,7 @@ Text textOf(CodecHelp c) {
     case CodecHelp::DmrAmbe:
         return {"AMBE+2 (DMR voice)",
                 "DMR voice uses AMBE+2, a patented vocoder. OnAir does not ship it. Put a codec plug-in (onair-codec-ambe2, built around a library such as mbelib; "
-                "docs/CODECS.md has the ABI and a small example wrapper) or the libmbe library itself in the codecs folder, and OnAir decodes and plays the voice of one "
+                "docs/CODECS.md has the ABI and a small example wrapper) or the libmbe library itself in a codecs folder (your user one, one next to OnAir, or the extra folder set in Help > Voice codecs), and OnAir decodes and plays the voice of one "
                 "time slot (choose slot 1, slot 2 or the first heard). Encrypted calls are never decoded. Check the patent and radio rules where you live first.",
 #if defined(__APPLE__)
                 kMbeMac,
@@ -271,16 +271,7 @@ void codecHelpButton(CodecHelp c, const char* label) {
             ImGui::TextDisabled("Folders, in this order");
             for (const auto& d : dect2::ac4SearchFolders()) ImGui::BulletText("%s", d.c_str());
             ImGui::Spacing();
-            const auto folders = dect2::codecFolderList();
-            if (!folders.empty()) {
-                if (ImGui::Button("Open codecs folder")) {
-                    std::error_code ec;
-                    std::filesystem::create_directories(std::filesystem::path(folders.back()), ec);
-                    dect2::openUrl(folders.back());
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(made if it does not exist)", folders.back().c_str());
-                ImGui::SameLine();
-            }
+            if (appcodec::openCodecFolderButtons()) ImGui::SameLine();
             if (ImGui::Button("Look again")) dect2::ac4Library(true);
             ImGui::SameLine();
             if (ImGui::Button("Full instructions")) dect2::openUrl(kDocUrl);
@@ -309,16 +300,7 @@ void codecHelpButton(CodecHelp c, const char* label) {
             ImGui::TextDisabled(dra ? "Folders, in this order (or set DECT2_DRA_PATH to the file)" : "Folders, in this order (or set DECT2_FAAD_HDC_PATH to the file)");
             for (const auto& d : dect2::codecSearchPlaces()) ImGui::BulletText("%s", d.c_str());
             ImGui::Spacing();
-            const auto folders = dect2::codecFolderList();
-            if (!folders.empty()) {
-                if (ImGui::Button("Open codecs folder")) {
-                    std::error_code ec;
-                    std::filesystem::create_directories(std::filesystem::path(folders.back()), ec);
-                    dect2::openUrl(folders.back());
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(made if it does not exist)", folders.back().c_str());
-                ImGui::SameLine();
-            }
+            if (appcodec::openCodecFolderButtons()) ImGui::SameLine();
             if (ImGui::Button("Look again")) { if (dra) dect2::cdr::draRescan(); else dect2::hdr::hdcRescan(); }
             ImGui::SameLine();
             if (ImGui::Button("Full instructions")) dect2::openUrl(kDocUrl);
@@ -354,16 +336,7 @@ void codecHelpButton(CodecHelp c, const char* label) {
             ImGui::TextDisabled("Folders, in this order");
             for (const auto& d : dect2::codecSearchPlaces()) ImGui::BulletText("%s", d.c_str());
             ImGui::Spacing();
-            const auto folders = dect2::codecFolderList();
-            if (!folders.empty()) {
-                if (ImGui::Button("Open codecs folder")) {
-                    std::error_code ec;
-                    std::filesystem::create_directories(std::filesystem::path(folders.back()), ec);
-                    dect2::openUrl(folders.back());
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(made if it does not exist)", folders.back().c_str());
-                ImGui::SameLine();
-            }
+            if (appcodec::openCodecFolderButtons()) ImGui::SameLine();
             if (ImGui::Button("Look again")) { if (c == CodecHelp::P25Imbe) dect2::p25ImbeRescan(); else if (c == CodecHelp::NxdnAmbe || c == CodecHelp::DpmrAmbe) dect2::nxdnAmbeRescan(); else if (c == CodecHelp::DstarAmbe) dect2::dstarAmbeRescan(); else dect2::hfdigFreedvRescan(); }
             ImGui::SameLine();
         }

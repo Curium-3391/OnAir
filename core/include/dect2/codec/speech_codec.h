@@ -41,6 +41,8 @@ struct CodecLookup {
     CodecStatus status = CodecStatus::NotInstalled;
     std::string path;      // the plug-in file that was found (empty when not installed)
     std::string message;   // English text for the voice mode to show
+    std::string folder;    // the folder the plug-in was found in (empty when not installed)
+    std::vector<std::string> shadowed;   // other searched folders that hold a file with the same name; they are not used
 };
 
 // The legal notice the user accepts once per codec. English; the same text for every codec.
@@ -54,5 +56,10 @@ using CodecOpener = std::function<std::unique_ptr<SpeechCodec>(const std::string
 // only after the plug-in is found, so a missing codec never asks for it. `opener` defaults to the shared-library loader.
 CodecLookup loadSpeechCodec(const std::string& id, const std::string& folder, bool noticeAccepted,
                             std::unique_ptr<SpeechCodec>& out, const CodecOpener& opener = {});
+
+// The same, searching several folders in order (codec_paths.h: user folder, extra, ONAIR_CODEC_DIR, next to the program). The first folder
+// whose plug-in loads wins; a plug-in in a later folder is only listed in CodecLookup::shadowed. `folders` are plain paths.
+CodecLookup loadSpeechCodecInDirs(const std::string& id, const std::vector<std::string>& folders, bool noticeAccepted,
+                                  std::unique_ptr<SpeechCodec>& out, const CodecOpener& opener = {});
 
 } // namespace dect2::codec

@@ -163,6 +163,7 @@ CodecLookup loadSpeechCodec(const std::string& id, const std::string& folder, bo
     std::error_code ac;
     const std::filesystem::path abs = std::filesystem::absolute(path, ac);
     r.path = ac ? path.string() : abs.string();
+    r.folder = folder;
     if (!noticeAccepted) {
         r.status = CodecStatus::NoticeRequired;
         r.message = "Accept the codec notice to load the " + id + " speech codec.";
@@ -179,6 +180,38 @@ CodecLookup loadSpeechCodec(const std::string& id, const std::string& folder, bo
     r.status = CodecStatus::Ready;
     r.message = "Codec loaded: " + id + ".";
     return r;
+}
+
+CodecLookup loadSpeechCodecInDirs(const std::string& id, const std::vector<std::string>& folders, bool noticeAccepted,
+                                  std::unique_ptr<SpeechCodec>& out, const CodecOpener& opener) {
+    out.reset();
+    if (!validId(id) || folders.empty()) return loadSpeechCodec(id, folders.empty() ? std::string() : folders[0], noticeAccepted, out, opener);
+    const std::string file = speechCodecFileName(id);
+    std::vector<std::string> hits;
+    for (const auto& f : folders) {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(std::filesystem::path(f) / file, ec)) hits.push_back(f);
+    }
+    if (hits.empty()) {
+        CodecLookup r;
+        std::string list;
+        for (const auto& f : folders) list += (list.empty() ? "" : ", ") + f;
+        r.status = CodecStatus::NotInstalled;
+        r.message = "Codec not installed: this mode needs the " + id + " speech codec. OnAir does not include it. Install it yourself "
+                    "(see " + std::string(kDocUrl) + ") and put the plug-in file " + file + " in one of these folders: " + list + ".";
+        return r;
+    }
+    CodecLookup first;
+    for (size_t i = 0; i < hits.size(); ++i) {
+        CodecLookup r = loadSpeechCodec(id, hits[i], noticeAccepted, out, opener);
+        if (r.status == CodecStatus::Ready || r.status == CodecStatus::NoticeRequired) {
+            for (size_t j = 0; j < hits.size(); ++j) if (j != i) r.shadowed.push_back(hits[j]);
+            return r;
+        }
+        if (i == 0) first = r;
+    }
+    for (size_t j = 1; j < hits.size(); ++j) first.shadowed.push_back(hits[j]);
+    return first;   // none would load: say why the first one failed
 }
 
 } // namespace dect2::codec
