@@ -13,6 +13,7 @@
 //   [1]  1 inverted polarity (the frequency shift of every symbol reversed, as some transmitters do)
 //   [2]  0 every speed, otherwise only the speed PagerSpeed + 1 (1 = POCSAG 512 ... 7 = FLEX 6400/4)
 //   [3]  noise seed, 0 = 1
+//   [4]  full deviation in Hz for every speed, 0 = the standard one (4500 POCSAG, 4800 FLEX)
 #pragma once
 #include "dect2/engine/mode_synth.h"
 #include "pager_tel.h"
