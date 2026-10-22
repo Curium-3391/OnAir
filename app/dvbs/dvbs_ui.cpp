@@ -875,6 +875,8 @@ void meters(const App& a, std::vector<ModeMeter>& out) {
 } // namespace
 
 // The spectrum explorer hands a carrier over: its symbol rate (Msym/s, 0 = automatic) becomes the manual setting
+double dvbsSymbolRateMsym() { loadState(); return S.srMsym; }
+
 void dvbsSetSymbolRate(App& a, double msym) {
     loadState();
     S.srMsym = std::max(0.0, msym);

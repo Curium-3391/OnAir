@@ -403,6 +403,12 @@ void setDbmOffset(const App& a, float db) {
 
 void ingestRx(App& a) {
     double now = glfwGetTime();
+    if (!a.engine.running()) a.liveMuxValid = false;
+    else {   // another transponder (frequency, symbol rate, mode) tuned: the services of the old one go (the demux itself drops them when the stream id changes)
+        MuxId cur; cur.freqHz = a.tune.centerHz; cur.family = a.family; cur.symRateHz = dvbsSymbolRateMsym() * 1e6;
+        if (a.liveMuxValid && isDifferentMux(a.liveMux, cur)) { a.engine.clearServices(); a.ts = TsSnapshot(); a.mtvSvc.clear(); }
+        a.liveMux = cur; a.liveMuxValid = true;
+    }
     if (a.engine.running() && now - a.tsT > 0.25) {
         a.ts = a.engine.tsSnapshot(); tvRecOverrideTs(a); a.bb = a.engine.bbStats(); a.tsT = now;
         if (a.engine.multiChannelActive()) a.mtvSvc = a.engine.multiServices(); else a.mtvSvc.clear();

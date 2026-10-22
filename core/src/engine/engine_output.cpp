@@ -72,6 +72,7 @@ void Engine::onPlp(const PlpResult& r) {
 
 void Engine::setPacketTap(std::function<void(const uint8_t*, size_t, const TsSnapshot*, double)> f) { std::lock_guard<std::mutex> lk(tsMu_); tap_ = std::move(f); }
 void Engine::setRecorderTap(std::function<void(const uint8_t*, size_t, const TsSnapshot*, double)> f) { std::lock_guard<std::mutex> lk(tsMu_); rtap_ = std::move(f); }
+void Engine::clearServices() { std::lock_guard<std::mutex> lk(tsMu_); demux_.reset(); tsSnap_ = TsSnapshot(); }
 TsSnapshot Engine::tsSnapshot() { std::lock_guard<std::mutex> lk(tsMu_); return tsSnap_; }
 std::map<int, std::vector<EpgEvent>> Engine::epg() {
     if (mtvActive_.load()) { if (auto m = mtvGet()) return m->epg(m->selected()); }

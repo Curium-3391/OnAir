@@ -136,9 +136,16 @@ void scanTabCommon(App& a) {
         if (!note.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", note.c_str()); }
     }
     ImGui::Separator();
+    // the scan list keeps every transponder scanned (one row each, headed by its frequency); the live service list shows only the tuned one
+    ImGui::BeginDisabled(pr.running || res.empty());
+    if (ImGui::SmallButton(tr("Clear"))) a.scanner.setResults({});
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Forgets the scan results. The live service list is not touched."));
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("Show services from all scanned transponders"), &a.scanShowAll);
     if (ImGui::BeginTable("scan", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 70);
+        ImGui::TableSetupColumn(tr("Transponder MHz"), ImGuiTableColumnFlags_WidthFixed, 110);
         ImGui::TableSetupColumn("level", ImGuiTableColumnFlags_WidthFixed, 90);
         ImGui::TableSetupColumn("result", ImGuiTableColumnFlags_WidthFixed, 80);
         ImGui::TableSetupColumn("mode", ImGuiTableColumnFlags_WidthFixed, 240);
@@ -149,6 +156,7 @@ void scanTabCommon(App& a) {
         for (size_t i = 0; i < res.size(); i++) {
             auto& r = res[i];
             if (!r.seen) continue;   // only the channels where the scanned standard was found: not the empty ones, nor signals of another kind
+            if (!a.scanShowAll && std::fabs(r.freqMHz - a.freqMhz) > std::max(0.5, r.bwMhz * 0.5)) continue;   // only the transponder being received
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             char lbl[32]; snprintf(lbl, sizeof lbl, "%.1f##%zu", r.freqMHz, i);

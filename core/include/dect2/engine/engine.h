@@ -313,6 +313,7 @@ public:
     std::string multiChannelNote() const { std::lock_guard<std::mutex> lk(mtvNoteMu_); return mtvNote_; }
     // Transport stream (phase 4)
     TsSnapshot tsSnapshot();
+    void clearServices();   // empties the live service list (the next PAT / SDT fills it again): another transponder was tuned, or the user asked
     BbStats bbStats();
     std::map<int, std::vector<EpgEvent>> epg();
     // Every burst of transport stream packets is also handed to this function (the network tuner); it runs on the receiver thread, so it must be quick.
