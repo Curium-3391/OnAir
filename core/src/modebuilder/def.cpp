@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <set>
 
 namespace dect2::modebuilder {
