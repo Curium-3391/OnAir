@@ -133,3 +133,11 @@ HF digital > Monitor bands: tick band x mode (160 m .. 6 m x FT8/FT4/FT2/WSPR); 
 
 ## 2026-10-21: OnAir 0.2.9 released
 Tag v0.2.9 (9e6b74a6), merged into main (7fe4c99d with the wide-bank test fix). 9 assets + SHA256SUMS: macOS arm64/x86_64 dmg, Linux amd64/arm64 deb + portable tar (GitHub), Windows zip + setup (cross-built locally, /tmp/win029), Android apk (same signing key as 0.2.8, versionCode 4). Release-build fixes found on the first run: <memory> in sgb_rx.h and rtl_group.h (GCC 11), gmtime_s in the Ham view for Windows. DMR voice verified live by the owner (codec notice popup in the panel and wide-bank auto-play were the two bugs). 36 merged agent branches deleted from pub (SHAs in scratchpad/DELETED-BRANCHES-2026-10-21.txt). Website deployed with the 0.2.9 changelog and mirror links. Known open: DAB site positions for Germany (#249), real-signal checks of NXDN/dPMR/D-STAR/P25 voice, KrakenSDR/TCI/xHE-AAC/Cospas SGB/multi-band on real hardware.
+
+## 2026-10-22 Propagation tool rework (prop-rework-030)
+Branch prop-rework-030. Model fixes: VHF/UHF had a ~47 dB step at the radio horizon (free space, then P.526 far field) and no ground
+reflection; now P.526 3.2 smooth earth with its LOS blend + plane earth + P.452 troposcatter, P.2108 clutter, rain, gases, polarisation.
+HF absorption used the D-layer-reflected ray angle (43 dB at 7.1 MHz / 1000 km, now ~19 dB); ground wave got curvature and polarisation,
+above-MUF loss, K index, P.533 excess loss, atmospheric noise, Friis receive chain. New: prop_scenario (presets, SDR noise figures, checks,
+verdict, budget, sweeps, CSV), prop_terrain (SRTM .hgt / GeoTIFF, delta-Bullington), antenna pattern file hook. Screen redesigned: Simple /
+Advanced toggle, compare A/B, link-budget table with tooltips, sweeps incl. HF MUF/LUF day chart. Tests: tests/prop/test_prop_{model,scenario,terrain}.cpp.

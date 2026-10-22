@@ -6,8 +6,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <iterator>
+#include "dect2/common/u8file.h"
+
 
 namespace dect2::prop {
 
@@ -229,15 +229,17 @@ bool parseGeoTiff(const std::vector<uint8_t>& bytes, ElevTile& t, std::string& e
 }
 
 bool loadElevationFile(const std::string& path, Terrain& terr, std::string& err) {
-    std::ifstream f(path, std::ios::binary);
+    FILE* f = u8fopen(path, "rb");   // the file dialogs give UTF-8 paths
     if (!f) { err = "cannot open the file"; return false; }
-    f.seekg(0, std::ios::end);
-    const std::streamoff size = f.tellg();
-    if (size <= 0 || size > (std::streamoff)300 * 1024 * 1024) { err = "file empty or larger than 300 MB"; return false; }
-    f.seekg(0);
-    std::vector<uint8_t> b((size_t)size);
-    f.read((char*)b.data(), size);
-    if (!f) { err = "cannot read the file"; return false; }
+    std::vector<uint8_t> b;
+    uint8_t buf[1 << 16];
+    size_t got;
+    while ((got = std::fread(buf, 1, sizeof buf, f)) > 0) {
+        b.insert(b.end(), buf, buf + got);
+        if (b.size() > (size_t)300 * 1024 * 1024) { std::fclose(f); err = "file larger than 300 MB"; return false; }
+    }
+    std::fclose(f);
+    if (b.empty()) { err = "the file is empty"; return false; }
     ElevTile t;
     const std::string n = lower(baseName(path));
     bool ok;
