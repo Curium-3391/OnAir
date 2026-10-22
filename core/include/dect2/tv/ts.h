@@ -1,5 +1,6 @@
 // MPEG transport-stream analysis: PSI/SI parsing (PAT, PMT, SDT, NIT, EIT now/next, TDT), per-PID statistics.
 #pragma once
+#include "dect2/tv/ca_state.h"
 #include "dect2/tv/dsmcc.h"
 #include "dect2/tv/si_tables.h"
 #include "dect2/tv/rcs.h"
@@ -28,7 +29,8 @@ struct TsStream {
     std::string kind;      // "video", "audio", "subtitles", "teletext", "data"
     std::string lang;
     double kbps = 0;
-    bool scrambled = false;
+    bool scrambled = false;   // the majority of its recent payload packets are scrambled
+    uint32_t scrPackets = 0, clrPackets = 0;   // recent payload packets by scrambling bits
 };
 
 struct TsService {
@@ -38,6 +40,7 @@ struct TsService {
     int pmtPid = 0, pcrPid = 0;
     bool caFlag = false;     // free_CA_mode or CA descriptors present (signalling only: many free channels carry them, e.g. on DTMB in China)
     bool scrambled = false;  // its elementary streams arrive scrambled (transport_scrambling_control of their payload packets): what to show
+    CaState caState = CaState::Unknown;   // from the packets of its streams (classifyCa); the app adds the player's decode result
     bool haveSdt = false, havePmt = false;
     std::vector<TsStream> streams;
     std::string now, next;   // EIT present / following event names
@@ -94,7 +97,7 @@ public:
 private:
     bool gbText_ = false;
     struct SectionBuf { std::vector<uint8_t> data; bool active = false; };
-    struct PidState { uint64_t packets = 0, bytesWin = 0, ccErrors = 0, tei = 0; int lastCc = -1; double kbps = 0; bool scrambled = false; bool resync = true; };
+    struct PidState { uint32_t scrWin = 0, clrWin = 0; uint64_t packets = 0, bytesWin = 0, ccErrors = 0, tei = 0; int lastCc = -1; double kbps = 0; bool scrambled = false; bool resync = true; };
     void section(int pid, const uint8_t* s, int len);
     void noteIds(int tsid, int onid);   // a changed transport stream / network id empties the service list
     void parsePat(const uint8_t* s, int len);

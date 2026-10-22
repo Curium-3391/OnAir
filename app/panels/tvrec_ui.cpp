@@ -397,7 +397,7 @@ void detailsPane(App& a) {
     if (e.genre() > 0) meta += std::string(genreName(e.genre()));
     if (e.rating) meta += (meta.empty() ? "" : "   ") + std::string("age ") + std::to_string(e.rating) + "+";
     if (!e.lang.empty()) meta += (meta.empty() ? "" : "   ") + e.lang;
-    if (e.freeCa) meta += (meta.empty() ? "" : "   ") + std::string("scrambled");
+    if (e.freeCa) meta += (meta.empty() ? "" : "   ") + std::string("CA flag set");   // free_CA_mode: a hint only, free services carry it too
     if (!meta.empty()) ImGui::TextDisabled("%s", meta.c_str());
     // buttons
     const std::vector<RecJob> jobs = s.rec.schedule().list();

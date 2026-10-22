@@ -760,7 +760,7 @@ static void tsTablesView(App& a, int view) {
                 ImGui::TableNextColumn(); ImGui::Text("%d", v.sid);
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(v.name.c_str());
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(v.provider.c_str());
-                ImGui::TableNextColumn(); if (v.freeCa) ImGui::TextColored(pal::warnAmber(), "scrambled (CA)");
+                ImGui::TableNextColumn(); if (v.freeCa) ImGui::TextColored(pal::warnAmber(), "CA flag set");
             }
             ImGui::EndTable();
         }
