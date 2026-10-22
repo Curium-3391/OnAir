@@ -77,9 +77,13 @@ protected:
         // one retry when nothing answered in time: a local server that is still starting its radio can accept a moment later (#201)
         const int connectMs = isLoopbackHost(host) ? kLocalConnectMs : kConnectMs;
         sock_t k = tcpConnect(host, port, connectMs, e);
-        if (k == kBadSock && e.find("no answer") != std::string::npos) k = tcpConnect(host, port, connectMs, e);
+        if (k == kBadSock && e.find("no answer") != std::string::npos && !openCancelled()) k = tcpConnect(host, port, connectMs, e);
         if (k == kBadSock) { err = "rtl_tcp: " + e; openFailure_ = OpenFailure::Retry; return false; }
-        sock_ = k;
+        {
+            std::lock_guard<std::mutex> lk(sendMu_);   // against abortOpen() from stop()
+            sock_ = k;
+            if (openCancelled()) { err = "rtl_tcp: stopped"; return false; }
+        }
         sockRecvTimeout(sock_, kGreetingMs);
         unsigned char hdr[12];
         if (!sockRecvAll(sock_, hdr, sizeof hdr)) { err = "rtl_tcp: " + addr_ + " connected but sent no greeting (another client may have it)"; return false; }
@@ -198,6 +202,11 @@ protected:
         }
     }
     void interrupt() override { if (sock_ != kBadSock) sockShutdown(sock_); }
+    // stop() while a reconnect waits up to 10 s for the server's greeting (#201): the wait returns at once
+    void abortOpen() override {
+        std::lock_guard<std::mutex> lk(sendMu_);
+        if (sock_ != kBadSock) sockShutdown(sock_);
+    }
 
 public:
     uint64_t lostSamples() const { return lost_; }
