@@ -148,7 +148,6 @@ void dopplerView(App& a) {
         dl->AddText(ImVec2(lx + 7 * gUi, p0.y + 1), ImGui::GetColorU32(ImGuiCol_Text), b);
         lx += 28 * gUi;
     }
-    ImGui::SetCursorScreenPos(ImVec2(p0.x, p1.y));
 }
 
 void eventsView(App& a) {
