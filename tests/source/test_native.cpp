@@ -394,6 +394,7 @@ static void radiosChecks(const char* dir, const char* ext) {
         set("rtl.v3", 0); set("rtl.v4l", 1);
         const DeviceInfo dl = find("rtlsdr");
         CHECK(dl.minFreqHz == 0.5e6, "V4 Lite range from %.0f", dl.minFreqHz);
+        CHECK(dl.name.find("RTL-SDR Blog V4 Lite") == 0, "V4 Lite name '%s'", dl.name.c_str());
         auto v4l = makeSource(dl);
         e.clear();
         CHECK(v4l->start(t, ring, e), "V4 Lite at 7 MHz: %s", e.c_str());
