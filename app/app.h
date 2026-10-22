@@ -454,6 +454,9 @@ struct App {
     int fmDeemph = 50;        // FM de-emphasis in microseconds: 50 (Europe, Middle East, most of the world) or 75 (Americas, South Korea)
     int fmBass = 0, fmTreble = 0;   // FM tone control, -6 .. +6 dB each; both 0 with fmWarm off = audio untouched (saved as fmBass, fmTreble)
     bool fmWarm = false;      // FM Warm preset: a gentle -3 dB high shelf above 6 kHz (saved as fmWarm)
+    int fmStereo = 0;         // FM stereo choice: 0 auto, 1 mono (fmMono kept in step), 2 stereo whenever a pilot is there (issue #213)
+    int fmAudioBw = 0;        // FM audio bandwidth in Hz: 0 full (15 kHz), 12000, 8000, 5000
+    int fmSquelch = 0;        // FM squelch in dB SNR: 0 off
     bool pagerNarrow = false;  // pagers: 12.5 kHz channel filter instead of 25 kHz (saved as pagerNarrow)
     bool packetNarrow = false; // APRS / packet: 12.5 kHz channel filter instead of 25 kHz (saved as packetNarrow)
     int fmRegion = 0;         // RDS meanings: 0 Auto (odd tenths of a MHz = RBDS), 1 RDS (Europe), 2 RBDS (US); saved as fmRegion

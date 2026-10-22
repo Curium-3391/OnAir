@@ -70,7 +70,8 @@ PrefKey rx1(PrefKey p) { p.rx1Load = true; return p; }
 int fixDtmbBw(int v) { return v == 6 ? 6 : 8; }
 int fixIsdbtBw(int v) { return v == 0 || v == 7 || v == 8 ? v : 6; }
 int fixRegion(int v) { return v == 1 || v == 2 ? v : 0; }
-int fixDeemph(int v) { return v == 75 ? 75 : 50; }
+int fixDeemph(int v) { return v == 75 ? 75 : v == 0 ? 0 : 50; }   // 0: off
+int fixAudioBw(int v) { return v == 12000 || v == 8000 || v == 5000 ? v : 0; }
 int fixChanKhz(int v) { return v > 0 ? std::min(300, std::max(100, v)) : 0; }
 int fixTone(int v) { return std::max(-6, std::min(6, v)); }
 int fixRecFormat(int v) { return v == 1 ? 1 : 0; }
@@ -105,6 +106,7 @@ const std::vector<PrefKey>& keyTable() {
         numFix("fmDeemph", AT(a.fmDeemph), 50, fixDeemph),
         numFix("fmBass", AT(a.fmBass), 0, fixTone), numFix("fmTreble", AT(a.fmTreble), 0, fixTone),
         flagI("fmWarm", AT(a.fmWarm), false),
+        num("fmStereo", AT(a.fmStereo), 0, 0, 2, true), numFix("fmAudioBw", AT(a.fmAudioBw), 0, fixAudioBw), num("fmSquelch", AT(a.fmSquelch), 0, 0, 40, true),
         numFix("fmRegion", AT(a.fmRegion), 0, fixRegion),
         numFix("fmChanKhz", AT(a.fmChanKhz), 0, fixChanKhz),
         flagI("pagerNarrow", AT(a.pagerNarrow), false), flagI("packetNarrow", AT(a.packetNarrow), false),

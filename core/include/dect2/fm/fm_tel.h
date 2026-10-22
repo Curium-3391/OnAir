@@ -17,6 +17,7 @@ struct FmTelemetry {
     bool carrier = false;       // a constant-envelope carrier is in the channel (noise alone is not)
     float levelDbfs = -120;     // power of the selected channel after filtering
     bool stereo = false;        // the 19 kHz pilot is locked and the stereo decoder is on
+    bool squelched = false;     // the squelch (setSquelch) holds the sound muted
     float pilotPct = 0;         // pilot injection in % of 75 kHz deviation (a healthy station: 8 - 10)
     bool rdsSync = false;       // RDS block synchronisation
     float rdsBlockOkPct = 0;    // share of RDS blocks with a good checkword, recent
