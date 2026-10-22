@@ -3,6 +3,14 @@
 #pragma once
 
 inline constexpr const char* kSupporters[] = {
+    "Sigint",
+    "George sv1edo",
+    "Jamiar",
+    "F5GKW",
+    "notsolar",
+    "Javaradiofrance",
+    "ar8001",
+    "Johan",
     "ikkim",
     "Nick-UK",
     "vanco kuipers",
