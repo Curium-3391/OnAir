@@ -25,9 +25,10 @@ static void expected(int c, int r, int k, uint8_t out[8][112]) {
     std::memcpy(out, s.px, sizeof s.px);
 }
 
-struct Result { MeteorTelemetry t; int rowsChecked = 0, rowsWrong = 0; };
+struct Result { MeteorTelemetry t; int rowsChecked = 0, rowsWrong = 0, offsets = 0; };
 
-static Result run(const char* name, MeteorGenConfig g, double seconds, int modSetting, double offsetHz = 0) {
+// fadeAt / fadeSec: noise only for a while, as when the antenna loses the satellite
+static Result run(const char* name, MeteorGenConfig g, double seconds, int modSetting, double offsetHz = 0, double fadeAt = 0, double fadeSec = 0) {
     MeteorGenerator gen(g);
     MeteorReceiver rx;
     rx.setModulation(modSetting);
@@ -37,8 +38,10 @@ static Result run(const char* name, MeteorGenConfig g, double seconds, int modSe
     std::vector<cf32> buf(65536);
     MeteorTelemetry t;
     uint64_t seq = 0;
+    std::mt19937 frng(5); dect2::normal_distribution<float> fnd(0, 0.05f);
     for (double done = 0; done < seconds; done += (double)buf.size() / g.rate) {
         gen.generate(buf.data(), buf.size());
+        if (fadeSec > 0 && done >= fadeAt && done < fadeAt + fadeSec) for (auto& v : buf) v = cf32{fnd(frng), fnd(frng)};
         if (offsetHz != 0) {   // the signal sits offsetHz from the centre
             static double ph = 0;
             for (auto& v : buf) { v *= cf32((float)std::cos(ph), (float)std::sin(ph)); ph += 2 * 3.14159265358979 * offsetHz / g.rate; if (ph > 3.14159265358979) ph -= 2 * 3.14159265358979; }
@@ -51,11 +54,13 @@ static Result run(const char* name, MeteorGenConfig g, double seconds, int modSe
     std::map<int, int> rowOf;
     if (t.image) {
         for (size_t c = 0; c < 6; c++) {
+            int hint = 0;   // the test picture repeats itself: look first where the last strip's offset puts this one
             for (const auto& s : t.image->ch[c]) {
                 if (!s || s->got != 0x3FFF) continue;
                 int match = -1;
                 uint8_t e[8][112];
-                for (int pr = 0; pr < g.rows && match < 0; pr++) {
+                for (int i = 0; i < g.rows && match < 0; i++) {
+                    const int pr = ((s->row - hint + i) % g.rows + g.rows) % g.rows;
                     bool all = true;
                     for (int k = 0; k < 14 && all; k++) {
                         expected((int)c, pr, k, e);
@@ -65,7 +70,8 @@ static Result run(const char* name, MeteorGenConfig g, double seconds, int modSe
                 }
                 r.rowsChecked++;
                 if (match < 0) r.rowsWrong++;
-                else if (c == (size_t)(g.apids[0] - 64)) rowOf[s->row] = match;
+                else hint = s->row - match;
+                if (match >= 0 && c == (size_t)(g.apids[0] - 64)) rowOf[s->row] = match;
             }
         }
     }
@@ -76,6 +82,11 @@ static Result run(const char* name, MeteorGenConfig g, double seconds, int modSe
         if (nx != rowOf.end() && nx->first == it->first + 1 && nx->second != (it->second + 1) % g.rows) seqWrong++;
     }
     r.rowsWrong += seqWrong;
+    // each strip in its own row: one offset between picture row and stored row, also across a fade
+    std::map<int, int> offs;
+    for (const auto& kv : rowOf) offs[((kv.first - kv.second) % g.rows + g.rows) % g.rows]++;
+    r.offsets = (int)offs.size();
+    if (getenv("METEOR_DBG")) for (const auto& kv : rowOf) printf("    row %d = picture %d\n", kv.first, kv.second);
     printf("  %-34s %s | frames %llu ok %llu bad, RS fixed %llu, cfo %+.0f Hz, SNR %.1f dB, clock %+.0f ppm, rows %d, strips %d checked, %d wrong\n", name,
            meteorSummary(t).c_str(), (unsigned long long)t.blocksOk, (unsigned long long)t.blocksBad, (unsigned long long)t.rsCorrected, t.cfoHz, t.snrDb,
            t.clockPpm, t.image ? t.image->rows : 0, r.rowsChecked, r.rowsWrong);
@@ -139,6 +150,11 @@ int main(int argc, char** argv) {
             const double expect = (c.secs - (c.mod == 3 ? 24 : 3)) / (c.mod == 3 ? 8192 / 80000.0 : frameSec);
             CHECK(r.t.blocksOk > 0.9 * expect && r.rowsWrong == 0, "%s: %llu frames of ~%.0f", c.name, (unsigned long long)r.t.blocksOk, expect);
         }
+    }
+    if (want()) {   // issue #79: lock lost for 90 s mid-pass (more packets than half the 14-bit counter); the rows after it stay in place
+        MeteorGenConfig g; g.modulation = 1; g.snrDb = 14; g.cfoHz = 900; g.rate = 250e3; g.rows = 2000;
+        const Result r = run("OQPSK 72k, 90 s fade", g, 130, 1, 0, 20, 90);
+        CHECK(r.t.blocksOk > 250 && r.rowsWrong == 0 && r.offsets == 1, "fade: %llu frames, %d row offsets", (unsigned long long)r.t.blocksOk, r.offsets);
     }
     if (want()) {
         MeteorGenConfig g; g.modulation = 3; g.snrDb = 22; g.cfoHz = 1200; g.rate = 400e3;

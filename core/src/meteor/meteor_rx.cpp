@@ -159,8 +159,7 @@ struct MeteorReceiver::Impl {
     std::shared_ptr<const MeteorImage> imgIn;
     bool imgDirty = false;
     uint64_t imgId = 0;
-    int curRow = -1, lastPos[6] = {-1, -1, -1, -1, -1, -1};
-    int lastSeq = -1;
+    meteor::StripRows rows;
 
     // telemetry
     MeteorTelemetry tel, pub;
@@ -251,8 +250,7 @@ struct MeteorReceiver::Impl {
     void newImage() {
         img = MeteorImage();
         img.id = ++imgId;
-        curRow = -1; lastSeq = -1;
-        std::fill(std::begin(lastPos), std::end(lastPos), -1);
+        rows.reset();
         imgDirty = true;
     }
 
@@ -604,16 +602,10 @@ struct MeteorReceiver::Impl {
         else tel.apidPackets[7]++;
     }
 
-    // rows: a channel whose block position does not move on starts a new row; a long gap in the shared counter (43 packets a row)
-    // skips the rows lost
+    // the row: meteor::StripRows (time stamps over long gaps)
     void place(int c, int seqNo, const meteor::McuStrip& s) {
         const int k = s.mcu / meteor::kMcuPerPacket;
-        if (curRow < 0) { curRow = 0; lastSeq = seqNo; }
-        const int d = (seqNo - lastSeq) & 0x3FFF;
-        int adv = d > 43 && d < 8192 ? d / 43 : 0;
-        if (!adv && lastPos[c] >= 0 && k <= lastPos[c]) adv = 1;
-        if (adv) { curRow += adv; std::fill(std::begin(lastPos), std::end(lastPos), -1); }
-        lastPos[c] = k; lastSeq = seqNo;
+        const int curRow = rows.place(c, seqNo, k, s.ms);
         if (curRow >= kMeteorMaxRows) return;
         auto& chv = img.ch[(size_t)c];
         if ((int)chv.size() <= curRow) chv.resize((size_t)curRow + 1);
