@@ -54,7 +54,8 @@ struct Fake {
     int port = 0;
     std::thread th;
     std::atomic<bool> run{true};
-    std::atomic<int> dropNow{0}, timeLimit{0}, junk{0}, gap{0}, hugeFrame{0}, connections{0};
+    std::atomic<int> dropNow{0}, timeLimit{0}, junk{0}, gap{0}, hugeFrame{0}, connections{0}, resetSeq{0};
+    std::atomic<int> noIq{0};   // 1: MSG lines instead of IQ frames, 2: mono audio frames instead of IQ (the connection stays open: a stall)
     std::mutex mu;
     std::vector<std::string> log;   // each text command of the client
     std::string path;
@@ -141,9 +142,15 @@ struct Fake {
                 wsSend(c, 10, "pong");
             }
             if (gap.exchange(0)) seq += 5;
+            if (resetSeq.exchange(0)) seq = 0;   // the server counts from a new start
             bool s;
             { std::lock_guard<std::mutex> lk(mu); s = streaming; }
-            if (s && (++tick % 3) == 0) wsSend(c, 2, sndFrame(seq++, 512, 16384, -8192, 0x08, 700));
+            if (s && (++tick % 3) == 0) {
+                const int q = noIq.load();
+                if (q == 1) wsSend(c, 2, msgFrame("stats_cpu=12"));
+                else if (q == 2) wsSend(c, 2, sndFrame(seq++, 512, 1, 1, 0x00));
+                else wsSend(c, 2, sndFrame(seq++, 512, 16384, -8192, 0x08, 700));
+            }
             unsigned char h[2];
             if (!rd(c, h, 2, true)) { if (!run) return; if (sockPeekClosed(c) == 0) return; continue; }
             const int op = h[0] & 15;
@@ -300,6 +307,7 @@ int main() {
     pureTests();
     listTests();
     native::kiwiSetBackoffForTest(80, 400);
+    native::kiwiSetStallForTest(1500);
 
     // network radio list: the type, its default port, the password in the list text (and nowhere else)
     NetRadio nr;
@@ -411,6 +419,25 @@ int main() {
     for (auto& v : b2) finite = finite && std::isfinite(v.real()) && std::isfinite(v.imag());
     CHECK(finite);
     CHECK(srv.connections == 2);   // the probe and the stream; no reconnect for junk
+
+    // the server's sequence starts again from 0: the frames are followed, not dropped for good (issue #257)
+    srv.resetSeq = 1;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    ring.clear();
+    CHECK(readIq(ring, b2));
+    CHECK(srv.connections == 2);
+
+    // a stall with the connection still open: messages, or audio frames, but no IQ. The source says so and connects again (issue #257)
+    for (int q : {1, 2}) {
+        const int cs = srv.connections;
+        const char* want = q == 1 ? "messages but no IQ" : "audio frames but no IQ";
+        srv.noIq = q;
+        CHECK(eventually([&] { return kiwiStatus(d.nativeArgs).message.find(want) != std::string::npos; }, 6000));
+        srv.noIq = 0;
+        CHECK(eventually([&] { return srv.connections > cs; }, 8000));
+        ring.clear();
+        CHECK(readIq(ring, buf));
+    }
 
     // an oversize message: the connection is dropped, and opened again after the pause (80 ms in the test)
     const int c0 = srv.connections;
