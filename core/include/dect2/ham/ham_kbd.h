@@ -1,4 +1,4 @@
-// Ham keyboard modes: PSK31 / PSK63, RTTY, Olivia, Contestia, MFSK, THOR, DominoEX, Hellschreiber and CW. The text of a transmission becomes
+// Ham keyboard modes: PSK31 .. PSK250, QPSK31 .. QPSK125, RTTY, MT63, FSQ, IFKP, Olivia, Contestia, MFSK, THOR, DominoEX, Hellschreiber and CW. The text of a transmission becomes
 // audio (kbdRender, one burst at a time, 48 kHz), the macros (CQ, answer, RST, QTH, name, 73) are filled from the station settings, the callsign
 // of the other station is picked from the decoded text, and the QSO is logged. Nothing here transmits: the burst goes through HamSlotTx::sendAudio,
 // the same gate (licence, Arm, amateur band) as the slot modes, plus the length and duty-cycle limits below.
@@ -11,7 +11,9 @@
 
 namespace dect2::ham {
 
-enum class KbdKind { Psk, Rtty, Hfdig, Cw };
+// Mt63: MT63 500 / 1000 / 2000 (variant 0 .. 5: bandwidth index * 2 + long interleave), Mt63Generator; Fsq: FSQ (variant = speed 0 .. 4) and IFKP
+// (variant 10 + speed 0 .. 2), Kbd33Generator. FSQ text goes out as it is given: kbdFsqLine() makes the callsign header of a line.
+enum class KbdKind { Psk, Rtty, Hfdig, Cw, Mt63, Fsq };
 
 struct KbdPreset {
     const char* id;          // "psk31"
@@ -55,6 +57,9 @@ private:
 // One keyboard burst through the transmitter: gate (inside sendAudio), length, duty cycle. True only when the whole burst was played.
 bool kbdSend(HamSlotTx& tx, TxDuty& duty, const HamTxCheck& gate, const KbdPreset& p, const std::string& text, double centreHz,
              double level, double cwWpm, double nowSec, std::string& err);
+
+// FSQ / IFKP line as stations send it: " \n" + MYCALL + ":" + CRC of the call + body (to a station: "TOCALL " in front of the body)
+std::string kbdFsqLine(const std::string& myCall, const std::string& toCall, const std::string& body);
 
 // ---- macros ----
 struct KbdStation {

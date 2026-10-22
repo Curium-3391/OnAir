@@ -1,5 +1,5 @@
 // Ham keyboard modes: every preset's text goes to audio (kbdRender) and back through the repo's own decoder (HfdigKbd for Olivia, Contestia, MFSK, THOR,
-// DominoEX, Hell; HfdigRtty; the full PskReceiver for BPSK31 .. 250 and QPSK31 .. 125; the CW timing decoder), plus the transmit limits, the macros, the callsign pick and the ADIF record.
+// DominoEX, Hell; HfdigRtty; the full PskReceiver for BPSK31 .. 250 and QPSK31 .. 125; Mt63Receiver; FsqReceiver / IfkpReceiver; the CW timing decoder), plus the transmit limits, the macros, the callsign pick and the ADIF record.
 // Nothing is transmitted: the rig is a recording fake.
 #include "dect2/ham/ham_kbd.h"
 #include "dect2/hfdig/hfdig_kbd.h"
@@ -7,6 +7,12 @@
 #include "dect2/psk/psk_varicode.h"
 #include "dect2/psk/psk_rx.h"
 #include "dect2/psk/psk_tel.h"
+#include "dect2/mt63/mt63_rx.h"
+#include "dect2/mt63/mt63_tel.h"
+#include "dect2/fsq/fsq_rx.h"
+#include "dect2/fsq/fsq_tel.h"
+#include "dect2/ifkp/ifkp_rx.h"
+#include "dect2/ifkp/ifkp_tel.h"
 #include <complex>
 #include "dect2/cw/cw_morse.h"
 #include "../../core/src/hfdig/hfdig_kbd_int.h"
@@ -46,6 +52,29 @@ static std::vector<float> to8k(const std::vector<float>& x, double gain, double 
         o[n] = (float)(gain * acc + sigma * g.g());
     }
     return o;
+}
+// The audio as a radio input at 250 kHz (the rate the receivers want, dial at 0 Hz): linear interpolation, its images far outside their front filters;
+// white noise for 30 dB SNR in 3 kHz (a good signal, not a perfect one: the FSQ receiver garbles some symbols above about 55 dB in its band);
+// two seconds of silence after it. The last telemetry.
+template <class Tel, class Rx> static Tel throughRadio(Rx& r, const std::vector<float>& a) {
+    r.configure(250000);
+    r.setSignalOffset(0);
+    r.setSilent(true);
+    Gauss g;
+    std::vector<cf32> x(25000);
+    Tel t; uint64_t seq = 0;
+    const size_t total = (size_t)((double)(a.size() + 96000) * 250000 / 48000);
+    for (size_t i = 0; i < total; i += x.size()) {
+        for (size_t k = 0; k < x.size(); k++) {
+            const double u = (double)(i + k) * 48000 / 250000; const size_t j = (size_t)u; const double f = u - (double)j;
+            const double v = j + 1 < a.size() ? a[j] * (1 - f) + a[j + 1] * f : 0.0;
+            x[k] = cf32((float)(0.5 * v + 0.1 * g.g()), 0.f);
+        }
+        r.feed(x.data(), x.size());
+        Tel tt;
+        if (r.telemetry(tt, seq)) { seq = tt.seq; t = std::move(tt); }
+    }
+    return t;
 }
 static bool has(const std::string& hay, const std::string& need) { return hay.find(need) != std::string::npos; }
 
@@ -114,24 +143,20 @@ int main() {
             CHECK(t.framingErrors <= 2, "RTTY: %llu framing errors", (unsigned long long)t.framingErrors);
             break;
         }
-        case KbdKind::Psk: {   // the repo's full PSK receiver (its own signal search, AFC, clock recovery, Viterbi for QPSK), the audio as a 48 kHz input
-            PskReceiver r;
-            r.configure(250000);   // the receiver wants the radio rate: the 48 kHz audio linearly interpolated (its images are far outside the 9 kHz front filter)
-            r.setSignalOffset(0);
-            r.setMode(p.pskMode);
-            r.setSilent(true);
-            Gauss g;
-            std::vector<cf32> x(25000);
-            PskTelemetry t; uint64_t seq = 0;
-            const size_t total = (size_t)((double)(a.size() + 48000) * 250000 / 48000);
-            for (size_t i = 0; i < total; i += x.size()) {
-                for (size_t k = 0; k < x.size(); k++) { const double u = (double)(i + k) * 48000 / 250000; const size_t j = (size_t)u; const double f = u - (double)j; const double v = j + 1 < a.size() ? a[j] * (1 - f) + a[j + 1] * f : 0.0; x[k] = cf32((float)(0.5 * v + 0.002 * g.g()), 0.f); }
-                r.feed(x.data(), x.size());
-                PskTelemetry tt;
-                if (r.telemetry(tt, seq)) { seq = tt.seq; t = std::move(tt); }
-            }
-            if (getenv("DBG")) { printf("  psk: %zu signals rate %.0f state %d\n", t.signals.size(), t.inputRate, t.state); for (const auto& s : t.signals) printf("   %.1f \"%s\"\n", s.offsetHz, s.text.c_str()); }
+        case KbdKind::Psk: {   // the repo's full PSK receiver (its own signal search, AFC, clock recovery, Viterbi for QPSK)
+            PskReceiver r; r.setMode(p.pskMode);
+            const PskTelemetry t = throughRadio<PskTelemetry>(r, a);
             for (const auto& s : t.signals) if (std::fabs(s.offsetHz - p.defaultHz) < 30 && s.text.size() > got.size()) got = s.text;
+            break;
+        }
+        case KbdKind::Mt63: {
+            Mt63Receiver r;
+            got = throughRadio<Mt63Telemetry>(r, a).text;
+            break;
+        }
+        case KbdKind::Fsq: {   // the receivers' automatic speed search
+            if (p.variant >= 10) { IfkpReceiver r; got = throughRadio<IfkpTelemetry>(r, a).text; }
+            else { FsqReceiver r; got = throughRadio<FsqTelemetry>(r, a).text; }
             break;
         }
         case KbdKind::Cw: {   // the key: the envelope of the tone, then the timing decoder of the CW receiver
@@ -212,6 +237,8 @@ int main() {
         const QsoRecord qc = kbdLogRecord(*kbdPresetById("cw"), s, 14.03e6, 0, 0, "599", "599");
         CHECK(has(adifRecord(qc), "<MODE:2>CW") && !has(adifRecord(qc), "SUBMODE"), "CW has no submode");
         CHECK(kbdPresetById("psk63") && kbdPresetById("rtty") && !kbdPresetById("nope"), "lookup");
+        const std::string fl = kbdFsqLine("ly1abc", "", "hello"), fd = kbdFsqLine("ly1abc", "dl1xyz", "snr?");
+        CHECK(fl.find("LY1ABC:") != std::string::npos && fl.find("hello") != std::string::npos && fd.find("DL1XYZ snr?") != std::string::npos, "FSQ lines \"%s\" \"%s\"", fl.c_str(), fd.c_str());
         for (const auto& p : kbdPresets()) CHECK(kbdBwHz(p) > 10 && kbdBwHz(p) < 3000, "%s bandwidth %.0f", p.name, kbdBwHz(p));
     }
     return testSummary("ham_kbd");

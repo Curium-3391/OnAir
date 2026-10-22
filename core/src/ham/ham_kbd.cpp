@@ -5,6 +5,10 @@
 #include "dect2/psk/psk_tel.h"
 #include <complex>
 #include "dect2/hfdig/hfdig_kbd.h"
+#include "dect2/mt63/mt63_gen.h"
+#include "dect2/mt63/mt63_proto.h"
+#include "dect2/fsq/kbd33.h"
+#include "dect2/fsq/kbd33_gen.h"
 #include "../hfdig/hfdig_kbd_int.h"
 #include <algorithm>
 #include <cctype>
@@ -76,6 +80,21 @@ const std::vector<KbdPreset>& kbdPresets() {
         {"hellx9", "HellX9", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 4, "HELL", "HELLX9", 25, "hell", 0, 1500},
         {"fskhell245", "FSK Hell 245", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 5, "HELL", "FSKHELL", 25, "hell", 0, 1500},
         {"fskhell105", "FSK Hell 105", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 6, "HELL", "HFSK", 25, "hell", 0, 1500},
+        // MT63 (centre: the lower edge at 500 Hz audio), FSQ and IFKP (ADIF: FSQ is MFSK / FSQCALL; IFKP has no ADIF submode)
+        {"mt63-500s", "MT63-500S", KbdKind::Mt63, 0, 0, 0, 0, 500, 0, "MT63", "", 95, nullptr, 0, 750},
+        {"mt63-500l", "MT63-500L", KbdKind::Mt63, 0, 0, 0, 0, 500, 1, "MT63", "", 95, nullptr, 0, 750},
+        {"mt63-1000s", "MT63-1000S", KbdKind::Mt63, 0, 0, 0, 0, 1000, 2, "MT63", "", 95, nullptr, 0, 1000},
+        {"mt63-1000l", "MT63-1000L", KbdKind::Mt63, 0, 0, 0, 0, 1000, 3, "MT63", "", 95, nullptr, 0, 1000},
+        {"mt63-2000s", "MT63-2000S", KbdKind::Mt63, 0, 0, 0, 0, 2000, 4, "MT63", "", 95, nullptr, 0, 2000},
+        {"mt63-2000l", "MT63-2000L", KbdKind::Mt63, 0, 0, 0, 0, 2000, 5, "MT63", "", 95, nullptr, 0, 2000},
+        {"fsq15", "FSQ 1.5", KbdKind::Fsq, 0, 0, 0, 0, 0, 0, "MFSK", "FSQCALL", 113, nullptr, 0, 1500},
+        {"fsq2", "FSQ 2", KbdKind::Fsq, 0, 0, 0, 0, 0, 1, "MFSK", "FSQCALL", 113, nullptr, 0, 1500},
+        {"fsq3", "FSQ 3", KbdKind::Fsq, 0, 0, 0, 0, 0, 2, "MFSK", "FSQCALL", 113, nullptr, 0, 1500},
+        {"fsq45", "FSQ 4.5", KbdKind::Fsq, 0, 0, 0, 0, 0, 3, "MFSK", "FSQCALL", 113, nullptr, 0, 1500},
+        {"fsq6", "FSQ 6", KbdKind::Fsq, 0, 0, 0, 0, 0, 4, "MFSK", "FSQCALL", 113, nullptr, 0, 1500},
+        {"ifkp05", "IFKP 0.5", KbdKind::Fsq, 0, 0, 0, 0, 0, 10, "MFSK", "", 116, nullptr, 0, 1500},
+        {"ifkp10", "IFKP 1.0", KbdKind::Fsq, 0, 0, 0, 0, 0, 11, "MFSK", "", 116, nullptr, 0, 1500},
+        {"ifkp20", "IFKP 2.0", KbdKind::Fsq, 0, 0, 0, 0, 0, 12, "MFSK", "", 116, nullptr, 0, 1500},
     };
     return v;
 }
@@ -100,6 +119,8 @@ double kbdBwHz(const KbdPreset& p) {
     case KbdKind::Psk: return 2 * pskBaud(p.pskMode);
     case KbdKind::Rtty: return p.shiftHz + 1.5 * p.baud + 10;
     case KbdKind::Cw: return 200;
+    case KbdKind::Mt63: return p.bw;
+    case KbdKind::Fsq: return kbd33::specOf(p.variant >= 10, p.variant % 10).bandHz();
     default: return kbdBandwidthHz(hfdigConfig(p, 1500));
     }
 }
@@ -285,7 +306,57 @@ std::vector<float> renderHfdig(const KbdPreset& p, const std::string& text, doub
     return o;
 }
 
+// ---- MT63, FSQ, IFKP: the repo's generators (16 kHz inside, interpolated) at 48 kHz without noise; the real part is the USB audio. The text is sent once;
+// the burst ends one second after the generator falls silent (FSQ, IFKP: the carrier is off between texts), or after maxSec (MT63 keeps sending
+// idle characters) ----
+template <class Gen, class Cfg>
+std::vector<float> renderGen(Cfg cfg, double maxSec = kKbdMaxBurstSec + 5) {
+    cfg.rate = kKbdRate;
+    cfg.dialOffsetHz = 0;
+    cfg.noiseSigma = 0;
+    Gen g(cfg);
+    std::vector<cf32> b(kKbdRate / 10);
+    std::vector<float> a;
+    size_t lastOn = 0;
+    bool seen = false;
+    while (a.size() < (size_t)(maxSec * kKbdRate)) {
+        g.generate(b.data(), b.size());
+        for (const cf32& z : b) {
+            a.push_back(z.real());
+            if (std::fabs(z.real()) > 1e-6f || std::fabs(z.imag()) > 1e-6f) { lastOn = a.size(); seen = true; }
+        }
+        if (seen && a.size() > lastOn + (size_t)kKbdRate) break;
+    }
+    if (!seen) return {};
+    a.resize(std::min(a.size(), lastOn + (size_t)(0.05 * kKbdRate)));
+    return a;
+}
+std::vector<float> renderMt63(const KbdPreset& p, const std::string& text, double hz) {
+    Mt63GenConfig c;
+    Mt63GenSignal s;
+    s.bandwidth = p.bw; s.longInterleave = (p.variant & 1) != 0; s.centreHz = hz; s.text = text; s.repeat = false; s.snrDb = 20;
+    // a preamble of idle characters as long as the interleaver and a little more, 5.5 s at least: the receiver finds the band, the symbol clock and the
+    // interleaver phase in it (MT63-2000 has a short interleaver in time but the receiver's band search needs a few seconds)
+    s.startSec = std::max(5.5, ((s.longInterleave ? mt63::kLongIntl : mt63::kShortIntl) + 16) / mt63::charsPerSec(p.bw));
+    c.signals.push_back(s);
+    // the text, then the interleaver's depth (32 or 64 symbols, one character each) of idle characters and a few more for the receiver's character sync
+    const double sec = s.startSec + ((double)text.size() + (s.longInterleave ? mt63::kLongIntl : mt63::kShortIntl) + 12) / mt63::charsPerSec(p.bw);
+    return renderGen<Mt63Generator>(c, sec);
+}
+std::vector<float> renderFsq(const KbdPreset& p, const std::string& text, double hz) {
+    Kbd33GenConfig c;
+    Kbd33GenSignal s;
+    s.ifkp = p.variant >= 10; s.speed = p.variant % 10; s.centreHz = hz; s.text = text; s.repeat = false; s.startSec = 0.1; s.snrDb = 20;
+    c.signals.push_back(s);
+    return renderGen<Kbd33Generator>(c);
+}
+
 }  // namespace
+
+std::string kbdFsqLine(const std::string& myCall, const std::string& toCall, const std::string& body) {
+    const std::string to = upper(toCall);
+    return fsqFrame(upper(myCall), to.empty() ? body : to + " " + body, !to.empty());
+}
 
 std::vector<float> kbdRender(const KbdPreset& p, const std::string& text, double centreHz, double cwWpm, std::string& err) {
     err.clear();
@@ -296,6 +367,8 @@ std::vector<float> kbdRender(const KbdPreset& p, const std::string& text, double
     case KbdKind::Psk: a = renderPsk(p, text, centreHz); break;
     case KbdKind::Rtty: a = renderRtty(p, text, centreHz); break;
     case KbdKind::Cw: a = renderCw(text, centreHz, cwWpm); break;
+    case KbdKind::Mt63: a = renderMt63(p, text, centreHz); break;
+    case KbdKind::Fsq: a = renderFsq(p, text, centreHz); break;
     default: a = renderHfdig(p, text, centreHz); break;
     }
     if (a.empty()) { err = "nothing in the text can be sent in this mode"; return {}; }
