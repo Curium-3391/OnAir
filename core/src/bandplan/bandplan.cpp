@@ -513,6 +513,7 @@ std::string slug(const std::string& name) {
 }
 
 // ------------------------------------------------------------------ the built-in plans and the registry
+const char* builtinBandPlanText() { return kBuiltinBandPlans; }
 const std::vector<Plan>& builtinPlans() {
     static const std::vector<Plan> plans = [] {
         std::vector<Plan> o;

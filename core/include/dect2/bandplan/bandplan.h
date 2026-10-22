@@ -76,6 +76,7 @@ private:
     bool store(Plan& p, std::string& err, bool* replaced);
 };
 
+const char* builtinBandPlanText();   // data/bandplans/builtin.json as compiled in (Tools > Data packs exports it)
 const std::vector<Plan>& builtinPlans();   // parsed once
 
 } // namespace dect2::bandplan
