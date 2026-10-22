@@ -119,9 +119,15 @@ public:
         std::sort(cands.begin(), cands.end(), [](const C& a, const C& b) { return a.z > b.z; });
         std::vector<C> pick;
         for (const C& c : cands) {
-            if (c.z < 3.5 || pick.size() >= 12) break;
+            // a strong signal also scores at the bins a tone or two away (and inverted there): those echoes are dropped when they are clearly weaker
+            // than a picked candidate whose tones they share, so that they do not use up the places of real signals (six signals in a slot lost one
+            // or two of them to the old limit of 12)
+            if (c.z < 3.5 || pick.size() >= 32) break;
             bool near = false;
-            for (const C& p : pick) if (std::abs(p.bin - c.bin) <= 1 && p.inv == c.inv) near = true;   // 2 bins is a tone pair away: another candidate
+            for (const C& p : pick) {
+                if (std::abs(p.bin - c.bin) <= 1 && p.inv == c.inv) near = true;   // 2 bins is a tone pair away: another candidate
+                if (std::abs(p.bin - c.bin) <= 3 * m_ + 1 && c.z < 0.6 * p.z) near = true;
+            }
             if (!near) pick.push_back(c);
         }
         std::set<std::string> seen;
