@@ -27,7 +27,7 @@ struct State {
     bool loaded = false, scan = false;
     int region = 0;                      // dect2::halow::Region
     int width = 1;                       // the channel width the picker lists: 1, 2, 4, 8, 16 MHz
-    int rx = kAutoNarrow;                // receive width: Auto 1 - 4 MHz (4 Msps), Auto all widths (20 Msps), or one width in MHz
+    int rx = kAutoNarrow;                // receive width: Auto 1 - 4 MHz (6 Msps), Auto all widths (20 Msps), or one width in MHz
     int dwellSec = 6;
     double lastHop = 0;
     char filter[64] = "";
@@ -105,8 +105,8 @@ const char* preName(int p) { return p == 0 ? "S1G_SHORT" : p == 1 ? "S1G_LONG" :
 
 // ---------------------------------------------------------------- the radio's rate against the width asked for
 
-// The radio rate the receive width calls for: Auto 1 - 4 MHz at 4 Msps, Auto all at 20 Msps, one width at its recommended rate (halow_phy.h)
-double wantedRate() { return S.rx == kAutoNarrow ? 4e6 : S.rx == kAutoAll ? dect2::halow::recommendedRateHz(dect2::halow::W16) : dect2::halow::recommendedRateHz(widthIdx(S.rx)); }
+// The radio rate the receive width calls for: Auto 1 - 4 MHz at 6 Msps (the 1 / 2 MHz primaries of a 4 MHz BSS sit off the centre), Auto all at 20 Msps, one width at its recommended rate (halow_phy.h)
+double wantedRate() { return S.rx == kAutoNarrow ? 6e6 : S.rx == kAutoAll ? dect2::halow::recommendedRateHz(dect2::halow::W16) : dect2::halow::recommendedRateHz(widthIdx(S.rx)); }
 
 // A line that says what the sample rate allows, in red when the chosen width does not fit
 void rateNote(const App& a) {
@@ -504,7 +504,7 @@ void tuner(App& a, bool& retune) {
         }
         ImGui::EndCombo();
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\n"
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 6 Msps (it also looks for the 1 and 2 MHz primary channels of a 4 MHz network beside the centre). Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\n"
                                                          "One width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths."));
     flowNext(10 * gUi);
     if (ImGui::Checkbox(tr("scan"), &S.scan)) { plat::prefs().setB("hlScan", S.scan); plat::prefs().flush(); }
@@ -587,7 +587,7 @@ void summary(const App& a, std::string& l1, std::string& l2) {
 
 } // namespace
 
-// the radio rate the receive width asks for (applyBandwidth in state/app_state.cpp): 4 Msps for Auto 1 - 4 MHz, 20 Msps for Auto all widths, one width its own
+// the radio rate the receive width asks for (applyBandwidth in state/app_state.cpp): 6 Msps for Auto 1 - 4 MHz, 20 Msps for Auto all widths, one width its own
 double halowWantedRateHz() { loadState(); return wantedRate(); }
 // the widest channel the receive width means (the spectrum's channel marker): 4 MHz for Auto 1 - 4 MHz, 16 MHz for Auto all widths
 double halowWantedWidthMhz() { loadState(); return S.rx == kAutoNarrow ? 4 : S.rx == kAutoAll ? 16 : S.rx; }

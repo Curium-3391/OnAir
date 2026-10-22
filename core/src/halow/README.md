@@ -23,7 +23,7 @@ The radio's rate decides the widest channel. 1 MHz from 2 Msps, 2 MHz from 2 Msp
 The receiver runs one chain per tone grid, so a narrow signal is not looked at through a wide noise band: 1 / 2 / 4 MHz on a 4 Msps grid, 8 MHz on
 8 Msps, 16 MHz on 16 Msps (the 16 MHz channel is two 8 MHz halves around +-128 tones, FFT size 512).
 
-CPU: one core handles Auto 1 - 4 MHz (4 Msps) at about a tenth of its time; Auto, all widths at 20 Msps runs three chains and takes most of a core when the
+CPU: one core handles Auto 1 - 4 MHz (4 Msps; the app asks for 6 Msps so the 1 and 2 MHz primaries of a 4 MHz BSS at +-1.5 / +-1 MHz are inside the capture, #192) at about a tenth of its time; Auto, all widths at 20 Msps runs three chains and takes most of a core when the
 band is full of traffic (measured on a laptop: 0.7 - 1.0 of real time with a PPDU every 3 ms). Choosing one width runs only the chain that carries it.
 
 ## Files

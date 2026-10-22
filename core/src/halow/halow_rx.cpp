@@ -476,7 +476,7 @@ ModeTuning halowTuning() {
     ModeTuning t;
     t.stdMode = 72; t.id = "halow"; t.name = "Wi-Fi HaLow (802.11ah)";
     t.minMhz = 755; t.maxMhz = 928; t.defMhz = 863.5;   // the first EU 1 MHz channel; the band list reaches down to the Chinese 755 MHz plan
-    t.sampleRate = 4000000;                  // one channel of up to 4 MHz: 1 and 2 MHz channels also work from 2.4 Msps (an RTL-SDR); 8 / 16 MHz need 10 / 20 Msps
+    t.sampleRate = 6000000;                  // Auto 1 - 4 MHz: 6 Msps holds a 4 MHz BSS with its 1 MHz primaries at +-1.5 MHz and 2 MHz primaries at +-1 MHz (#192); 1 and 2 MHz channels also work from 2.4 Msps (an RTL-SDR); 8 / 16 MHz need 10 / 20 Msps
     t.basebandHz = 0;
     t.bandwidthMhz = 4;
     t.minSampleRate = 2000000;
