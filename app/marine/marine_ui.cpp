@@ -63,6 +63,19 @@ struct State {
     uint64_t fixSeen = 0;
     std::string mapSel;
     bool bandOnly = false;
+    // list import dialog
+    std::string impText, impName;
+    dect2::marine::ImportPreview impPv;
+    bool impOpen = true;
+    // DSC map: who was heard when, the filters
+    struct Heard { int64_t last = 0; int count = 0; bool distress = false; };
+    std::map<std::string, Heard> heard;
+    struct Link { std::string from, to; int64_t time = 0; bool distress = false; };
+    std::vector<Link> links;
+    uint64_t heardSeen = ~0ull;
+    int mapTypes = 0x1F;                // bits: distress, coast, ship, group, SAR / other
+    bool mapHeardOnly = false, mapTrails = true, mapLinks = true, mapLabels = true;
+    char mapFilter[48] = "";
     std::string dscMsg;
     std::string mapKey;              // the call the small map was last centred on
     adsbmap::View map;
@@ -253,6 +266,61 @@ std::string mmsiLine(const std::string& m, const std::string& type, const std::s
     return r;
 }
 
+// "Import list..." for the ship and coast station lists (YADDNET and the like): pick a file, see how it is read (delimiter, columns, first rows), then merge it.
+// Nothing is downloaded: the user fetches the file themselves.
+void importUi() {
+    dect2::marine::ShipDb& db = dect2::marine::ShipDb::global();
+    if (ImGui::Button(tr("Import list..."))) {
+        const std::string p = openFileDialog();
+        if (!p.empty()) {
+            std::ifstream in(std::filesystem::u8path(p), std::ios::binary);
+            std::stringstream ss; ss << in.rdbuf();
+            S.impText = ss.str();
+            S.impName = std::filesystem::u8path(p).filename().string();
+            S.impPv = dect2::marine::ShipDb::preview(S.impText, 8);
+            S.impOpen = true;
+            ImGui::OpenPopup("##implist");
+        }
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A ship list or coast station list as CSV / TXT / TSV (for example from yaddnet.org, saved by you): MMSI, name, call sign, country, and for coast stations latitude and longitude, or a position in degrees and minutes. Delimiter and columns are found automatically; the list is merged into the local table."));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu %s", db.size(), tr("known stations"));
+    if (!S.dbMsg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.dbMsg.c_str()); }
+    ImGui::SetNextWindowSize(ImVec2(640 * gUi, 0), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("##implist", &S.impOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& pv = S.impPv;
+        ImGui::TextColored(pal::heading(), "%s", S.impName.c_str());
+        if (!pv.ok) {
+            ImGui::TextWrapped("%s", tr("No column of 9-digit MMSI numbers was found in this file."));
+        } else {
+            const char* dn = pv.delim == '\t' ? tr("tab") : pv.delim == ';' ? tr("semicolon") : pv.delim == '|' ? tr("bar") : pv.delim == ' ' ? tr("spaces") : tr("comma");
+            ImGui::TextDisabled("%s: %s   %s   %d %s", tr("separator"), dn, pv.header ? tr("header row found") : tr("no header row"), pv.records, tr("stations"));
+            if (ImGui::BeginTable("##impt", (int)std::max<size_t>(1, pv.columns.size()), ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit, ImVec2(0, 180 * gUi))) {
+                for (const auto& c : pv.columns) ImGui::TableSetupColumn(c.empty() ? "-" : c.c_str());
+                ImGui::TableHeadersRow();
+                for (const auto& r : pv.rows) {
+                    ImGui::TableNextRow();
+                    for (size_t i = 0; i < pv.columns.size(); i++) { ImGui::TableNextColumn(); ImGui::TextUnformatted(i < r.size() ? r[i].c_str() : ""); }
+                }
+                ImGui::EndTable();
+            }
+        }
+        ImGui::BeginDisabled(!pv.ok);
+        if (ImGui::Button(tr("Import"))) {
+            const auto st = db.importDetailed(S.impText);
+            char mb[300];
+            snprintf(mb, sizeof mb, "%d %s, %d %s, %d %s, %d %s, %d %s", st.read, tr("read"), st.added, tr("new"), st.updated, tr("updated"), st.withPos, tr("with position"), st.skipped, tr("skipped"));
+            S.dbMsg = mb;
+            S.impText.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Cancel"))) { S.impText.clear(); ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
+}
+
 bool dscMatches(const DscCall& c, const std::string& needle) {
     if (needle.empty()) return true;
     std::string hay = c.text + "|" + c.kind + "|" + c.fromMmsi + "|" + c.to + "|" + c.distressMmsi + "|" + c.fromCountry + "|" + c.toCountry + "|" + c.distressCountry + "|" + c.natureName + "|" + c.telecmdText + "|" + c.posText + "|" +
@@ -367,6 +435,8 @@ void dscView(App& a) {
         const std::string p = saveFileDialog("dsc_calls.csv");
         if (!p.empty()) { std::ofstream f(std::filesystem::u8path(p), std::ios::binary); f << dscCsv(t.dsc); { char mb[600]; snprintf(mb, sizeof mb, f ? tr("saved %s") : tr("could not write %s"), p.c_str()); S.dscMsg = mb; } }
     }
+    ImGui::SameLine();
+    importUi();
     ImGui::SameLine();
     if (ImGui::Button(tr("Watchlists"))) a.watchlistOpen = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("In a Ships list, the entry DSC distress alerts on every DSC distress call; an MMSI alerts on that station."));
@@ -861,22 +931,12 @@ void bandsView(App& a) {
     ImGui::TextColored(pal::heading(), "%s", tr("Ship and coast station names"));
     dect2::marine::ShipDb& db = dect2::marine::ShipDb::global();
     ImGui::TextDisabled("%zu %s", db.size(), tr("entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported."));
-    if (ImGui::Button(tr("Import list"))) {
-        const std::string p = openFileDialog();
-        if (!p.empty()) {
-            std::ifstream in(std::filesystem::u8path(p), std::ios::binary);
-            std::stringstream ss; ss << in.rdbuf();
-            char mb[200]; snprintf(mb, sizeof mb, tr("%d records read"), db.importText(ss.str())); S.dbMsg = mb;
-        }
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map."));
+    importUi();
     ImGui::SameLine();
     if (ImGui::Button(tr("Export list"))) {
         const std::string p = saveFileDialog("ship_names.tsv");
         if (!p.empty()) { char mb[600]; snprintf(mb, sizeof mb, writeText(p, db.exportTsv()) ? tr("saved %s") : tr("could not write %s"), p.c_str()); S.dbMsg = mb; }
     }
-    ImGui::SameLine();
-    if (!S.dbMsg.empty()) ImGui::TextDisabled("%s", S.dbMsg.c_str());
     ImGui::TextDisabled("%s", tr("There is no bundled coast station list: no openly licensed one is available, so bring your own file."));
     ImGui::Spacing();
     ImGui::TextColored(pal::heading(), "%s", tr("Marine bands"));
@@ -914,14 +974,117 @@ void bandsView(App& a) {
     ImGui::EndChild();
 }
 
+// who was heard and when, from the calls kept (rebuilt when the call counter moves)
+void collectHeard(const dect2::MarineTelemetry& t) {
+    if (S.heardSeen == t.dscCount) return;
+    S.heardSeen = t.dscCount;
+    S.heard.clear();
+    S.links.clear();
+    auto isNum = [](const std::string& m) { return m.size() == 9 && m.find_first_not_of("0123456789") == std::string::npos; };
+    for (const auto& c : t.dsc) {
+        if (!c.eccOk) continue;
+        auto touch = [&](const std::string& m) {
+            if (!isNum(m)) return;
+            auto& h = S.heard[m];
+            h.last = std::max(h.last, c.rxTime);
+            h.count++;
+            h.distress |= c.distress;
+        };
+        touch(c.fromMmsi);
+        touch(c.distressMmsi);
+        if (isNum(c.fromMmsi) && isNum(c.to)) S.links.push_back({c.fromMmsi, c.to, c.rxTime, c.distress});
+    }
+}
+
+namespace {
+enum MapCat { kCatDistress = 0, kCatCoast, kCatShip, kCatGroup, kCatOther };
+MapCat mapCategory(const std::string& m, bool distress) {
+    if (distress) return kCatDistress;
+    switch (dect2::marine::mmsiInfo(m).kind) {
+    case dect2::marine::MmsiKind::CoastStation: return kCatCoast;
+    case dect2::marine::MmsiKind::Group: return kCatGroup;
+    case dect2::marine::MmsiKind::Ship: return kCatShip;
+    default: return kCatOther;
+    }
+}
+const char* const kCatName[] = {"distress", "coast station", "ship", "group", "SAR / other"};
+ImU32 catColour(MapCat c, bool heardNow, int alpha = 255) {
+    switch (c) {
+    case kCatDistress: return IM_COL32(235, 70, 70, alpha);
+    case kCatCoast: return heardNow ? IM_COL32(90, 160, 245, alpha) : IM_COL32(130, 140, 155, std::min(alpha, 150));
+    case kCatShip: return IM_COL32(110, 205, 120, alpha);
+    case kCatGroup: return IM_COL32(230, 200, 80, alpha);
+    default: return IM_COL32(235, 150, 70, alpha);
+    }
+}
+std::string ageText(int64_t last) {
+    if (last <= 0) return "-";
+    const int64_t d = std::max<int64_t>(0, (int64_t)time(nullptr) - last);
+    char b[32];
+    if (d < 90) snprintf(b, sizeof b, "%llds", (long long)d);
+    else if (d < 5400) snprintf(b, sizeof b, "%lldm", (long long)(d / 60));
+    else if (d < 172800) snprintf(b, sizeof b, "%lldh", (long long)(d / 3600));
+    else snprintf(b, sizeof b, "%lldd", (long long)(d / 86400));
+    return b;
+}
+struct MapEnt {
+    std::string mmsi, name, country, kind;
+    double lat = 0, lon = 0;
+    bool pos = false, heard = false, distress = false;
+    int64_t last = 0;
+    int count = 0;
+    MapCat cat = kCatOther;
+};
+} // namespace
+
 void mapView(App& a) {
     const dect2::MarineTelemetry& t = a.rx.marine;
     loadNames();
     collectFixes(t);
+    collectHeard(t);
     dect2::marine::ShipDb& db = dect2::marine::ShipDb::global();
-    if (ImGui::Checkbox(tr("distress only"), &S.bandOnly)) {}
+    // ---- the stations: every one with a position (list or heard), plus heard ones without
+    std::map<std::string, std::vector<const dect2::marine::DscFix*>> by;
+    for (const auto& f : S.fixes) by[f.mmsi].push_back(&f);
+    std::map<std::string, MapEnt> ents;
+    for (const auto& r : db.positioned()) { MapEnt& e = ents[r.mmsi]; e.mmsi = r.mmsi; e.lat = r.lat; e.lon = r.lon; e.pos = true; }
+    for (const auto& kv : by) { MapEnt& e = ents[kv.first]; e.mmsi = kv.first; e.lat = kv.second.back()->lat; e.lon = kv.second.back()->lon; e.pos = true; for (const auto* f : kv.second) e.distress |= f->distress; }
+    for (const auto& kv : S.heard) { MapEnt& e = ents[kv.first]; e.mmsi = kv.first; e.heard = true; e.last = kv.second.last; e.count = kv.second.count; e.distress |= kv.second.distress; }
+    for (auto& kv : ents) {
+        MapEnt& e = kv.second;
+        const auto info = dect2::marine::mmsiInfo(e.mmsi);
+        e.name = db.name(e.mmsi);
+        e.country = info.country;
+        e.kind = dect2::marine::mmsiKindName(info.kind);
+        e.cat = mapCategory(e.mmsi, e.distress);
+    }
+    const std::string needle = lowerStr(S.mapFilter);
+    auto passes = [&](const MapEnt& e) {
+        if (!((S.mapTypes >> (int)e.cat) & 1)) return false;
+        if (S.mapHeardOnly && !e.heard) return false;
+        if (!needle.empty() && lowerStr(e.mmsi + "|" + e.name + "|" + e.country).find(needle) == std::string::npos) return false;
+        return true;
+    };
+    // ---- controls
+    for (int i = 0; i < 5; i++) {
+        bool on = (S.mapTypes >> i) & 1;
+        const ImVec4 c = ImGui::ColorConvertU32ToFloat4(catColour((MapCat)i, true));
+        ImGui::PushStyleColor(ImGuiCol_CheckMark, c);
+        if (ImGui::Checkbox(tr(kCatName[i]), &on)) S.mapTypes = on ? (S.mapTypes | (1 << i)) : (S.mapTypes & ~(1 << i));
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+    }
+    ImGui::Checkbox(tr("heard only"), &S.mapHeardOnly);
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu %s", S.fixes.size(), tr("positions"));
+    ImGui::Checkbox(tr("trails"), &S.mapTrails);
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("calls"), &S.mapLinks);
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("names"), &S.mapLabels);
+    ImGui::SetNextItemWidth(160 * gUi);
+    ImGui::InputTextWithHint("##mapf", tr("search MMSI, name, country"), S.mapFilter, sizeof S.mapFilter);
+    ImGui::SameLine();
+    importUi();
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Export KML")) && !S.fixes.empty()) {
         const std::string p = saveFileDialog("dsc_positions.kml");
@@ -933,43 +1096,75 @@ void mapView(App& a) {
         if (!p.empty()) { char mb[600]; snprintf(mb, sizeof mb, writeText(p, dect2::marine::dscGpx(S.fixes, db)) ? tr("saved %s") : tr("could not write %s"), p.c_str()); S.dscMsg = mb; }
     }
     if (!S.dscMsg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.dscMsg.c_str()); }
-    const ImVec2 sz(ImGui::GetContentRegionAvail().x, std::max(120.f * gUi, ImGui::GetContentRegionAvail().y - 4 * gUi));
+    int shown = 0, heardN = 0;
+    for (const auto& kv : ents) if (kv.second.pos && passes(kv.second)) { shown++; heardN += kv.second.heard; }
+    ImGui::TextDisabled("%d %s, %d %s, %zu %s", shown, tr("on the map"), heardN, tr("heard"), S.fixes.size(), tr("positions kept"));
+
+    // ---- map (upper part) and table (lower part)
+    const float availY = ImGui::GetContentRegionAvail().y;
+    const ImVec2 sz(ImGui::GetContentRegionAvail().x, std::max(120.f * gUi, availY * 0.62f));
     static bool centred = false;
     if (!centred && !S.fixes.empty()) { S.map.lat = S.fixes.back().lat; S.map.lon = S.fixes.back().lon; centred = true; }
+    if (!centred && !ents.empty()) { for (const auto& kv : ents) if (kv.second.pos) { S.map.lat = kv.second.lat; S.map.lon = kv.second.lon; centred = true; break; } }
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
     adsbmap::draw(S.map, sz);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(p0, ImVec2(p0.x + sz.x, p0.y + sz.y), true);
-    std::map<std::string, std::vector<const dect2::marine::DscFix*>> by;
-    for (const auto& f : S.fixes) if (!S.bandOnly || f.distress) by[f.mmsi].push_back(&f);
     const ImVec2 mp = ImGui::GetIO().MousePos;
-    std::string hover;
-    for (const auto& kv : by) {
-        ImVec2 prev;
-        bool any = false, dist = false;
-        for (const auto* f : kv.second) dist |= f->distress;
-        const ImU32 col = dist ? IM_COL32(235, 70, 70, 255) : IM_COL32(110, 205, 120, 255);
-        for (const auto* f : kv.second) {
-            const ImVec2 q = adsbmap::project(f->lat, f->lon);
-            if (any) dl->AddLine(prev, q, col, 1.6f);
-            prev = q; any = true;
-            const bool last = f == kv.second.back();
-            dl->AddCircleFilled(q, (last ? 5.f : 3.f) * gUi, col);
-            if (last) dl->AddCircle(q, 9 * gUi, col, 20, 1.6f);
-            if (last && std::fabs(mp.x - q.x) < 10 * gUi && std::fabs(mp.y - q.y) < 10 * gUi) {
-                const std::string nm = db.name(kv.first);
-                const auto info = dect2::marine::mmsiInfo(kv.first);
-                hover = kv.first + (nm.empty() ? "" : "  " + nm) + (info.country.empty() ? "" : "\n" + info.country) + "\n" + f->note + "\n" + utcText(f->time) + " UTC  " + std::to_string(kv.second.size()) + " " + tr("positions");
+    std::string hover, hoverMmsi;
+    auto entOf = [&](const std::string& m) -> const MapEnt* { auto it = ents.find(m); return it == ents.end() ? nullptr : &it->second; };
+    if (S.mapTrails) {      // history trail per station
+        for (const auto& kv : by) {
+            const MapEnt* e = entOf(kv.first);
+            if (!e || !passes(*e)) continue;
+            const ImU32 col = catColour(e->cat, true, 200);
+            ImVec2 prev; bool any = false;
+            for (const auto* f : kv.second) {
+                const ImVec2 q = adsbmap::project(f->lat, f->lon);
+                if (any) dl->AddLine(prev, q, col, 1.6f);
+                if (!any || f != kv.second.back()) dl->AddCircleFilled(q, 2.5f * gUi, col);
+                prev = q; any = true;
             }
         }
     }
-    for (const auto& r : db.positioned()) {     // coast stations from the imported list
-        const ImVec2 q = adsbmap::project(r.lat, r.lon);
-        dl->AddRectFilled(ImVec2(q.x - 4 * gUi, q.y - 4 * gUi), ImVec2(q.x + 4 * gUi, q.y + 4 * gUi), IM_COL32(90, 150, 235, 255));
-        if (std::fabs(mp.x - q.x) < 8 * gUi && std::fabs(mp.y - q.y) < 8 * gUi) hover = r.mmsi + "  " + db.name(r.mmsi) + (r.type.empty() ? "" : "\n" + r.type);
+    if (S.mapLinks) {       // a call from one station to another that both have a position: the line from the sender to the called station
+        const int64_t now = (int64_t)time(nullptr);
+        for (const auto& l : S.links) {
+            const MapEnt* f = entOf(l.from); const MapEnt* d = entOf(l.to);
+            if (!f || !d || !f->pos || !d->pos || !passes(*f) || !passes(*d)) continue;
+            const float fade = (float)std::max(0.25, 1.0 - (double)std::max<int64_t>(0, now - l.time) / 3600.0);
+            dl->AddLine(adsbmap::project(f->lat, f->lon), adsbmap::project(d->lat, d->lon), l.distress ? IM_COL32(235, 70, 70, (int)(230 * fade)) : IM_COL32(240, 240, 240, (int)(170 * fade)), 1.4f);
+        }
+    }
+    for (const auto& kv : ents) {
+        const MapEnt& e = kv.second;
+        if (!e.pos || !passes(e)) continue;
+        const ImVec2 q = adsbmap::project(e.lat, e.lon);
+        if (q.x < p0.x - 20 || q.x > p0.x + sz.x + 20 || q.y < p0.y - 20 || q.y > p0.y + sz.y + 20) continue;
+        const bool sel = S.mapSel == e.mmsi;
+        const ImU32 col = catColour(e.cat, e.heard || e.cat != kCatCoast);
+        const float r = (e.cat == kCatCoast ? 4.5f : e.heard ? 5.f : 3.5f) * gUi;
+        if (e.cat == kCatCoast) dl->AddRectFilled(ImVec2(q.x - r, q.y - r), ImVec2(q.x + r, q.y + r), col);
+        else dl->AddCircleFilled(q, r, col);
+        if (e.heard) dl->AddCircle(q, r + 4 * gUi, col, 20, 1.6f);       // heard: a ring (and a full colour for a coast station)
+        if (sel) dl->AddCircle(q, r + 8 * gUi, IM_COL32(255, 255, 255, 255), 24, 2.f);
+        if ((S.mapLabels && (S.map.zoom >= 8 || e.heard)) || sel) {
+            const std::string lb = e.name.empty() ? e.mmsi : e.name;
+            dl->AddText(ImVec2(q.x + r + 3 * gUi, q.y - 7 * gUi), IM_COL32(adsbmap::overlayText() >> 16 & 255, adsbmap::overlayText() >> 8 & 255, adsbmap::overlayText() & 255, e.heard ? 255 : 150), lb.c_str());
+        }
+        if (std::fabs(mp.x - q.x) < 9 * gUi && std::fabs(mp.y - q.y) < 9 * gUi) {
+            hoverMmsi = e.mmsi;
+            hover = e.mmsi + (e.name.empty() ? "" : "  " + e.name) + "\n" + (e.country.empty() ? "" : e.country + ", ") + tr(kCatName[e.cat]);
+            hover += "\n" + (e.heard ? std::string(tr("last heard")) + " " + ageText(e.last) + " " + tr("ago") + " (" + std::to_string(e.count) + ")" : std::string(tr("not heard yet")));
+            auto it = by.find(e.mmsi);
+            if (it != by.end()) hover += "\n" + it->second.back()->note + "  " + std::to_string(it->second.size()) + " " + tr("positions");
+        }
     }
     dl->PopClipRect();
-    if (!hover.empty() && ImGui::IsMouseHoveringRect(p0, ImVec2(p0.x + sz.x, p0.y + sz.y))) ImGui::SetTooltip("%s", hover.c_str());
+    if (!hover.empty() && ImGui::IsMouseHoveringRect(p0, ImVec2(p0.x + sz.x, p0.y + sz.y))) {
+        ImGui::SetTooltip("%s", hover.c_str());
+        if (ImGui::IsMouseClicked(0)) S.mapSel = hoverMmsi;
+    }
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 6 * gUi, p0.y + 6 * gUi));
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
     if (ImGui::Button("+", ImVec2(24 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1);
@@ -978,8 +1173,46 @@ void mapView(App& a) {
     ImGui::PopStyleColor();
     ImGui::SameLine(0, 6 * gUi);
     adsbmap::tileControls("never the position itself");
-    ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + sz.y));
-    ImGui::Dummy(ImVec2(0, 0));
+    ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + sz.y + 4 * gUi));
+
+    // ---- table: heard ones first (newest first), then the rest by number; a click centres the map
+    std::vector<const MapEnt*> rows;
+    for (const auto& kv : ents) if (passes(kv.second)) rows.push_back(&kv.second);
+    std::sort(rows.begin(), rows.end(), [](const MapEnt* x, const MapEnt* y) {
+        if ((x->cat == kCatDistress) != (y->cat == kCatDistress)) return x->cat == kCatDistress;
+        if (x->heard != y->heard) return x->heard;
+        if (x->last != y->last) return x->last > y->last;
+        return x->mmsi < y->mmsi;
+    });
+    const ImGuiTableFlags fl = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Resizable;
+    if (ImGui::BeginTable("##dscmapt", 7, fl, ImVec2(0, std::max(60.f * gUi, ImGui::GetContentRegionAvail().y)))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        for (const char* h : {"MMSI", "Name", "Country", "Type", "Last heard", "Calls", "Position"}) ImGui::TableSetupColumn(tr(h));
+        ImGui::TableHeadersRow();
+        ImGuiListClipper clip;
+        clip.Begin((int)rows.size());
+        while (clip.Step()) for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++) {
+            const MapEnt& e = *rows[(size_t)i];
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::PushID(i);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(catColour(e.cat, e.heard || e.cat != kCatCoast)));
+            if (ImGui::Selectable(e.mmsi.c_str(), S.mapSel == e.mmsi, ImGuiSelectableFlags_SpanAllColumns)) {
+                S.mapSel = e.mmsi;
+                if (e.pos) { S.map.lat = e.lat; S.map.lon = e.lon; if (S.map.zoom < 7) S.map.zoom = 7; }
+            }
+            ImGui::PopStyleColor();
+            ImGui::PopID();
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(e.name.c_str());
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(e.country.c_str());
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(e.cat == kCatDistress ? tr("distress") : e.kind.c_str());
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(e.heard ? ageText(e.last).c_str() : "-");
+            ImGui::TableNextColumn(); if (e.heard) ImGui::Text("%d", e.count);
+            ImGui::TableNextColumn();
+            if (e.pos) ImGui::Text("%.4f, %.4f", e.lat, e.lon); else ImGui::TextDisabled("%s", tr("no position"));
+        }
+        ImGui::EndTable();
+    }
 }
 
 void tab(App& a) {
