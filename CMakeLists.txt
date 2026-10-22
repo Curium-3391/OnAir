@@ -1124,6 +1124,8 @@ if(DECT2_BUILD_TESTS)
     target_link_libraries(test_soapy PRIVATE dect2core)
     add_dependencies(test_soapy SoapyOnAirTest)
     add_test(NAME soapy COMMAND test_soapy $<TARGET_FILE_DIR:SoapyOnAirTest>)
+    add_executable(test_soapy_logic tests/source/test_soapy_logic.cpp)   # pure SoapySDR helpers on fake driver tables, no hardware
+    add_test(NAME soapy_logic COMMAND test_soapy_logic)
     add_executable(test_tx tests/tx/test_tx.cpp)
     target_link_libraries(test_tx PRIVATE dect2core ${CMAKE_DL_LIBS})
     add_dependencies(test_tx SoapyOnAirTest native_fakes)
