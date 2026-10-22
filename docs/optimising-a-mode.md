@@ -21,6 +21,9 @@ first quarter of the run is excluded from `cost`; plan creation and warm-up show
 printed nothing for its own test signal: check that before trusting its cost. Each mode runs in a child process: a crash or a CPU-time overrun
 (`--timeout`, default 240 CPU s) marks that row only. The full table of 0.2.7 is in docs/benchmark-modes-0.2.7.md.
 
+For a DSP kernel or a receiver class on its own (no Engine, no full build: only the sources it needs are compiled), use
+`tools/bench/bench_dsp.sh` (rows, method and the 0.3.0 figures: docs/PERFORMANCE-DSP.md).
+
 ## Profile
 
 macOS (no root needed for your own process):

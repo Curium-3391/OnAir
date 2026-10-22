@@ -298,11 +298,25 @@ struct FmReceiver::Impl {
         cmaPos = (cmaPos + kCmaTaps - 1) % kCmaTaps;
         cmaX[cmaPos] = cmaX[cmaPos + kCmaTaps] = x * g;
         const cf32* h = &cmaX[cmaPos];            // h[k]: the sample k steps back
-        cf32 y(0, 0);
-        for (int k = 0; k < kCmaTaps; k++) y += cmaW[k] * h[k];
+        // The complex products are written out (std::complex's operator* checks every product for NaN, which kept these two loops scalar and
+        // made them most of the FM receiver's own cost): the same products, sums and order, one per statement (nothing fused), the same bits.
+        float yr = 0, yi = 0;
+        for (int k = 0; k < kCmaTaps; k++) {
+            const float a = cmaW[k].real(), b = cmaW[k].imag(), c = h[k].real(), d = h[k].imag();
+            const float ac = a * c, bd = b * d, ad = a * d, bc = b * c;
+            const float pr = ac - bd, pi = ad + bc;
+            yr += pr; yi += pi;
+        }
+        const cf32 y(yr, yi);
         const float e = std::norm(y) - 1.f;
         const cf32 ey = y * (2e-4f * e);
-        for (int k = 0; k < kCmaTaps; k++) cmaW[k] -= ey * std::conj(h[k]);
+        const float er = ey.real(), ei = ey.imag();
+        for (int k = 0; k < kCmaTaps; k++) {   // cmaW[k] -= ey * conj(h[k])
+            const float c = h[k].real(), d = -h[k].imag();
+            const float ac = er * c, bd = ei * d, ad = er * d, bc = ei * c;
+            const float pr = ac - bd, pi = ad + bc;
+            cmaW[k] = cf32(cmaW[k].real() - pr, cmaW[k].imag() - pi);
+        }
         if (!(std::norm(y) < 16.f)) { const float p = cmaP; cmaReset(); cmaP = p; }   // diverged (or NaN): start again
         return y;
     }

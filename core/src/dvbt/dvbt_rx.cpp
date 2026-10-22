@@ -88,6 +88,8 @@ struct DvbtReceiver::Impl {
     std::atomic<int> detect{0};
     std::atomic<bool> lpReq{false};
     int agreeCount = 0, agreeMode = -1, agreeGi = -1;
+    std::vector<double> acqCumR, acqCumI, acqEn, acqRr, acqF;   // scratch of acquire()
+    uint64_t searchSamples = 0;   // samples the acquisition has gone through without finding a signal (reduced search rate after 2 s)
     int64_t acqLastEnd = 0;
 
     // ---- TPS / frame sync
@@ -154,7 +156,7 @@ struct DvbtReceiver::Impl {
 
     void reset() {
         state = 0; mode = gi = -1; N = G = K = 0; symStart = 0; epsFrac = 0; intShift = 0; intLocked = false; rhoAvg = 0; lowRun = 0; streaming = false; phaseCheck = false; postResync = 0;
-        intScore.clear(); intSymbols = 0; absSym = 0; fft.reset(); agreeCount = 0; agreeMode = agreeGi = -1; acqLastEnd = 0;
+        intScore.clear(); intSymbols = 0; absSym = 0; fft.reset(); agreeCount = 0; agreeMode = agreeGi = -1; acqLastEnd = 0; searchSamples = 0;
         tpsBitsSeen.clear(); tpsBase = 0; prevTps.clear(); prevCp.clear(); prevValid = false; prevWin = INT64_MIN; tpsOk = false; tpsFailures = 0; secSinceTps = 0;
         for (int i = 0; i < 4; i++) { hypVotes[i] = 0; hypScore[i] = 0; }
         grid.clear(); gridAge.clear(); cpRef.clear(); cpRefValid = false; gridFilled = 0;
@@ -175,40 +177,51 @@ struct DvbtReceiver::Impl {
             if (avail < (int64_t)(6.0 * (n + n / 4) + n + n / 4)) continue;
             const int64_t B = std::min<int64_t>(avail, (int64_t)(8 * (n + n / 4) + n));
             const int64_t Dn = B - n;
-            // products y[i] conj(y[i+n]) and energies, as cumulative sums
-            std::vector<cd> cum(Dn + 1);
-            std::vector<double> rr;
-            std::vector<double> en(Dn + 1);
-            cd acc = 0; double ea = 0;
-            cum[0] = 0; en[0] = 0;
-            for (int64_t i = 0; i < Dn; i++) {
-                const cf32 a = buf[buf.size() - B + i], b = buf[buf.size() - B + i + n];
-                acc += cd(a.real(), a.imag()) * std::conj(cd(b.real(), b.imag()));
-                ea += 0.5 * (std::norm(a) + std::norm(b));
-                cum[i + 1] = acc; en[i + 1] = ea;
+            // products y[i] conj(y[i+n]) and energies, as cumulative sums (split real / imaginary rows, kept between calls: they were
+            // allocated, 1.3 MB for 8K, on every search)
+            acqCumR.resize((size_t)Dn + 1); acqCumI.resize((size_t)Dn + 1); acqEn.resize((size_t)Dn + 1);
+            double* cumR = acqCumR.data(); double* cumI = acqCumI.data(); double* en = acqEn.data();
+            {
+                // the product written out: the same multiplications and sums as cd(a) * conj(cd(b)), one per statement (nothing fused), without
+                // std::complex's NaN check per product
+                double accR = 0, accI = 0, ea = 0;
+                cumR[0] = 0; cumI[0] = 0; en[0] = 0;
+                const cf32* pa = buf.data() + (buf.size() - B);
+                const cf32* pb = pa + n;
+                for (int64_t i = 0; i < Dn; i++) {
+                    const double ar = pa[i].real(), ai = pa[i].imag(), br = pb[i].real(), bi = -(double)pb[i].imag();
+                    const double ac = ar * br, bd = ai * bi, ad = ar * bi, bc = ai * br;
+                    const double pr = ac - bd, pi = ad + bc;
+                    accR += pr; accI += pi;
+                    ea += 0.5 * (std::norm(pa[i]) + std::norm(pb[i]));
+                    cumR[i + 1] = accR; cumI[i + 1] = accI; en[i + 1] = ea;
+                }
             }
             for (int g = 0; g < 4; g++) {
                 const int G_ = dvbt::guardSamples(m, g), P = n + G_;
                 const int64_t D = Dn - G_;
                 if (D < P * 3) continue;
-                std::vector<double> F(P, 0.0);
-                std::vector<cd> Fc(P, cd(0, 0));
-                std::vector<int> cnt(P, 0);
+                acqF.assign((size_t)P, 0.0);
+                double* F = acqF.data();
                 // runs on every block while searching, so keep it lean: the normalised magnitudes in one plain loop the compiler can
                 // vectorise (sqrt of the norm: std::abs goes through the much slower overflow-safe hypot), then the fold by symbol phase
-                // with a wrapping index instead of d % P
-                rr.resize((size_t)D);
+                // one period at a time (each F[ph] gets its terms in the same order as a walk over d, and the loop over ph vectorises)
+                acqRr.resize((size_t)D);
+                double* rr = acqRr.data();
                 for (int64_t d = 0; d < D; d++) {
-                    const double cr = cum[d + G_].real() - cum[d].real(), ci = cum[d + G_].imag() - cum[d].imag();
+                    const double cr = cumR[d + G_] - cumR[d], ci = cumI[d + G_] - cumI[d];
                     const double e = en[d + G_] - en[d];
                     rr[d] = e > 1e-12 ? std::sqrt(cr * cr + ci * ci) / e : 0.0;
                 }
-                for (int64_t d = 0, ph = 0; d < D; d++) {
-                    F[ph] += rr[d]; Fc[ph] += cum[d + G_] - cum[d]; cnt[ph]++;
-                    if (++ph == P) ph = 0;
+                for (int64_t b = 0; b < D; b += P) {
+                    const int64_t len = std::min<int64_t>(P, D - b);
+                    const double* r = rr + b;
+                    for (int64_t ph = 0; ph < len; ph++) F[ph] += r[ph];
                 }
+                const int64_t full = D / P, rem = D % P;   // how many d fall on each phase
+                auto cntOf = [&](int i) { return (int)(full + (i < rem ? 1 : 0)); };
                 double mx = 0, mean = 0; int arg = 0;
-                for (int i = 0; i < P; i++) { if (cnt[i]) F[i] /= cnt[i]; mean += F[i]; if (F[i] > mx) { mx = F[i]; arg = i; } }
+                for (int i = 0; i < P; i++) { const int c = cntOf(i); if (c) F[i] /= c; mean += F[i]; if (F[i] > mx) { mx = F[i]; arg = i; } }
                 mean /= P;
                 const double ratio = mean > 0 ? mx / mean : 0;
                 // a clean cyclic prefix gives a folded peak far above the floor; wrong (N, G) hypotheses stay flat
@@ -218,7 +231,10 @@ struct DvbtReceiver::Impl {
                     // symbol start in absolute samples: the first occurrence of the peak phase after the oldest used sample
                     const int64_t first = b0 + (int64_t)buf.size() - B;
                     best.pos = first + arg;
-                    best.corr = Fc[arg] / (double)std::max(1, cnt[arg]);
+                    // the mean correlation at the peak phase, summed in the order of d (only for the phase that is used)
+                    cd fc(0, 0);
+                    for (int64_t d = arg; d < D; d += P) fc += cd(cumR[d + G_], cumI[d + G_]) - cd(cumR[d], cumI[d]);
+                    best.corr = fc / (double)std::max(1, cntOf(arg));
                 }
             }
         }
@@ -963,12 +979,17 @@ void DvbtReceiver::feed(const cf32* x, size_t n) {
             if (I.buf.size() < need) break;
             // acquisition every ~2 symbols of the longest mode; keep a sliding window
             if (!I.acquire()) {
-                const size_t drop = I.buf.size() - need / 2;
+                // After two seconds without a cyclic prefix (no signal, an empty channel) the search looks at every sample once instead
+                // of twice: the windows still overlap by an eighth (a symbol of the longest mode), the CPU of the search halves.
+                const bool slow = I.searchSamples > (uint64_t)(2 * I.fn);
+                const size_t drop = I.buf.size() - (slow ? need / 8 : need / 2);
+                I.searchSamples += drop;
                 I.buf.erase(I.buf.begin(), I.buf.begin() + drop);
                 I.base += (int64_t)drop;
                 break;
             }
         } else {
+            I.searchSamples = 0;
             if (!I.step()) break;
             // free what is no longer needed
             const int64_t keep = (int64_t)std::llround(I.symStart) - 2 * (I.N + I.G) - 64;

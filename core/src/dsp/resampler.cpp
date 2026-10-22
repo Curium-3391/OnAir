@@ -76,35 +76,44 @@ bool RationalResampler::configure(double inRate, double outRate, double* relErro
 void RationalResampler::reset() {
     re_.assign(H_ - 1, 0.f);
     im_.assign(H_ - 1, 0.f);
+    head_ = 0;
 }
 
 void RationalResampler::process(const cf32* in, size_t n, std::vector<cf32>& out) {
     if (passthrough()) { out.insert(out.end(), in, in + n); return; }
+    // the consumed part in front is dropped only once it is larger than what is still pending (one move per few blocks, not one per block)
+    if (head_ > 0 && head_ >= re_.size() - head_) {
+        re_.erase(re_.begin(), re_.begin() + (long)head_);
+        im_.erase(im_.begin(), im_.begin() + (long)head_);
+        head_ = 0;
+    }
     size_t old = re_.size();
     re_.resize(old + n); im_.resize(old + n);
-    for (size_t i = 0; i < n; i++) { re_[old + i] = in[i].real(); im_[old + i] = in[i].imag(); }
-    // buffer index 0 corresponds to input sample (-(H-1)); output n uses samples i0 + k, k = -(H-1)..H
-    const long long avail = (long long)re_.size();
+    {
+        float* __restrict r = re_.data() + old; float* __restrict m = im_.data() + old;
+        const float* f = reinterpret_cast<const float*>(in);
+        for (size_t i = 0; i < n; i++) { r[i] = f[2 * i]; m[i] = f[2 * i + 1]; }
+    }
+    // buffer index head_ corresponds to input sample (-(H-1)); output n uses samples i0 + k, k = -(H-1)..H
+    const long long avail = (long long)(re_.size() - head_);
     // periods: each consumes M input samples and yields L outputs; the last needed index is base+kM + T - 1
     long long P = (avail - (T_ + M_ + 2)) / M_;
     if (P <= 0) return;
-    std::vector<float> ore((size_t)P * L_), oim((size_t)P * L_);
-    std::vector<float> tr((size_t)P), ti((size_t)P);
+    if (tr_.size() < (size_t)P) { tr_.resize((size_t)P); ti_.resize((size_t)P); }
+    const size_t o0 = out.size();
+    out.resize(o0 + (size_t)P * L_);
+    cf32* o = out.data() + o0;
     for (int p = 0; p < L_; p++) {
         const float* hp = taps_[p].data();
-        const float* sr = re_.data() + base_[p];
-        const float* si = im_.data() + base_[p];
-        desamp(sr, M_, hp, tr.data(), (int)P, T_);
-        desamp(si, M_, hp, ti.data(), (int)P, T_);
-        for (long long k = 0; k < P; k++) { ore[(size_t)k * L_ + nOfPhase_[p]] = tr[k]; oim[(size_t)k * L_ + nOfPhase_[p]] = ti[k]; }
+        const float* sr = re_.data() + head_ + base_[p];
+        const float* si = im_.data() + head_ + base_[p];
+        desamp(sr, M_, hp, tr_.data(), (int)P, T_);
+        desamp(si, M_, hp, ti_.data(), (int)P, T_);
+        const int ph = nOfPhase_[p];
+        for (long long k = 0; k < P; k++) o[(size_t)k * L_ + ph] = cf32(tr_[k], ti_[k]);
     }
-    size_t o0 = out.size();
-    out.resize(o0 + (size_t)P * L_);
-    for (size_t i = 0; i < (size_t)P * L_; i++) out[o0 + i] = cf32(ore[i], oim[i]);
-    // drop consumed input, keeping H-1 history
-    size_t drop = (size_t)P * M_;
-    re_.erase(re_.begin(), re_.begin() + drop);
-    im_.erase(im_.begin(), im_.begin() + drop);
+    // consumed input, keeping H-1 history
+    head_ += (size_t)P * M_;
 }
 
 } // namespace dect2

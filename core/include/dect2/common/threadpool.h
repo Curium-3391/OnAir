@@ -47,7 +47,9 @@ public:
 
     // Runs fn(i) for every i in [0, n). The caller works too; returns when all are finished. fn must only touch the data of its own i.
     // Exceptions from fn are caught on the worker; the first one is rethrown here after all jobs ended.
-    void parallelFor(size_t n, const std::function<void(size_t)>& fn);
+    // maxHelpers: at most that many workers join the caller (a job that is cheap per index does not need to wake every worker)
+    void parallelFor(size_t n, const std::function<void(size_t)>& fn, size_t maxHelpers);
+    void parallelFor(size_t n, const std::function<void(size_t)>& fn);   // every worker may join
 
     // Runs fn on a worker (inline when there are none). The future carries the result or the exception.
     template <class F>

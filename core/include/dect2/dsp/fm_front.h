@@ -45,7 +45,7 @@ public:
     bool ready() const { return ok_; }
     void setOffset(double hz) { off_ = hz; }   // where the channel sits relative to 0 Hz in the input
     void reset() {
-        rs_.reset(); phase_ = 0; prev_ = cf32(0, 0); pw_ = 0;
+        rs_.reset(); phRe_ = 1; phIm_ = 0; prev_ = cf32(0, 0); pw_ = 0;
         for (int i = 0; i < 2; i++) { lr_[i].clear(); li_[i].clear(); }
     }
     double levelDb() const { return pw_ > 0 ? 10 * std::log10(pw_ + 1e-30) : -200; }
@@ -53,13 +53,19 @@ public:
     // Appends the instantaneous frequency (Hz) of the samples to out.
     void feed(const cf32* x, size_t n, std::vector<float>& out) {
         if (!ok_ || !x || !n) return;
+        // the mixer: a phasor turned by one step per sample (double, renormalised every 1024 samples) instead of a cos and a sin per sample
         const double step = -2 * 3.14159265358979323846 * off_ / in_;
+        if (step != stepW_) { stepW_ = step; stRe_ = std::cos(step); stIm_ = std::sin(step); }
         mix_.resize(n);
+        double pr = phRe_, pi = phIm_;
         for (size_t i = 0; i < n; i++) {
-            mix_[i] = x[i] * cf32((float)std::cos(phase_), (float)std::sin(phase_));
-            phase_ += step;
-            if (phase_ > 3.14159265358979323846) phase_ -= 2 * 3.14159265358979323846; else if (phase_ < -3.14159265358979323846) phase_ += 2 * 3.14159265358979323846;
+            const float lr = (float)pr, li = (float)pi, xr = x[i].real(), xi = x[i].imag();
+            mix_[i] = cf32(xr * lr - xi * li, xr * li + xi * lr);
+            const double nr = pr * stRe_ - pi * stIm_;
+            pi = pr * stIm_ + pi * stRe_; pr = nr;
+            if ((i & 1023) == 1023) { const double m = 1.0 / std::sqrt(pr * pr + pi * pi); pr *= m; pi *= m; }
         }
+        { const double m = 1.0 / std::sqrt(pr * pr + pi * pi); phRe_ = pr * m; phIm_ = pi * m; }
         rsb_.clear();
         rs_.process(mix_.data(), n, rsb_);
         const double k = work_ / (2 * 3.14159265358979323846);
@@ -73,7 +79,8 @@ public:
         }
     }
 private:
-    double in_ = 0, work_ = 0, off_ = 0, phase_ = 0, pw_ = 0;
+    double in_ = 0, work_ = 0, off_ = 0, pw_ = 0;
+    double phRe_ = 1, phIm_ = 0, stepW_ = 0, stRe_ = 1, stIm_ = 0;   // mixer phasor and its step
     bool ok_ = false;
     ExactResampler rs_;
     FmBiquad lr_[2], li_[2];

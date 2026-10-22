@@ -200,9 +200,19 @@ struct Vdl4Receiver::Impl {
 
     // One input sample: mix, integrate and dump, discriminate.
     void demodChan(Chan& c, cf32 x, double sampPerOut) {
-        c.rot *= c.step;
+        // the complex products written out: std::complex's operator* checks for NaN after every product, which was most of the cost of this
+        // loop (six channels at the full input rate). Same products and sums in the same order (no fused multiply-add across statements).
+        {
+            const double a = c.rot.real(), b = c.rot.imag(), s = c.step.real(), t = c.step.imag();
+            const double ac = a * s, bd = b * t, ad = a * t, bc = b * s;
+            c.rot = cd(ac - bd, ad + bc);
+        }
         if (++c.discRun > 256) { c.discRun = 0; const double nr = std::abs(c.rot); if (nr > 0) c.rot /= nr; }
-        c.acc += cd(x.real(), x.imag()) * c.rot;
+        {
+            const double a = x.real(), b = x.imag(), s = c.rot.real(), t = c.rot.imag();
+            const double ac = a * s, bd = b * t, ad = a * t, bc = b * s;
+            c.acc += cd(ac - bd, ad + bc);
+        }
         c.accPwr += x.real() * x.real() + x.imag() * x.imag();
         c.accN += 1;
         c.phase += 1;

@@ -22,7 +22,9 @@ private:
     std::vector<std::vector<float>> taps_; // per output phase (0..L-1), length T_
     std::vector<int> base_;                // input offset of the first output of each phase
     std::vector<int> nOfPhase_;            // n_p
-    std::vector<float> re_, im_;           // pending input (split), includes history
+    std::vector<float> re_, im_;           // pending input (split), includes history; the first head_ values are consumed
+    size_t head_ = 0;
+    std::vector<float> tr_, ti_;           // one phase's outputs (scratch kept between calls: no allocation per block)
     bool primed_ = false;
 };
 
