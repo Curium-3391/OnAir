@@ -369,11 +369,62 @@ CarrierDecode decodeCarrier(const cf32* x, size_t n, int kMcc, int kMnc, int kCc
 
 // ---------------------------------------------------------------- receiver
 
+std::vector<tetra::CarrierPeak> tetra::findCarriers(const cf32* x, size_t n, double fs) {
+    std::vector<CarrierPeak> out;
+    const int nfft = cell::pow2At((int)(fs / 1000.0));
+    if (nfft < 64 || n < (size_t)nfft * 8) return out;
+    const std::vector<float> p0 = cell::welch(x, n, nfft, 300);
+    std::vector<double> p((size_t)nfft);
+    for (int i = 0; i < nfft; i++) p[(size_t)i] = (p0[(size_t)std::max(0, i - 1)] + p0[(size_t)i] + p0[(size_t)std::min(nfft - 1, i + 1)]) / 3.0;
+    const double bin = fs / nfft;
+    // the usable band: the middle kUsableBand of the span, where a radio's decimation filter is flat (the span the application steps by);
+    // the roll-off outside it is neither searched nor taken into the floor
+    const int lo = nfft / 2 - (int)(nfft * kUsableBand / 2), hi = nfft / 2 + (int)(nfft * kUsableBand / 2) - 1;
+    // the local floor: the 20th percentile of the usable bins within kFloorWindowHz / 2 of each bin, taken on a grid of nfft / 128 bins and
+    // held between the grid points (a carrier is 25 kHz wide and a row of them a few hundred kHz: the floor is the noise between the rows)
+    const int half = std::max(8, (int)(kFloorWindowHz / 2 / bin)), step = std::max(1, nfft / 128);
+    std::vector<double> floorP((size_t)nfft, 1e-30), tmp;
+    for (int g = lo; g <= hi; g += step) {
+        const int a = std::max(lo, g - half), b = std::min(hi, g + half);
+        tmp.assign(p.begin() + a, p.begin() + b + 1);
+        std::nth_element(tmp.begin(), tmp.begin() + (std::ptrdiff_t)(tmp.size() / 5), tmp.end());
+        const double f = std::max(1e-30, tmp[tmp.size() / 5]);
+        for (int k = g; k <= std::min(hi, g + step - 1); k++) floorP[(size_t)k] = f;
+    }
+    auto above = [&](int k) { return p[(size_t)k] >= floorP[(size_t)k] * 4.0; };   // 6 dB over the local floor
+    int i = lo;
+    while (i <= hi) {
+        if (!above(i)) { i++; continue; }
+        int j = i;
+        while (j + 1 <= hi && (above(j + 1) || (j + 2 <= hi && above(j + 2)))) j++;
+        const double w = (j - i + 1) * bin;
+        if (w >= 9e3 && w <= 400e3) {
+            const int nc = std::max(1, (int)std::lround(w / 25e3));
+            for (int c = 0; c < nc; c++) {
+                const int a = i + (int)std::floor((double)c * (j - i + 1) / nc), b = i + (int)std::floor((double)(c + 1) * (j - i + 1) / nc) - 1;
+                double sp = 0, sf = 0, pk = 0, fl = 0;
+                for (int k = a; k <= b; k++) { const double v = std::max(0.0, p[(size_t)k] - floorP[(size_t)k]); sp += v; sf += v * k; pk = std::max(pk, p[(size_t)k]); fl += floorP[(size_t)k]; }
+                if (sp <= 0) continue;
+                fl /= (double)(b - a + 1);
+                CarrierPeak cr;
+                cr.off = (sf / sp - nfft / 2.0) * bin;
+                cr.levelDb = (float)(10 * std::log10(pk / fl));
+                cr.powerDb = (float)(10 * std::log10((sp + fl * (b - a + 1)) / (0.375 * nfft) + 1e-30));
+                out.push_back(cr);
+            }
+        }
+        i = j + 1;
+    }
+    std::sort(out.begin(), out.end(), [](const CarrierPeak& a, const CarrierPeak& b) { return a.levelDb > b.levelDb; });
+    if (out.size() > 24) out.resize(24);
+    return out;
+}
+
 namespace {
 
 int64_t wallNow() { return dect2::unixNow(); }
 
-struct Carrier { double off; float levelDb; float powerDb; };
+using Carrier = tetra::CarrierPeak;
 
 } // namespace
 
@@ -441,45 +492,7 @@ struct TetraReceiver::Impl {
     }
 
     // 25 kHz humps in the spectrum: runs of bins over the floor, split into 25 kHz carriers
-    std::vector<Carrier> carriers(const std::vector<cf32>& x, double fs) {
-        std::vector<Carrier> out;
-        const int nfft = cell::pow2At((int)(fs / 1000.0));
-        if (nfft < 64 || x.size() < (size_t)nfft * 8) return out;
-        const std::vector<float> p0 = cell::welch(x.data(), x.size(), nfft, 300);
-        std::vector<double> p((size_t)nfft);
-        for (int i = 0; i < nfft; i++) p[(size_t)i] = (p0[(size_t)std::max(0, i - 1)] + p0[(size_t)i] + p0[(size_t)std::min(nfft - 1, i + 1)]) / 3.0;
-        std::vector<double> srt = p;
-        std::nth_element(srt.begin(), srt.begin() + nfft / 5, srt.end());
-        const double floorP = std::max(1e-30, srt[(size_t)(nfft / 5)]);
-        const double bin = fs / nfft;
-        const int edge = std::max(2, (int)(nfft * 0.04));
-        const double thr = floorP * 4.0;   // 6 dB
-        int i = edge;
-        while (i < nfft - edge) {
-            if (p[(size_t)i] < thr) { i++; continue; }
-            int j = i;
-            while (j + 1 < nfft - edge && (p[(size_t)(j + 1)] >= thr || (j + 2 < nfft - edge && p[(size_t)(j + 2)] >= thr))) j++;
-            const double w = (j - i + 1) * bin;
-            if (w >= 9e3 && w <= 400e3) {
-                const int nc = std::max(1, (int)std::lround(w / 25e3));
-                for (int c = 0; c < nc; c++) {
-                    const int a = i + (int)std::floor((double)c * (j - i + 1) / nc), b = i + (int)std::floor((double)(c + 1) * (j - i + 1) / nc) - 1;
-                    double sp = 0, sf = 0, pk = 0;
-                    for (int k = a; k <= b; k++) { const double v = std::max(0.0, p[(size_t)k] - floorP); sp += v; sf += v * k; pk = std::max(pk, p[(size_t)k]); }
-                    if (sp <= 0) continue;
-                    Carrier cr;
-                    cr.off = (sf / sp - nfft / 2.0) * bin;
-                    cr.levelDb = (float)(10 * std::log10(pk / floorP));
-                    cr.powerDb = (float)(10 * std::log10((sp + floorP * (b - a + 1)) / (0.375 * nfft) + 1e-30));
-                    out.push_back(cr);
-                }
-            }
-            i = j + 1;
-        }
-        std::sort(out.begin(), out.end(), [](const Carrier& a, const Carrier& b) { return a.levelDb > b.levelDb; });
-        if (out.size() > 24) out.resize(24);
-        return out;
-    }
+    std::vector<Carrier> carriers(const std::vector<cf32>& x, double fs) { return tetra::findCarriers(x.data(), x.size(), fs); }
 
     void process(const std::vector<cf32>& x, double center, double fs, double sec, uint64_t g) {
         const std::vector<Carrier> car = carriers(x, fs);
