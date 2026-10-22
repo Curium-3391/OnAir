@@ -123,6 +123,7 @@
 #include "dect2/railway/railway_rx.h"
 #include "dect2/dgps/dgps_engine.h"
 #include "dect2/eloran/eloran_engine.h"
+#include "dect2/nfc/nfc_engine.h"
 #include "dect2/mpt1327/mpt1327_engine.h"
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_rx.h"
@@ -454,6 +455,7 @@ public:
     GoesReceiver& goes() { return rxGoes_; }   // GOES HRIT: clear the products (telemetry through latestRx)
     ElektroReceiver& elektro() { return rxEl_; }   // Elektro-L HRIT / LRIT / GGAK (telemetry through latestRx)
     ElLoranReceiver& eloran() { return rxEloran_; }   // eLoran / Loran-C (WIP): GRI, stations, arrival times (telemetry through latestRx)
+    NfcReceiver& nfc() { return rxNfc_; }   // NFC / RFID 13.56 MHz: frame log, tag table, NDEF (telemetry through latestRx)
     MptReceiver& mpt1327() { return rxMpt_; }   // MPT1327 trunking control channel (WIP): messages and channel table (telemetry through latestRx)
     FusionReceiver& fusion() { return rxFusion_; }   // Yaesu Fusion (WIP): callsigns and slow data, the speech codec plug-in (telemetry through latestRx)
     LtrReceiver& ltr() { return rxLtr_; }   // LTR control channel (telemetry through latestRx)
@@ -735,6 +737,7 @@ private:
     RailwayReceiver rxTdcs_{railway::Protocol::Tdcs};
     DgpsReceiver rxDgps_;
     ElLoranReceiver rxEloran_;
+    NfcReceiver rxNfc_;
     MptReceiver rxMpt_;
     FusionReceiver rxFusion_;
     LtrReceiver rxLtr_;

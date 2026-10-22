@@ -279,6 +279,7 @@ int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     case 146: return pollStd(rxMilhf_, 146, t, seqs[135], &RxTelemetry::milhf);   // HF waveform ID (slot 135)
     case 121: return pollStd(rxDgps_, 121, t, seqs[110], &RxTelemetry::dgps);   // DGPS beacons (slot 110)
     case 127: return pollStd(rxEloran_, 127, t, seqs[111], &RxTelemetry::eloran);   // eLoran / Loran-C (slot 111)
+    case 147: return pollStd(rxNfc_, 147, t, seqs[141], &RxTelemetry::nfc);   // NFC / RFID 13.56 MHz (slot 141)
     case 128: return pollStd(rxMpt_, 128, t, seqs[112], &RxTelemetry::mpt1327);   // MPT1327 trunking (slot 112)
     case 129: return pollStd(rxFusion_, 129, t, seqs[117], &RxTelemetry::fusion);   // Yaesu Fusion (slot 117)
     case 141: return pollStd(rxArd_, 141, t, seqs[118], &RxTelemetry::ardop);   // ARDOP (slot 118)
