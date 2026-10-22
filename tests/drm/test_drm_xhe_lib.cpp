@@ -3,7 +3,10 @@
 #include "dect2/drm/drm_audio.h"
 #include "dect2/drm/drm_fec.h"
 #include "dect2/drm/drm_usac_lib.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <cstring>
 #include <map>
 #include <string>
@@ -64,8 +67,32 @@ static void testParser() {
     CHECK(xheAscFromSdc(s).empty(), "no config -> no ASC");
 }
 
+// issue 266: a libfdk-aac put in the OnAir codecs folder (any usual or odd name) must be among the places tried
+static void testCodecFolder() {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "onair_fdk_test_home";
+    fs::remove_all(root);
+#if defined(__APPLE__)
+    const fs::path dir = root / "Library/Application Support/OnAir/codecs";
+#else
+    const fs::path dir = root / "xdg/onair/codecs";
+    setenv("XDG_DATA_HOME", (root / "xdg").c_str(), 1);
+#endif
+    setenv("HOME", root.c_str(), 1);
+    fs::create_directories(dir);
+    { FILE* f = fopen((dir / "Libfdk-AAC-custom.dll").c_str(), "w"); if (f) fclose(f); }
+    { FILE* f = fopen((dir / "unrelated.dll").c_str(), "w"); if (f) fclose(f); }
+    const auto c = UsacLib::codecFolderCandidates();
+    const std::string d = dir.string() + "/";
+    CHECK(std::find(c.begin(), c.end(), d + "libfdk-aac-2.dll") != c.end(), "usual name tried in the codecs folder");
+    CHECK(std::find(c.begin(), c.end(), d + "Libfdk-AAC-custom.dll") != c.end(), "oddly named fdk-aac file in the codecs folder found");
+    CHECK(std::find(c.begin(), c.end(), d + "unrelated.dll") == c.end(), "unrelated files are ignored");
+    fs::remove_all(root);
+}
+
 int main() {
     testLoader();
+    testCodecFolder();
     testParser();
     return testSummary("drm_xhe_lib");
 }
