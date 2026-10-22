@@ -14,7 +14,7 @@
 #include <vector>
 
 namespace {
-constexpr int kOutW = Waterfall::W / 4;   // 1024 pixels across: each pixel is the highest level of 4 columns
+constexpr int kOutW = Waterfall::W / 4;   // 2048 pixels across: each pixel is the highest level of the history columns it covers
 constexpr size_t kRowBytes = (size_t)kOutW * 4;
 
 struct Export {
@@ -34,10 +34,11 @@ Export& st() { static Export e; return e; }
 
 // the row `age` rows back (0 = the newest) as kOutW RGBA pixels, through the waterfall's colour table (0xAABBGGRR)
 void rowPixels(const Waterfall& wf, int age, uint8_t* out) {
-    const uint8_t* l = wf.lv.data() + (size_t)((wf.writeRow + age) % Waterfall::H) * Waterfall::W;
+    const int per = std::max(1, wf.cols / kOutW);   // the history width is a power of two, at least 8192
+    const uint8_t* l = wf.lv.data() + (size_t)((wf.writeRow + age) % Waterfall::H) * wf.cols;
     for (int x = 0; x < kOutW; x++) {
         uint8_t m = 0;
-        for (int k = 0; k < 4; k++) m = std::max(m, l[x * 4 + k]);
+        for (int k = 0; k < per; k++) m = std::max(m, l[x * per + k]);
         const uint32_t c = wf.lut[m];
         uint8_t* p = out + (size_t)x * 4;
         p[0] = (uint8_t)(c & 255); p[1] = (uint8_t)((c >> 8) & 255); p[2] = (uint8_t)((c >> 16) & 255); p[3] = 255;
@@ -77,7 +78,7 @@ void wfExportRow(App& a, double now) {
     Export& e = st();
     if (!e.on) return;
     const Waterfall& wf = a.wf;
-    if (wf.lv.size() != (size_t)Waterfall::W * Waterfall::H || wf.filled <= 0) return;
+    if (wf.lv.size() != (size_t)wf.cols * Waterfall::H || wf.filled <= 0) return;
     if (now - e.lastT < e.everySec) return;
     e.lastT = now;
     if (!e.timelapse) {

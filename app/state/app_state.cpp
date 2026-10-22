@@ -364,15 +364,28 @@ std::string openFileDialog() { return plat::openFileDialog(); }
 
 std::string saveFileDialog(const char* name) { return plat::saveFileDialog(name); }
 
+// the spectrum settings the engine keeps: the FFT size (also the saved one at start) and the noise blanker
+static void syncSpectrumEngine(App& a) {
+    if (a.engine.spectrumFft() != a.specFft) a.engine.setSpectrumFft(a.specFft);
+    static bool on = false; static float thr = 0, wid = 0; static const Engine* who = nullptr;
+    if (who != &a.engine || on != a.nbOn || thr != a.nbThr || wid != a.nbWidthUs) {
+        who = &a.engine; on = a.nbOn; thr = a.nbThr; wid = a.nbWidthUs;
+        a.engine.setNoiseBlanker(a.nbOn, a.nbThr, a.nbWidthUs);
+    }
+}
+
 void ingestSpectrum(App& a) {
+    syncSpectrumEngine(a);
     if (!a.engine.latestSpectrum(a.spec, a.lastSeq)) return;   // straight into the kept frame: no copy that allocates, 30 times a second
     const SpectrumFrame& f = a.spec;
+    const uint64_t prevSeq = a.lastSeq;
     a.lastSeq = f.seq;
     const double now = glfwGetTime();
     const float dt = a.specLastT > 0 ? (float)std::min(0.5, std::max(0.001, now - a.specLastT)) : 1.f / 30;
     a.specLastT = now;
     size_t n = f.dbfs.size();
-    if (a.smooth.size() != n || a.peak.size() != n) { a.smooth = f.dbfs; a.peak = f.dbfs; }   // both lines always have the frame size (a retune clears the peak line)
+    if (a.smooth.size() != n || a.peak.size() != n) { a.smooth = f.dbfs; a.peak = f.dbfs; a.minPk.clear(); }   // the lines always have the frame size (a retune clears the hold lines)
+    if (a.minHold && a.minPk.size() != n) a.minPk = f.dbfs;
     const float alpha = a.specAvgSec <= 0.001f ? 1.f : 1.f - std::exp(-dt / a.specAvgSec);   // a time constant, so the look does not depend on the frame rate
     const float fall = a.holdDecay * dt;
     float* sm = a.smooth.data(); float* pk = a.peak.data(); const float* in = f.dbfs.data();
@@ -380,7 +393,24 @@ void ingestSpectrum(App& a) {
     for (size_t i = 0; i < n; i++) sm[i] += alpha * (in[i] - sm[i]);
     if (a.holdDecay > 0) for (size_t i = 0; i < n; i++) pk[i] = std::max(pk[i] - fall, in[i]);
     else for (size_t i = 0; i < n; i++) pk[i] = std::max(pk[i], in[i]);
-    if (a.wf.offer(f.dbfs, now)) { a.wf.stamp(now); wfExportRow(a, now); }
+    if (a.minHold && a.minPk.size() == n) {   // the min-hold line: the lowest level, rising back at the hold decay
+        float* mn = a.minPk.data();
+        if (a.holdDecay > 0) for (size_t i = 0; i < n; i++) mn[i] = std::min(mn[i] + fall, in[i]);
+        else for (size_t i = 0; i < n; i++) mn[i] = std::min(mn[i], in[i]);
+    }
+    {   // the history has the width the detail setting and the FFT give (#243), and follows the radio: a retune moves the rows along (#270)
+        const double fsMhz = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
+        a.wf.setCols(specaxis::historyCols(a.wf.detail, n, Waterfall::kMaxCols));
+        if (!a.wf.paused) a.wf.follow(radioCenterMhz(a), fsMhz);
+    }
+    // frames the screen did not take (it drew slower than they came): the row is repeated for them, so the picture keeps its true speed (#246)
+    const int missed = a.wf.rowsPerSec <= 0 ? specaxis::missedRows(prevSeq, f.seq) : 0;
+    if (a.wf.offer(f.dbfs, now, missed)) {
+        const int k = a.wf.slow() ? 1 : 1 + missed;   // one time stamp per row, spread over the gap
+        const double t0 = a.wf.pushT > 0 && a.wf.pushT < now ? a.wf.pushT : now;
+        for (int i = 1; i <= k; i++) a.wf.stamp(t0 + (now - t0) * i / k);
+        wfExportRow(a, now);
+    }
     roomsFeedRow(f.dbfs, a.wf.minDb, a.wf.maxDb);   // Live rooms (a flag check when not live)
     clipsui::feed(f.dbfs);   // radio clips: the retroactive history
     if (a.wf.autoTrack && !a.wf.paused && now - a.wf.trackT > 0.25) { a.wf.trackT = now; a.wf.fitRange(a.smooth, false); }

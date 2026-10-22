@@ -34,7 +34,7 @@ int main() {
         for (int i = 0; i <= 255; i++) {
             const uint32_t c = cmap::color(m, i / 255.f);
             opaque = opaque && (c >> 24) == 0xFF;
-            if (m != cmap::Turbo && prev >= 0) worst = std::max(worst, prev - lum(c));   // Turbo is a rainbow: not monotone by design
+            if (!cmap::hueRamp(m) && prev >= 0) worst = std::max(worst, prev - lum(c));   // Turbo, SDR++ classic, high contrast: rainbows, not monotone by design
             prev = lum(c);
         }
         check(opaque, "colour map opaque");
