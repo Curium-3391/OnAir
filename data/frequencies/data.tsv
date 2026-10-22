@@ -185,6 +185,16 @@
 403.000|Radiosonde band (app default)|20||sonde||
 405.999|Radiosonde band end|20||sonde||
 1680.000|Radiosonde 1680 MHz band|100|Older Vaisala and Meteolabor sondes|sonde||
+@mode horus
+@category amateur
+@region GLOBAL
+@source Project Horus wikis (horusbinary, horusdemodlib) and sigidwiki Horus Binary 4FSK v2; amateur balloon payloads use the 70 cm / 434 MHz LIPD-ISM band, each flight announces its own frequency
+434.660|Horus Binary, Project Horus usual frequency (app default)|3|100 Bd 4FSK, ~1 kHz wide; listen in USB|horus|AU|
+434.650|Horus Binary (wiki example frequency)|3|horusdemodlib RX guide example|horus||
+434.200|Horus Binary (Australia, sigidwiki example)|3||horus|AU|
+437.600|Horus Binary (Poland, sigidwiki example)|3|437.6 MHz region: check the flight announcement|horus|EU|
+431.050|Horus Binary (USA, California, sigidwiki example)|3||horus|US|
+434.200|Horus balloon band, low end of the usual 434.2 - 434.9 MHz span|700|Several balloons: centre on 434.55 MHz at about 1 Msps and every payload in the span is found|horus||
 @mode astro
 @category astronomy
 @region GLOBAL

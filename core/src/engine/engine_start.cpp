@@ -270,6 +270,8 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxTdcs_.setSignalOffset(o);
         rxKlw_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxTdcs_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
+        rxHorus_.setSignalOffset(o);
+        rxHorus_.setCenterHz(dev.kind != DeviceInfo::File ? tune.centerHz : 0.0);   // the dial (the packets' frequency)
         rxLbj_.setSignalOffset(o);
         rxLbj_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxEloran_.setSignalOffset(o);
@@ -463,6 +465,8 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxTdcs_.configure(rate_);
     rxKlw_.setLogCallback([this](const std::string& s) { log(s); });
     rxTdcs_.setLogCallback([this](const std::string& s) { log(s); });
+    rxHorus_.configure(rate_);
+    rxHorus_.setLogCallback([this](const std::string& s) { log(s); });
     rxLbj_.configure(rate_);
     rxLbj_.setLogCallback([this](const std::string& s) { log(s); });
     rxEloran_.configure(rate_);

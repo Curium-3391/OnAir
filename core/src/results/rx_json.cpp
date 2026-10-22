@@ -87,6 +87,22 @@ std::string rxTelemetryJson(const RxTelemetry& rx, const QualityReport* q) {
         }
         d.raw("messages", rows + ']'); break;
     }
+    case horus::kActiveStandard: {   // the payloads heard and their last position
+        d.str("mode", "Horus");
+        std::string rows = "[";
+        for (const auto& p : rx.horus.payloads) {
+            J row;
+            const auto& k = p.last;
+            row.str("callsign", p.callsign); row.num("payloadId", p.payloadId); row.num("kind", k.kind); row.u64("seq", k.seq);
+            row.num("latitude", k.lat); row.num("longitude", k.lon); row.num("altitudeM", k.altM);
+            row.num("speedKmh", k.speedKmh); row.num("satellites", k.sats); row.num("temperatureC", k.tempC); row.num("batteryV", k.battV);
+            row.num("snrDb", k.snrDb); row.num("offsetHz", k.offsetHz); row.u64("packets", p.packets); row.num("wallTime", double(k.wallTime));
+            row.str("sentence", k.sentence);
+            if (rows.size() > 1) rows += ',';
+            rows += '{' + row.s + '}';
+        }
+        d.raw("payloads", rows + ']'); break;
+    }
     case railway::kKlwActiveStandard:
     case railway::kTdcsActiveStandard: {
         const auto& t = rx.standard == railway::kKlwActiveStandard ? rx.klw : rx.tdcs;
