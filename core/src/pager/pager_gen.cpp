@@ -128,6 +128,7 @@ public:
     PagerSynth(const SynthConfig& cfg, double rate, std::vector<Tx> txs) : rate_(rate), cfo_(cfg.cfoHz), inv_(cfg.modeOpt[1] == 1), noise_(cfg.modeOpt[3] > 0 ? (uint32_t)cfg.modeOpt[3] : 1u) {
         tx_ = std::move(txs);
         if (tx_.empty()) tx_ = buildCycle(cfg.modeOpt[0], cfg.modeOpt[2]);
+        if (cfg.modeOpt[4] > 0) for (Tx& t : tx_) t.dev = cfg.modeOpt[4];   // other networks use other deviations
         for (const Tx& t : tx_) len_.push_back((int64_t)std::llround(t.seconds() * rate));
         gap_ = (int64_t)std::llround(kGapSec * rate);
         // amplitude and noise: the noise decides the scale so that its peaks stay below 0.9 (the source rounds to 8 bits)

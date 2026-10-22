@@ -308,6 +308,37 @@ void statsView(App& a) {
     ImGui::PopTextWrapPos();
 }
 
+// Every address heard in the page list, busiest first. A click on a row puts the address into the message filter.
+void capcodeView(App& a) {
+    const dect2::PagerTelemetry& t = a.rx.pager;
+    if (!live(a)) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", a.engine.running() ? "starting" : "start the receiver to see the capcodes"); ImGui::PopTextWrapPos(); return; }
+    const std::vector<dect2::PagerHeard> rows = dect2::pagerHeardTable(messagesOf(t));
+    const bool wide = wideActive(a);
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("%zu addresses heard in the last %zu pages. Click an address to filter the Messages view by it.", rows.size(), messagesOf(t).size());
+    ImGui::PopTextWrapPos();
+    if (!ImGui::BeginTable("##pgcap", 5 + (wide ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Pages"); ImGui::TableSetupColumn("Last"); ImGui::TableSetupColumn("Speed");
+    if (wide) ImGui::TableSetupColumn("MHz");
+    ImGui::TableSetupColumn("Last text", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableHeadersRow();
+    for (size_t i = 0; i < rows.size() && i < 500; i++) {
+        const dect2::PagerHeard& r = rows[i];
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        char lab[32];
+        snprintf(lab, sizeof lab, "%u##cap%zu", (unsigned)r.address, i);
+        if (ImGui::Selectable(lab, false, ImGuiSelectableFlags_None)) { snprintf(S.filter, sizeof S.filter, "%u", (unsigned)r.address); S.view = 0; }
+        ImGui::TableNextColumn(); ImGui::Text("%d", r.count);
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(clock(r.lastWall).c_str());
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(dect2::pagerSpeedName(r.speed));
+        if (wide) { ImGui::TableNextColumn(); wideCarrierCell(a, r.carrierId, r.carrierHz); }
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(ellipsize(oneLine(r.lastText), ImGui::GetContentRegionAvail().x).c_str());
+    }
+    ImGui::EndTable();
+}
+
 // ---------------------------------------------------------------- hooks
 
 void tick(App& a) {
@@ -321,8 +352,8 @@ void tab(App& a) {
     loadRead();
     lampRow(a);
     ImGui::Spacing();
-    subNav("pagerv", S.view, {"Messages", "Statistics"});
-    if (S.view == 0) messageView(a); else statsView(a);
+    subNav("pagerv", S.view, {"Messages", "Capcodes", "Statistics"});
+    if (S.view == 0) messageView(a); else if (S.view == 1) capcodeView(a); else statsView(a);
 }
 
 void list(App& a) {
