@@ -875,8 +875,7 @@ void bandsView(App& a) {
         const std::string p = saveFileDialog("ship_names.tsv");
         if (!p.empty()) { char mb[600]; snprintf(mb, sizeof mb, writeText(p, db.exportTsv()) ? tr("saved %s") : tr("could not write %s"), p.c_str()); S.dbMsg = mb; }
     }
-    ImGui::SameLine();
-    if (!S.dbMsg.empty()) ImGui::TextDisabled("%s", S.dbMsg.c_str());
+    if (!S.dbMsg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.dbMsg.c_str()); }
     ImGui::TextDisabled("%s", tr("There is no bundled coast station list: no openly licensed one is available, so bring your own file."));
     ImGui::Spacing();
     ImGui::TextColored(pal::heading(), "%s", tr("Marine bands"));

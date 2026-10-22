@@ -177,10 +177,9 @@ void windowPanel(App& a) {
     if (S.dirty || ImGui::GetTime() - S.lastQ > 3.0) { S.lastQ = ImGui::GetTime(); refresh(); }
 
     ImGui::TextDisabled("%lld %s, %lld %s, %.1f MB", (long long)S.matches, tr("matching"), (long long)S.stats.rows, tr("stored"), (double)S.stats.bytes / 1048576.0);
-    ImGui::SameLine();
-    if (S.page > 0 && ImGui::SmallButton(tr("Newer"))) { S.page--; S.dirty = true; }
-    ImGui::SameLine();
-    if ((S.page + 1) * kPage < S.matches && ImGui::SmallButton(tr("Older"))) { S.page++; S.dirty = true; }
+    // a SameLine only before a button that is drawn: otherwise the table below would start on this line
+    if (S.page > 0) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Newer"))) { S.page--; S.dirty = true; } }
+    if ((S.page + 1) * kPage < S.matches) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Older"))) { S.page++; S.dirty = true; } }
 
     const float h = ImGui::GetContentRegionAvail().y - 112 * gUi;
     if (ImGui::BeginTable("msgs", 5, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, ImVec2(0, std::max(120.f * gUi, h)))) {

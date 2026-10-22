@@ -238,8 +238,7 @@ void tab(App& a) {
     helpButton();
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Clear"))) a.engine.sarsat().clearResults();
-    ImGui::SameLine();
-    if (live(a)) ImGui::TextDisabled("%s", dect2::sarsatSummary(a.rx.sarsat).c_str());
+    if (live(a)) { ImGui::SameLine(); ImGui::TextDisabled("%s", dect2::sarsatSummary(a.rx.sarsat).c_str()); }
     const int v0 = S.view;
     subNav("sarv", S.view, {tr("Beacons"), tr("Map"), tr("Raw bits")});
     if (S.view != v0) plat::prefs().setI("sarsatView", S.view);

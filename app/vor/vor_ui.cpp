@@ -286,7 +286,7 @@ void fixView(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The radio retunes between the two stations; each radial is kept from the end of its dwell.");
     ImGui::SameLine(); ImGui::SetNextItemWidth(120 * gUi);
     if (ImGui::SliderFloat("##dwell", &S.dwell, 4, 30, "dwell %.0f s")) save();
-    ImGui::SameLine();
+    if (f.ok) ImGui::SameLine();   // only before the text: with no fix the map below would start on this line
     if (f.ok) ImGui::Text("%.4f %.4f   95 %%: %.1f x %.1f km, crossing %.0f deg", f.lat, f.lon, 2.45 * f.sigMajorM / 1e3, 2.45 * f.sigMinorM / 1e3, f.crossDeg);
     fixMap(a, ImVec2(ImGui::GetContentRegionAvail().x, std::max(120 * gUi, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 3)), st, f);
     ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x - 120 * gUi));
