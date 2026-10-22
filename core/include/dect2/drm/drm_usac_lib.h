@@ -22,6 +22,7 @@ struct UsacLib {
     static UsacLib fromResolver(const std::function<void*(const char*)>& sym);
     // Loads libfdk-aac (or the library named by `path` when not empty; DECT2_FDKAAC_LIB is tried next).
     static UsacLib load(const std::string& path = std::string());
+    static std::vector<std::string> codecFolderCandidates();   // libfdk-aac files in the OnAir codecs folders, in the order tried
     static const char* libraryHint();               // names to install, for the in-app message
 };
 

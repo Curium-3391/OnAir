@@ -1,6 +1,9 @@
 // Run-time loader for the optional libfdk-aac USAC decoder (see drm_usac_lib.h). Not shipped, not linked.
 #include "dect2/drm/drm_usac_lib.h"
+#include "../source/native_common.h"
+#include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -18,14 +21,41 @@ UsacLib UsacLib::fromResolver(const std::function<void*(const char*)>& sym) {
 
 const char* UsacLib::libraryHint() { return "libfdk-aac (libfdk-aac.so.2, libfdk-aac.2.dylib or libfdk-aac-2.dll)"; }
 
+// The libfdk-aac files in the OnAir codecs folders (docs/CODECS.md): the usual names first, then any file with "fdk" and "aac" in its
+// name and a library extension, so a differently named build (fdk-aac-2.dll, libfdk-aac.2.2.0.dylib) is found too.
+std::vector<std::string> UsacLib::codecFolderCandidates() {
+    std::vector<std::string> v;
+    for (const std::string& dir : native::codecFolders()) {
+        for (const char* n : {"libfdk-aac-2.dll", "libfdk-aac.dll", "fdk-aac.dll", "libfdk-aac-1.dll", "fdk-aac-2.dll", "libfdk-aac.so.2", "libfdk-aac.so",
+                              "libfdk-aac.2.dylib", "libfdk-aac.dylib"}) v.push_back(dir + n);
+        std::error_code ec;
+        std::vector<std::string> extra;
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            const std::string f = e.path().filename().string();
+            std::string low = f;
+            std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+            if (low.find("fdk") == std::string::npos || low.find("aac") == std::string::npos) continue;
+            if (low.find(".dll") == std::string::npos && low.find(".dylib") == std::string::npos && low.find(".so") == std::string::npos) continue;
+            if (std::find(v.begin(), v.end(), dir + f) == v.end()) extra.push_back(dir + f);
+        }
+        std::sort(extra.begin(), extra.end());
+        v.insert(v.end(), extra.begin(), extra.end());
+    }
+    return v;
+}
+
 UsacLib UsacLib::load(const std::string& path) {
     std::vector<std::string> names;
     if (!path.empty()) names.push_back(path);
     if (const char* e = std::getenv("DECT2_FDKAAC_LIB")) if (*e) names.push_back(e);
+    for (const std::string& n : codecFolderCandidates()) names.push_back(n);   // a copy in a codecs folder wins over the system's
     void* h = nullptr;
 #ifdef _WIN32
     for (const char* n : {"libfdk-aac-2.dll", "libfdk-aac.dll", "fdk-aac.dll", "libfdk-aac-1.dll"}) names.push_back(n);
-    for (const std::string& n : names) if ((h = (void*)LoadLibraryA(n.c_str()))) break;
+    for (const std::string& n : names) {
+        const bool full = n.find('\\') != std::string::npos || n.find('/') != std::string::npos;   // a full path: its own folder is searched for the DLLs it needs
+        if ((h = full ? (void*)LoadLibraryExA(n.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH) : (void*)LoadLibraryA(n.c_str()))) break;
+    }
     auto sym = [&](const char* s) -> void* { return h ? (void*)GetProcAddress((HMODULE)h, s) : nullptr; };
 #else
     for (const char* n : {"libfdk-aac.so.2", "libfdk-aac.so", "libfdk-aac.2.dylib", "libfdk-aac.dylib", "/opt/homebrew/lib/libfdk-aac.dylib", "/usr/local/lib/libfdk-aac.dylib"}) names.push_back(n);
