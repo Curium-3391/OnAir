@@ -208,7 +208,7 @@ void tab(App& a) {
     if (ImGui::Button("Save PNG")) savePng(t);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The picture as shown, at full size, in <data folder>/meteor/");
     flowNext(5 * gUi);
-    if (ImGui::Button("New picture") && a.engine.running()) { a.engine.meteor().clearImage(); S.msg.clear(); }
+    if (runningButton(a, tr("New picture"))) { a.engine.meteor().clearImage(); S.msg.clear(); }
     flowNext(8 * gUi);
     if (ImGui::Checkbox("Auto-save", &S.autoSave)) { plat::prefs().setB("meteorAutoSave", S.autoSave); plat::prefs().flush(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the picture as a PNG when no new lines have come for 90 seconds (the pass is over)");

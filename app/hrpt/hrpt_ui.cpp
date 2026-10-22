@@ -127,7 +127,7 @@ void tab(App& a) {
     if (ImGui::Button("Save PNG")) savePng(t);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The picture as shown, at full size, in <data folder>/hrpt/");
     flowNext(5 * gUi);
-    if (ImGui::Button("New picture") && a.engine.running()) { a.engine.hrpt().clearImage(); S.msg.clear(); }
+    if (runningButton(a, tr("New picture"))) { a.engine.hrpt().clearImage(); S.msg.clear(); }
     flowNext(8 * gUi);
     ImGui::Checkbox("Follow", &S.follow);
     flowEnd();

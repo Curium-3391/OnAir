@@ -593,7 +593,7 @@ static void controlsRow() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pick the colour range from the levels in view (5 % and 99.5 % points).");
     ImGui::SameLine(0, 6 * gUi);
     ImGui::SetNextItemWidth(60 * gUi);
-    if (ImGui::DragFloat("##wbmin", &s.dbMin, 0.5f, -200, s.dbMax - 3, "%.0f")) { s.autoRange = false; changed = true; }
+    if (ImGui::DragFloat("##wbmin", &s.dbMin, 0.5f, -200, s.dbMax - 3, "%.0f dB")) { s.autoRange = false; changed = true; }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Level at the dark end of the colours (dBFS)");
     ImGui::SameLine(0, 3 * gUi);
     ImGui::SetNextItemWidth(60 * gUi);

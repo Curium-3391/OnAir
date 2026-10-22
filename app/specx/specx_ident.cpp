@@ -308,9 +308,9 @@ void identifyWindow(App& a) {
         ImGui::Separator();
         if (!I.all && I.have && I.res.f.valid && ImGui::Button(tr("Copy as text"))) { ImGui::SetClipboardText(si::toText(I.res).c_str()); I.note = tr("Copied"); }
         if (!I.all && I.have && I.res.f.valid) ImGui::SameLine();
-        if (ImGui::Button(tr("Again")) && a.engine.running()) { I.have = I.haveAll = false; I.note.clear(); startCapture(a); }
+        if (runningButton(a, tr("Again"))) { I.have = I.haveAll = false; I.note.clear(); startCapture(a); }
         ImGui::SameLine();
-        if (!I.all) { if (ImGui::Button(tr("Identify all signals")) && a.engine.running()) identifyAll(a); ImGui::SameLine(); }
+        if (!I.all) { if (runningButton(a, tr("Identify all signals"))) identifyAll(a); ImGui::SameLine(); }
         if (ImGui::Button(tr("Close"))) I.open = false;
     }
     ImGui::End();

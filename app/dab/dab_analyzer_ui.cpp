@@ -312,7 +312,7 @@ void details(App& a, View& v) {
                     if (!ch) continue;
                     ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TableNextColumn();
                     char l[48]; snprintf(l, sizeof l, "Tune to %s  %.3f MHz##%s", ch, khz / 1000.0, ch);
-                    if (ImGui::SmallButton(l) && a.engine.running()) dabTuneMhz(a, khz / 1000.0);
+                    if (runningButton(a, l, true)) dabTuneMhz(a, khz / 1000.0);
                 }
         }
     } else if (s == "freqs") {

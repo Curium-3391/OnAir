@@ -106,7 +106,7 @@ void scanBar(App& a) {
     }
     flowNext(10 * gUi);
     if (!S.scanning) {
-        if (ImGui::SmallButton("Scan") && a.engine.running()) { makePlan(a); S.step = 0; S.stepAt = 0; S.scanning = !S.plan.empty(); }
+        if (runningButton(a, tr("Scan"), true)) { makePlan(a); S.step = 0; S.stepAt = 0; S.scanning = !S.plan.empty(); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Step the radio over the chosen bands; every sync raster point (GSCN) inside each step is searched for SS/PBCH blocks. Receive only.");
     } else {
         if (ImGui::SmallButton("Stop scan")) S.scanning = false;

@@ -696,6 +696,8 @@ void restoreCursor(ImVec2 screenPos);
 // once a frame: a floating window whose title bar went past the edge of the display (a saved position from a larger or a second monitor,
 // a smaller window after a DPI change) is moved back so it can be grabbed again
 void keepWindowsReachable();
+// a button that only acts while the receiver runs: greyed out (with the reason as its tooltip) while it is stopped, instead of doing nothing
+bool runningButton(const App& a, const char* label, bool small = false);
 // a panel that answers Space itself (the TV picture, the transmitter) sets this to the frame number; the new interface's Space = start /
 // stop the receiver is then left out, so one key press does not do two things (widgets.cpp)
 extern int gSpaceClaimFrame;
