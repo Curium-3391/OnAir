@@ -1,7 +1,9 @@
 // APRS / Packet receiver: one 25 kHz FM channel, AX.25 at 1200 baud (Bell 202 AFSK) and 9600 baud (G3RUH) decoded at the same time.
 // Front end: mix out the signal offset, decimate to about 100 kHz, resample to exactly 96 kHz, channel filter, FM discriminator.
-// 1200 baud: the audio goes to 48 kHz and three demodulators run side by side (tone correlators over one bit, with different windows, tone
-// weights and clock-loop speeds - the way good TNCs do it); a frame is kept once even when several of them decode it.
+// 1200 baud: the audio goes to 48 kHz and three tone-correlator pairs run side by side (different windows and clock-loop speeds), each
+// with six slicers (five mark / space weights from -6 to +6 dB and one AGC per tone: the multi-slicer idea of good TNCs), so pre-emphasised,
+// de-emphasised and flat audio all decode; a frame is kept once even when several of them decode it. Optional audio emphasis, optional
+// "fix bits" (a failed frame retried with one or two bits flipped), and a sound-card mode where the input is FM-demodulated audio.
 // 9600 baud: two slicers with different filters, a clock loop, the G3RUH descrambler (x^17 + x^12 + 1) and NRZI.
 // The frame layer is packet_ax25.*, the APRS layer packet_aprs.*.
 #include "dect2/packet/packet_rx.h"
@@ -28,7 +30,9 @@ namespace {
 using pktdemod::kMidRate;
 constexpr size_t kMaxFrames = 200, kMaxStations = 300;
 constexpr int64_t kDupWindow = (int64_t)(0.03 * kMidRate);   // the same bytes this close together are one transmission
-using pktdemod::Afsk1200;
+constexpr double kDigiWindowSec = 30.0;                       // the same source, destination and text again within this: a digipeated copy
+const std::vector<float> kSlicerGains = {1.0f, 0.71f, 1.41f, 0.5f, 2.0f};   // mark against space: 0, -3, +3, -6, +6 dB (index 0 counts the failures)
+using pktdemod::AfskMulti;
 typedef pktdemod::FskSlicer Fsk9600;
 
 uint64_t hashBytes(const std::vector<uint8_t>& d) {
@@ -47,6 +51,9 @@ struct PacketReceiver::Impl {
 
     double fs = 0;
     bool narrow = false;                   // setNarrowChannel()
+    int fixBits = 0;                       // setFixBits()
+    int emphasis = 0;                      // setEmphasis(): 0 auto (the slicers cover it), 1 de-emphasis, 2 pre-emphasis
+    bool audioIn = false;                  // setAudioInput(): the input is FM-demodulated audio
     bool wideInput = false;                // setWideInput(): one carrier brought to 192 ksps by the whole-span bank (the radio's minimum rate does not apply)
     bool isReady = false;
     pktdemod::FmFront fe;
@@ -55,8 +62,14 @@ struct PacketReceiver::Impl {
     std::vector<float> a8;
     dmr::Fir<float> audio48;               // 96 -> 48 kHz low-pass for the 1200 baud path
     dmr::Fir<float> lp9600[2];
-    Afsk1200 afsk[3];
+    AfskMulti afsk[3];
+    pktdemod::Emphasis emph;
     Fsk9600 fsk[2];
+    // "fix bits": stretches of a frame's length that failed, tried again a little later unless another demodulator got the frame
+    struct Cand { std::vector<uint8_t> bits; int64_t t; int baud; };
+    std::deque<Cand> cands;
+    std::unordered_map<std::string, double> heard;   // source > destination : text -> last time (signal seconds), for digipeated copies
+    double twistSum = 0; int twistN = 0;
     std::vector<float> a48, f9[2];
 
     int64_t nextReport = 0;
@@ -89,13 +102,17 @@ struct PacketReceiver::Impl {
         audio48.design(dmr::lowpassTaps(3300.0, 8000.0, kMidRate, 50, 9), 2);
         lp9600[0].design(dmr::lowpassTaps(5200.0, 11000.0, kMidRate, 40, 9), 1);
         lp9600[1].design(dmr::lowpassTaps(4000.0, 9000.0, kMidRate, 40, 9), 1);
-        afsk[0].init(40, false, 1.0f, 0.70f, 0.80f);
-        afsk[1].init(40, true, 0.7f, 0.75f, 0.85f);
-        afsk[2].init(32, false, 1.5f, 0.80f, 0.88f);
+        afsk[0].init(40, false, kSlicerGains, true, 0.70f, 0.80f);
+        afsk[1].init(40, true, kSlicerGains, true, 0.75f, 0.85f);
+        afsk[2].init(32, false, kSlicerGains, true, 0.80f, 0.88f);
         fsk[0].init(0.70f, 0.80f);
         fsk[1].init(0.75f, 0.85f);
-        for (int i = 0; i < 3; i++) afsk[i].hdlc.setCallback([this, i](const std::vector<uint8_t>& dat, bool ok) { onRaw(1200, i, dat, ok, afsk[i].pos * 2); });
+        for (int i = 0; i < 3; i++)
+            for (size_t k = 0; k < afsk[i].chains.size(); k++)
+                afsk[i].chains[k].hdlc.setCallback([this, i, k](const std::vector<uint8_t>& dat, bool ok) { onRaw(1200, i * 16 + (int)k, dat, ok, afsk[i].pos * 2); });
         for (int i = 0; i < 2; i++) fsk[i].hdlc.setCallback([this, i](const std::vector<uint8_t>& dat, bool ok) { onRaw(9600, i, dat, ok, fsk[i].pos); });
+        applyFixBits();
+        emph.set(emphasis);
         isReady = true;
         resetState();
     }
@@ -106,8 +123,10 @@ struct PacketReceiver::Impl {
         audio48.reset(); audio8.reset(); listen.reset(); lp9600[0].reset(); lp9600[1].reset();
         for (auto& a : afsk) a.reset();
         for (auto& a : fsk) a.reset();
+        emph.reset();
         nextReport = 0;
-        recent.clear(); fails.clear();
+        recent.clear(); fails.clear(); cands.clear(); heard.clear();
+        twistSum = 0; twistN = 0;
         shiftTimes(-lastNow);              // the frames and stations stay (clearResults)
         lastNow = 0;
         const uint64_t s = seq;
@@ -145,7 +164,42 @@ struct PacketReceiver::Impl {
     }
 
     // ---- frames
-    void onRaw(int baud, int variant, const std::vector<uint8_t>& dat, bool ok, int64_t tt) {
+    void applyFixBits() {
+        auto cb = [this](int baud, const AfskMulti* a, const Fsk9600* f) {
+            return [this, baud, a, f](const std::vector<uint8_t>& bits) {
+                if (!fe.carrierRecent(0.1) || cands.size() >= 48) return;   // no carrier: noise between two random flags
+                cands.push_back({bits, a ? a->pos * 2 : f->pos, baud});
+            };
+        };
+        for (auto& a : afsk)
+            for (auto& ch : a.chains) ch.hdlc.setRawCallback(fixBits ? ax25::HdlcRx::RawCallback(cb(1200, &a, nullptr)) : nullptr);
+        for (auto& f : fsk) f.hdlc.setRawCallback(fixBits ? ax25::HdlcRx::RawCallback(cb(9600, nullptr, &f)) : nullptr);
+        cands.clear();
+    }
+
+    // the failed stretches once every demodulator is past them: skipped when one of them got the frame; at most three tries per frame
+    void repairCands() {
+        int64_t lastTry = -(int64_t)1e15; int tries = 0; bool done = false; int lastBaud = 0;
+        while (!cands.empty() && cands.front().t < fe.n96 - 2 * kDupWindow) {
+            Cand c = std::move(cands.front());
+            cands.pop_front();
+            if (c.baud != lastBaud || c.t - lastTry > kDupWindow) { tries = 0; done = false; }
+            lastTry = c.t; lastBaud = c.baud;
+            if (done || tries >= 3) continue;
+            bool had = false;
+            for (const Recent& r : recent) if (r.baud == c.baud && std::llabs(r.t - c.t) < 3 * kDupWindow) { had = true; break; }
+            if (had) { done = true; continue; }
+            tries++;
+            std::vector<uint8_t> out;
+            const int n = ax25::repairFrame(c.bits, ax25::fixPatterns(fixBits, c.baud == 9600), out, ax25::plausibleFrame);
+            if (!n) continue;
+            done = true;
+            t.fixedFrames++;
+            onRaw(c.baud, -1, out, true, c.t, n);
+        }
+    }
+
+    void onRaw(int baud, int variant, const std::vector<uint8_t>& dat, bool ok, int64_t tt, int fixedBits = 0) {
         if (!ok) {
             if (variant == 0) fails.push_back({baud, tt, fe.carrierRecent(0.2) && tt - fe.carrierSince > (int64_t)(0.05 * kMidRate)});         // one demodulator counts the failures; another one may still get the frame
             return;
@@ -154,7 +208,11 @@ struct PacketReceiver::Impl {
         while (!recent.empty() && recent.front().t < tt - 4 * kDupWindow) recent.pop_front();
         for (const Recent& r : recent) if (r.h == h && r.baud == baud && std::llabs(r.t - tt) < kDupWindow) return;
         recent.push_back({h, tt, baud});
-        accept(baud, dat, tt);
+        if (baud == 1200 && variant >= 0) {   // the tone balance of this frame, from the demodulator that got it
+            const AfskMulti& a = afsk[std::min(2, variant / 16)];
+            if (a.markAvg > 0 && a.spaceAvg > 0) { twistSum += a.markDb() - a.spaceDb(); twistN++; }
+        }
+        accept(baud, dat, tt, fixedBits);
     }
 
     void flushFails(bool all) {
@@ -196,14 +254,15 @@ struct PacketReceiver::Impl {
         } else if (a->type == "Status") s.comment = a->text;
     }
 
-    void accept(int baud, const std::vector<uint8_t>& dat, int64_t tt) {
+    void accept(int baud, const std::vector<uint8_t>& dat, int64_t tt, int fixedBits) {
         const double tnow = (double)tt / kMidRate;
         ax25::Frame f;
         if (!ax25::parseFrame(dat.data(), dat.size(), f)) { t.blocksBad++; if (baud == 1200) t.bad1200++; else t.bad9600++; return; }
         t.blocksOk++;
         if (baud == 1200) { t.ok1200++; t.last1200Sec = tnow; } else { t.ok9600++; t.last9600Sec = tnow; }
         aprs::Info a;
-        const bool isAprs = f.isUi() && f.pid == 0xF0 && aprs::parse(f.to.call, f.info, a);
+        std::string inner;                 // a third-party packet: the station inside it
+        const bool isAprs = f.isUi() && f.pid == 0xF0 && aprs::parseFull(f.to.call, f.info, a, &inner);
         PacketFrameInfo pf;
         pf.timeSec = tnow; pf.from = f.from.str(); pf.to = f.to.str(); pf.path = f.pathStr(); pf.info = f.info; pf.baud = baud;
         if (isAprs) {
@@ -212,6 +271,24 @@ struct PacketReceiver::Impl {
         } else {
             pf.type = f.typeName();
             pf.summary = "AX.25 " + f.typeName() + (f.info.empty() ? "" : ": " + f.info);
+        }
+        if (fixedBits) pf.summary += fixedBits == 3 ? " [2 bits fixed]" : " [1 bit fixed]";
+        // the same packet again through a digipeater (only the path differs): listed, but not counted, gated or announced twice
+        const std::string key = pf.from + ">" + pf.to + ":" + f.info;
+        auto hk = heard.find(key);
+        const bool digiCopy = hk != heard.end() && tnow - hk->second < kDigiWindowSec && tnow >= hk->second;
+        heard[key] = tnow;
+        if (heard.size() > 2000) for (auto it = heard.begin(); it != heard.end();) it = tnow - it->second > kDigiWindowSec ? heard.erase(it) : std::next(it);
+        if (digiCopy) {
+            t.digiCopies++;
+            pf.summary = "(again, via " + (pf.path.empty() ? std::string("direct") : pf.path) + ") " + pf.summary;
+            if (Feeds::get().wantKiss()) Feeds::get().kiss(dat.data(), dat.size());   // KISS clients get every frame, as from a TNC
+            frames.push_back(pf);
+            while (frames.size() > kMaxFrames) frames.pop_front();
+            auto st = stations.find(pf.from);
+            if (st != stations.end()) st->second.s.lastHeardSec = tnow;
+            clearFailsNear(baud, tt);
+            return;
         }
         if (Feeds::get().wantAprs()) Feeds::get().aprs(dat, pf.from, pf.to, pf.path, f.info, f.isUi() && f.pid == 0xF0);   // the data feeds out (feeds.h)
         if (automation::wants(automation::FAprs)) {   // the automations (automation/engine.h)
@@ -223,9 +300,17 @@ struct PacketReceiver::Impl {
         }
         frames.push_back(pf);
         while (frames.size() > kMaxFrames) frames.pop_front();
-        touchStation(pf.from, isAprs ? &a : nullptr, false, "", tnow);
-        if (isAprs && (a.type == "Object" || a.type == "Item") && !a.name.empty()) touchStation(a.name, &a, true, pf.from, tnow);
-        // a good frame explains a failure of another demodulator at the same moment (a failure is only counted 1.3 s after it, for this)
+        if (!inner.empty()) {   // the gateway that sent it is heard, the station inside is where the position goes
+            touchStation(pf.from, nullptr, false, "", tnow);
+            touchStation(inner, &a, false, "", tnow);
+            stations[inner].s.via = pf.from;
+        } else touchStation(pf.from, isAprs ? &a : nullptr, false, "", tnow);
+        if (isAprs && (a.type == "Object" || a.type == "Item") && !a.name.empty()) touchStation(a.name, &a, true, inner.empty() ? pf.from : inner, tnow);
+        clearFailsNear(baud, tt);
+    }
+
+    // a good frame explains a failure of another demodulator at the same moment (a failure is only counted 1.3 s after it, for this)
+    void clearFailsNear(int baud, int64_t tt) {
         for (auto it = fails.begin(); it != fails.end();) {
             // the other speed's demodulator sees rubbish while a frame of this speed is on the air: those are not failures either
             const bool same = it->baud == baud && std::llabs(it->t - tt) < (int64_t)(0.08 * kMidRate);
@@ -242,9 +327,14 @@ struct PacketReceiver::Impl {
         t.carrier = fe.carrierRecent(0.2);
         t.dataValid = tnow - std::max(t.last1200Sec, t.last9600Sec) < 15.0;
         t.state = t.dataValid ? 2 : (t.carrier || fe.carrierRecent(5) ? 1 : 0);
-        t.cfoHz = fe.cfoHz();
+        t.cfoHz = audioIn ? 0 : fe.cfoHz();
         t.snrDb = (float)fe.snrEma;
         t.levelDb = fe.takeLevelDb();
+        if (twistN) {
+            t.twistDb = (float)(twistSum / twistN);
+            t.twistFrames = (uint32_t)twistN;
+            if (twistN > 50) { twistN = 25; twistSum = t.twistDb * twistN; }   // the newer frames count more
+        }
         if (t.state != lastState) {
             say(t.state == 2 ? "APRS: decoding frames" : t.state == 1 ? "APRS: signal, no good frame lately" : "APRS: no signal");
             lastState = t.state;
@@ -262,13 +352,17 @@ struct PacketReceiver::Impl {
         a48.clear();
         audio48.process(disc.data(), disc.size(), a48);
         if (listen.on.load() && !a48.empty()) { a8.clear(); audio8.process(a48.data(), a48.size(), a8); listen.play(a8.data(), a8.size()); }
-        if (!a48.empty()) for (auto& a : afsk) a.process(a48.data(), a48.size());
+        if (!a48.empty()) {
+            emph.process(a48.data(), a48.size());
+            for (auto& a : afsk) a.process(a48.data(), a48.size());
+        }
         for (int i = 0; i < 2; i++) {
             f9[i].clear();
             lp9600[i].process(disc.data(), disc.size(), f9[i]);
             if (!f9[i].empty()) fsk[i].process(f9[i].data(), f9[i].size());
         }
         fe.commit();
+        if (fixBits && !cands.empty()) repairCands();
         while (fe.n96 >= nextReport) {
             nextReport += (int64_t)(0.25 * kMidRate);
             publish();
@@ -297,6 +391,39 @@ void PacketReceiver::setNarrowChannel(bool on) {
 bool PacketReceiver::narrowChannel() const {
     std::lock_guard<std::mutex> lk(p_->procMu);
     return p_->narrow;
+}
+void PacketReceiver::setFixBits(int level) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    level = std::max(0, std::min(2, level));
+    if (level == p_->fixBits) return;
+    p_->fixBits = level;
+    if (p_->isReady) p_->applyFixBits();
+}
+void PacketReceiver::setEmphasis(int mode) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    mode = std::max(0, std::min(2, mode));
+    if (mode == p_->emphasis) return;
+    p_->emphasis = mode;
+    p_->emph.set(mode);
+}
+int PacketReceiver::emphasis() const {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    return p_->emphasis;
+}
+void PacketReceiver::setAudioInput(bool on) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    if (on == p_->audioIn) return;
+    p_->audioIn = on;
+    p_->fe.afInput = on;
+    if (p_->isReady) p_->resetState();
+}
+bool PacketReceiver::audioInput() const {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    return p_->audioIn;
+}
+int PacketReceiver::fixBits() const {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    return p_->fixBits;
 }
 void PacketReceiver::setSignalOffset(double hz) {
     std::lock_guard<std::mutex> lk(p_->procMu);
@@ -358,7 +485,7 @@ ModeTuning packetTuning() {
     t.sampleRate = 2000000;
     t.basebandHz = 1750000;
     t.bandwidthMhz = 0.025;
-    t.minSampleRate = 1000000;
+    t.minSampleRate = 240000;                // the front end works from 240 ksps (Airspy HF+, SpyServer, rtl_tcp at a low rate, a sound card)
     t.tuneOffsetHz = 50000;                  // the radio sits 50 kHz above the channel, away from its DC spike (as Inmarsat-C and Aero)
     return t;
 }

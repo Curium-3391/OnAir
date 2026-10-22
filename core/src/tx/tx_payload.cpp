@@ -81,12 +81,16 @@ using dect2::math::kPi;
 
 std::string upper(std::string s) { return dect2::str::upper(std::move(s)); }
 
-ax25::Address ax25Addr(const std::string& s) {
+// "CALL-SSID" as typed ("wide2-1", " A61HS-9 ") -> an AX.25 address: spaces dropped, capitals, at most six characters, SSID 0..15;
+// a trailing '*' (as in a received path) is dropped too
+ax25::Address ax25Addr(const std::string& in) {
+    std::string s;
+    for (char c : in) if (c != ' ' && c != '\t' && c != '*') s += c;
     ax25::Address a;
     const size_t d = s.find('-');
     a.call = upper(d == std::string::npos ? s : s.substr(0, d));
     if (a.call.size() > 6) a.call.resize(6);
-    a.ssid = d == std::string::npos ? 0 : atoi(s.c_str() + (int)d + 1);
+    a.ssid = d == std::string::npos ? 0 : std::max(0, std::min(15, atoi(s.c_str() + (int)d + 1)));
     return a;
 }
 
@@ -449,18 +453,20 @@ std::unique_ptr<ModeSynth> makeTxPayloadSynth(const TxModeSpec& m, const TxReque
         f.to = ax25Addr(r.dest.empty() ? "APRS" : r.dest);
         std::string path = r.path.empty() ? "WIDE1-1,WIDE2-1" : r.path;
         size_t i = 0;
-        while (i < path.size()) {
+        while (i < path.size() && f.path.size() < 8) {   // AX.25 carries at most eight digipeaters
             const size_t c = path.find(',', i);
-            f.path.push_back(ax25Addr(path.substr(i, c == std::string::npos ? std::string::npos : c - i)));
+            const ax25::Address a = ax25Addr(path.substr(i, c == std::string::npos ? std::string::npos : c - i));
+            if (!a.call.empty()) f.path.push_back(a);
             if (c == std::string::npos) break;
             i = c + 1;
         }
         char info[256];
         if (r.lat != 0 || r.lon != 0) {
-            const double alat = std::fabs(r.lat), alon = std::fabs(r.lon);
-            snprintf(info, sizeof info, "!%02d%05.2f%c/%03d%05.2f%c-%s",
-                     (int)alat, (alat - (int)alat) * 60.0, r.lat < 0 ? 'S' : 'N',
-                     (int)alon, (alon - (int)alon) * 60.0, r.lon < 0 ? 'W' : 'E',
+            // degrees and minutes to hundredths of a minute, rounded first so 59.999' becomes the next degree and not "60.00"
+            const long la = std::lround(std::fabs(r.lat) * 6000.0), lo = std::lround(std::fabs(r.lon) * 6000.0);
+            snprintf(info, sizeof info, "!%02ld%02ld.%02ld%c/%03ld%02ld.%02ld%c-%s",
+                     la / 6000, (la % 6000) / 100, la % 100, r.lat < 0 ? 'S' : 'N',
+                     lo / 6000, (lo % 6000) / 100, lo % 100, r.lon < 0 ? 'W' : 'E',
                      r.text.c_str());
         } else snprintf(info, sizeof info, ">%s", r.text.empty() ? "OnAir" : r.text.c_str());
         f.info = info;

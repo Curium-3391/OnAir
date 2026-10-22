@@ -54,7 +54,8 @@ struct WideModes::Impl {
     std::unique_ptr<WideBank<P25Receiver, P25Telemetry>> p25;
     std::unique_ptr<WideBank<PagerReceiver, PagerTelemetry>> pager;
     std::unique_ptr<WideBank<PacketReceiver, PacketTelemetry>> packet;
-    bool pagerNarrow = false, packetNarrow = false;   // the single receivers' channel width, copied to every carrier receiver (setNarrowChannels)
+    bool pagerNarrow = false, packetNarrow = false;
+    int packetFix = 0, packetEmph = 0;                 // setPacketOptions   // the single receivers' channel width, copied to every carrier receiver (setNarrowChannels)
     int pagerProtos = 3, pagerBauds = 7;   // the single receiver's settings, copied to every carrier's receiver (setPagerOptions)
     bool muted = false;
     float volume = 1.f;
@@ -157,7 +158,7 @@ struct WideModes::Impl {
         // APRS / packet: one 25 kHz FM channel each (144.800, 144.390 and the neighbours inside one capture); no sound from the carrier receivers
         WideOps<PacketReceiver, PacketTelemetry> k;
         k.outRate = 192000; k.occupiedHz = 24000; k.preRollSec = 0.5;
-        k.setup = [this](PacketReceiver& r) { r.setWideInput(true); r.setSilent(true); r.setNarrowChannel(packetNarrow); };
+        k.setup = [this](PacketReceiver& r) { r.setWideInput(true); r.setSilent(true); r.setNarrowChannel(packetNarrow); r.setFixBits(packetFix); r.setEmphasis(packetEmph); };
         k.clear = [](PacketReceiver& r) { r.clearResults(); };
         k.clearLists = [](PacketTelemetry& t) {
             t.frames.clear(); t.stations.clear(); t.blocksOk = t.blocksBad = 0; t.ok1200 = t.bad1200 = t.ok9600 = t.bad9600 = t.aprsFrames = 0; t.carrier = false;
@@ -309,6 +310,12 @@ void WideModes::setPagerOptions(int protocols, int bauds) {
 void WideModes::setNarrowChannels(bool pager, bool packet) {
     if (pager != p_->pagerNarrow) { p_->pagerNarrow = pager; p_->pager->forEach([&](PagerReceiver& r) { r.setNarrowChannel(pager); }); }
     if (packet != p_->packetNarrow) { p_->packetNarrow = packet; p_->packet->forEach([&](PacketReceiver& r) { r.setNarrowChannel(packet); }); }
+}
+
+void WideModes::setPacketOptions(int fixBits, int emphasis) {
+    if (fixBits == p_->packetFix && emphasis == p_->packetEmph) return;
+    p_->packetFix = fixBits; p_->packetEmph = emphasis;
+    p_->packet->forEach([&](PacketReceiver& r) { r.setFixBits(fixBits); r.setEmphasis(emphasis); });
 }
 
 void WideModes::setLogCallback(std::function<void(const std::string&)> cb) { p_->log = std::move(cb); }

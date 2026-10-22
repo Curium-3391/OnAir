@@ -326,16 +326,18 @@ pub fn parse(dest: &[u8], info: &[u8], o: &mut Info, arena: &mut Arena) -> bool 
             let mut t = &info[11..];
             let br = t.iter().rposition(|&c| c == b'{');
             let mut empty = false;
+            // the message number ends at a '}' (the reply-ack form "{MM}AA" of APRS 1.1 carries the acknowledged number after it) or a CR / LF
+            let num = |s: &[u8]| -> usize { s.iter().position(|&c| c == b'}' || c == b'\r' || c == b'\n').unwrap_or(s.len()) };
             if t.starts_with(b"ack") && t.len() > 3 {
                 o.is_ack = true;
-                o.msg_no = arena.push(&t[3..]);
+                o.msg_no = arena.push(&t[3..3 + num(&t[3..])]);
                 empty = true;
             } else if t.starts_with(b"rej") && t.len() > 3 {
                 o.is_rej = true;
-                o.msg_no = arena.push(&t[3..]);
+                o.msg_no = arena.push(&t[3..3 + num(&t[3..])]);
                 empty = true;
             } else if let Some(b) = br.filter(|&b| t.len() - b <= 7) {
-                o.msg_no = arena.push(&t[b + 1..]);
+                o.msg_no = arena.push(&t[b + 1..b + 1 + num(&t[b + 1..])]);
                 t = &t[..b];
             }
             if empty {
@@ -506,6 +508,11 @@ mod tests {
         let (ok, o, b) = run(b"APRS", b":N0CALL-9 :ack12");
         assert!(ok && o.is_ack);
         assert_eq!(s(&b, o.summary), "Ack 12 to N0CALL-9");
+        // the reply-ack form: the message number stops at the '}'
+        let (ok, o, b) = run(b"APRS", b":WU2Z     :Testing{AB}CD");
+        assert!(ok && s(&b, o.msg_no) == "AB" && s(&b, o.text) == "Testing");
+        let (ok, o, b) = run(b"APRS", b":WU2Z     :ackAB}CD");
+        assert!(ok && o.is_ack && s(&b, o.msg_no) == "AB");
     }
     #[test]
     fn mic_e_and_weather() {

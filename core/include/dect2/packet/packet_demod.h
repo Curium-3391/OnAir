@@ -29,6 +29,9 @@ struct FmFront {
     double chanPass = 9000.0, chanStop = 17000.0;
     float clipHz = 8000.f;
     double afcMaxHz = 12000.0;
+    // the input is already FM-demodulated audio (a sound card on a radio's discriminator or speaker output): its real part is used, with
+    // no offset, AFC or discriminator; the audio comes out scaled as if full scale were 4 kHz of deviation
+    bool afInput = false;
     double fs = 0, offsetHz = 0, offPhase = 0;
     bool ready = false;
     std::vector<dmr::Fir<cf32>> stages;
@@ -124,6 +127,123 @@ struct Afsk1200 {
         }
         std::copy(ext.end() - (ptrdiff_t)h, ext.end(), ext.begin());
         ext.resize(h);
+    }
+};
+
+// 1200 baud with several slicers on one pair of tone correlators (the "multi-slicer" idea of good software TNCs). Each slicer compares the
+// mark and space magnitudes with its own weight (a transmitter's pre-emphasis, a radio's de-emphasis or its audio response leave one tone
+// several dB under the other: the slicer whose weight matches gets the frame), one more compares each tone against its own tracked envelope
+// (an AGC per tone, any balance), and every slicer has its own clock loop and HDLC receiver. markDb() - spaceDb() is the measured tone
+// balance (twist) of the signal of the last 40 ms or so.
+struct AfskMulti {
+    struct Chain {
+        float gain = 1.f;            // mark wins when |mark| > gain * |space|
+        bool agc = false;            // compare against the tracked envelopes instead
+        float ph = -0.5f;
+        bool lev = false, prevLev = false;
+        int snapBits = 0;
+        ax25::HdlcRx hdlc;
+    };
+    int len = 40;
+    float inertia = 0.75f, inertiaLocked = 0.85f;
+    std::vector<float> mr, mi, sr, si, ext;
+    std::vector<Chain> chains;
+    float mPk = 0, sPk = 0;
+    double markAvg = 0, spaceAvg = 0;
+    int64_t pos = 0;
+
+    void init(int L, bool hann, const std::vector<float>& gains, bool withAgc, float inert, float inertLocked) {
+        using dect2::math::kPi;
+        len = L; inertia = inert; inertiaLocked = inertLocked;
+        mr.assign((size_t)L, 0.f); mi = mr; sr = mr; si = mr;
+        for (int t = 0; t < L; t++) {
+            const int k = L - 1 - t;
+            const double w = hann ? 0.5 - 0.5 * std::cos(2 * kPi * (k + 0.5) / L) : 1.0;
+            mr[(size_t)t] = (float)(w * std::cos(2 * kPi * 1200.0 * k / kAudioRate));
+            mi[(size_t)t] = (float)(w * std::sin(2 * kPi * 1200.0 * k / kAudioRate));
+            sr[(size_t)t] = (float)(w * std::cos(2 * kPi * 2200.0 * k / kAudioRate));
+            si[(size_t)t] = (float)(w * std::sin(2 * kPi * 2200.0 * k / kAudioRate));
+        }
+        chains.clear();
+        chains.resize(gains.size() + (withAgc ? 1 : 0));
+        for (size_t i = 0; i < gains.size(); i++) chains[i].gain = gains[i];
+        if (withAgc) chains.back().agc = true;
+        reset();
+    }
+    void reset() {
+        ext.assign((size_t)len - 1, 0.f);
+        for (Chain& c : chains) { c.ph = -0.5f; c.lev = c.prevLev = false; c.snapBits = 0; c.hdlc.reset(); }
+        mPk = sPk = 0; markAvg = spaceAvg = 0; pos = 0;
+    }
+    double markDb() const { return 20 * std::log10(markAvg + 1e-12); }
+    double spaceDb() const { return 20 * std::log10(spaceAvg + 1e-12); }
+    void process(const float* x, size_t n) {
+        const size_t h = (size_t)len - 1;
+        ext.resize(h + n);
+        std::copy(x, x + n, ext.begin() + (ptrdiff_t)h);
+        const float step = (float)(1200.0 / kAudioRate);
+        const float decay = 1.f / (float)(len * 6);         // the envelopes fall over about six bits
+        for (size_t i = 0; i < n; i++) {
+            const float* p = &ext[i];
+            float a = 0, b = 0, c = 0, d = 0;
+            for (int t = 0; t < len; t++) {
+                const float v = p[t];
+                a += v * mr[(size_t)t]; b += v * mi[(size_t)t];
+                c += v * sr[(size_t)t]; d += v * si[(size_t)t];
+            }
+            const float m = std::sqrt(a * a + b * b), s = std::sqrt(c * c + d * d);
+            mPk += (m > mPk ? 0.3f : decay) * (m - mPk);
+            sPk += (s > sPk ? 0.3f : decay) * (s - sPk);
+            if (m > s) markAvg += 0.0005 * (m - markAvg); else spaceAvg += 0.0005 * (s - spaceAvg);
+            const float mn = m * sPk, sn = s * mPk;            // m / mPk against s / sPk
+            for (Chain& ch : chains) {
+                ch.lev = ch.agc ? mn > sn : m > ch.gain * s;
+                if (ch.lev != ch.prevLev) {
+                    if (ch.snapBits > 0) { ch.ph = 0.f; ch.snapBits--; }
+                    else ch.ph *= ch.hdlc.flagSeen() ? inertiaLocked : inertia;
+                }
+                ch.prevLev = ch.lev;
+                ch.ph += step;
+                if (ch.ph >= 0.5f) {
+                    ch.ph -= 1.f;
+                    ch.hdlc.bit(ch.lev ? 1 : 0);
+                    if (ch.hdlc.takeClockResync()) { ch.ph = 0.f; ch.snapBits = 96; }
+                }
+            }
+            pos++;
+        }
+        std::copy(ext.end() - (ptrdiff_t)h, ext.end(), ext.begin());
+        ext.resize(h);
+    }
+};
+
+// First-order audio emphasis on the 48 kHz audio: de-emphasis (a pole at 300 Hz: undoes a transmitter's 6 dB per octave pre-emphasis,
+// 2200 Hz comes down about 5 dB against 1200 Hz) or pre-emphasis (a zero at 300 Hz, a pole at 8 kHz: undoes a radio's de-emphasised speaker
+// audio). Bilinear transform; unit gain at 1200 Hz.
+struct Emphasis {
+    int mode = 0;                    // 0 none, 1 de-emphasis, 2 pre-emphasis
+    double b0 = 1, b1 = 0, a1 = 0, x1 = 0, y1 = 0;
+    void set(int m) {
+        using dect2::math::kPi;
+        mode = m; x1 = y1 = 0;
+        const double fs = kAudioRate;
+        double B0, B1, A0, A1;
+        if (m == 1) { const double k = fs / (kPi * 300.0); B0 = 1; B1 = 1; A0 = 1 + k; A1 = 1 - k; }
+        else if (m == 2) { const double k1 = fs / (kPi * 300.0), k2 = fs / (kPi * 8000.0); B0 = 1 + k1; B1 = 1 - k1; A0 = 1 + k2; A1 = 1 - k2; }
+        else { b0 = 1; b1 = a1 = 0; return; }
+        const double w = 2 * kPi * 1200.0 / fs;
+        const double nr = B0 + B1 * std::cos(w), ni = -B1 * std::sin(w), dr = A0 + A1 * std::cos(w), di = -A1 * std::sin(w);
+        const double g = std::sqrt((dr * dr + di * di) / (nr * nr + ni * ni));
+        b0 = g * B0 / A0; b1 = g * B1 / A0; a1 = A1 / A0;
+    }
+    void reset() { x1 = y1 = 0; }
+    void process(float* x, size_t n) {
+        if (!mode) return;
+        for (size_t i = 0; i < n; i++) {
+            const double y = b0 * x[i] + b1 * x1 - a1 * y1;
+            x1 = x[i]; y1 = y;
+            x[i] = (float)y;
+        }
     }
 };
 

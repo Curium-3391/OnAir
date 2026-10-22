@@ -22,6 +22,18 @@ public:
     void setWideInput(bool on);                          // the input is one carrier at 192 ksps from the whole-span bank (accepted below the radio's minimum rate)
     void setNarrowChannel(bool on);                      // channel filter width: false 25 kHz (default), true 12.5 kHz (rejects a neighbouring channel better; the signal must be centred)
     bool narrowChannel() const;
+    // "Fix bits": a frame that fails the FCS is tried again with one bit (1), or also two neighbouring bits (2), flipped; 0 = off (default).
+    // More frames get through on a weak signal, at a small risk of a wrong frame passing the check (docs/PACKET.md)
+    void setFixBits(int level);
+    int fixBits() const;
+    // 1200 baud audio emphasis: 0 auto (default, no filter: the slicers cover a tone balance of +-6 dB; telemetry twistDb tells which it
+    // is), 1 de-emphasis (for a transmitter's pre-emphasised microphone audio), 2 pre-emphasis (for a radio's de-emphasised speaker audio)
+    void setEmphasis(int mode);
+    int emphasis() const;
+    // the input is FM-demodulated audio (a sound card on a radio's discriminator or speaker output) instead of radio IQ: the real part of
+    // the samples is the audio, at any rate the mode accepts
+    void setAudioInput(bool on);
+    bool audioInput() const;
     void setSignalOffset(double hz);                     // where the user's frequency sits relative to 0 Hz in the input
     bool ready() const;                                  // false when the input rate is too low for this mode
     void reset();                                        // after a retune: forget the signal (the frames and stations stay: clearResults)

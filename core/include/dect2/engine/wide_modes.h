@@ -33,6 +33,7 @@ public:
     void setCenterHz(double hz);
     void setPagerOptions(int protocols, int pocsagBauds);   // the single receiver's POCSAG / FLEX and baud selection, for the carrier receivers
     void setNarrowChannels(bool pager, bool packet);        // 12.5 kHz channel filter in the pager / packet carrier receivers (25 kHz carrier spacing stays)
+    void setPacketOptions(int fixBits, int emphasis);       // the packet receiver's "fix bits" and audio emphasis, for every carrier receiver
     size_t liveCount(int stdMode) const;
     std::vector<double> liveHz(int stdMode) const;
     void setLogCallback(std::function<void(const std::string&)> cb);
