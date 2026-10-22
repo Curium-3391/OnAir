@@ -314,7 +314,7 @@ void playerTab(App& a) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("channel");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x - 60 * gUi));   // room for the + and x buttons
+        ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x - 150 * gUi));   // room for the HD box and the + and x buttons
         if (ImGui::BeginCombo("##chan", ((cur && cur->favourite) ? "* " + curLab : curLab).c_str())) {
             if (a.channels.empty()) ImGui::TextDisabled("no channels yet - run a scan (Scan tab)");
             for (size_t i = 0; i < a.channels.size(); i++) {
@@ -326,6 +326,8 @@ void playerTab(App& a) {
             }
             ImGui::EndCombo();
         }
+        ImGui::SameLine();
+        tvHdCheckbox(a);
         ImGui::SameLine();
         if (ImGui::SmallButton("+##fav")) { ImGui::OpenPopup("savefav"); if (!a.favName[0] && cur) snprintf(a.favName, sizeof a.favName, "%s", cur->name.c_str()); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the current frequency as a favourite channel");
@@ -414,8 +416,8 @@ void playerTab(App& a) {
     flowNext();
     auto tracks = pl.audioTracks();
     if (!tracks.empty()) {
-        static int cur = 0;
-        cur = std::min(cur, (int)tracks.size() - 1);
+        int& cur = a.tvAudioIdx;
+        cur = std::max(0, std::min(cur, (int)tracks.size() - 1));
         std::string lab = tracks[cur].codec + " " + tracks[cur].lang;
         ImGui::SetNextItemWidth(170 * gUi);
         if (ImGui::BeginCombo("audio", lab.c_str())) {
@@ -582,6 +584,10 @@ void rightPanel(App& a) {
         x += tagAt(dl, ImVec2(x, ty), radio ? "radio" : hasVideo ? "TV" : sv.typeName(), IM_COL32(34, 74, 108, 255)) + 4;
         if (!vc.empty()) x += tagAt(dl, ImVec2(x, ty), vc.c_str(), IM_COL32(38, 46, 58, 255), IM_COL32(190, 200, 214, 255)) + 4;
         if (!ac.empty()) x += tagAt(dl, ImVec2(x, ty), ac.c_str(), IM_COL32(38, 46, 58, 255), IM_COL32(190, 200, 214, 255)) + 4;
+        if (hasVideo && !multi) {   // HD / UHD badge (the picture size once it was seen, else what the service type, the name and the codec say)
+            const hd::Tier tr = tvHdService(a, sv).tier();
+            if (tr >= hd::kHD) x += tagAt(dl, ImVec2(x, ty), hd::tierName(tr), tr == hd::kUHD ? IM_COL32(110, 70, 150, 255) : IM_COL32(44, 96, 70, 255)) + 4;
+        }
         // AVS family video (DTMB in China): say it plainly when OnAir cannot show the picture; the profile is known for the playing service only
         const int avsProf = sel && cardPs.videoStreamType == vType ? cardPs.avsProfile : -1;
         const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);

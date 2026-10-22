@@ -352,6 +352,7 @@ void loadPrefs(App& a) {
     }
     if (a.rxId == 1) loadFeedPrefs(a);   // the feeds are shared by all receivers: RX 1 owns their settings
     a.channels = d.getChannels();
+    tvHdLoad(a);
 }
 
 void savePrefs(const App& a) {
@@ -371,6 +372,7 @@ void savePrefs(const App& a) {
     saveFmStations(d, a);
     d.setS("fmSaved", fmSavedEncode(a.fmSaved));   // the saved-stations library, not the scan results
     d.setChannels(a.channels);
+    tvHdSave(a);
     saveFeedPrefs(a);
     d.flush();
 }

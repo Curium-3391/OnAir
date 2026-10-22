@@ -42,6 +42,7 @@ struct TsService {
     std::vector<TsStream> streams;
     std::string now, next;   // EIT present / following event names
     int lcn = 0;
+    int linkOnid = 0, linkTsid = 0, linkSid = 0;   // SDT linkage descriptor (type 0x05, service replacement): the service that replaces this one, e.g. its HD version
     const char* typeName() const;
 };
 
