@@ -374,7 +374,7 @@ endif()
 target_include_directories(dect2core PRIVATE ${LIBUSB_INCLUDE_DIRS})
 if(ANDROID)
   # Cross-compiling: the headers found on the build machine are enough to compile; its libraries are not for this CPU. The Android
-  # library (onair-android/native) provides the few libusb / FFmpeg entry points itself.
+  # library (android/native) provides the few libusb / FFmpeg entry points itself.
   target_include_directories(dect2core PRIVATE ${FFMPEG_INCLUDE_DIRS})
 else()
   target_link_directories(dect2core PUBLIC ${LIBUSB_LIBRARY_DIRS})
