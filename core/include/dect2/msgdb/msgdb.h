@@ -24,6 +24,7 @@ struct Record {
     double lat = 0, lon = 0;
     bool hasPos = false;
     std::string extra;        // all fields as "key=value" lines (searched)
+    std::string source;       // the recording / IQ file this was decoded from (event field file / source_file / recording), empty for a live receiver
 };
 
 struct Filter {
@@ -33,6 +34,9 @@ struct Filter {
     std::string ident;        // substring of the identity, empty = any
     double since = 0, until = 0;   // Unix seconds, 0 = open
     bool posOnly = false;
+    double freqLo = 0, freqHi = 0;   // Hz, 0 = open (a record without a frequency never matches a set range)
+    std::string source;       // substring of the source file name, empty = any
+    bool relevance = false;   // order by text relevance (bm25: identity > message > extra) instead of newest first; needs text
     int limit = 500;
     int offset = 0;
     bool oldestFirst = false;
@@ -45,6 +49,11 @@ struct Limits {
 };
 
 struct Stats { int64_t rows = 0; int64_t bytes = 0; double oldest = 0, newest = 0; };
+
+// The words of a user query as the index sees them: lower-case, split on anything that is not a letter or digit (non-ASCII letters stay
+// inside words), a trailing * on a word marks a prefix. Used for the FTS query and shown by tests.
+struct Token { std::string word; bool prefix = false; };
+std::vector<Token> tokenize(const std::string& query);
 
 // true when the event type is a decoded-message type the database keeps (not signal.*, receiver.*, satellite.*, time.*, gnss.*)
 bool wantsType(const std::string& type);
@@ -70,6 +79,7 @@ public:
     void setLimits(const Limits& l);
     Limits limits() const;
     int64_t prune();              // applies the limits; returns the rows deleted
+    void rebuildIndex();          // rebuilds and compacts the full-text index from the stored rows (after a crash or an upgrade)
     void clear();                 // deletes everything
 
     std::vector<Record> query(const Filter& f) const;

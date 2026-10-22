@@ -104,11 +104,17 @@ void commandPalette(App& a) {
     ImGui::SetNextItemWidth(-1.f);
     if (ImGui::InputTextWithHint("##cmdq", tr("Type a name"), q, sizeof q)) sel = 0;
 
-    const std::vector<Cmd> cmds = collect(a);
+    std::vector<Cmd> cmds = collect(a);
     const std::string query = lower(q);
+    // decoded messages that match the text (type "Search"): looked up when the text changes, not every frame
+    static std::string lastQ;
+    static std::vector<std::pair<std::string, std::string>> hits;
+    if (query != lastQ) { lastQ = query; hits.clear(); if (query.size() >= 3) hits = msgdbQuickSearch(query, 6); }
+    const size_t nCmds = cmds.size();
+    for (const auto& h : hits) { const std::string t = h.second; cmds.push_back({h.first, "Search", [t](App& x) { msgdbSearchFor(x, t); }}); }
     std::vector<int> shown;
     for (int i = 0; i < (int)cmds.size(); i++)
-        if (matchAll(cmds[i].label, query) || matchAll(tr(cmds[i].label.c_str()), query)) shown.push_back(i);
+        if ((size_t)i >= nCmds || matchAll(cmds[i].label, query) || matchAll(tr(cmds[i].label.c_str()), query)) shown.push_back(i);
 
     const int n = (int)shown.size();
     sel = std::max(0, std::min(sel, n - 1));

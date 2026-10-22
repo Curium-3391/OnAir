@@ -868,6 +868,8 @@ void remoteApiTick(App& a);          // every frame: runs the commands the API q
 void remoteApiSection(App& a);       // the settings panel (in the Data feeds window)
 void shareTick(App& a);             // feeds_ui.cpp: carries out the frequency / gain commands of the clients of "Share my radio" (when allowed)
 void watchlistWindow(App& a);   // app/watchlist/watchlist_ui.cpp: the Watchlists window (View > Watchlists); also starts the alerts
+void msgdbSearchFor(App& a, const std::string& text);   // opens the Messages window filtered to the text (the palette's search results)
+std::vector<std::pair<std::string, std::string>> msgdbQuickSearch(const std::string& text, size_t n);   // best n matches: {label, text}
 void msgdbWindow(App& a);   // msgdb_ui.cpp: the Messages window (View > Messages); also starts the database and its feed
 void protolabWindow(App& a);   // protolab_ui.cpp: the Protocol lab window (View > Protocol lab)
 void pluginFrame(App& a);          // plugin/plugin_app.cpp, every frame: discovery at the first call, starts and stops the running plugin mode, ticks the host

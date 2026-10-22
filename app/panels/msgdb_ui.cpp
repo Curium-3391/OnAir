@@ -24,7 +24,9 @@ struct St {
     char text[160] = "";
     char ident[64] = "";
     int modeSel = 0, range = 0;
-    bool posOnly = false;
+    bool posOnly = false, relevance = false;
+    float fLoMHz = 0, fHiMHz = 0;   // frequency range filter in MHz (0 = open)
+    char source[96] = "";        // source (recording) file filter
     int page = 0;
     std::vector<mdb::Record> rows;
     std::vector<std::string> modes;
@@ -108,6 +110,9 @@ mdb::Filter filter() {
     static const double span[] = {0, 3600, 86400, 7 * 86400, 30 * 86400};
     if (S.range > 0) f.since = au::wallNow() - span[S.range];
     f.posOnly = S.posOnly;
+    f.freqLo = S.fLoMHz * 1e6; f.freqHi = S.fHiMHz * 1e6;
+    f.source = S.source;
+    f.relevance = S.relevance;
     f.limit = kPage;
     f.offset = S.page * kPage;
     return f;
@@ -165,6 +170,15 @@ void windowPanel(App& a) {
     ch |= ImGui::Combo("##range", &S.range, "All time\0Last hour\0Last 24 hours\0Last 7 days\0Last 30 days\0");
     ImGui::SameLine();
     ch |= ImGui::Checkbox(tr("With position"), &S.posOnly);
+    ImGui::SetNextItemWidth(90); ch |= ImGui::InputFloat("##flo", &S.fLoMHz, 0, 0, "%.4f");
+    ImGui::SameLine(); ImGui::TextUnformatted("-"); ImGui::SameLine();
+    ImGui::SetNextItemWidth(90); ch |= ImGui::InputFloat("##fhi", &S.fHiMHz, 0, 0, "%.4f");
+    ImGui::SameLine(); ImGui::TextDisabled("%s", tr("MHz (0 = open)"));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(200);
+    ch |= ImGui::InputTextWithHint("##src", tr("Source file"), S.source, sizeof S.source);
+    ImGui::SameLine();
+    ch |= ImGui::Checkbox(tr("Best match first"), &S.relevance);
     if (ch) { S.page = 0; S.dirty = true; }
     if (S.dirty || ImGui::GetTime() - S.lastQ > 3.0) { S.lastQ = ImGui::GetTime(); refresh(); }
 
@@ -174,7 +188,7 @@ void windowPanel(App& a) {
     ImGui::SameLine();
     if ((S.page + 1) * kPage < S.matches && ImGui::SmallButton(tr("Older"))) { S.page++; S.dirty = true; }
 
-    const float h = ImGui::GetContentRegionAvail().y - 112;
+    const float h = ImGui::GetContentRegionAvail().y - 136;
     if (ImGui::BeginTable("msgs", 5, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, ImVec2(0, std::max(120.f, h)))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn(tr("Time (UTC)"), ImGuiTableColumnFlags_WidthFixed, 150);
@@ -199,10 +213,19 @@ void windowPanel(App& a) {
     }
     if (S.sel >= 0 && S.sel < (int)S.rows.size()) {
         const mdb::Record& r = S.rows[(size_t)S.sel];
-        ImGui::BeginChild("detail", ImVec2(0, 60), true);
+        ImGui::BeginChild("detail", ImVec2(0, 84), true);
         std::string e = r.extra;
         for (char& c : e) if (c == '\n') c = ' ';
         ImGui::TextWrapped("%s  %s  %s", r.type.c_str(), r.hasPos ? (std::to_string(r.lat).substr(0, 8) + ", " + std::to_string(r.lon).substr(0, 8)).c_str() : "", e.c_str());
+        if (!r.source.empty()) ImGui::TextWrapped("%s %s", tr("Recording:"), r.source.c_str());
+        for (const auto& m : allModes()) {   // the mode screen of the message, when the program has one with that name
+            std::string a1 = m.name, b1 = r.mode;
+            for (char& c : a1) c = (char)tolower((unsigned char)c);
+            for (char& c : b1) c = (char)tolower((unsigned char)c);
+            if (a1 != b1) continue;
+            if (ImGui::SmallButton(tr("Open mode screen"))) selectMode(a, m.family, m.subId);
+            break;
+        }
         ImGui::EndChild();
     }
     exportButton(tr("Export CSV"), "csv", ".csv");
@@ -225,6 +248,8 @@ void windowPanel(App& a) {
         }
         if (ImGui::Button(tr("Apply limits now"))) { db.prune(); S.dirty = true; }
         ImGui::SameLine();
+        if (ImGui::Button(tr("Rebuild index"))) { db.rebuildIndex(); S.dirty = true; }
+        ImGui::SameLine();
         if (!S.clearAsk) { if (ImGui::Button(tr("Clear all..."))) S.clearAsk = true; }
         else {
             if (ImGui::Button(tr("Really clear"))) { db.clear(); S.clearAsk = false; S.dirty = true; }
@@ -237,6 +262,29 @@ void windowPanel(App& a) {
     ImGui::End();
 }
 }  // namespace
+
+void msgdbSearchFor(App& a, const std::string& text) {
+    if (!S.started) start();
+    snprintf(S.text, sizeof S.text, "%s", text.c_str());
+    S.ident[0] = 0; S.source[0] = 0; S.modeSel = 0; S.range = 0; S.posOnly = false; S.fLoMHz = S.fHiMHz = 0; S.relevance = true;
+    S.page = 0; S.dirty = true;
+    a.msgdbOpen = true;
+}
+
+std::vector<std::pair<std::string, std::string>> msgdbQuickSearch(const std::string& text, size_t n) {
+    std::vector<std::pair<std::string, std::string>> out;   // {label, text to open the window with}
+    if (!S.started) start();
+    mdb::Db& db = mdb::global();
+    if (!db.isOpen()) return out;
+    mdb::Filter f;
+    f.text = text; f.relevance = true; f.limit = (int)n;
+    for (const mdb::Record& r : db.query(f)) {
+        std::string t = r.text.substr(0, 60);
+        for (char& c : t) if (c == '\n' || c == '\r') c = ' ';
+        out.push_back({r.mode + " " + r.ident + (t.empty() ? "" : "  " + t), text});
+    }
+    return out;
+}
 
 void msgdbWindow(App& a) {
     if (a.rxId != 1) {   // one database for the program: RX 1's window
