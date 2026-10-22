@@ -2,6 +2,8 @@
 #include "dect2/ham/ham_kbd.h"
 #include "dect2/cw/cw_morse.h"
 #include "dect2/psk/psk_varicode.h"
+#include "dect2/psk/psk_tel.h"
+#include <complex>
 #include "dect2/hfdig/hfdig_kbd.h"
 #include "../hfdig/hfdig_kbd_int.h"
 #include <algorithm>
@@ -20,20 +22,60 @@ const std::vector<KbdPreset>& kbdPresets() {
     static const std::vector<KbdPreset> v = {
         {"psk31",        "PSK31",        KbdKind::Psk,   31.25, 0,   0,   0,  0,    0, "PSK",      "PSK31",           36, nullptr,  0, 1000},
         {"psk63",        "PSK63",        KbdKind::Psk,   62.5,  0,   0,   0,  0,    0, "PSK",      "PSK63",           36, nullptr,  1, 1000},
+        {"psk125",       "PSK125",       KbdKind::Psk,   125,   0,   0,   0,  0,    0, "PSK",      "PSK125",          36, nullptr,  4, 1000},
+        {"psk250",       "PSK250",       KbdKind::Psk,   250,   0,   0,   0,  0,    0, "PSK",      "PSK250",          36, nullptr,  5, 1000},
+        {"qpsk31",       "QPSK31",       KbdKind::Psk,   31.25, 0,   0,   0,  0,    0, "PSK",      "QPSK31",          36, nullptr,  2, 1000},
+        {"qpsk63",       "QPSK63",       KbdKind::Psk,   62.5,  0,   0,   0,  0,    0, "PSK",      "QPSK63",          36, nullptr,  3, 1000},
+        {"qpsk125",      "QPSK125",      KbdKind::Psk,   125,   0,   0,   0,  0,    0, "PSK",      "QPSK125",         36, nullptr,  6, 1000},
         {"rtty",         "RTTY",         KbdKind::Rtty,  45.45, 170, 0,   0,  0,    0, "RTTY",     "",                25, "rtty",   0, 2210},
         {"cw",           "CW",           KbdKind::Cw,    0,     0,   0,   0,  0,    0, "CW",       "",                34, nullptr,  0, 700},
+        {"olivia-4-125", "Olivia 4/125", KbdKind::Hfdig, 0,     0,   KbdOlivia,    4,  125,  0, "OLIVIA",   "OLIVIA 4/125",    25, "olivia", 0, 1500},
+        {"olivia-4-250", "Olivia 4/250", KbdKind::Hfdig, 0,     0,   KbdOlivia,    4,  250,  0, "OLIVIA",   "OLIVIA 4/250",    25, "olivia", 0, 1500},
         {"olivia-8-250", "Olivia 8/250", KbdKind::Hfdig, 0,     0,   KbdOlivia,    8,  250,  0, "OLIVIA",   "OLIVIA 8/250",    25, "olivia", 0, 1500},
+        {"olivia-8-500", "Olivia 8/500", KbdKind::Hfdig, 0,     0,   KbdOlivia,    8,  500,  0, "OLIVIA",   "OLIVIA 8/500",    25, "olivia", 0, 1500},
+        {"olivia-16-1000","Olivia 16/1000",KbdKind::Hfdig,0,    0,   KbdOlivia,    16, 1000, 0, "OLIVIA",   "OLIVIA 16/1000",  25, "olivia", 0, 1500},
         {"olivia-16-500","Olivia 16/500",KbdKind::Hfdig, 0,     0,   KbdOlivia,    16, 500,  0, "OLIVIA",   "OLIVIA 16/500",   25, "olivia", 0, 1500},
         {"olivia-32-1000","Olivia 32/1000",KbdKind::Hfdig,0,    0,   KbdOlivia,    32, 1000, 0, "OLIVIA",   "OLIVIA 32/1000",  25, "olivia", 0, 1500},
+        {"olivia-64-2000","Olivia 64/2000",KbdKind::Hfdig,0,    0,   KbdOlivia,    64, 2000, 0, "OLIVIA",   "OLIVIA 64/2000",  25, "olivia", 0, 1500},
+        {"contestia-4-125","Contestia 4/125",KbdKind::Hfdig,0, 0,   KbdContestia,  4,  125,  0, "CONTESTI", "CONTESTI 4/125",  25, "contestia", 0, 1500},
+        {"contestia-4-250","Contestia 4/250",KbdKind::Hfdig,0, 0,   KbdContestia,  4,  250,  0, "CONTESTI", "CONTESTI 4/250",  25, "contestia", 0, 1500},
         {"contestia-8-250","Contestia 8/250",KbdKind::Hfdig,0, 0,   KbdContestia,  8,  250,  0, "CONTESTI", "CONTESTI 8/250",  25, "contestia", 0, 1500},
         {"contestia-16-500","Contestia 16/500",KbdKind::Hfdig,0,0,  KbdContestia,  16, 500,  0, "CONTESTI", "CONTESTI 16/500", 25, "contestia", 0, 1500},
+        {"contestia-8-500","Contestia 8/500",KbdKind::Hfdig,0, 0,   KbdContestia,  8,  500,  0, "CONTESTI", "CONTESTI 8/500",  25, "contestia", 0, 1500},
+        {"contestia-16-1000","Contestia 16/1000",KbdKind::Hfdig,0,0,KbdContestia,  16, 1000, 0, "CONTESTI", "CONTESTI 16/1000",25, "contestia", 0, 1500},
         {"contestia-32-1000","Contestia 32/1000",KbdKind::Hfdig,0,0,KbdContestia,  32, 1000, 0, "CONTESTI", "CONTESTI 32/1000",25, "contestia", 0, 1500},
-        {"mfsk16",       "MFSK16",       KbdKind::Hfdig, 0,     0,   KbdMfsk,      0,  0,    3, "MFSK",     "MFSK16",          25, "mfsk",   0, 1500},
-        {"mfsk32",       "MFSK32",       KbdKind::Hfdig, 0,     0,   KbdMfsk,      0,  0,    6, "MFSK",     "MFSK32",          25, "mfsk",   0, 1500},
-        {"thor16",       "THOR 16",      KbdKind::Hfdig, 0,     0,   KbdThor,      0,  0,    4, "THOR",     "",                25, "thor",   0, 1500},
-        {"thor22",       "THOR 22",      KbdKind::Hfdig, 0,     0,   KbdThor,      0,  0,    5, "THOR",     "",                25, "thor",   0, 1500},
-        {"dominoex11",   "DominoEX 11",  KbdKind::Hfdig, 0,     0,   KbdDominoex,  0,  0,    3, "DOMINO",   "DOMINOEX",        25, "dominoex", 0, 1500},
-        {"feldhell",     "Feld Hell",    KbdKind::Hfdig, 0,     0,   KbdHell,      0,  0,    0, "HELL",     "FELDHELL",        25, "hell",   0, 1500},
+        // MFSK4 .. MFSK64 (kMfskNames order), THOR 4 .. THOR 100, DominoEX 4 .. 22, the Hell variants; submodes from the ADIF 3.1 list
+        {"mfsk4", "MFSK4", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 0, "MFSK", "MFSK4", 25, "mfsk", 0, 1500},
+        {"mfsk8", "MFSK8", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 1, "MFSK", "MFSK8", 25, "mfsk", 0, 1500},
+        {"mfsk11", "MFSK11", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 2, "MFSK", "MFSK11", 25, "mfsk", 0, 1500},
+        {"mfsk16", "MFSK16", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 3, "MFSK", "MFSK16", 25, "mfsk", 0, 1500},
+        {"mfsk22", "MFSK22", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 4, "MFSK", "MFSK22", 25, "mfsk", 0, 1500},
+        {"mfsk31", "MFSK31", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 5, "MFSK", "MFSK31", 25, "mfsk", 0, 1500},
+        {"mfsk32", "MFSK32", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 6, "MFSK", "MFSK32", 25, "mfsk", 0, 1500},
+        {"mfsk64", "MFSK64", KbdKind::Hfdig, 0, 0, KbdMfsk, 0, 0, 7, "MFSK", "MFSK64", 25, "mfsk", 0, 1500},
+        {"thor4", "THOR 4", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 0, "THOR", "THOR4", 25, "thor", 0, 1500},
+        {"thor5", "THOR 5", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 1, "THOR", "THOR5", 25, "thor", 0, 1500},
+        {"thor8", "THOR 8", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 2, "THOR", "THOR8", 25, "thor", 0, 1500},
+        {"thor11", "THOR 11", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 3, "THOR", "THOR11", 25, "thor", 0, 1500},
+        {"thor16", "THOR 16", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 4, "THOR", "THOR16", 25, "thor", 0, 1500},
+        {"thor22", "THOR 22", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 5, "THOR", "THOR22", 25, "thor", 0, 1500},
+        {"thor25x4", "THOR 25x4", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 6, "THOR", "THOR25X4", 25, "thor", 0, 1500},
+        {"thor50x1", "THOR 50x1", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 7, "THOR", "THOR50X1", 25, "thor", 0, 1500},
+        {"thor50x2", "THOR 50x2", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 8, "THOR", "THOR50X2", 25, "thor", 0, 1500},
+        {"thor100", "THOR 100", KbdKind::Hfdig, 0, 0, KbdThor, 0, 0, 9, "THOR", "THOR100", 25, "thor", 0, 1500},
+        {"dominoex4", "DominoEX 4", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 0, "DOMINO", "DOMINO4", 25, "dominoex", 0, 1500},
+        {"dominoex5", "DominoEX 5", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 1, "DOMINO", "DOMINO5", 25, "dominoex", 0, 1500},
+        {"dominoex8", "DominoEX 8", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 2, "DOMINO", "DOMINO8", 25, "dominoex", 0, 1500},
+        {"dominoex11", "DominoEX 11", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 3, "DOMINO", "DOMINO11", 25, "dominoex", 0, 1500},
+        {"dominoex16", "DominoEX 16", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 4, "DOMINO", "DOMINO16", 25, "dominoex", 0, 1500},
+        {"dominoex22", "DominoEX 22", KbdKind::Hfdig, 0, 0, KbdDominoex, 0, 0, 5, "DOMINO", "DOMINO22", 25, "dominoex", 0, 1500},
+        {"feldhell", "Feld Hell", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 0, "HELL", "FELDHELL", 25, "hell", 0, 1500},
+        {"slowhell", "Slow Hell", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 1, "HELL", "SLOWHELL", 25, "hell", 0, 1500},
+        {"hell80", "Hell 80", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 2, "HELL", "HELL80", 25, "hell", 0, 1500},
+        {"hellx5", "HellX5", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 3, "HELL", "HELLX5", 25, "hell", 0, 1500},
+        {"hellx9", "HellX9", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 4, "HELL", "HELLX9", 25, "hell", 0, 1500},
+        {"fskhell245", "FSK Hell 245", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 5, "HELL", "FSKHELL", 25, "hell", 0, 1500},
+        {"fskhell105", "FSK Hell 105", KbdKind::Hfdig, 0, 0, KbdHell, 0, 0, 6, "HELL", "HFSK", 25, "hell", 0, 1500},
     };
     return v;
 }
@@ -55,7 +97,7 @@ static KbdConfig hfdigConfig(const KbdPreset& p, double centreHz) {
 
 double kbdBwHz(const KbdPreset& p) {
     switch (p.kind) {
-    case KbdKind::Psk: return 2 * p.baud;
+    case KbdKind::Psk: return 2 * pskBaud(p.pskMode);
     case KbdKind::Rtty: return p.shiftHz + 1.5 * p.baud + 10;
     case KbdKind::Cw: return 200;
     default: return kbdBandwidthHz(hfdigConfig(p, 1500));
@@ -80,25 +122,41 @@ void finish(std::vector<float>& a) {
     a.swap(o);
 }
 
-// ---- PSK31 / PSK63: differential BPSK, a "0" is a phase reversal, the carrier amplitude follows half a cosine across the reversal ----
+// ---- PSK31 .. PSK250 and QPSK31 .. QPSK125 (G3PLX): BPSK, a "0" is a phase reversal; QPSK, each bit through the K = 5 code and fldigi's phase
+// mapping (psk_varicode.h); the carrier amplitude follows half a cosine across each change; idle reversals before and after ----
 std::vector<float> renderPsk(const KbdPreset& p, const std::string& text, double hz) {
     std::string t;
     for (char c : text) if ((unsigned char)c < 128) t += c;
-    std::vector<uint8_t> bits(32, 0);                       // preamble: idle reversals
+    const bool qpsk = pskQpsk(p.pskMode);
+    const double baud = pskBaud(p.pskMode);
+    const int idle = std::max(32, (int)std::lround(baud));   // a second of reversals (32 symbols at least): the receiver's AFC and clock
+    std::vector<uint8_t> bits((size_t)idle, 0);
     const auto d = psk::varicodeBits(t);
     bits.insert(bits.end(), d.begin(), d.end());
-    bits.insert(bits.end(), 16, 0);                         // postamble
-    const int N = (int)std::lround(kKbdRate / p.baud);
+    bits.insert(bits.end(), (size_t)std::max(qpsk ? 48 : 16, idle / 2), 0);   // postamble (QPSK: longer than the receiver's 40 symbol Viterbi traceback)
+    std::vector<int> turns;                                     // quarter turns per symbol
+    if (qpsk) {
+        psk::ConvEncoder enc;
+        for (int k = 0; k < 8; k++) bits.push_back(0);          // flush the code
+        for (uint8_t b : bits) turns.push_back(psk::qpskTurns(enc.encode(b)));
+    } else {
+        for (uint8_t b : bits) turns.push_back(b ? 0 : 2);
+    }
+    const double N = kKbdRate / baud;
     std::vector<float> a;
-    a.reserve(bits.size() * (size_t)N);
-    double ph = 0;
+    a.reserve((size_t)((double)turns.size() * N) + 8);
+    std::complex<double> prev(1, 0);
     const double w = 2 * kPi * hz / kKbdRate;
-    float prev = 1;
-    for (uint8_t b : bits) {
-        const float cur = b ? prev : -prev;
-        for (int k = 0; k < N; k++) {
-            const double sh = b ? 1.0 : 0.5 + 0.5 * std::cos(kPi * k / N);   // weight of the previous symbol across the interval
-            a.push_back((float)((prev * sh + cur * (1 - sh)) * std::sin(ph)));
+    double ph = 0, tEnd = 0;
+    for (int tq : turns) {
+        const std::complex<double> cur = prev * std::polar(1.0, tq * kPi / 2);
+        const size_t s0 = a.size();
+        tEnd += N;
+        const size_t n = (size_t)std::llround(tEnd) - s0;
+        for (size_t k = 0; k < n; k++) {
+            const double sh = 0.5 + 0.5 * std::cos(kPi * (double)k / (double)n);   // weight of the previous symbol across the interval
+            const std::complex<double> v = (prev * sh + cur * (1 - sh)) * std::polar(1.0, ph);
+            a.push_back((float)v.real());
             ph += w;
             if (ph > 2 * kPi) ph -= 2 * kPi;
         }
@@ -197,8 +255,11 @@ std::vector<float> renderHfdig(const KbdPreset& p, const std::string& text, doub
     }
     if (!mod) return {};
     kbd::TextSrc src;
-    src.text = text + std::string(64, ' ');   // the padding fills the last block; the text never wraps
-    const uint64_t want = text.size() + (k.family == KbdMfsk ? 40 : 16);   // MFSK: the interleaver and the Viterbi decoder hold the last characters back
+    // the characters after the text that push the last one out of the receiver: MFSK and THOR hold it in the interleaver (4 x 4 x depth bits, depth 10,
+    // 50 for THOR 25x4 .. 100) and the Viterbi decoder; the 11025 Hz modes also in the resampler (THOR 22 lost its last character with 16)
+    const int depth = k.family == KbdThor && k.variant >= 6 ? 50 : 10;
+    const uint64_t want = text.size() + (k.family == KbdMfsk ? 40 : k.family == KbdThor ? 16 + 3 * depth : 16);
+    src.text = text + std::string((size_t)(want - text.size()) + 64, ' ');   // the padding fills the last block; the text never wraps
     std::vector<float> raw((size_t)(0.1 * kbd::kFs), 0.f);
     while (src.sent < want && raw.size() < (size_t)(kKbdMaxBurstSec * 2 * kbd::kFs)) mod->next(raw, src);
     // 8 kHz -> 48 kHz: windowed sinc, 6 phases

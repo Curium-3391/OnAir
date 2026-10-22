@@ -8,10 +8,10 @@
 
 namespace dect2 {
 
-constexpr int kPskModes = 4;                 // 0 BPSK31, 1 BPSK63, 2 QPSK31, 3 QPSK63
-inline const char* pskModeName(int m) { static const char* n[kPskModes] = {"BPSK31", "BPSK63", "QPSK31", "QPSK63"}; return m >= 0 && m < kPskModes ? n[m] : "?"; }
-inline double pskBaud(int m) { return m == 1 || m == 3 ? 62.5 : 31.25; }
-inline bool pskQpsk(int m) { return m >= 2; }
+constexpr int kPskModes = 7;                 // 0 BPSK31, 1 BPSK63, 2 QPSK31, 3 QPSK63, 4 BPSK125, 5 BPSK250, 6 QPSK125 (new ones at the end: saved prefs keep their meaning)
+inline const char* pskModeName(int m) { static const char* n[kPskModes] = {"BPSK31", "BPSK63", "QPSK31", "QPSK63", "BPSK125", "BPSK250", "QPSK125"}; return m >= 0 && m < kPskModes ? n[m] : "?"; }
+inline double pskBaud(int m) { static const double b[kPskModes] = {31.25, 62.5, 31.25, 62.5, 125, 250, 125}; return m >= 0 && m < kPskModes ? b[m] : 31.25; }
+inline bool pskQpsk(int m) { return m == 2 || m == 3 || m == 6; }
 
 // One line of a signal's chat log: the characters between two line ends (or a pause)
 struct PskLine {

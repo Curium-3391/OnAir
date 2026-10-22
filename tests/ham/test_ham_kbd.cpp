@@ -1,10 +1,12 @@
 // Ham keyboard modes: every preset's text goes to audio (kbdRender) and back through the repo's own decoder (HfdigKbd for Olivia, Contestia, MFSK, THOR,
-// DominoEX, Hell; HfdigRtty; PskReceiver; the CW timing decoder), plus the transmit limits, the macros, the callsign pick and the ADIF record.
+// DominoEX, Hell; HfdigRtty; the full PskReceiver for BPSK31 .. 250 and QPSK31 .. 125; the CW timing decoder), plus the transmit limits, the macros, the callsign pick and the ADIF record.
 // Nothing is transmitted: the rig is a recording fake.
 #include "dect2/ham/ham_kbd.h"
 #include "dect2/hfdig/hfdig_kbd.h"
 #include "dect2/hfdig/hfdig_rtty.h"
 #include "dect2/psk/psk_varicode.h"
+#include "dect2/psk/psk_rx.h"
+#include "dect2/psk/psk_tel.h"
 #include <complex>
 #include "dect2/cw/cw_morse.h"
 #include "../../core/src/hfdig/hfdig_kbd_int.h"
@@ -112,22 +114,24 @@ int main() {
             CHECK(t.framingErrors <= 2, "RTTY: %llu framing errors", (unsigned long long)t.framingErrors);
             break;
         }
-        case KbdKind::Psk: {   // differential detection at the known carrier and symbol clock, then the repo's varicode decoder
-            // (the full PskReceiver, with its own clock recovery, is not linked into this stand-alone check)
-            const int N = (int)std::lround(48000 / p.baud);
-            const double w = 2 * 3.141592653589793 * p.defaultHz / 48000;
-            const long s0 = (long)(0.15 * 48000);
-            std::complex<double> prev(1, 0);
-            psk::VaricodeRx vr;
+        case KbdKind::Psk: {   // the repo's full PSK receiver (its own signal search, AFC, clock recovery, Viterbi for QPSK), the audio as a 48 kHz input
+            PskReceiver r;
+            r.configure(250000);   // the receiver wants the radio rate: the 48 kHz audio linearly interpolated (its images are far outside the 9 kHz front filter)
+            r.setSignalOffset(0);
+            r.setMode(p.pskMode);
+            r.setSilent(true);
             Gauss g;
-            for (long j = 0; s0 + (j + 1) * N + N / 4 < (long)a.size(); j++) {
-                std::complex<double> z(0, 0);
-                for (long n = s0 + (j + 1) * N - N / 4; n < s0 + (j + 1) * N + N / 4; n++) z += (a[(size_t)n] + 0.02 * g.g()) * std::polar(1.0, -w * (double)n);
-                const int bit = (z * std::conj(prev)).real() < 0 ? 0 : 1;
-                prev = z;
-                const int c = vr.bit(bit);
-                if (c >= 0) got += (char)c;
+            std::vector<cf32> x(25000);
+            PskTelemetry t; uint64_t seq = 0;
+            const size_t total = (size_t)((double)(a.size() + 48000) * 250000 / 48000);
+            for (size_t i = 0; i < total; i += x.size()) {
+                for (size_t k = 0; k < x.size(); k++) { const double u = (double)(i + k) * 48000 / 250000; const size_t j = (size_t)u; const double f = u - (double)j; const double v = j + 1 < a.size() ? a[j] * (1 - f) + a[j + 1] * f : 0.0; x[k] = cf32((float)(0.5 * v + 0.002 * g.g()), 0.f); }
+                r.feed(x.data(), x.size());
+                PskTelemetry tt;
+                if (r.telemetry(tt, seq)) { seq = tt.seq; t = std::move(tt); }
             }
+            if (getenv("DBG")) { printf("  psk: %zu signals rate %.0f state %d\n", t.signals.size(), t.inputRate, t.state); for (const auto& s : t.signals) printf("   %.1f \"%s\"\n", s.offsetHz, s.text.c_str()); }
+            for (const auto& s : t.signals) if (std::fabs(s.offsetHz - p.defaultHz) < 30 && s.text.size() > got.size()) got = s.text;
             break;
         }
         case KbdKind::Cw: {   // the key: the envelope of the tone, then the timing decoder of the CW receiver
@@ -147,7 +151,9 @@ int main() {
         }
         }
         // the whole text is required (MFSK32 used to garble the first characters: the receiver moved to a wrong tone shift during the preamble)
-        CHECK(has(got, p.family == KbdMfsk ? "CQ DE LY1ABC LY1ABC K" : "CQ DE LY1ABC LY1ABC"), "%s: decoded \"%s\"", p.name, got.c_str());
+        // THOR 22 used to lose its last character (too few characters after the text to flush the interleaver and the resampler)
+        const bool whole = p.kind != KbdKind::Hfdig || p.family == KbdMfsk || p.family == KbdThor || p.family == KbdDominoex;
+        CHECK(has(got, whole ? "CQ DE LY1ABC LY1ABC K" : "CQ DE LY1ABC LY1ABC"), "%s: decoded \"%s\"", p.name, got.c_str());
         printf("%-18s %5.1f s  -> \"%s\"\n", p.name, kbdSeconds(a), got.c_str());
     }
 
