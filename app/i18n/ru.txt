@@ -375,10 +375,6 @@ Amp	Amp
 LNA	LNA
 VGA	VGA
 AGC	AGC
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	Держит входной тракт в лучшей рабочей точке для режима: нормальный уровень АЦП, шум выше собственного шума АЦП, сильные соседи отсечены. Меняет LNA и VGA (усилитель только если вы разрешите кнопкой с шестерёнкой) и не трогает усиление, пока декодер захватил сигнал.\nПрикосновение к регулятору усиления выключает её.
-Auto-tune	Автонастройка
-Stop tune	Остановить настройку
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Помощник усиления: около 40 с перебирает сочетания LNA/VGA и оставляет то, у которого лучший SNR без перегрузки.\nНужен сигнал, на который приёмник может захватиться. Усилитель остаётся таким, как вы его поставили.
 gain helper %d/%d ...	помощник по усилению %d/%d ...
 ADC OVERLOAD - %s	ПЕРЕГРУЗКА АЦП - %s
 AGC is lowering the gain	AGC снижает усиление

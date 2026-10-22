@@ -27,7 +27,7 @@ struct SimRadio {
     double sigCrestDb = 3;           // its peak over its mean (pulsed: ADS-B about 15 dB)
     double antNoiseDb = 0;           // the antenna's noise above kT (city noise on HF / VHF)
     std::vector<Tone> blockers;      // strong signals elsewhere in the span (and their third-order products)
-    int bins = 1024;
+    int bins = 512;
     double lockAt = 8;               // the decoder locks above this SNR
     bool decoder = true;             // the mode reports SNR / MER
     double jitterDb = 0.25;

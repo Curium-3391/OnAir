@@ -89,6 +89,9 @@ void scanTabCommon(App& a) {
     flowEnd();
     ImGui::EndDisabled();
     ImGui::Checkbox("read service names (slower, ~9 s per mux)", &a.scanCfg.identifyServices);
+    ImGui::Checkbox("optimise the gain on every signal found (up to ~12 s each)", &a.scanCfg.autoGain);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Auto gain's \"Optimise once\" on each occupied channel before it is decoded: the gain with the best MER that does not overload.\n"
+                                                        "The next channel starts from it. The amp and the antenna power stay as you set them.");
     ImGui::EndDisabled();
     if (a.scanCfg.stepMHz < 1) a.scanCfg.stepMHz = 1;
     if (!pr.running) {

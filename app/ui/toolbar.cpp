@@ -232,29 +232,13 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
     if (a.tune.ampOn) { if (!vertical) flowNext(6 * gUi); agcAmpWarning(a); }   // beside a manual Amp switch that is on: the amp can be damaged by strong signals
     }
     if (!vertical) flowNext(); else if (!generic && !a.tune.ampOn) ImGui::SameLine();   // side panel, generic radio: AGC and Auto-tune on the row below the slider
-    if (ImGui::Checkbox(tr("AGC"), &a.agcOn)) agcReset(a);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off."));
-    ImGui::SameLine(0, 4 * gUi);
-    agcGear(a);
-    if (vertical) sameLineIf(std::max(ImGui::CalcTextSize(tr("Auto-tune")).x, ImGui::CalcTextSize(tr("Stop tune")).x) + 2.f * ImGui::GetStyle().FramePadding.x, 14 * gUi);   // side panel: Auto-tune beside AGC only if it fits the panel
-    else flowNext();
-    if (a.sweep.active()) {
-        if (ImGui::Button(tr("Stop tune"))) { a.sweep = GainSweep(); }
-    } else if (ImGui::Button(tr("Auto-tune")) && running) {
-        int rfMax = 0;   // a radio with an RF gain stage (SDRplay RFGR): the sweep covers its states too
-        if (generic) {
-            for (const auto& rs : curDev.settings)
-                if (rs.key == "rfgr" && rs.values.size() > 2)
-                    for (size_t i = rs.values.size(); i-- > 0;)
-                        if (rs.values[i] != "auto") { rfMax = atoi(rs.values[i].c_str()); break; }
-            if (rfMax == 0 && curDev.board == "sdrplay") rfMax = 9;   // known before the radio has been opened once
-        }
-        a.sweep.start(ImGui::GetTime(), generic ? (int)curDev.gainMaxDb : 0, rfMax, generic ? 0 : (a.tune.ampOn ? 2 : 1));   // the amp stays as the user set it
-        a.agcOn = false;
-    }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it."));
-    gainOptButtons(a, running);
+    // Auto gain (docs/AUTOGAIN.md): Off / Auto / Optimise once / Safe start, its settings, and the live ADC meter strip under it
+    autogainControl(a, vertical, running);
     ImGui::EndDisabled();
+    if (isHw && running) {
+        if (!vertical) flowNext(10 * gUi);
+        autogainMeters(a);
+    }
     if (!isHw && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)"));
     if (isHw) {   // sample clean-up for zero-IF radios; applied as the samples come in, so it works while running
         if (!vertical) flowNext(14 * gUi);

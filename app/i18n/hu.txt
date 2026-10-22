@@ -384,10 +384,6 @@ Amp	Erősítő
 LNA	LNA
 VGA	VGA
 AGC	AGC
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	A bemenetet az üzemmódnak legjobb munkapontján tartja: jó ADC-szint, az ADC saját zaja fölötti zaj, az erős szomszédok kint tartva. Az LNA-t és a VGA-t mozgatja (az előerősítőt csak akkor, ha a fogaskerékkel engedélyezed), és nem nyúl az erősítéshez, amíg egy dekóder rá van kapcsolódva.\nHa hozzányúlsz egy erősítésszabályzóhoz, kikapcsol.
-Auto-tune	Automatikus hangolás
-Stop tune	Hangolás leállítása
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Erősítéssegéd: körülbelül 40 másodpercig LNA/VGA kombinációkat próbál, és megtartja a legjobb SNR-ű, nem túlvezérelt beállítást.\nOlyan jel kell hozzá, amelyre a vevő rá tud kapcsolódni. Az előerősítő úgy marad, ahogy beállítottad.
 gain helper %d/%d ...	erősítéssegéd %d/%d ...
 ADC OVERLOAD - %s	ADC TÚLVEZÉRLÉS - %s
 AGC is lowering the gain	Az AGC csökkenti az erősítést

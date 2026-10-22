@@ -25,6 +25,9 @@ struct ScanConfig {
     double lockTimeoutSec = 5.0;   // time allowed to lock (the receiver alternates DVB-T2 and DVB-T searches)
     double serviceTimeoutSec = 9;  // time allowed to read the service list (identify = true)
     TuneSettings tune;             // gain / amp / filter settings
+    bool autoGain = false;         // re-optimise the gain on every occupied channel before locking (dect2::ag::autogainRun, docs/AUTOGAIN.md);
+                                   // the amp and the antenna power stay as they are
+    double autoGainSec = 12;       // the most it may take per channel
     // Tests only: with this set, the built-in test signal stands in for the radio. It is called before every channel with the
     // centre frequency (MHz) and may change tune.synth, so that one channel carries a signal and the others stay empty.
     std::function<void(double, TuneSettings&)> testTune;
@@ -50,6 +53,7 @@ struct ScanResult {
     std::vector<std::string> unsupported; // modes found that the receiver cannot decode (MISO, TI type 1, sub-slicing, ...)
     double muxKbps = 0;
     double fecGood = 0;            // fraction of FEC blocks decoded
+    double gainDb = -1000;         // the gain the scan used on this channel (ScanConfig::autoGain; -1000: the toolbar's)
 };
 
 struct ScanProgress {

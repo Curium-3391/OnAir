@@ -20,6 +20,7 @@
 #include "dect2/dsp/spectrum.h"
 #include "dect2/source/source.h"
 #include "dect2/t2/t2rx.h"
+#include <atomic>
 #include <complex>
 #include <cstdint>
 #include <deque>
@@ -374,8 +375,8 @@ public:
     void sleep(double sec) override;
     bool apply(const AgCommand& c) override;
     bool measure(AgInput& in) override;
-    bool cancelled() override { return cancel_ && *cancel_; }
-    void setCancelFlag(const bool* c) { cancel_ = c; }
+    bool cancelled() override { return cancel_ && cancel_->load(); }
+    void setCancelFlag(const std::atomic<bool>* c) { cancel_ = c; }
 private:
     Engine& e_;
     TuneSettings& tune_;
@@ -385,7 +386,7 @@ private:
     std::vector<float> spec_;
     RxTelemetry rx_;
     bool haveRx_ = false;
-    const bool* cancel_ = nullptr;
+    const std::atomic<bool>* cancel_ = nullptr;
 };
 // Writes a plan into TuneSettings (lnaDb / vgaDb / ampOn for the HackRF, gainDb for one overall gain, radio[settingKey] for setting stages)
 void applyPlan(const RadioProfile& r, const StagePlan& p, TuneSettings& tune);
@@ -393,7 +394,7 @@ void applyPlan(const RadioProfile& r, const StagePlan& p, TuneSettings& tune);
 StagePlan planFromTune(const RadioProfile& r, const TuneSettings& tune);
 // The engine API: optimise the running engine's gain for this radio and mode (blocking; the scanner, the wizard's worker thread)
 AgRunResult autogainRun(Engine& e, TuneSettings& tune, const DeviceInfo& radio, int stdMode, AgMode how = AgMode::Once, AgSettings s = AgSettings(),
-                        double timeoutSec = 60, const bool* cancel = nullptr);
+                        double timeoutSec = 60, const std::atomic<bool>* cancel = nullptr);
 // Read-only status for the Web server / remote API
 std::string autogainJson(const AutoGainController& c, double now);
 

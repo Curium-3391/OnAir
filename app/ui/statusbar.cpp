@@ -174,6 +174,7 @@ static void statusNotes(App& a, bool run, AdcStatus adc) {
     if (run && a.devices[a.devIdx].kind != DeviceInfo::File) {
         ImGui::AlignTextToFramePadding();
         if (a.sweep.active()) ImGui::TextColored(pal::heading(), tr("gain helper %d/%d ..."), std::max(0, a.sweep.current()) + 1, (int)a.sweep.entries().size());
+        else if (autogainStatus(a)) {}
         else if (gainOptStatus(a)) {}
         else if (adc == AdcStatus::Overload) ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.25f, 1), tr("ADC OVERLOAD - %s"), tr(a.agcOn ? "AGC is lowering the gain" : "reduce the gain (or enable AGC)"));
         else if (adc == AdcStatus::High) ImGui::TextColored(ImVec4(0.95f, 0.70f, 0.15f, 1), "%s", tr("ADC level high"));
@@ -241,8 +242,14 @@ void gainControl(App& a) {
         changed = a.sweep.update(now, sm, g);
         if (changed && a.sweep.rf() >= 0) a.tune.radio["rfgr"] = std::to_string(a.sweep.rf());
         if (!a.sweep.active()) a.engine.log("gain helper: " + a.sweep.summary() + (a.sweep.rf() >= 0 ? ", RF state " + std::to_string(a.sweep.rf()) : std::string()));
-    } else if (a.agcOn && a.dir.state() != DirectionFinder::State::Measuring) {   // the gain must stay put while a direction is measured
-        changed = agcStep(a, g);
+    } else {
+        // auto gain (autogain_ui.cpp): Auto, Optimise once, Safe start write a.tune themselves; Off keeps only the meters going
+        if (autogainStep(a)) {
+            a.tune.centerHz = a.freqMhz * 1e6;
+            a.engine.retune(a.tune);
+            savePrefs(a);
+        }
+        autogainMeterOnly(a);
     }
     if (changed) {
         if (generic) a.tune.gainDb = g.vga; else { a.tune.lnaDb = g.lna; a.tune.vgaDb = g.vga; a.tune.ampOn = g.amp; }
