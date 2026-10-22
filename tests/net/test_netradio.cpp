@@ -30,6 +30,7 @@ struct FakeServer {
     int port = 0;
     std::thread th;
     std::atomic<bool> run{true}, dropNow{false}, pause{false};   // pause: keep the connection, send nothing (a stalled link)
+    std::atomic<bool> noGreet{false};   // accept the next connections but never send the greeting
     std::atomic<int> connections{0};
     std::mutex mu;
     std::vector<std::pair<int, uint32_t>> cmds;
@@ -69,6 +70,16 @@ struct FakeServer {
             sock_t c = accept(ls, nullptr, nullptr);
             if (c == kBadSock) continue;
             connections++;
+            if (noGreet) {   // a driver app still starting its radio: takes the connection, says nothing, until the client lets go
+                while (run && noGreet) {
+                    fd_set r1; FD_ZERO(&r1); FD_SET(c, &r1);
+                    timeval t1{0, 50000};
+                    unsigned char b[64];
+                    if (select((int)c + 1, &r1, nullptr, nullptr, &t1) > 0 && sockRecv(c, b, sizeof b) <= 0) break;
+                }
+                sockClose(c);
+                continue;
+            }
             sockSendAll(c, hdr, sizeof hdr);
             std::vector<unsigned char> chunk(4096);
             for (size_t i = 0; i < chunk.size(); i += 2) { chunk[i] = 200; chunk[i + 1] = 50; }
@@ -207,6 +218,45 @@ static void testEngineRadioBack() {
     CHECK(!rx.radioLost());          // and it stays back
     CHECK(rx.sampleLoss().network);
     rx.stop();
+    srv.stop();
+}
+
+// #201: the link stalls and the source reconnects to a server that accepts but does not greet yet (an Android driver app restarting its
+// radio). The reconnect waits up to 10 s for the greeting; a retune (the UI thread) and Stop must not wait with it.
+static void testRtlTcpReconnectNoBlock() {
+    FakeServer srv;
+    CHECK(srv.start());
+    if (!srv.port) return;
+    NetRadio nr; nr.type = NetRadio::RtlTcp; nr.host = "127.0.0.1"; nr.port = srv.port;
+    const auto devs = netRadioDevices({nr});
+    CHECK(devs.size() == 1);
+    if (devs.empty()) { srv.stop(); return; }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));   // the listing's own connection is over
+    auto src = makeSource(devs[0]);
+    CHECK(src != nullptr);
+    if (!src) { srv.stop(); return; }
+    IqRing ring(1u << 20);
+    TuneSettings s; s.sampleRate = 2.048e6; s.centerHz = 100e6; s.gainDb = 30;
+    std::string err;
+    CHECK(src->start(s, ring, err));
+    const int before = srv.connections;
+    srv.noGreet = true;
+    srv.pause = true;   // no samples: after 3 s the source drops the link and connects again, and gets no greeting
+    bool waiting = false;
+    for (int i = 0; i < 600 && !waiting; i++) { waiting = srv.connections >= before + 1; std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+    CHECK(waiting);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));   // the reconnect is now waiting for the greeting
+    using clk = std::chrono::steady_clock;
+    auto t0 = clk::now();
+    s.centerHz = 102e6;
+    CHECK(src->retune(s, err));
+    const double retuneS = std::chrono::duration<double>(clk::now() - t0).count();
+    CHECK(retuneS < 1.0);
+    t0 = clk::now();
+    src->stop();
+    const double stopS = std::chrono::duration<double>(clk::now() - t0).count();
+    CHECK(stopS < 2.0);
+    fprintf(stderr, "rtl_tcp reconnect without greeting: retune %.2f s, stop %.2f s\n", retuneS, stopS);
     srv.stop();
 }
 
@@ -1026,6 +1076,7 @@ int main() {
     testPluto();
     testRtlTcp();
     testEngineRadioBack();
+    testRtlTcpReconnectNoBlock();
     testRtlTcpOther();
     testSpyServer();
     testSpyServerBytes();

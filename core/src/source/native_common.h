@@ -422,7 +422,7 @@ public:
     // stopped, or that another program is letting go of, is often busy for a moment.
     bool start(const TuneSettings& s, IqRing& ring, std::string& err) override {
         ring_ = &ring;
-        { std::lock_guard<std::mutex> lk(cfg_); last_ = s; }
+        { std::lock_guard<std::mutex> lk(cfg_); last_ = s; lastGen_++; }
         reconnectErr_.clear();
         for (int attempt = 0;; attempt++) {
             std::string e;
@@ -446,7 +446,7 @@ public:
     }
     bool retune(const TuneSettings& s, std::string& err) override {
         std::lock_guard<std::mutex> lk(cfg_);
-        if (!open_) { last_ = s; return true; }   // the radio is away: it gets the new settings when it is back
+        if (!open_) { last_ = s; lastGen_++; return true; }   // the radio is away: it gets the new settings when it is back
         if (!canRetune(s, err)) return false;   // refuse shared-resource conflicts before interrupting a working stream
         const bool rateChange = s.sampleRate > 0 && std::fabs(s.sampleRate - requested_) > 1.0;
         if (rateChange && restartForRate()) {   // most radios change their sample rate only while not streaming
@@ -457,11 +457,11 @@ public:
                 return false;
             }
             startStream();
-            last_ = s;
+            last_ = s; lastGen_++;
             return !open_ || waitForStreamStart(err);
         }
         const bool ok = configure(s, err, true);
-        if (ok) last_ = s;
+        if (ok) { last_ = s; lastGen_++; }
         return ok;
     }
     double sampleRate() const override { return rate_; }
@@ -477,6 +477,11 @@ protected:
     virtual void closeDevice() = 0;          // must be safe to call twice, and after a failed openDevice()
     virtual void streamLoop() = 0;            // runs until run_ is false (or the stream fails: then the radio is opened again)
     virtual void interrupt() {}              // makes a blocking read in streamLoop() return
+    // Called by stop() without devMu_, while the stream thread may be inside openDevice() reopening a lost radio: makes a blocking wait
+    // in there (a network server's greeting) return at once. Must be thread-safe against openDevice()/closeDevice(); see openCancelled().
+    virtual void abortOpen() {}
+    // true inside an openDevice() of the stream thread's reopen once stop() was asked for: the open should give up
+    bool openCancelled() const { return reopening_.load() && !run_.load(); }
     virtual bool restartForRate() const { return true; }
     virtual bool waitForStreamStart(std::string&) { return true; }
     virtual bool canRetune(const TuneSettings&, std::string&) { return true; }
@@ -498,6 +503,7 @@ protected:
         run_ = false;
         { std::lock_guard<std::mutex> lk(waitMu_); }
         wake_.notify_all();
+        abortOpen();   // a reopen under way holds devMu_ for as long as its open waits (seconds for a network radio): cut it short first
         { std::lock_guard<std::mutex> lk(devMu_); interrupt(); }
         th_.join();
     }
@@ -555,25 +561,58 @@ private:
         }
         return false;
     }
+    // cfg_ is not held while the radio is opened: an open can wait for seconds (a network server's greeting), and retune() (the UI thread)
+    // would wait with it; on Android that froze the app until the system closed it (#201). retune() only stores the settings while the radio
+    // is away (open_ false); a change that came in during the open is sent right after it.
     bool reopen() {
         if (!run_) return false;
-        std::unique_lock<std::mutex> lk(cfg_, std::try_to_lock);
-        if (!lk.owns_lock()) return false;
-        std::lock_guard<std::mutex> dl(devMu_);
-        if (!run_) return false;
-        std::string e;
-        openFailure_ = OpenFailure::Unknown;
-        if (openDevice(last_, e)) { open_ = true; reconnectErr_.clear(); return true; }
-        closeDevice();
-        if (e != reconnectErr_) {   // each new reason once, not every second
-            reconnectErr_ = e;
-            fprintf(stderr, "radio not available yet: %s\n", e.c_str());
-            fflush(stderr);
+        TuneSettings s;
+        uint64_t gen;
+        {
+            std::unique_lock<std::mutex> lk(cfg_, std::try_to_lock);
+            if (!lk.owns_lock()) return false;
+            s = last_; gen = lastGen_;
         }
+        std::string e;
+        bool ok;
+        {
+            std::lock_guard<std::mutex> dl(devMu_);
+            if (!run_) return false;
+            openFailure_ = OpenFailure::Unknown;
+            reopening_ = true;
+            ok = openDevice(s, e) && run_;
+            reopening_ = false;
+            if (!ok) closeDevice();
+        }
+        if (!ok) {
+            if (!run_) return false;
+            if (e != reconnectErr_) {   // each new reason once, not every second
+                reconnectErr_ = e;
+                fprintf(stderr, "radio not available yet: %s\n", e.c_str());
+                fflush(stderr);
+            }
+            return false;
+        }
+        while (run_) {   // retune() holds cfg_ only for a moment while open_ is false; never block on it (stop() may be joining this thread)
+            std::unique_lock<std::mutex> lk(cfg_, std::try_to_lock);
+            if (!lk.owns_lock()) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); continue; }
+            std::lock_guard<std::mutex> dl(devMu_);
+            if (lastGen_ != gen) {   // settings changed while the radio was being opened
+                std::string ce;
+                if (!configure(last_, ce, true) && !ce.empty()) { fprintf(stderr, "radio reconnected, but the new settings were not taken: %s\n", ce.c_str()); fflush(stderr); }
+            }
+            open_ = true;
+            reconnectErr_.clear();
+            return true;
+        }
+        std::lock_guard<std::mutex> dl(devMu_);   // stopped while waiting: stop() closes the device after the join, but close it here as before
+        closeDevice();
         return false;
     }
 
     TuneSettings last_;                 // the settings in use (cfg_)
+    uint64_t lastGen_ = 0;              // counts the changes of last_ (cfg_)
+    std::atomic<bool> reopening_{false};   // the stream thread is inside openDevice() of a reopen
     std::atomic<bool> open_{false};     // the device is open (it is closed while the radio is away)
     std::mutex devMu_;                  // opening/closing on the stream thread against interrupt() from stop()
     std::mutex waitMu_;
