@@ -131,6 +131,30 @@ int main() {
         auto bad = u; bad.resize(20);
         CHECK(!decodeImagePacket(bad, s), "truncated packet rejected");
     }
+    // issue #79: picture rows over lost lock. 43 packets a row (14 per channel, three channels, one telemetry) on one 14-bit counter,
+    // 1230 ms a row on board. A gap longer than half the counter's range, and one where it wraps, must skip the rows lost.
+    {
+        struct Gap { const char* name; int lostRows; };
+        for (const Gap& g : {Gap{"short gap", 7}, Gap{"long gap (12000 packets)", 279}, Gap{"counter wrapped (16384 + 214 packets)", 386}}) {
+            StripRows rows;
+            int seq = 0, bad = 0, last = -1;
+            uint32_t ms = 86400000 - 30000;   // across midnight too
+            auto row = [&](int r, bool send) {
+                for (int c = 0; c < 3; c++)
+                    for (int k = 0; k < 14; k++) {
+                        if (send) { last = rows.place(c, seq, k, ms); if (last != r) bad++; }
+                        seq = (seq + 1) & 0x3FFF;
+                    }
+                seq = (seq + 1) & 0x3FFF;   // telemetry
+                ms = (ms + 1230) % 86400000;
+            };
+            int r = 0;
+            for (; r < 50; r++) row(r, true);
+            for (int i = 0; i < g.lostRows; i++, r++) row(r, false);
+            for (const int e = r + 30; r < e; r++) row(r, true);
+            CHECK(bad == 0 && last == r - 1 && std::fabs(rows.rowMs() - 1230) < 1, "%s: %d packets in the wrong row, last row %d of %d", g.name, bad, last, r - 1);
+        }
+    }
     printf(fails ? "FAILED (%d)\n" : "all passed\n", fails);
     return fails ? 1 : 0;
 }

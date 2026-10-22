@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 #include "dect2/common/bits.h"
 
 namespace dect2::meteor {
@@ -416,6 +417,29 @@ bool PacketMux::next(uint8_t v[kVcduBytes], int scid, int vcid) {
     for (size_t s : starts_) if (s >= (size_t)kMpduData) ns.push_back(s - kMpduData);
     starts_ = ns;
     return true;
+}
+
+// --- picture rows --------------------------------------------------------------------------------------------------------------------
+void StripRows::reset() {
+    cur_ = -1; lastSeq_ = -1; rowStartMs_ = -1; rowMs_ = 0;
+    std::fill(std::begin(lastPos_), std::end(lastPos_), -1);
+}
+
+int StripRows::place(int c, int seq, int k, uint32_t ms) {
+    c = std::clamp(c, 0, kNumChannels - 1);
+    if (cur_ < 0) { cur_ = 0; lastSeq_ = seq; rowStartMs_ = ms; lastPos_[c] = k; return 0; }
+    constexpr int64_t kDay = 86400000;
+    int64_t rd = ((int64_t)ms - rowStartMs_ + kDay) % kDay;   // time since the row started, forward across midnight
+    if (rd > kDay / 2) rd -= kDay;
+    const int d = (seq - lastSeq_) & 0x3FFF;
+    int adv = 0;
+    if (rowMs_ > 0 && rd >= 0 && rd < 30 * 60000) adv = (int)std::lround((double)rd / rowMs_);   // also a row whose first channel was lost
+    else if (d > 43 && d < 8192) adv = d / 43;
+    if (!adv && lastPos_[c] >= 0 && k <= lastPos_[c]) adv = 1;
+    if (adv == 1 && d <= 43 && rd > 0 && rd < 20000) rowMs_ = rowMs_ > 0 ? 0.8 * rowMs_ + 0.2 * (double)rd : (double)rd;   // learn a row's time
+    if (adv) { cur_ += adv; rowStartMs_ = ms; std::fill(std::begin(lastPos_), std::end(lastPos_), -1); }
+    lastPos_[c] = k; lastSeq_ = seq;
+    return cur_;
 }
 
 // --- image packets -------------------------------------------------------------------------------------------------------------------

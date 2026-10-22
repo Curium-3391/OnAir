@@ -113,7 +113,7 @@ bool GnssTracker::step(const GnssBand& band) {
     const double rc = (spec.chipRate + fcar_ * spec.chipRate / spec.rfHz + dllRate_) / spec.fsOut;     // chips per sample, aided by the carrier
     const int N = (int)std::ceil((spec.codeLen - phi_) / rc);
     if (band.end() < pos_ + N) return false;
-    if (pos_ < band.base()) { lost_ = true; return false; }          // fell behind the buffer
+    if (pos_ < band.base()) { lost_ = true; lostWhy_ = "fell behind the sample buffer (processing too slow)"; return false; }   // fell behind the buffer
     epoch(band, N, (double)pos_ - phi_ / rc);
     return true;
 }
@@ -177,7 +177,10 @@ void GnssTracker::epoch(const GnssBand& band, int N, double startIdx) {
         // frequency settled: try the phase lock loop
         if (pullEpochs_ > 300 && std::fabs(fllErr_) < 10.0 && cnInit_ >= 50 && cn0Db_ > 24.0) {
             locked_ = true; pllInt_ = 0; pllF0_ = fcar_; lockIdx_ = 0; locked_epochs_ = 0;
-        } else if ((pullEpochs_ > 1500 && cnInit_ >= 50 && cn0Db_ < 24.0) || pullEpochs_ > 6000 || std::fabs(fcar_ - fcar0_) > 3000.0) { lost_ = true; pullInTimeout_ = true; }
+        } else if ((pullEpochs_ > 1500 && cnInit_ >= 50 && cn0Db_ < 24.0) || pullEpochs_ > 6000 || std::fabs(fcar_ - fcar0_) > 3000.0) {
+            lost_ = true; pullInTimeout_ = true;
+            lostWhy_ = std::fabs(fcar_ - fcar0_) > 3000.0 ? "carrier ran off more than 3 kHz while pulling in" : cn0Db_ < 24.0 ? "too weak to lock (C/N0 under 24 dB)" : "carrier did not settle";
+        }
     } else {
         // Costas phase loop, second order, 15 Hz
         const double th = std::atan2(Q, I == 0 ? 1e-12 : I);
@@ -206,10 +209,10 @@ void GnssTracker::epoch(const GnssBand& band, int N, double startIdx) {
         // lock indicator: (I^2 - Q^2) / (I^2 + Q^2), averaged
         const double li = (I * I - Q * Q) / (I * I + Q * Q + 1e-12);
         lockIdx_ += (li - lockIdx_) * 0.01;
-        if (locked_epochs_ > 300 && lockIdx_ < 0.1) { lowLockEpochs_++; if (lowLockEpochs_ > 500) { locked_ = false; pullEpochs_ = 0; fllErr_ = 1e3; lowLockEpochs_ = 0; bitSync_ = frameSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; } }
+        if (locked_epochs_ > 300 && lockIdx_ < 0.1) { lowLockEpochs_++; if (lowLockEpochs_ > 500) { phaseDrop_ = true; locked_ = false; pullEpochs_ = 0; fllErr_ = 1e3; lowLockEpochs_ = 0; bitSync_ = frameSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; } }
         else lowLockEpochs_ = 0;
         if (cnInit_ >= 50 && locked_epochs_ > 1000) {
-            if (cn0Db_ < 17.0) { if (++lowCn0Epochs_ > 3000) lost_ = true; } else lowCn0Epochs_ = 0;
+            if (cn0Db_ < 17.0) { if (++lowCn0Epochs_ > 3000) { lost_ = true; lostWhy_ = "signal faded (C/N0 under 17 dB for 3 s)"; } } else lowCn0Epochs_ = 0;
         }
     }
     prevI_ = I; prevQ_ = Q; havePrev_ = true;

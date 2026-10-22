@@ -161,11 +161,13 @@ void GnssReceiver::Impl::runTrackers(double signalNow) {
         t->events().clear();
     }
     for (size_t i = 0; i < trackers.size();) {
+        if (trackers[i]->takePhaseDrop()) logf(satName(trackers[i]->sys, trackers[i]->prn) + ": phase lock dropped (lock indicator low for 0.5 s), pulling in again");
         if (trackers[i]->lost()) {
             okRetired += trackers[i]->framesOk(); badRetired += trackers[i]->framesBad();
             // a lost satellite is found again sooner by a short round than at the end of a long one
             if (trackers[i]->band == 0 && longRound && trackers[i]->lockSeconds() > 0.5) { gpsAcq.endRound(); longRound = false; }
-            logf(satName(trackers[i]->sys, trackers[i]->prn) + (trackers[i]->wasPullInTimeout() ? " not confirmed" : " lost"));
+            const std::string why = trackers[i]->lostReason();
+            logf(satName(trackers[i]->sys, trackers[i]->prn) + (trackers[i]->wasPullInTimeout() ? " not confirmed" : " lost") + (why.empty() ? "" : ": " + why));
             trackers.erase(trackers.begin() + (long)i);
         } else i++;
     }

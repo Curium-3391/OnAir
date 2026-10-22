@@ -125,4 +125,19 @@ bool decodeImagePacket(const std::vector<uint8_t>& user, McuStrip& out);   // fa
 std::vector<uint8_t> encodeImagePacket(const uint8_t px[8][kMcuPerPacket * 8], int mcu, int q, uint32_t day, uint32_t ms);
 void qTable(int q, int out[64]);                     // natural order
 
+// The picture row (strip of 8 lines) of each image packet. Once the time of a row has been seen in the stream (two rows in order),
+// the on-board time stamps place the packets: they survive any gap, the 14-bit counter wrapping and a row whose first channel was lost.
+// Before that, and when the time goes backwards: a channel whose block position does not move on starts a new row, and a gap in the
+// shared counter (43 packets a row, shorter than half its range) skips the rows lost.
+class StripRows {
+public:
+    int place(int channel, int seq, int block, uint32_t ms);   // channel 0 .. 5, block 0 .. 13, ms of the day; the row (>= 0)
+    void reset();
+    double rowMs() const { return rowMs_; }                     // the time of a row seen so far (0: not yet)
+private:
+    int cur_ = -1, lastSeq_ = -1, lastPos_[kNumChannels] = {-1, -1, -1, -1, -1, -1};
+    int64_t rowStartMs_ = -1;
+    double rowMs_ = 0;
+};
+
 } // namespace dect2::meteor

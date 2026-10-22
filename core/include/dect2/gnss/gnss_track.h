@@ -76,6 +76,8 @@ public:
     // Doppler change per second (from the carrier loop's integrator), for the velocity solution
     double carrierRate() const { return 0; }
     bool wasPullInTimeout() const { return pullInTimeout_; }
+    const char* lostReason() const { return lostWhy_; }   // why lost() turned true, for the log
+    bool takePhaseDrop() { const bool d = phaseDrop_; phaseDrop_ = false; return d; }   // the phase lock dropped (pulling in again) since the last call
     int framesSinceSync() const { return framesSinceSync_; }
     int falseLocks() const { return falseLocks_; }
     double codeFrequencyHz() const { return codeHz_; }
@@ -136,6 +138,8 @@ private:
     bool locked_ = false;
     bool lost_ = false;
     bool pullInTimeout_ = false;
+    const char* lostWhy_ = "";
+    bool phaseDrop_ = false;
     double pllInt_ = 0, pllF0_ = 0;
     double flSum_ = 0, flDiff_ = 0;   // the false lock check
     int falseLocks_ = 0;
