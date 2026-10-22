@@ -512,6 +512,26 @@ int main() {
         for (size_t i = 0; i < x1.size(); i++) same &= x1[i] == x3[i];
         CHECK(same, "chunk sizes do not change the signal");
     }
+    {   // a live video source: asked once a field, replaces the test card; with no frame to send the test card is sent
+        AtvGenConfig a0; a0.cnrDb = 100; a0.rate = 10e6;
+        AtvGenConfig aNo = a0, aYes = a0;
+        aNo.pullVideo = [](int, int, float*, float*, float*) { return false; };
+        int asked = 0;
+        aYes.pullVideo = [&](int w, int h, float* y, float* u, float* v) {
+            asked++;
+            for (int i = 0; i < w * h; i++) { y[i] = 0.5f; u[i] = 0; v[i] = 0; }
+            return true;
+        };
+        AtvGenerator g0(a0), gNo(aNo), gYes(aYes);
+        std::vector<cf32> x0, xNo, xYes;
+        const size_t n = (size_t)(0.1 * 10e6);   // five fields
+        g0.generate(n, x0); gNo.generate(n, xNo); gYes.generate(n, xYes);
+        bool same = true, differs = false;
+        for (size_t i = 0; i < n; i++) { same &= x0[i] == xNo[i]; differs |= x0[i] != xYes[i]; }
+        CHECK(same, "no frame from the live source: the test card is sent");
+        CHECK(differs, "a live frame replaces the test card");
+        CHECK(asked >= 5 && asked <= 8, "the live source is asked once a field (%d times in 5 fields)", asked);
+    }
     if (fails) { printf("%d check(s) failed\n", fails); return 1; }
     printf("OK\n");
     return 0;
