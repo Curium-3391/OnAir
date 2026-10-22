@@ -326,6 +326,23 @@ void synth(App&, bool&) {
 
 void tick(App&) {}
 
+// issue #214: the satellites repeat the 406.0 - 406.1 MHz band on their L-band downlink (each one at its own place in 1544 - 1545 MHz)
+void tuner(App& a, bool& retune) {
+    struct P { const char* label; double mhz; };
+    static const P kP[] = {{"406.028 MHz (beacons)", sarsat::kDefaultMhz}, {"1544.500 MHz (satellite downlink)", 1544.5}};
+    ImGui::TextDisabled("%s", tr("Frequency"));
+    sameLineIf(90 * gUi, 5 * gUi);
+    char cur[32]; snprintf(cur, sizeof cur, "%.3f MHz", a.freqMhz);
+    ImGui::SetNextItemWidth(std::min(220 * gUi, ImGui::GetContentRegionAvail().x));
+    if (ImGui::BeginCombo("##sarf", cur)) {
+        for (const P& p : kP) if (ImGui::Selectable(p.label, std::fabs(a.freqMhz - p.mhz) < 0.0005)) { tuneFreq(a, p.mhz); retune = true; }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Beacons send on 406.0 - 406.1 MHz. The search and rescue satellites repeat that band on their downlink, each one somewhere in 1544 - 1545 MHz (an L-band antenna): tune near a satellite's carrier there."));
+    flowEnd();
+}
+
 } // namespace
 
 extern const ModeUi kSarsatUi;
@@ -338,6 +355,7 @@ const ModeUi kSarsatUi = {
     .list = list,
     .status = status,
     .summary = summary,
+    .tuner = tuner,
     .synth = synth,
     .tick = tick,
 };
