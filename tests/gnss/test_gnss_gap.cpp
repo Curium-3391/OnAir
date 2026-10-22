@@ -37,7 +37,17 @@ static void dropouts(CaseOut& out) {
         double fixBefore = -1, fixBack = -1;
         for (auto& rep : r.reports) if (rep.signalSecs > 28 && rep.signalSecs < 30 && rep.fix.valid) fixBefore = rep.signalSecs;
         // the number of channels lost in the log after the gap, and when the first satellite was locked again
-        for (auto& l : r.log) if (l.find(" lost") != std::string::npos || l.find("not confirmed") != std::string::npos) lostAtGap++;
+        int noReason = 0;   // issue #189: every lost channel says why in the log
+        std::string firstLost;
+        for (auto& l : r.log)
+            if (l.find(" lost") != std::string::npos || l.find("not confirmed") != std::string::npos) {
+                if (l.find("fix lost") != std::string::npos) continue;
+                lostAtGap++;
+                if (firstLost.empty()) firstLost = l;
+                if (l.find(": ") == std::string::npos) noReason++;
+            }
+        out.print("first lost channel: %s\n", firstLost.c_str());
+        CHECK(noReason == 0, "%d lost channels without a reason in the log", noReason);
         // the time when 5 satellites had frame sync again after the gap: from the reports
         for (auto& rep : r.reports) {
             if (rep.signalSecs < 31) continue;
