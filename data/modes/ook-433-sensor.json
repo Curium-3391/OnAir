@@ -1,0 +1,27 @@
+{
+  "onair_mode": 1,
+  "id": "ook-433-sensor",
+  "name": "OOK 433 MHz sensor",
+  "description": "Example: a simple temperature / humidity sensor, OOK, Manchester, 1 kbit/s, CRC-8",
+  "frequency_mhz": 433.92,
+  "sample_rate": 250000,
+  "modulation": { "type": "OOK", "symbol_rate": 2000 },
+  "filter": { "bandwidth_hz": 20000 },
+  "line_code": { "type": "Manchester" },
+  "polarity": "auto",
+  "bit_order": "msb",
+  "preamble": { "pattern": "0xAAAA", "bits": 16 },
+  "sync": { "word": "0x2DD4", "bits": 16, "max_errors": 1 },
+  "scrambler": { "type": "none" },
+  "frame": { "length": { "mode": "fixed", "bytes": 5 } },
+  "fec": { "type": "none" },
+  "crc": { "preset": "CRC-8", "from_byte": 0 },
+  "fields": [
+    { "name": "id", "offset_bits": 0, "width_bits": 8, "type": "uint", "format": "hex" },
+    { "name": "battery_low", "offset_bits": 8, "width_bits": 1, "type": "bool" },
+    { "name": "channel", "offset_bits": 9, "width_bits": 3, "type": "uint", "offset": 1 },
+    { "name": "temperature", "offset_bits": 12, "width_bits": 12, "type": "int", "scale": 0.1, "units": "C", "format": "%.1f" },
+    { "name": "humidity", "offset_bits": 24, "width_bits": 8, "type": "uint", "units": "%" }
+  ],
+  "display": "Sensor {id} ch {channel}: {temperature} {temperature.units}, {humidity} {humidity.units}, battery low {battery_low}"
+}

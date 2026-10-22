@@ -87,6 +87,8 @@ keys are reported as warnings and ignored, so newer files still load.
 | `sample_rate` | number | the radio rate the mode asks for (default 250000; at least 4 x the filter bandwidth is used). |
 | `polarity` | `normal`, `inverted`, `auto` | inverted swaps 0 and 1 (FSK: the high tone is 0). auto tries both (default `auto`). |
 | `bit_order` | `msb`, `lsb` | the order of the bits of each byte on the air (default `msb`). |
+| `squelch_db` | number | a burst starts when the level is this far above the noise floor (default 6; `0`: always on, for a signal that never stops). |
+| `show_bad_frames` | bool | also list frames whose check value is wrong (default false). |
 
 ### modulation
 
@@ -94,7 +96,7 @@ keys are reported as warnings and ignored, so newer files still load.
 |---|---|
 | `type` | `OOK`, `ASK`, `FSK`, `GFSK`, `GMSK`, `PSK` |
 | `order` | FSK and PSK: 2, 4 or 8 (default 2). GMSK is always 2. OOK is 2; ASK 2 or 4. |
-| `symbol_rate` | symbols per second, required (> 0). |
+| `symbol_rate` | symbols per second on the air, required (> 0). With a line code this counts the chips: Manchester at 1000 bit/s is 2000 symbols per second. |
 | `deviation_hz` | FSK / GFSK: the outer tones are at +- deviation from the centre; the M tones are evenly spaced between. GMSK: symbol_rate / 4, the key is ignored. Default: symbol_rate / 2. |
 | `bt` | GFSK / GMSK: Gaussian filter bandwidth-time product (default 0.5; GMSK 0.3). |
 | `differential` | PSK: the data is in the phase change from one symbol to the next (DBPSK, DQPSK, D8PSK) (default false). |
@@ -166,7 +168,7 @@ block is sent as it is.
 
 | key | meaning |
 |---|---|
-| `preset` | a named model: `CRC-8`, `CRC-8/SMBUS`, `CRC-8/MAXIM`, `CRC-16/CCITT-FALSE`, `CRC-16/CCITT` (same), `CRC-16/KERMIT`, `CRC-16/XMODEM`, `CRC-16/IBM` (ARC), `CRC-16/MODBUS`, `CRC-16/DNP`, `CRC-32`, `CRC-32C`, or `SUM8`, `XOR8` (plain checksums). Keys given next to it override the preset's values. |
+| `preset` | a named model: `CRC-8`, `CRC-8/SMBUS`, `CRC-8/MAXIM`, `CRC-16/CCITT-FALSE` (= `CRC-16/IBM-3740`), `CRC-16/CCITT` (= `CRC-16/KERMIT`, as in the CRC catalogue), `CRC-16/X-25`, `CRC-24/OPENPGP`, `CRC-32/BZIP2`, `CRC-8/AUTOSAR`, `CRC-16/XMODEM`, `CRC-16/IBM` (ARC), `CRC-16/MODBUS`, `CRC-16/DNP`, `CRC-32`, `CRC-32C`, or `SUM8`, `XOR8` (plain checksums). Keys given next to it override the preset's values. |
 | `width` | 1..32 (bits) |
 | `poly`, `init`, `xorout` | normal (not reflected) form |
 | `reflect_in`, `reflect_out` | bool |
@@ -203,11 +205,20 @@ and `{_crc}`, `{_len}`, `{_hex}` the check result, the length and the frame byte
 
 ## Examples (data/modes)
 
-* `ook-433-sensor.json`: OOK, Manchester, 2 kBd, a temperature / humidity sensor with CRC-8.
-* `fsk4-telemetry.json`: 4-FSK 4800 Bd, a whitened telemetry frame with a length field, Hamming(7,4)-free CRC-16/CCITT and lat / lon.
-* `pocsag-like.json`: 2-FSK 1200 Bd, NRZ inverted, a 32-bit sync word, BCH-free fixed frame with an end-of-message check, CRC-16/IBM.
-* `gmsk-conv-beacon.json`: GMSK 9600 Bd with K=7 rate 1/2 convolutional code, an 8 x 16 interleaver and CRC-32.
-* `bpsk-rs-telemetry.json`: DBPSK 2400 Bd, additive scrambler, Reed-Solomon (255,223) shortened, CRC-16/IBM.
+* `ook-433-sensor.json`: OOK, Manchester, 2000 chips/s, a temperature / humidity sensor with CRC-8.
+* `fsk4-telemetry.json`: 4-FSK 4800 Bd, PN9 whitening, a length field, three frame types with their own display, lat / lon, CRC-16/CCITT-FALSE.
+* `pocsag-like.json`: 2-FSK 1200 Bd, inverted, the POCSAG sync word, Hamming(15,11), a BCD message, CRC-16/IBM (not real POCSAG: no BCH code words).
+* `gmsk-conv-beacon.json`: GMSK 9600 Bd, K=7 rate 1/2 convolutional code, an 8 x 16 interleaver, CRC-32.
+* `bpsk-rs-telemetry.json`: DBPSK 2400 Bd with root raised cosine pulses, an additive scrambler, Reed-Solomon (255,223) shortened, CRC-16/IBM.
+* `hdlc-fsk-packet.json`: 2-FSK 9600 Bd, NRZI, HDLC flags with bit stuffing, LSB first, CRC-16/X-25.
+
+## Good preambles
+
+The receiver finds the symbol clock and the levels in the first dozen symbols of a burst, so the preamble should change often:
+alternating tones for 2-FSK (`0xAAAA`), the two outer tones for 4- and 8-FSK (`0x22` for Gray-coded 4-FSK, `0x104` for 8-FSK),
+the lowest and highest level for 4-ASK (`0x22`), 180 degree steps for PSK (`0xAAAA` for BPSK, `0xFFFF` for DBPSK and DQPSK). A
+preamble that keeps one tone or one phase step (a constant rotation) carries no timing. FSK levels are also tracked during the frame.
+Frequency errors up to a few percent of the symbol rate (FSK: a fraction of the deviation) are followed.
 
 ## Errors
 

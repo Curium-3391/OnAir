@@ -1,0 +1,26 @@
+{
+  "onair_mode": 1,
+  "id": "pocsag-like",
+  "name": "POCSAG-like pager",
+  "description": "Example: a pager frame in the style of POCSAG: 2-FSK 1200 Bd, inverted, the POCSAG sync word, Hamming(15,11), numeric BCD message, CRC-16/IBM",
+  "frequency_mhz": 466.075,
+  "sample_rate": 48000,
+  "modulation": { "type": "FSK", "order": 2, "symbol_rate": 1200, "deviation_hz": 4500 },
+  "filter": { "bandwidth_hz": 12500 },
+  "line_code": { "type": "NRZ" },
+  "polarity": "inverted",
+  "bit_order": "msb",
+  "preamble": { "pattern": "0xAAAAAAAA", "bits": 32 },
+  "sync": { "word": "0x7CD215D8", "bits": 32, "max_errors": 2 },
+  "scrambler": { "type": "none" },
+  "frame": { "length": { "mode": "fixed", "bytes": 11 } },
+  "fec": { "type": "hamming", "code": "15,11" },
+  "crc": { "preset": "CRC-16/IBM", "from_byte": 0 },
+  "fields": [
+    { "name": "address", "offset_bits": 0, "width_bits": 21, "type": "uint" },
+    { "name": "function", "offset_bits": 21, "width_bits": 3, "type": "enum", "enum": { "0": "numeric", "1": "tone 1", "2": "tone 2", "3": "alphanumeric" } },
+    { "name": "msg_len", "offset_bits": 24, "width_bits": 8, "type": "uint", "units": "digits" },
+    { "name": "message", "offset_bits": 32, "width_bits": 40, "type": "bcd" }
+  ],
+  "display": "To {address} ({function}): {message}"
+}

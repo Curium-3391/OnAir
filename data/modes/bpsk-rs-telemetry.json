@@ -1,0 +1,31 @@
+{
+  "onair_mode": 1,
+  "id": "bpsk-rs-telemetry",
+  "name": "DBPSK Reed-Solomon telemetry",
+  "description": "Example: differential BPSK 2400 Bd with root raised cosine pulses, an additive scrambler, Reed-Solomon (255,223) shortened to 48 bytes and CRC-16/IBM",
+  "frequency_mhz": 145.825,
+  "sample_rate": 48000,
+  "modulation": { "type": "PSK", "order": 2, "symbol_rate": 2400, "differential": true },
+  "filter": { "bandwidth_hz": 4800, "pulse": "rrc", "rolloff": 0.5 },
+  "line_code": { "type": "NRZ" },
+  "polarity": "normal",
+  "bit_order": "msb",
+  "preamble": { "pattern": "0xFFFFFFFF", "bits": 32 },
+  "sync": { "word": "0x1ACFFC1D", "bits": 32, "max_errors": 3 },
+  "scrambler": { "type": "additive", "taps": [8, 7, 5, 3], "seed": "0xFF" },
+  "frame": { "length": { "mode": "fixed", "bytes": 48 } },
+  "fec": { "type": "reed_solomon", "n": 255, "k": 223, "symbol_bits": 8, "poly": "0x11D", "fcr": 0, "prim": 1 },
+  "crc": { "preset": "CRC-16/IBM", "from_byte": 0 },
+  "fields": [
+    { "name": "station", "offset_bits": 0, "width_bits": 48, "type": "ascii" },
+    { "name": "packet", "offset_bits": 48, "width_bits": 16, "type": "uint" },
+    { "name": "pressure", "offset_bits": 64, "width_bits": 32, "type": "float32", "units": "hPa", "format": "%.1f" },
+    { "name": "temp_in", "offset_bits": 96, "width_bits": 16, "type": "int", "scale": 0.1, "units": "C", "format": "%.1f" },
+    { "name": "temp_out", "offset_bits": 112, "width_bits": 16, "type": "int", "scale": 0.1, "units": "C", "format": "%.1f" },
+    { "name": "volts", "offset_bits": 128, "width_bits": 16, "type": "uint", "endian": "little", "scale": 0.001, "units": "V", "format": "%.3f" },
+    { "name": "lat", "offset_bits": 144, "width_bits": 24, "type": "lat", "scale": 1.0728836e-5 },
+    { "name": "lon", "offset_bits": 168, "width_bits": 24, "type": "lon", "scale": 2.1457672e-5 },
+    { "name": "date", "offset_bits": 192, "width_bits": 24, "type": "bcd" }
+  ],
+  "display": "{station} #{packet}: {pressure} hPa, in {temp_in} C, out {temp_out} C, {volts} V at {lat} {lon}"
+}
