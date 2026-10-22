@@ -139,9 +139,14 @@ static void dabPlaySub(App& a, int sub) {
     a.engine.player().setMuted(a.muted);
 }
 
+// The radio onto a DAB channel (the band scan, the scan list, a transmitter on the Map tab, the other frequencies of an ensemble). A decode
+// shift left by a click on the spectrum (sticky tuning) is dropped: kept, the receiver would look for the ensemble beside its channel by
+// that shift (#262). The old ensemble is forgotten (retuneReset).
 void dabTuneMhz(App& a, double mhz) {
     a.freqMhz = mhz;
     a.tune.centerHz = a.freqMhz * 1e6;
+    if (!a.engine.running()) return;
+    a.engine.setDecodeShiftHz(0);
     a.engine.retuneReset(a.tune);
     a.peak.clear();
 }
@@ -810,7 +815,7 @@ void dabScanTab(App& a) {
         ImGui::EndDisabled();
         if (!run) { ImGui::SameLine(); ImGui::TextDisabled("start the receiver first"); }
     } else {
-        if (iconButton(Ic::Stop, "Stop scan", IM_COL32(112, 48, 48, 255), IM_COL32(146, 62, 62, 255))) { s.running = false; a.freqMhz = s.savedFreq; }
+        if (iconButton(Ic::Stop, "Stop scan", IM_COL32(112, 48, 48, 255), IM_COL32(146, 62, 62, 255))) { s.running = false; dabTuneMhz(a, s.savedFreq); }   // back where it was (the radio too, not only the box)
         ImGui::SameLine(0, 12 * gUi);
         ImGui::TextDisabled("channel %d of %d", std::max(0, s.idx) + 1, kNumDabCh);
         ImGui::ProgressBar((float)(std::max(0, s.idx)) / kNumDabCh, ImVec2(220, ImGui::GetFrameHeight() - 6));
@@ -835,8 +840,7 @@ void dabScanTab(App& a) {
             ImGui::TableNextColumn();
             ImGui::PushID((int)i);
             if (ImGui::Selectable(r.name.c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
-                a.freqMhz = r.mhz; a.tune.centerHz = r.mhz * 1e6;
-                if (a.engine.running()) { a.engine.retuneReset(a.tune); a.peak.clear(); }
+                dabTuneMhz(a, r.mhz);
                 s.running = false;
             }
             ImGui::PopID();
@@ -858,10 +862,7 @@ void dabScanStep(App& a) {
     if (!a.engine.running()) { s.running = false; return; }
     const double now = ImGui::GetTime();
     auto tuneTo = [&](int idx) {
-        a.freqMhz = kDabCh[idx].mhz;
-        a.tune.centerHz = a.freqMhz * 1e6;
-        a.engine.retuneReset(a.tune);
-        a.peak.clear();
+        dabTuneMhz(a, kDabCh[idx].mhz);
         s.idx = idx; s.t0 = now; s.lockT = 0;
     };
     if (s.idx < 0) { tuneTo(0); return; }
@@ -886,7 +887,7 @@ void dabScanStep(App& a) {
         a.engine.log("DAB scan: " + r.name + " " + ens.label + " (" + std::to_string(ens.services.size()) + " stations)");
     }
     s.results.push_back(r);
-    if (s.idx + 1 >= kNumDabCh) { s.running = false; a.freqMhz = s.savedFreq; a.tune.centerHz = a.freqMhz * 1e6; a.engine.retuneReset(a.tune); a.engine.log("DAB scan finished"); }
+    if (s.idx + 1 >= kNumDabCh) { s.running = false; dabTuneMhz(a, s.savedFreq); a.engine.log("DAB scan finished"); }
     else tuneTo(s.idx + 1);
 }
 

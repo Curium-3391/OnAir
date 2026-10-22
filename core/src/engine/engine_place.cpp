@@ -85,7 +85,7 @@ std::string Engine::secondaryCheck(int pri, int sec, double centreHz, double rat
 void Engine::setDecodeShiftHz(double hz) {
     if (std::fabs(hz - decodeShiftHz_.load()) < 0.5) return;
     decodeShiftHz_ = hz;
-    decodeMix_.set(hz, srcRate_);
+    decodeMix_.set(hz, rate_.load());   // after the offset resampler: at the receiver's rate
     resetReq_ = true;
 }
 

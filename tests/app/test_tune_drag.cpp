@@ -41,5 +41,16 @@ int main() {
     check(std::fabs((v.hi - v.lo) - 0.5) < 1e-9 && std::fabs((v.lo + v.hi) / 2 - 100) < 1e-9, "far retune: span kept, view centred");
     v = viewAfterRetune(0, 0, 100, 2.0, false);
     check(v.lo == 99 && v.hi == 101, "no view yet: whole band");
+    // the tuner retunes while a click on the spectrum left a decode shift (#262): radio on 11D (222.064 MHz), 12A (223.936) clicked = +1.872 MHz
+    TunerRetune t = tunerRetune(222.064e6, 222.064e6, 1.872e6, 223.936e6);
+    check(t.dialHz == 222.064e6 && !t.clearShift, "gain change: the radio and the shift stay");
+    t = tunerRetune(222.064e6, 222.064e6, 1.872e6, 225.648e6);
+    check(t.dialHz == 225.648e6 && t.clearShift, "a channel from the list: the radio goes there, the shift is dropped");
+    t = tunerRetune(222.064e6, 222.064e6, 1.872e6, 222.064e6);
+    check(t.dialHz == 222.064e6 && t.clearShift, "the radio centre typed in: no shift any more");
+    t = tunerRetune(100e6, 100e6, 0, 101e6);
+    check(t.dialHz == 101e6 && !t.clearShift, "no shift: the radio follows the frequency");
+    t = tunerRetune(100e6, 100.2e6, -0.1e6, 100.1e6);
+    check(t.dialHz == 100e6 && !t.clearShift, "a mode tune offset: the decoded frequency counts from the capture centre");
     return fails ? 1 : 0;
 }

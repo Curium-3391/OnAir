@@ -48,6 +48,15 @@ inline View viewAfterRetune(double lo, double hi, double newC, double fsMhz, boo
     }
     return {newC - span / 2, newC + span / 2};
 }
+// A retune from the tuner (frequency box, channel list, gain, filter, bias-tee) while a decode shift (sticky tuning) may be active: the receiver
+// decodes captureHz + shiftHz. When that is still the tuned frequency (a gain or filter change) the radio stays where it is (dialHz) and so
+// does the shift. A new frequency puts the radio on it and drops the shift: kept, the receiver would decode beside the new channel by the old
+// shift (#262: a DAB channel picked from the list after a click on the spectrum).
+struct TunerRetune { double dialHz; bool clearShift; };
+inline TunerRetune tunerRetune(double dialHz, double captureHz, double shiftHz, double tunedHz) {
+    if (shiftHz != 0 && std::fabs(captureHz + shiftHz - tunedHz) <= 1) return {dialHz, false};
+    return {tunedHz, shiftHz != 0};
+}
 struct Click { bool retune; double centreMhz; bool decodeOnly; };
 // What a click on absMhz does. centreStyle: the target button (centre the radio on the click); else the click only moves the marker
 // inside the captured band and retunes only when it lies outside it. noRetune: a file or a wide mode: the radio never moves.
