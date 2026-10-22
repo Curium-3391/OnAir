@@ -49,6 +49,22 @@ struct EitSection {
 // keeps the events decoded before the damage. Never reads past `len`.
 bool parseEitSection(const uint8_t* s, int len, EitSection& out);
 
+// ---- the language of the guide texts (#268). A broadcaster may send an event's name and text in several languages (Finland: Finnish and
+// Swedish), one short event descriptor (and extended event descriptors) per language. With a preferred language set (ISO 639-2, "fin"), the
+// texts of that language are used for every event that has them; an event without it keeps the default (the last language broadcast).
+void epgSetPreferredLanguage(const std::string& iso639);   // "" = no preference; case does not matter; read by both EIT parsers
+std::string epgPreferredLanguage();
+std::string epgLanguageKey(const std::string& iso639);   // lower case, the terminology code of a pair (ger -> deu): two codes of one language compare equal
+// Where the texts of one language sit in a section (offsets from the section start), for every event that has that language.
+struct EpgLangPick {
+    std::string lang;
+    bool hasShort = false;
+    int titleOff = 0, titleLen = 0, textOff = 0, textLen = 0;
+    std::vector<std::pair<int, int>> ext;   // extended event texts of that language: offset, length, in the order sent
+};
+// s: a whole EIT section. Events by event_id. False: nothing found (no preference, damaged section, or no event has the language).
+bool epgPickLanguage(const uint8_t* s, int len, const std::string& want, std::map<int, EpgLangPick>& out);
+
 struct LocalTimeOffset {
     std::string country;               // ISO 3166 alpha-3, e.g. "LTU"
     int region = 0;                    // country_region_id

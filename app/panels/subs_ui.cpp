@@ -2,6 +2,7 @@
 // as boxed text, the on/off and language choice, and the character-cell drawing of a teletext page that the Teletext tab shares.
 #include "../app.h"
 #include "../transcribe/transcribe_app.h"
+#include "dect2/tv/epg.h"
 #include <cmath>
 
 namespace {
@@ -121,6 +122,8 @@ void subsUpdate(App& a) {
         const std::string lg = kl.substr(kl.find(':') + 1);
         for (int i = 0; i < (int)a.subOpts.size() && idx < 0 && !lg.empty(); i++) if (a.subOpts[i].lang == lg) idx = i;
     }
+    if (idx < 0 && !a.tvLang.empty())   // nothing remembered fits: the preferred language of the TV panel (#268)
+        for (int i = 0; i < (int)a.subOpts.size() && idx < 0; i++) if (!a.subOpts[i].lang.empty() && epgLanguageKey(a.subOpts[i].lang) == epgLanguageKey(a.tvLang)) idx = i;
     if (idx < 0 && !a.subOpts.empty()) idx = 0;
     a.subIdx = idx;
 

@@ -1,5 +1,6 @@
 #include "dect2/tv/ts.h"
 #include "dect2/tv/dvb_text.h"
+#include "dect2/tv/epg.h"
 #include "dect2/tv/ts_proto.h"
 #include <algorithm>
 #include <cstring>
@@ -215,11 +216,19 @@ void TsDemux::parseEit(const uint8_t* s, int len) {
     tsp::Eit eit;
     if (!tsp::parseEit(s, len, eit)) return;
     const int sid = eit.sid;
+    // the guide language the user prefers (#268): where the texts of that language sit, per event
+    std::map<int, EpgLangPick> picks;
+    { const std::string want = epgPreferredLanguage(); if (!want.empty()) epgPickLanguage(s, len, want, picks); }
     // legacy: present / following event names for the service list
     if (eit.legacy) {
         TsService& sv = services_[sid];
         sv.id = sid;
-        (eit.secNum == 0 ? sv.now : sv.next) = eit.hasName ? dvbText(s + eit.nowNextName.off, (int)eit.nowNextName.len, gbText_) : std::string();
+        std::string nm = eit.hasName ? dvbText(s + eit.nowNextName.off, (int)eit.nowNextName.len, gbText_) : std::string();
+        if (!eit.events.empty()) {
+            auto pk = picks.find(eit.events[0].eventId);
+            if (pk != picks.end() && pk->second.hasShort) nm = dvbText(s + pk->second.titleOff, pk->second.titleLen, gbText_);
+        }
+        (eit.secNum == 0 ? sv.now : sv.next) = nm;
     }
     // the guide: every event in the section
     auto& evs = epg_[sid];
@@ -229,6 +238,15 @@ void TsDemux::parseEit(const uint8_t* s, int len) {
         if (pe.hasTitle) ev.title = dvbText(s + pe.title.off, (int)pe.title.len, gbText_);
         if (pe.hasText) ev.text = dvbText(s + pe.text.off, (int)pe.text.len, gbText_);
         for (int n = 0; n < 16; n++) if (pe.extMask & (1u << n)) ev.extended += dvbText(s + pe.ext[n].off, (int)pe.ext[n].len, gbText_);   // pieces in descriptor_number order
+        {
+            auto pk = picks.find(ev.eventId);
+            if (pk != picks.end()) {
+                const EpgLangPick& k = pk->second;
+                if (!k.lang.empty()) ev.lang = k.lang;
+                if (k.hasShort) { ev.title = dvbText(s + k.titleOff, k.titleLen, gbText_); ev.text = dvbText(s + k.textOff, k.textLen, gbText_); }
+                if (!k.ext.empty()) { ev.extended.clear(); for (auto& e : k.ext) ev.extended += dvbText(s + e.first, e.second, gbText_); }
+            }
+        }
         auto it = evs.find(ev.eventId);
         if (it != evs.end() && ev.extended.empty()) ev.extended = it->second.extended;
         evs[ev.eventId] = ev;

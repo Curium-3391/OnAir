@@ -150,7 +150,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(num("udpPort", AT(a.out.port), 0, 1, 0, true, true)),
         shared(flagB("udpRtp", AT(a.out.rtp), false)), shared(flagB("dropNull", AT(a.out.dropNull), false)),
         shared(flagB("popTop", AT(a.popTop), true)),
-        shared(flagB("subsOn", AT(a.subsOn), true)), shared(text("subsPick", AT(a.subsPick))), shared(num("ttxPage", AT(a.ttxPage), 100, 100, 899)),
+        shared(flagB("subsOn", AT(a.subsOn), true)), shared(text("subsPick", AT(a.subsPick))), shared(text("tvLang", AT(a.tvLang))), shared(num("ttxPage", AT(a.ttxPage), 100, 100, 899)),
         shared(flagB("updCheck", AT(a.updCheck), true)), shared(flagB("updAuto", AT(a.updAuto), true)), shared(flagB("updBeta", AT(a.updPre), false)),
         shared(dbl("updLast", AT(a.updLast), 0)), shared(text("updSkip", AT(a.updSkip))),
         shared(num("updSrc", AT(a.updSrc), 0, 0, 2)), shared(flagB("updMirrorOn", AT(a.updMirrorOn), false)), shared(text("updMirror", AT(a.updMirror))),

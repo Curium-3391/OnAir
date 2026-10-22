@@ -337,7 +337,8 @@ struct AtvGenerator::Impl {
         if (fieldFrame[fld] == (int64_t)frame) return;
         const double tf = 1.0 / fmt.fieldHz;
         const double t = cfg.startSec + (double)frame * fmt.lines * fmt.lineUs * 1e-6 + fld * tf;
-        card->renderField(fld, t, frame, fy[fld].data(), fu[fld].data(), fv[fld].data());
+        // a live source (camera, file) replaces the whole picture: the test card is drawn only when there is no frame to send
+        bool live = false;
         if (cfg.pullVideo) {
             const int W = fmt.picW, H = fmt.picH;
             liveY.resize((size_t)W * (size_t)H); liveU = liveY; liveV = liveY;
@@ -349,8 +350,10 @@ struct AtvGenerator::Impl {
                     memcpy(fu[fld].data() + (size_t)k * W, liveU.data() + (size_t)r * W, sizeof(float) * (size_t)W);
                     memcpy(fv[fld].data() + (size_t)k * W, liveV.data() + (size_t)r * W, sizeof(float) * (size_t)W);
                 }
+                live = true;
             }
         }
+        if (!live) card->renderField(fld, t, frame, fy[fld].data(), fu[fld].data(), fv[fld].data());
         fieldFrame[fld] = (int64_t)frame;
     }
 
