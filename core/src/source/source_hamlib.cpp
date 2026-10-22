@@ -4,6 +4,7 @@
 #ifdef DECT2_HAVE_HAMLIB
 
 #include "dect2/common/thread_name.h"
+#include "dect2/ham/ham.h"
 #include "dect2/source/hamlib_link.h"
 #include "dect2/source/hamlib_rig.h"
 #include "dect2/source/rig_setup.h"
@@ -146,6 +147,19 @@ bool HamlibLink::open(const HamlibConn& c, std::string& err) {
     if (c.baud > 0) p_->setConf("serial_speed", std::to_string(c.baud));   // not for a network rig: it has no such setting
     if (c.timeoutMs > 0) p_->setConf("timeout", std::to_string(c.timeoutMs));
     if (c.retries >= 0) p_->setConf("retry", std::to_string(c.retries));
+    if (c.pttType >= 1 && c.pttType <= 3) {   // RTS / DTR keying (on the CAT port or a port of its own), or none for VOX
+        static const char* const kPtt[] = {"RIG", "RTS", "DTR", "None"};
+        if (!p_->setConf("ptt_type", kPtt[c.pttType])) {
+            err = std::string("Hamlib: this rig model cannot key PTT by ") + kPtt[c.pttType];
+            p_->closeLocked();
+            return false;
+        }
+        if (c.pttType != 3 && !c.pttPath.empty() && !p_->setConf("ptt_pathname", c.pttPath)) {
+            err = "Hamlib: the PTT port " + c.pttPath + " cannot be set for this rig model";
+            p_->closeLocked();
+            return false;
+        }
+    }
     const int r = rig_open(p_->rig);
     if (r != RIG_OK) {
         err = std::string("Hamlib open ") + (c.path.empty() ? "rig" : c.path) + ": " + rigerror(r);
@@ -208,6 +222,28 @@ bool HamlibLink::setPtt(bool on, std::string& err) {
     if (!p_->rig) { err = "Hamlib: rig not open"; return false; }
     const int r = rig_set_ptt(p_->rig, RIG_VFO_CURR, on ? RIG_PTT_ON : RIG_PTT_OFF);
     if (r != RIG_OK) { err = std::string("Hamlib PTT: ") + rigerror(r); return false; }
+    return true;
+}
+
+bool HamlibLink::setSplit(bool on, double txHz, std::string& err) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (!p_->rig) { err = "Hamlib: rig not open"; return false; }
+    int r = rig_set_split_vfo(p_->rig, RIG_VFO_CURR, on ? RIG_SPLIT_ON : RIG_SPLIT_OFF, RIG_VFO_TX);
+    if (r != RIG_OK) { err = std::string("Hamlib split: ") + rigerror(r); return false; }
+    if (on) {
+        r = rig_set_split_freq(p_->rig, RIG_VFO_CURR, (freq_t)txHz);
+        if (r != RIG_OK) { err = std::string("Hamlib split frequency: ") + rigerror(r); return false; }
+    }
+    return true;
+}
+
+bool HamlibLink::getSplitFreq(double& hz, std::string& err) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (!p_->rig) { err = "Hamlib: rig not open"; return false; }
+    freq_t f = 0;
+    const int r = rig_get_split_freq(p_->rig, RIG_VFO_CURR, &f);
+    if (r != RIG_OK) { err = std::string("Hamlib read split frequency: ") + rigerror(r); return false; }
+    hz = (double)f;
     return true;
 }
 
@@ -440,6 +476,8 @@ public:
         close();
         HamlibConn c;
         if (!parseHamlibSerial(dev_.serial, c.model, c.path, c.baud)) { err = "bad Hamlib rig id"; return false; }
+        // a transceiver keyed over CAT is an amateur transmitter: never outside the amateur bands (the ham view's gate adds licence and Arm)
+        if (!ham::hamBandAt(txRadioHz(t))) { err = "a CAT rig is keyed only inside the amateur bands"; return false; }
         if (!rig_.open(c, err)) return false;
         TuneSettings ts;
         ts.centerHz = t.centerHz;
@@ -468,6 +506,7 @@ public:
         TuneSettings ts;
         ts.centerHz = t.centerHz;
         ts.radio = t.radio;
+        if (!ham::hamBandAt(txRadioHz(t))) { err = "a CAT rig is keyed only inside the amateur bands"; close(); return false; }
         if (!rig_.setFreq(txRadioHz(t), err)) return false;
         std::string e2;
         rig_.setMode(hamModeOf(ts), 0, e2);

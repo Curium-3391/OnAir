@@ -62,6 +62,9 @@ std::string hamlibRigsToString(const std::vector<HamlibRig>& v) {
         if (r.model <= 0 || r.path.empty()) continue;
         if (!s.empty()) s += ';';
         s += std::to_string(r.model) + ',' + esc(r.path) + ',' + esc(r.label) + ',' + esc(r.audioId) + ',' + (r.baud > 0 ? std::to_string(r.baud) : std::string());
+        const bool tx = r.pttType != 0 || !r.pttPath.empty() || !r.dataMode.empty() || !r.audioOutId.empty() || r.split;
+        if (tx)   // only written when set, so a plain receive rig keeps the short form older versions read
+            s += ',' + std::to_string(std::clamp(r.pttType, 0, 3)) + ',' + esc(r.pttPath) + ',' + esc(r.dataMode) + ',' + esc(r.audioOutId) + ',' + (r.split ? "1" : "0");
     }
     return s;
 }
@@ -84,6 +87,11 @@ std::vector<HamlibRig> hamlibRigsFromString(const std::string& s) {
         r.label = f.size() > 2 ? unesc(f[2]) : "";
         r.audioId = f.size() > 3 ? unesc(f[3]) : "";
         r.baud = f.size() > 4 ? std::max(0, atoi(f[4].c_str())) : 0;
+        r.pttType = f.size() > 5 ? std::clamp(atoi(f[5].c_str()), 0, 3) : 0;
+        r.pttPath = f.size() > 6 ? unesc(f[6]) : "";
+        r.dataMode = f.size() > 7 ? unesc(f[7]) : "";
+        r.audioOutId = f.size() > 8 ? unesc(f[8]) : "";
+        r.split = f.size() > 9 && f[9] == "1";
         out.push_back(std::move(r));
     }
     return out;
@@ -190,6 +198,8 @@ bool HamlibLink::getFreq(double&, std::string& err) { err = "this build has no H
 bool HamlibLink::setMode(const std::string&, int, std::string& err) { err = "this build has no Hamlib"; return false; }
 bool HamlibLink::getMode(std::string&, int&, std::string& err) { err = "this build has no Hamlib"; return false; }
 bool HamlibLink::setPtt(bool, std::string& err) { err = "this build has no Hamlib"; return false; }
+bool HamlibLink::setSplit(bool, double, std::string& err) { err = "this build has no Hamlib"; return false; }
+bool HamlibLink::getSplitFreq(double&, std::string& err) { err = "this build has no Hamlib"; return false; }
 std::string HamlibLink::info() const { return {}; }
 bool hamlibModeKnown(const std::string&) { return false; }
 std::string hamlibCanonicalMode(const std::string&) { return {}; }
