@@ -88,7 +88,6 @@ bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOp
     // slots are found from the signals
     hfdig().ftx().setSlotSearch(!live_.load());
     offMix_.set(offHz_, srcRate_);
-    decodeMix_.set(decodeShiftHz_.load(), srcRate_);
     offResample_ = false;
     if (offHz_ > 0) {
         // back to the mode's rate after the shift (if the radio runs faster than the mode asked for)
@@ -98,6 +97,7 @@ bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOp
                  offHz_.load() / 1e6, srcRate_ / 1e6, rate_.load() / 1e6);
         log(b);
     }
+    decodeMix_.set(decodeShiftHz_.load(), rate_.load());   // sticky tuning, mixed just before the receiver (after the offset resampler)
     {
         std::lock_guard<std::mutex> lk(tuneMu_);
         lastDev_ = dev; lastTune_ = tune; lastFile_ = file;

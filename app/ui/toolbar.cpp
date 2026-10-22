@@ -467,8 +467,10 @@ void toolbarParts(App& a, int mask, bool vertical) {
     if (running && a.devices[a.devIdx].kind == DeviceInfo::Hamlib) hamlibFollowRig(a);   // the rig's knob moves the frequency box
     else if (!running) a.hamlibRigSeq = 0;
     if (retune && running) {
-        const bool moved = std::fabs(a.tune.centerHz - a.freqMhz * 1e6) > 1;
-        a.tune.centerHz = a.freqMhz * 1e6;
+        const tunedrag::TunerRetune rt = tunedrag::tunerRetune(a.tune.centerHz, a.engine.captureCentreHz(), a.engine.decodeShiftHz(), a.freqMhz * 1e6);
+        if (rt.clearShift) a.engine.setDecodeShiftHz(0);   // a new frequency: the radio goes there, the old click shift no longer applies
+        const bool moved = std::fabs(a.tune.centerHz - rt.dialHz) > 1;
+        a.tune.centerHz = rt.dialHz;
         a.engine.log("retune " + std::to_string(a.freqMhz) + " MHz");
         if ((a.fmMode || a.family >= 6) && moved) a.engine.retuneReset(a.tune);   // forget the old station's name and flush its sound
         else a.engine.retune(a.tune);

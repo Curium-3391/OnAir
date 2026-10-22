@@ -74,7 +74,6 @@ void Engine::ingest(cf32* x, size_t n) {
     ShareServer::get().offer(x, n);   // "Share my radio": the same samples to the rtl_tcp clients (nothing while sharing is off)
     dropNonFinite(x, n);
     cleanSamples(iqFix_, offMix_, offsetDc_.load(), x, n, activeStd_.load());
-    decodeMix_.mix(x, n);
     const auto a0 = std::chrono::steady_clock::now();
     lastSamples_ = a0;   // the radio is alive, whether or not the resampler gives a sample out of this block
     if (offResample_) { offBuf_.clear(); offRs_.process(x, n, offBuf_); x = offBuf_.data(); n = offBuf_.size(); }
@@ -87,6 +86,10 @@ void Engine::ingest(cf32* x, size_t n) {
         { std::lock_guard<std::mutex> lk(tuneMu_); dial = lastTune_.centerHz; }
         monitor_.push(x, n, rate_.load(), dial + monitorOffsetHz_.load() - captureCentreHz());
     }
+    // sticky tuning: only the first receiver gets the clicked signal at DC. The spectrum, the signal identifier, the second mode and the
+    // monitor see the capture as the radio delivers it (their frequencies are relative to captureCentreHz()), so the display stays put
+    // and the tuned marker moves to the click, instead of the whole spectrum sliding by the shift (#262)
+    decodeMix_.mix(x, n);
     feedRx(x, n);
     tRx_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count();
     nSamp_ += n;
@@ -378,7 +381,7 @@ void Engine::bandwidthStep(const SpectrumFrame& f, const RxTelemetry& t, bool tL
     const double now = nSamp_ / std::max(1.0, rate_.load());
     if (bwReset_.exchange(false)) { bwDet_.reset(); bwMark_ = now; bwVote_ = 0; }
     if (bwReq_.exchange(false)) { changeBandwidth(bwReqVal_); bwDet_.reset(); bwMark_ = now; }
-    if (!bwAuto_ || activeStd_ >= 2 || mtvActive_.load()) return;   // an ATSC channel is always 6 MHz, a DAB ensemble 1.536 MHz
+    if (!bwAuto_ || activeStd_ >= 2 || mtvActive_.load() || decodeShiftHz_.load() != 0) return;   // a shifted decode: the centre of the spectrum is not the channel   // an ATSC channel is always 6 MHz, a DAB ensemble 1.536 MHz
     const bool locked = activeStd_ == 0 ? t.state == 2 : tLocked;
     if (locked) { bwDet_.reset(); bwMark_ = now; bwVote_ = 0; return; }
     bwDet_.add(f.dbfs, rate_ / 1e6);
