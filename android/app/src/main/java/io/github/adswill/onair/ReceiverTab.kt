@@ -93,6 +93,8 @@ fun ReceiverTab(vm: ReceiverViewModel, pickFile: () -> Unit, modifier: Modifier 
                 Spacer(Modifier.height(4.dp))
                 Label(stringResource(R.string.file_hint))
             }
+            // USB, network list, sound card: usb/UsbDevicePicker.kt and the repository's RadioRepository (wired by the UI work, android-ui-030)
+            SourceKind.USB, SourceKind.NETWORK, SourceKind.SOUND_CARD -> {}
         }
 
         if (s.source != SourceKind.IQ_FILE) {

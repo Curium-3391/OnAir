@@ -22,6 +22,7 @@ import io.github.adswill.onair.R
 import io.github.adswill.onair.data.Phase
 import io.github.adswill.onair.data.ReceiverState
 import io.github.adswill.onair.diag.AppLog
+import io.github.adswill.onair.model.SourceKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +41,8 @@ import java.util.Locale
  *  - a notification shows mode, frequency and state, with a Stop action.
  * The receiver itself (engine thread, native library) belongs to the repository (process singleton); the service is its keep-alive.
  *
- * Foreground service type: mediaPlayback (the receiver plays audio). The USB agent adds connectedDevice for USB radios.
+ * Foreground service types: mediaPlayback (the receiver plays audio), plus connectedDevice for a USB radio and microphone for the
+ * sound-card input ([foregroundType]). A USB radio pulled out mid-session stops the session (RadioRepository), and with it the service.
  */
 class ReceiverService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -57,7 +59,7 @@ class ReceiverService : Service() {
             repo.stop()
         }
         ensureChannel(this)
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
+        val type = foregroundType(repo.settings.value.source, repo.radios.usbFor(repo.settings.value) != null, repo.radios.soundPermitted)
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, build(repo.state.value), type)
         } catch (e: Exception) {
@@ -124,6 +126,20 @@ class ReceiverService : Service() {
         const val CHANNEL_ID = "receiver"
         const val NOTIFICATION_ID = 1
         const val ACTION_STOP = "io.github.adswill.onair.STOP"
+
+        /**
+         * The foreground-service types of a session: mediaPlayback always (the decoded audio); connectedDevice while a USB radio is the
+         * source (Android 14 allows it only once the user granted the USB permission, which [usbGranted] says); microphone while the
+         * sound-card input records ([micGranted]: RECORD_AUDIO). Asking for a type without its prerequisite throws, so they are added
+         * only when they hold.
+         */
+        fun foregroundType(source: SourceKind, usbGranted: Boolean, micGranted: Boolean): Int {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+            var t = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            if (source == SourceKind.USB && usbGranted) t = t or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (source == SourceKind.SOUND_CARD && micGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) t = t or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            return t
+        }
 
         /** Called by the repository when a session starts (the app is in the foreground then). */
         fun start(ctx: Context) {

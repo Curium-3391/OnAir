@@ -141,10 +141,11 @@ Today every mode runs inside the desktop engine; the app selects it and shows it
      `model/` parsed in `Telemetry.parse`, an intent in the repository that posts the call (and stores its setting in `Settings` if it
      persists), the function in the view model, then the panel in `ResultsTab` (`when (t.standard)`).
    - Never call the new native function outside an engine block; never parse JSON outside `model/`.
-5. **Sources** (the USB agent): `SourceKind` + the bridge's `enum Source` + `makeDevice` in `jni_onair.cpp`. A USB radio needs the
-   `UsbManager` permission flow in Kotlin, the opened file descriptor handed to native code (libusb `libusb_wrap_sys_device`), the
-   real libusb in place of the stand-ins in `native/src/stubs_ext.c`, a `usb_device_filter.xml`, and the `connectedDevice`
-   foreground-service type next to `mediaPlayback` (manifest + `ReceiverService`).
+5. **Sources**: `SourceKind` + the bridge's `enum Source` + `makeDevice` in `jni_onair.cpp`. USB radios, network radios and the
+   sound card (kinds 4, 5, 6) are the radio-access layer, described in [USB.md](USB.md): `usb/` (UsbManager permission and hot-plug
+   flow, `UsbRadioController`, device filter, picker dialog, `RadioNative` JNI = `native/src/jni_radio.cpp`), `netradio/` (network
+   radio list, add-dialog model, opt-in mDNS), `audio/` (AudioRecord), all held by `data/RadioRepository` inside the repository.
+   `RadioNative` calls follow rule 1 (receiver thread), except `nativeAudioPush` from the recording thread.
 
 ## Not verified here
 

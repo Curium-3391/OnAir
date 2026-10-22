@@ -20,6 +20,7 @@
 #include "dect2/general/general_rx.h"
 #include "dect2/fm/fm_rx.h"
 #include "results_json.h"
+#include "jni_radio.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "OnAir", __VA_ARGS__)
 
@@ -29,7 +30,9 @@ using namespace dect2;
 
 namespace {
 
+// 4 USB radio, 5 network radio, 6 sound card: onair::RadioSource (jni_radio.h)
 enum Source { kSynth = 0, kFile = 1, kRtlTcp = 2, kSpyServer = 3 };
+bool isRadioSource(int k) { return k == onair::kSrcUsb || k == onair::kSrcNet || k == onair::kSrcSoundCard; }
 
 struct Bridge {
     Engine eng;
@@ -116,7 +119,9 @@ void applyModeTuning(Bridge& b, double wantRate) {
     default:
         if (const ModeTuning* mt = modeTuning(b.std)) {
             t.bandwidthMhz = mt->bandwidthMhz; t.sampleRate = mt->sampleRate; t.basebandFilterHz = mt->basebandHz;
-            if (b.sourceKind == kRtlTcp && mt->minSampleRate <= 2.56e6 && t.sampleRate > 2.56e6) t.sampleRate = 2.4e6;
+            const bool rtl = b.sourceKind == kRtlTcp || (b.sourceKind == onair::kSrcUsb && b.dev.board == "rtlsdr");
+            if (rtl && mt->minSampleRate <= 2.56e6 && t.sampleRate > 2.56e6) t.sampleRate = 2.4e6;
+            if (b.sourceKind == onair::kSrcSoundCard) t.sampleRate = 48000;   // the card's rate; the source interpolates for modes that want more
         }
         if (b.sub) applySubModeSynth(t.synth, *b.sub);
         break;
@@ -141,7 +146,15 @@ std::string deviceJson(const DeviceInfo& d) {
     return s + "]}";
 }
 
-DeviceInfo makeDevice(int kind, const std::string& host, int port) {
+DeviceInfo makeDevice(int kind, const std::string& host, int port, std::string* err = nullptr) {
+    if (isRadioSource(kind)) {   // USB (host = the descriptor's registry name), network (host = the radio's settings text), sound card
+        DeviceInfo d;
+        std::string e;
+        if (onair::radioDevice(kind, host, d, e)) return d;
+        if (err) *err = e;
+        d.kind = DeviceInfo::Synthetic; d.name = "";
+        return d;
+    }
     if (kind == kRtlTcp || kind == kSpyServer) {
         NetRadio r; r.type = kind == kRtlTcp ? NetRadio::RtlTcp : NetRadio::SpyServer; r.host = host; r.port = port;
         auto v = netRadioDevices({r});
@@ -162,9 +175,15 @@ void parseRadio(const std::string& s, std::map<std::string, std::string>& out) {
 void pushGain(Bridge& b) {
     const bool generic = b.dev.isGeneric();
     if (generic) b.tune.gainDb = std::max(0.0, std::min((double)b.gainMax, b.tune.gainDb));
+    if (b.dev.kind == DeviceInfo::HackRF) {   // one slider on the phone: the total split over LNA, VGA and the amplifier as the desktop does
+        const GainSetting g = gainForTotal((int)std::lround(std::max(0.0, std::min(116.0, b.tune.gainDb))));
+        b.tune.lnaDb = g.lna; b.tune.vgaDb = g.vga; b.tune.ampOn = g.amp;
+    }
 }
 
 } // namespace
+
+std::string onair::deviceJsonOf(const DeviceInfo& d) { return deviceJson(d); }
 
 #define FN(ret, name) extern "C" JNIEXPORT ret JNICALL Java_io_github_adswill_onair_OnAirNative_##name
 
@@ -219,7 +238,10 @@ FN(jstring, nativeStart)(JNIEnv* e, jobject, jint kind, jstring host, jint port,
     std::lock_guard<std::mutex> lk(b.mu);
     if (b.eng.running()) b.eng.stop();
     b.sourceKind = kind;
-    b.dev = makeDevice(kind, jstr(e, host), port);
+    std::string devErr;
+    b.dev = makeDevice(kind, jstr(e, host), port, &devErr);
+    if (!devErr.empty()) { b.lastError = devErr; return mk(e, devErr); }
+    if (b.dev.kind == DeviceInfo::HackRF && b.dev.gainMaxDb <= 0) { b.dev.gainMinDb = 0; b.dev.gainMaxDb = 116; }   // LNA 40 + VGA 62 + amp 14
     b.tune.centerHz = freqHz;
     b.tune.gainDb = gainDb;
     b.tune.biasTee = bias && b.dev.hasBiasTee;

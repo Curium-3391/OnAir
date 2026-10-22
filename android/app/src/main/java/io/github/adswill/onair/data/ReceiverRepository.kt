@@ -115,6 +115,15 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
 
     private var fileFd: ParcelFileDescriptor? = null
 
+    /** USB radios, network radios, the sound-card input (data/RadioRepository.kt, docs/USB.md). */
+    val radios = RadioRepository(
+        ctx, scope,
+        object : EngineExec { override suspend fun <T> call(name: String, block: () -> T): T = engine.call(name) { block() } },
+        settings, ::updateSettings,
+        onRadioLost = { msg -> stopBecause(msg) },
+        onRadiosChanged = { if (_settings.value.source == SourceKind.USB) refreshCaps() },
+    )
+
     init {
         scope.launch { for (u in persist) try { store.update { _settings.value } } catch (e: Exception) { AppLog.e("settings", "write failed", e) } }
         scope.launch { ops.withLock { initialise() } }
@@ -147,6 +156,7 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
         val saved = s.modeIndex
         val idx = if (saved in Modes.all.indices) saved else Modes.all.indexOfFirst { it.family == 5 }.coerceAtLeast(0)
         applyMode(idx)
+        radios.start()
         refreshCaps(s)
     }
 
@@ -179,7 +189,20 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
         if (_state.value.phase != Phase.STARTING) return          // stop was pressed before the start got its turn
         val s = _settings.value
         val st = _state.value
+        // the radio-access sources: which radio, and why not when there is none
+        val problem = when (s.source) {
+            SourceKind.USB -> radios.usbProblem(s)
+            SourceKind.NETWORK -> if (radios.networkFor(s) == null) "Add a network radio first (its address and port)." else ""
+            SourceKind.SOUND_CARD -> radios.startSoundCard()
+            else -> ""
+        }
+        if (problem.isNotEmpty()) {
+            AppLog.w("engine", "not started: $problem")
+            _state.update { it.copy(phase = Phase.IDLE, error = problem) }
+            return
+        }
         val (host, port) = endpoint(s)
+        radios.activeUsbKey = if (s.source == SourceKind.USB) host else ""
         val cfg = StartConfig(
             s.source, host, port, st.file?.path ?: "", s.fileFormat, s.fileRateHz, st.freqMhz * 1e6, s.rateHz, s.gainDb, s.agc, s.biasTee,
             s.radioFor(s.source),
@@ -198,6 +221,8 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
             val why = err.ifEmpty { try { engine.call("note") { it.note() } } catch (_: Throwable) { "" } }
             AppLog.w("engine", "start failed: $why")
             if (err.isNotEmpty()) CrashLog.recordNative(ctx, "start", err)
+            radios.activeUsbKey = ""
+            radios.stopSoundCard()
             _state.update { it.copy(phase = Phase.IDLE, error = why) }
         }
     }
@@ -205,7 +230,18 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
     private suspend fun doStop() {
         engine.polling = false
         try { engine.call("stop") { it.stop() } } catch (_: Throwable) {}
+        radios.activeUsbKey = ""
+        radios.stopSoundCard()
         AppLog.i("engine", "stopped")
+    }
+
+    /** The radio in use went away (USB unplugged): stop, and say why. Returns once the engine let go of it. */
+    private suspend fun stopBecause(message: String) {
+        ops.withLock {
+            if (_state.value.phase != Phase.IDLE) doStop()
+            _state.update { it.copy(phase = Phase.IDLE, error = message) }
+        }
+        AppLog.w("usb", message)
     }
 
     /** Stop, change, start again (when it ran): keeps the phase STARTING meanwhile, so the foreground service does not end. */
@@ -261,6 +297,8 @@ class ReceiverRepository(private val ctx: Context, private val store: SettingsSt
     private fun endpoint(s: Settings): Pair<String, Int> = when (s.source) {
         SourceKind.RTL_TCP -> s.rtlHost to s.rtlPort
         SourceKind.SPYSERVER -> s.spyHost to s.spyPort
+        SourceKind.USB -> (radios.usbFor(s)?.key ?: "") to 0          // the descriptor's registry name
+        SourceKind.NETWORK -> (radios.networkFor(s)?.spec ?: "") to 0 // the core's text form of the radio
         else -> "" to 0
     }
 

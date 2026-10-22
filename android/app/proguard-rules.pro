@@ -4,6 +4,7 @@
 # native method name and signature must survive shrinking and obfuscation, or System.loadLibrary works and the first call fails with
 # UnsatisfiedLinkError.
 -keep class io.github.adswill.onair.OnAirNative { *; }
+-keep class io.github.adswill.onair.usb.RadioNative { *; }   # native/src/jni_radio.cpp (USB, network radios, sound-card push)
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }

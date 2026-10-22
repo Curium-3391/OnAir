@@ -10,6 +10,7 @@
 #include "dect2/source/source.h"
 #include "dect2/common/platform.h"
 #include "native_common.h"   // the plain-words USB error texts
+#include "dect2/source/usb_fd.h"   // Android: radios handed over as descriptors
 #include <libusb.h>
 #include <algorithm>
 #include <atomic>
@@ -21,6 +22,12 @@
 #include <thread>
 #include <vector>
 #include "dect2/common/endian.h"
+
+// Android (usb_fd.h): libusb is built without bus scanning (LIBUSB_OPTION_NO_DEVICE_DISCOVERY, libusb 1.0.24 and later) and every radio is the
+// descriptor the app opened, wrapped with libusb_wrap_sys_device (1.0.23 and later). Older libusb headers: the descriptor path is left out.
+#if defined(LIBUSB_API_VERSION) && LIBUSB_API_VERSION >= 0x01000108
+#define DECT2_HACKRF_FD 1
+#endif
 
 namespace dect2 {
 
@@ -108,6 +115,10 @@ int gCtxRefs = 0;
 libusb_context* acquireContext(std::string& err) {
     std::lock_guard<std::mutex> lk(gCtxMu);
     if (gCtxRefs == 0) {
+#ifdef DECT2_HACKRF_FD
+        // no scan of /dev/bus/usb (not readable without root on Android): the options of the NULL context apply to contexts made after it
+        if (usbFdPlatform()) libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+#endif
         const int r = libusb_init(&gCtx);
         if (r != 0) { err = std::string("libusb_init: ") + libusb_error_name(r); gCtx = nullptr; return nullptr; }
     }
@@ -151,6 +162,14 @@ struct Handle {
         claimed = true;
         return true;
     }
+    // a handle libusb_wrap_sys_device made from the app's descriptor (Android): no kernel driver to detach, only the interface to claim
+    bool adopt(libusb_device_handle* wrapped, std::string& err) {
+        h = wrapped;
+        const int r = libusb_claim_interface(h, 0);
+        if (r != 0) { err = usbFdErrorText(r); libusb_close(h); h = nullptr; return false; }
+        claimed = true;
+        return true;
+    }
     void close() {
         if (!h) return;
         if (claimed) libusb_release_interface(h, 0);
@@ -177,6 +196,23 @@ std::string serialOf(libusb_device_handle* h, const libusb_device_descriptor& d)
 }
 
 void le32(uint8_t* p, uint32_t v) { dect2::endian::storeLe32(p, v); }
+
+// Android: the HackRF the app handed over (usb_fd.h), its descriptor wrapped into a libusb handle. libusb_close() on that handle leaves
+// the descriptor open (the app's UsbDeviceConnection owns it).
+bool openHackrfFromFd(libusb_context* ctx, const std::string& serial, Handle& dev, std::string& err) {
+#ifdef DECT2_HACKRF_FD
+    libusb_device_handle* h = nullptr;
+    const int rc = usbFdOpen("hackrf", serial, [&](int fd) { return libusb_wrap_sys_device(ctx, (intptr_t)fd, &h); }, nullptr, err);
+    if (rc == LIBUSB_ERROR_NOT_SUPPORTED) { err = "HackRF: this build of OnAir has no USB library for the HackRF (android/docs/USB.md: LIBUSB_SRC)"; return false; }
+    if (rc != 0 || !h) { err = "HackRF: " + (err.empty() ? usbFdErrorText(rc) : err); return false; }
+    if (!dev.adopt(h, err)) { err = "HackRF: " + err; return false; }
+    return true;
+#else
+    (void)ctx; (void)serial; (void)dev;
+    err = "HackRF: this build's USB library is too old to open a radio the system handed over (libusb 1.0.24 or later is needed)";
+    return false;
+#endif
+}
 
 class UsbHackrf : public IqSource {
 public:
@@ -228,6 +264,7 @@ private:
         return dev_.in(kBoardIdRead, 0, 0, &id, 1) == 1 ? id : -1;
     }
     bool openDevice(std::string& err) {
+        if (usbFdPlatform()) return openHackrfFromFd(ctx_, serial_, dev_, err);
         libusb_device** list = nullptr;
         const ssize_t n = libusb_get_device_list(ctx_, &list);
         if (n < 0) { err = std::string("device list: ") + libusb_error_name((int)n); return false; }
@@ -428,6 +465,7 @@ public:
 
 private:
     bool openDevice(std::string& err) {
+        if (usbFdPlatform()) return openHackrfFromFd(ctx_, serial_, dev_, err);
         libusb_device** list = nullptr;
         const ssize_t n = libusb_get_device_list(ctx_, &list);
         if (n < 0) { err = std::string("device list: ") + libusb_error_name((int)n); return false; }
@@ -524,6 +562,7 @@ std::unique_ptr<IqSource> makeUsbHackrfSource(const std::string& serial) { retur
 
 // Is a USB device of this vendor plugged in (a radio whose own driver is missing is still on the bus)?
 bool usbVendorPresent(uint16_t vid) {
+    if (usbFdPlatform()) { for (const auto& r : usbFdList()) if (r.vid == vid) return true; return false; }
     std::string err;
     libusb_context* ctx = acquireContext(err);
     if (!ctx) return false;
@@ -538,10 +577,45 @@ bool usbVendorPresent(uint16_t vid) {
     return found;
 }
 
+// Android: the entry of one HackRF the app handed over (h: wrapped for a moment to ask its board; null: named by `why`)
+static DeviceInfo hackrfFdEntry(libusb_device_handle* h, const std::string& serial, const std::string& why) {
+    DeviceInfo info;
+    info.kind = DeviceInfo::HackRF;
+    info.board = "HackRF";
+    info.serial = serial;
+    if (h) {
+        uint8_t id = 0xff;
+        if (libusb_control_transfer(h, kIn, kBoardIdRead, 0, 0, &id, 1, kControlTimeoutMs) == 1) {
+            info.board = boardName(id); info.hasBiasTee = boardHasBiasTee(id);
+            hackrfBoardRange(id, info.minFreqHz, info.maxFreqHz);
+        }
+    } else if (!why.empty()) info.board = "HackRF (" + why + ")";
+    const std::string tail = info.serial.size() > 8 ? info.serial.substr(info.serial.size() - 8) : info.serial;
+    info.name = info.board + (tail.empty() ? std::string() : " (" + tail + ")");
+    info.settings = {ppmSetting(0.1)};
+    info.minRateHz = 2e6; info.maxRateHz = 20e6;
+    return info;
+}
+
 std::vector<DeviceInfo> listUsbHackrfDevices(std::string& err) {
     std::vector<DeviceInfo> out;
     libusb_context* ctx = acquireContext(err);
     if (!ctx) return out;
+    if (usbFdPlatform()) {
+#ifdef DECT2_HACKRF_FD
+        for (const UsbFdRadio& r : usbFdList("hackrf")) {
+            libusb_device_handle* h = nullptr;
+            const int rc = libusb_wrap_sys_device(ctx, (intptr_t)r.fd, &h);
+            if (rc != 0) { h = nullptr; if (err.empty()) err = "HackRF: " + usbFdErrorText(rc); }
+            out.push_back(hackrfFdEntry(h, r.serial, rc != 0 ? std::string(libusb_error_name(rc)) : std::string()));
+            if (h) libusb_close(h);   // the descriptor stays open (the app's)
+        }
+#else
+        for (const UsbFdRadio& r : usbFdList("hackrf")) out.push_back(hackrfFdEntry(nullptr, r.serial, "libusb too old"));
+#endif
+        releaseContext();
+        return out;
+    }
     libusb_device** list = nullptr;
     const ssize_t n = libusb_get_device_list(ctx, &list);
     for (ssize_t i = 0; i < n; i++) {
