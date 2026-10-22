@@ -13,6 +13,27 @@ If OnAir hangs at start-up because of a saved network radio:
 
 Looking up a SoapyRemote radio runs in the background (it gives up after a few seconds); press the rescan button to see its radios once the answer is in.
 
+## SoapyRemote (a radio on another computer)
+
+1. On the computer with the radio: install SoapySDR, the radio's SoapySDR module and SoapyRemote, then run
+   `SoapySDRServer --bind="0.0.0.0:55132"`. Check it there first: `SoapySDRUtil --find` must list the radio.
+2. Open TCP port 55132 in that computer's firewall (and UDP, see 4).
+3. In OnAir: **Add network radio**, type **SoapyRemote**, the server's address and port 55132. Leave **Remote driver** empty to list what the
+   server offers, or name one (`sdrplay`, `miri`, `rtlsdr`, ... or `driver=sdrplay,serial=...`). A server that also has SoapyAudio lists the sound
+   card first: pick the radio, not "audio".
+4. The samples travel over UDP by default. On a LAN that is the fastest; through the internet, a VPN or a NAT router UDP often does not get
+   through: add `prot=tcp` to the Remote driver field (`driver=sdrplay,prot=tcp`; OnAir passes it as SoapyRemote's `remote:prot`).
+5. Test from the OnAir computer with `SoapySDRUtil --probe="driver=remote,remote=tcp://SERVER:55132"`. If that fails too, the problem is between
+   the two computers (firewall, versions), not in OnAir. Client and server should run the same SoapyRemote version.
+
+## Network discovery is off by default
+
+When OnAir builds the radio list it looks only for radios on USB (and PCIe), plus the network radios you added by address. It does not search
+the network by itself: SoapyRemote's server search, SoapyPlutoSDR's mDNS / `pluto.local` lookup, UHD's broadcast for network USRPs, librfnm's
+network search and the other SoapySDR modules that look on the LAN are not run (issue #215: a Pluto on somebody's network must not be contacted
+just because OnAir started). To have them back, open the Radio list and tick **Search the network for radios**. Adding a radio by address
+never needs it.
+
 ## TCI (network), receive only
 
 TCI is the Transceiver Control Interface of Expert Electronics' ExpertSDR3 (SunSDR radios); other programs offer a TCI server too. Add it in
