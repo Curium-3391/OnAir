@@ -245,8 +245,19 @@ add_executable(kris_samples tools/kris_samples.cpp)   # sample IQ files of the K
 target_link_libraries(kris_samples PRIVATE dect2core)
 target_link_libraries(onair-plugin-host PRIVATE dect2_plugin)
 # onair-server: OnAir with no window (a Raspberry Pi, a Linux box, a Windows PC without a screen), controlled from a browser; docs/headless-server.md
+# OnAir Web: many listeners, each with an own receiver inside the host's capture (server/web, docs/ONAIR-WEB.md). Every web source is built with
+# ONAIR_WEB_SESSION, which makes the transmit headers (dect2/tx/*.h, TxSink in source.h) a compile error there: web listeners can never transmit.
+set(ONAIR_WEB_SOURCES server/web/web_json.cpp server/web/web_proto.cpp server/web/web_dsp.cpp server/web/web_policy.cpp server/web/web_hub.cpp
+    server/web/web_server.cpp server/web/web_config.cpp)
+add_library(onair_web STATIC ${ONAIR_WEB_SOURCES})
+set_source_files_properties(${ONAIR_WEB_SOURCES} PROPERTIES COMPILE_DEFINITIONS ONAIR_WEB_SESSION=1)
+target_include_directories(onair_web PUBLIC server)
+target_link_libraries(onair_web PUBLIC dect2core)
 add_executable(onair-server server/main.cpp server/server_config.cpp server/server_host.cpp)
-target_link_libraries(onair-server PRIVATE dect2core)
+target_link_libraries(onair-server PRIVATE onair_web dect2core)
+# onair-web-load: many fake listeners on synthetic IQ, CPU per listener (the figures in docs/ONAIR-WEB.md)
+add_executable(onair-web-load tools/onair_web_load.cpp server/server_config.cpp)
+target_link_libraries(onair-web-load PRIVATE onair_web)
 target_compile_definitions(onair-server PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")
 # the example plugins (built as shared libraries into <build>/plugins/<id>/)
 option(DECT2_BUILD_PLUGIN_EXAMPLES "Build the example plugins of sdk/examples" ON)
@@ -1090,9 +1101,22 @@ if(DECT2_BUILD_TESTS)
   endif()
   add_test(NAME remote_api COMMAND test_remote_api)
   add_executable(test_server_host tests/server/test_server_host.cpp server/server_config.cpp server/server_host.cpp)
-  target_link_libraries(test_server_host PRIVATE dect2core)
+  target_link_libraries(test_server_host PRIVATE onair_web dect2core)
   target_compile_definitions(test_server_host PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")
   add_test(NAME server_host COMMAND test_server_host)
+  foreach(t web_proto web_dsp web_hub web_server web_safety)
+    add_executable(test_${t} tests/server/test_${t}.cpp server/server_config.cpp)
+    target_link_libraries(test_${t} PRIVATE onair_web)
+    add_test(NAME ${t} COMMAND test_${t})
+  endforeach()
+  target_compile_definitions(test_web_safety PRIVATE ONAIR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  if(NOT MSVC)   # the transmit path must be a compile error in web code: this compile has to FAIL
+    add_test(NAME web_tx_guard COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fsyntax-only -DONAIR_WEB_SESSION=1 -I${CMAKE_SOURCE_DIR}/core/include
+             ${CMAKE_SOURCE_DIR}/tests/server/web_tx_guard.cpp)
+    set_tests_properties(web_tx_guard PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME web_tx_guard_control COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fsyntax-only -I${CMAKE_SOURCE_DIR}/core/include
+             ${CMAKE_SOURCE_DIR}/tests/server/web_tx_guard.cpp)   # the same file compiles outside web code, so the failure above is the guard
+  endif()
 
   add_executable(test_wide_bank_audio tests/engine/test_wide_bank_audio.cpp)
   target_link_libraries(test_wide_bank_audio PRIVATE dect2core)

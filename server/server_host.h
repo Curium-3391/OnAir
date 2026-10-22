@@ -8,11 +8,14 @@
 #include "dect2/source/gain.h"
 #include "server_config.h"
 #include <atomic>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace onair_web { class WebHub; }
 
 namespace onair_server {
 
@@ -56,6 +59,11 @@ public:
 
     // Resolves a mode id or number text ("fm", "dvbs", "ft8", "7") to a mode entry; nullptr when it is none.
     const ModeEntry* findMode(const std::string& idOrNumber) const;
+
+    // OnAir Web (server/web): the radio's raw samples go to the hub (nullptr: none); can be set and removed at any time
+    void setWebHub(onair_web::WebHub* hub);
+    std::string modeId() const;                                     // the chosen mode's id ("fm", "dmr", ...)
+    void editConfig(const std::function<void(ConfigFile&)>& f);     // changes the settings file (under the lock); supervise() writes it
 
 private:
     ConfigFile& cfg_;

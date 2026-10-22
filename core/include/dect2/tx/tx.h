@@ -28,6 +28,9 @@
 //
 // No frequency and no power limit is applied here: see TxTune in source.h.
 #pragma once
+#ifdef ONAIR_WEB_SESSION
+#error "OnAir Web code (server/web) must never reach the transmit path: web listeners can never transmit (docs/ONAIR-WEB.md)"
+#endif
 #include "dect2/engine/mode_synth.h"
 #include "dect2/source/source.h"
 #include "dect2/audio/audioin.h"

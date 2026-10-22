@@ -80,9 +80,13 @@ Plain `key=value` lines, `#` for comments. Default place: `~/.config/onair/serve
 
 The desktop app has no "remote server" screen of its own yet.
 
+## Many listeners: OnAir Web
+
+`--web` (or `web=1`) adds a second port (8073) where many people at once each get their own virtual receiver inside the radio's capture: own frequency, mode, audio and waterfall, with passwords or invites, per-listener limits and an admin API. Web listeners can never transmit or control the radio itself. See docs/ONAIR-WEB.md and the protocol in docs/ONAIR-WEB-PROTOCOL.md.
+
 ## Limits
 
-* One receiver, one radio at a time (the server runs the main receiver only: no second mode, no multi-radio).
+* One receiver, one radio at a time (the server runs the main receiver only: no second mode, no multi-radio). OnAir Web listeners tune inside that receiver's capture.
 * The browser page covers tuning, spectrum, audio and the common telemetry. The big per-mode tables and screens (service lists, maps, decoded text) are in the desktop app; the telemetry JSON carries the main figures of each mode.
 * Voice modes that need a user-installed codec (mbelib, AMBE) are not played by the server; encrypted traffic is never decoded.
 * Sound card audio of the server machine is silent on purpose: the sound goes to the browser.
