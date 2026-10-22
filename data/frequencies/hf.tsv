@@ -210,3 +210,19 @@
 14.3|Emergency centre of activity 14.3 MHz|3|SSB (LSB below 10 MHz, USB above)|general|GLOBAL|
 18.16|Emergency centre of activity 18.16 MHz|3|SSB (LSB below 10 MHz, USB above)|general|GLOBAL|
 21.36|Emergency centre of activity 21.36 MHz|3|SSB (LSB below 10 MHz, USB above)|general|GLOBAL|
+# ROS (proprietary weak-signal chat mode by EA5HVK): OnAir identifies it (Signal Identifier) but cannot decode it, see docs/ROS.md. The list is
+# the frequency menu of ROS v7.4.0 as the Signal Identification Wiki gives it; whether these are USB dial or centre frequencies is not stated.
+@source Signal Identification Wiki "ROS" (ROS v7.4.0 HF/VHF frequencies); radioscanner.ru signal 236 (about 2.25 kHz wide)
+1.840|ROS 1.840 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+3.558|ROS 3.558 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+5.367|ROS 5.367 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+7.046|ROS 7.046 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+10.130|ROS 10.130 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+14.103|ROS 14.103 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+18.108|ROS 18.108 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+21.122|ROS 21.122 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+24.192|ROS 24.192 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+27.635|ROS 27.635 MHz (CB)|2.25|USB; ROS on CB, the frequency of the ROS multi-access example; identified only (not decoded)|general|GLOBAL|cb
+28.140|ROS 28.140 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+50.245|ROS 50.245 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|
+144.980|ROS 144.980 MHz|2.25|USB; ROS, identified only (not decoded)|general|GLOBAL|

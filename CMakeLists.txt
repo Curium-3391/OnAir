@@ -174,6 +174,7 @@ target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
+target_sources(dect2core PRIVATE core/src/ros/ros_detect.cpp)   # ROS identifier (proprietary mode, identification only; docs/ROS.md), used by the signal identifier
 # TLS for the remote-control API (headless server): OpenSSL, off by default so the packages need no extra library (docs/headless-server.md)
 option(DECT2_WITH_TLS "Serve the remote-control API over HTTPS / wss (links OpenSSL)" OFF)
 target_sources(dect2core PRIVATE core/src/net/tls_conn.cpp core/src/net/remote_json.cpp)
@@ -1563,6 +1564,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_u8file tests/common/test_u8file.cpp)
   target_link_libraries(test_u8file PRIVATE dect2core)
   add_test(NAME u8file COMMAND test_u8file)
+  add_executable(test_ros_detect tests/ros/test_ros_detect.cpp)   # ROS identifier: reported-grid test signals, sub-modes, negatives, the signal identifier row
+  target_link_libraries(test_ros_detect PRIVATE dect2core)
+  add_test(NAME ros_detect COMMAND test_ros_detect)
 
   # tests/<mode>/test_<mode>_*.cpp: one test program each; tools/<mode>tool.cpp: the mode's generator / receiver tool
   foreach(m ${DECT2_MODES})
