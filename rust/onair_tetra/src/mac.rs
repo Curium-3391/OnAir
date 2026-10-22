@@ -102,9 +102,11 @@ fn parse_nwrk(r: &mut Reader, out: &mut Out) {
 /// The call set-up PDUs of the CMCE (ETSI EN 300 392-2 clause 14.7), after the MLE protocol discriminator: only the call identifier and the end-to-end
 /// encryption flag of the basic service information are kept (D-SETUP type 00111, D-CONNECT 00010, D-DISCONNECT 00100, D-RELEASE 00110; D-TX-CEASED 01001,
 /// D-TX-CONTINUE 01010 and D-TX-GRANTED 01011 give only the call id: the call is still going on). Nothing else
-/// of the call (parties, priority, content) is read. `slots` and `carrier` come from the channel allocation of the MAC-RESOURCE that carried the PDU.
-fn parse_cmce(r: &mut Reader, slots: i32, carrier: i32, out: &mut Out) {
+/// of the call (priority, content) is read; the group (GSSI) or called (ISSI) address of the MAC header and the calling ISSI of a D-SETUP are kept only when the
+/// call's own encryption flag is clear (-1 otherwise). `slots` and `carrier` come from the channel allocation of the MAC-RESOURCE that carried the PDU.
+fn parse_cmce(r: &mut Reader, slots: i32, carrier: i32, addr: i32, out: &mut Out) {
     let ty = r.get(5);
+    let (mut gssi, mut issi) = (-1i32, -1i32);
     let (kind, id, enc) = match ty {
         7 => {
             // D-SETUP: call id 14, call time-out 4, hook method 1, simplex/duplex 1, basic service information 8 (circuit mode type 3, encryption flag 1, ...)
@@ -114,8 +116,42 @@ fn parse_cmce(r: &mut Reader, slots: i32, carrier: i32, out: &mut Out) {
             r.get(1);
             r.get(3);
             let e = r.bit();
+            let comm = r.get(2); // communication type: 0 point to point, 1 point to multipoint, 2 acknowledged, 3 broadcast
+            r.get(2);
             if !r.ok {
                 return;
+            }
+            // Transmission grant 2, transmission request permission 1, call priority 4, then the O-bit and the type 2 elements: notification indicator (6),
+            // temporary address (24), calling party address type identifier (2: 1 SSI, 2 TSI) with the SSI (24) and for a TSI the extension (24).
+            r.get(2);
+            r.get(1);
+            r.get(4);
+            // Party IDs only of a call whose end-to-end encryption flag is clear: an encrypted call keeps none (state only).
+            if !e && addr >= 0 && r.ok {
+                if comm != 0 {
+                    gssi = addr; // a group call: the MAC address is the group (an individual call's is the called party, not kept)
+                }
+                let mut calling = -1i32;
+                if r.bit() {
+                    if r.bit() {
+                        r.get(6);
+                    }
+                    if r.bit() {
+                        r.get(24);
+                    }
+                    if r.bit() {
+                        let t = r.get(2);
+                        if t == 1 || t == 2 {
+                            let ssi = r.get(24);
+                            if r.ok {
+                                calling = ssi as i32;
+                            }
+                        }
+                    }
+                }
+                if calling >= 0 {
+                    issi = calling;
+                }
             }
             (1, id, e as i32)
         }
@@ -166,13 +202,13 @@ fn parse_cmce(r: &mut Reader, slots: i32, carrier: i32, out: &mut Out) {
     };
     let k = out.blk.n_call as usize;
     if k < MAX_CALLS {
-        out.blk.call[k] = CallInfo { kind, call_id: id as i32, enc, slots, carrier };
+        out.blk.call[k] = CallInfo { kind, call_id: id as i32, enc, slots, carrier, gssi, issi };
         out.blk.n_call += 1;
     }
 }
 
 /// TL-SDU: the LLC header, then the MLE; only the mobility link entity's (protocol discriminator 5) broadcast and the CMCE call set-up facts are read.
-fn parse_tl_sdu(b: &[u8], from: usize, to: usize, slots: i32, carrier: i32, out: &mut Out) {
+fn parse_tl_sdu(b: &[u8], from: usize, to: usize, slots: i32, carrier: i32, addr: i32, out: &mut Out) {
     let mut r = Reader::new(b, from, to);
     let llc = r.get(4);
     match llc {
@@ -200,7 +236,7 @@ fn parse_tl_sdu(b: &[u8], from: usize, to: usize, slots: i32, carrier: i32, out:
     }
     out.blk.by_pd[pd & 7] += 1;
     if pd == 2 {
-        parse_cmce(&mut r, slots, carrier, out);
+        parse_cmce(&mut r, slots, carrier, addr, out);
         return;
     }
     if pd != 5 {
@@ -288,7 +324,11 @@ pub fn parse_block(b: &[u8], out: &mut Out) {
             len = n - pos;
         }
         out.blk.resources += 1;
-        r.get(ADDR_LEN[at & 7]); // the address is skipped, never kept
+        // The MAC address is read only for an SSI (types 1 and 5, first 24 bits); parse_cmce keeps it only for a call that is not encrypted.
+        let addr = if at == 1 || at == 5 { r.get(24) as i32 } else { r.get(ADDR_LEN[at & 7]); -1 };
+        if at == 5 {
+            r.get(10);
+        }
         if r.bit() {
             r.get(4); // power control
         }
@@ -330,7 +370,7 @@ pub fn parse_block(b: &[u8], out: &mut Out) {
                     }
                 }
                 if end > r.p {
-                    parse_tl_sdu(b, r.p, end, slots, carrier, out);
+                    parse_tl_sdu(b, r.p, end, slots, carrier, addr, out);
                 }
             }
         }
