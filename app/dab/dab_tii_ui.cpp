@@ -5,12 +5,15 @@
 //   eid,main,sub,lat,lon,site,power_kw,channel_mhz[,reports,first_seen,last_seen]      (eid in hex; a line starting with # is a comment)
 // TII codes are unique within an ensemble, not worldwide: a transmitter is found by (ensemble id, MainId, SubId). A transmitter that is heard but
 // not in the list can be submitted from here: the app fills in the ids, the user adds where it stands (the issue form of the repository).
+// Another list (an export of heard transmitters with the positions filled in, a regional list) can be imported into the own file; the
+// format is in docs/dab-transmitters.md, the parsing in dab_txlist.h. Without a list, the ensemble's own FIG 0/22 positions are used.
 #include "dect2/common/thread_name.h"
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/channels/channel_db.h"
 #include "dect2/engine/updater.h"
 #include "dect2/dab/dab_fig.h"
+#include "dab_txlist.h"
 #include <algorithm>
 #include <atomic>
 #include <ctime>
@@ -46,11 +49,11 @@ struct State {
     double airAt = -10, heardAt = -10;
     // every transmitter heard since the program started, over all channels (a band scan fills it): key as in sites
     std::map<uint64_t, Heard> heard;
-    std::string exportMsg;
+    std::string exportMsg, importMsg;
 };
 State S;
 
-uint64_t key(int eid, int mainId, int subId) { return ((uint64_t)(eid & 0xFFFF) << 16) | ((uint64_t)(mainId & 0xFF) << 8) | (uint64_t)(subId & 0xFF); }
+uint64_t key(int eid, int mainId, int subId) { return dabtx::key(eid, mainId, subId); }
 std::filesystem::path u8(const std::string& p) { return std::filesystem::path(reinterpret_cast<const char8_t*>(p.c_str())); }
 
 std::string repoUrl() {   // the raw files of the channel list (DECT2_CHANNELDB_URL for tests, as the Scan tab's shared data)
@@ -61,47 +64,57 @@ std::string repoUrl() {   // the raw files of the channel list (DECT2_CHANNELDB_
 }
 std::string sharedFile(const std::string& cc) { return plat::cacheDir() + "/dab-tii-" + cc + ".csv"; }
 
-std::vector<std::string> splitCsv(const std::string& line) {   // commas (or tabs: a TSV works too); a field in double quotes may hold commas
-    std::vector<std::string> f;
-    const char sep = line.find('\t') != std::string::npos ? '\t' : ',';
-    std::string cur;
-    bool q = false;
-    for (char c : line) {
-        if (c == '"') q = !q;
-        else if (c == sep && !q) { f.push_back(cur); cur.clear(); }
-        else cur += c;
-    }
-    f.push_back(cur);
-    for (auto& s : f) { while (!s.empty() && (s.back() == ' ' || s.back() == '\r')) s.pop_back(); while (!s.empty() && s.front() == ' ') s.erase(0, 1); }
-    return f;
-}
+void load();
 
-// reads one list into S.sites; returns the transmitters read (bad lines counted in `bad`)
+// reads one list into S.sites; returns the transmitters read (lines not understood counted in `bad`), -1 when there is no such file
 int readList(const std::string& path, bool own, int& bad) {
     std::ifstream in(u8(path));
     if (!in) return -1;
     std::string line;
     int n = 0;
     while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        const auto f = splitCsv(line);
-        if (!f.empty() && f[0] == "eid") continue;
-        if (f.size() < 5) { bad++; continue; }
-        if (f[3].empty() && f[4].empty()) continue;   // a line without a position (a submission form row): nothing to place
-        char* e = nullptr;
-        const long eid = std::strtol(f[0].c_str(), &e, 16);
-        const int m = std::atoi(f[1].c_str()), sb = std::atoi(f[2].c_str());
-        TxSite s;
-        s.lat = std::atof(f[3].c_str()); s.lon = std::atof(f[4].c_str());
-        if (f.size() > 5) s.name = f[5];
-        if (f.size() > 6) s.powerKw = std::atof(f[6].c_str());
-        if (f.size() > 7) s.channelMhz = std::atof(f[7].c_str());
-        s.own = own;
-        if (e == f[0].c_str() || m < 0 || m > 69 || sb < 0 || sb > 23 || std::fabs(s.lat) > 90 || std::fabs(s.lon) > 180) { bad++; continue; }
-        S.sites[key((int)eid, m, sb)] = s;   // the own file is read last: it wins
+        dabtx::Row r;
+        const dabtx::Line t = dabtx::parse(line, r);
+        if (t == dabtx::Line::Bad) { bad++; continue; }
+        if (t != dabtx::Line::Ok) continue;   // a comment, the header, a row without a position (an export or a submission still to fill in)
+        TxSite st;
+        st.lat = r.lat; st.lon = r.lon; st.name = r.site; st.powerKw = r.powerKw; st.channelMhz = r.channelMhz; st.own = own;
+        S.sites[key(r.eid, r.mainId, r.subId)] = st;   // the own file is read last: it wins
         n++;
     }
     return n;
+}
+
+// another list into the own file (a friend's export with the positions filled in, a regional list someone keeps): see dabtx::merge
+void importList(const std::string& path) {
+    auto slurp = [](const std::string& p, std::string& out) {
+        std::ifstream in(u8(p), std::ios::binary);
+        if (!in) return false;
+        std::ostringstream ss; ss << in.rdbuf(); out = ss.str(); return true;
+    };
+    std::string imp, own;
+    if (!slurp(path, imp)) { S.importMsg = "could not read " + path; return; }
+    slurp(S.ownFile, own);   // none yet: a new file
+    dabtx::MergeStats st;
+    const std::string merged = dabtx::merge(own, imp, st);
+    if (st.added + st.replaced == 0) {
+        S.importMsg = "nothing to import from " + path + ": no line with ids and a position" +
+                      (st.noPosition ? " (" + std::to_string(st.noPosition) + " without latitude/longitude)" : std::string()) +
+                      (st.bad ? ", " + std::to_string(st.bad) + " line(s) not understood" : std::string());
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(u8(S.ownFile).parent_path(), ec);
+    const std::string tmp = S.ownFile + ".part";
+    { std::ofstream o(u8(tmp), std::ios::binary); o << merged; if (!o) { S.importMsg = "could not write " + S.ownFile; return; } }
+    std::filesystem::rename(u8(tmp), u8(S.ownFile), ec);
+    if (ec) { S.importMsg = "could not write " + S.ownFile + ": " + ec.message(); return; }
+    char b[200];
+    snprintf(b, sizeof b, "imported %d new and %d updated transmitter(s) into your own list", st.added, st.replaced);
+    S.importMsg = b;
+    if (st.noPosition) S.importMsg += ", " + std::to_string(st.noPosition) + " skipped without a position";
+    if (st.bad) S.importMsg += ", " + std::to_string(st.bad) + " line(s) not understood";
+    load(); S.fitted = false;
 }
 
 void load() {
@@ -251,10 +264,7 @@ void dabTransmittersTab(App& a) {
     std::sort(rows.begin(), rows.end(), [](const Row& x, const Row& y) { return x.h->mhz != y.h->mhz ? x.h->mhz < y.h->mhz : x.h->levelDb > y.h->levelDb; });
     int located = 0;
     for (const auto& r : rows) if (r.site) located++;
-    auto tuneTo = [&](const Heard& h) {
-        a.freqMhz = h.mhz; a.tune.centerHz = h.mhz * 1e6;
-        if (a.engine.running()) { a.engine.retuneReset(a.tune); a.peak.clear(); }
-    };
+    auto tuneTo = [&](const Heard& h) { dabTuneMhz(a, h.mhz); };
 
     // the full-screen view: the map takes the whole height, the table and the controls stand beside it; otherwise the map is above them
     const bool full = adsbmap::fullActive();
@@ -393,9 +403,16 @@ void dabTransmittersTab(App& a) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Save every transmitter heard (all channels) as a CSV file in OnAir's data folder, to share or to add to the list");
     flowNext(6 * gUi);
+    if (ImGui::SmallButton("import list...")) { const std::string p = plat::openFileDialog(); if (!p.empty()) importList(p); }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add the transmitters of a CSV file to your own list (%s):\n"
+                                                  "an export of heard transmitters with the positions filled in, or a list someone shares.\n"
+                                                  "Columns eid,main,sub,lat,lon,site,power_kw,channel_mhz (eid in hex); rows without a position are skipped,\n"
+                                                  "a transmitter already in your list is updated.", S.ownFile.c_str());
+    flowNext(6 * gUi);
     if (ImGui::SmallButton("clear heard")) S.heard.clear();
     flowEnd();
     if (!S.exportMsg.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", S.exportMsg.c_str()); ImGui::PopTextWrapPos(); }
+    if (!S.importMsg.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", S.importMsg.c_str()); ImGui::PopTextWrapPos(); }
     if (!S.haveRef) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Distances and bearings: set the antenna position in the ADS-B tuner."); ImGui::PopTextWrapPos(); }
     if (full) ImGui::EndChild();
 }
