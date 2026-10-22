@@ -125,6 +125,7 @@ void Engine::stop() {
     }
     rxA3_.stop();
     running_ = false;
+    nap_.reset();
     releaseDevice(receiverId_);
 }
 

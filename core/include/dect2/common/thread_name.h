@@ -21,6 +21,9 @@
 #else
 #include <pthread.h>
 #endif
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#endif
 
 namespace dect2 {
 
@@ -73,12 +76,35 @@ inline std::string currentThreadName() {
 #endif
 }
 
+// Scheduling class by thread name, for battery life (docs/PERFORMANCE-POWER.md): bookkeeping threads run as Background, DSP workers as Utility,
+// everything else (the UI, audio callbacks, unknown names) is left alone. macOS: pthread QoS class; Windows: below-normal priority for Background.
+enum class ThreadQos { Normal, Utility, Background };
+inline ThreadQos threadQosForName(const std::string& n) {
+    auto has = [&](const char* k) { return n.find(k) != std::string::npos; };
+    if (has("log") || has("scan") || has("msgdb") || has("hist") || has("update") || has("feed") || has("wspr") || has("psk") || has("discord") ||
+        has("upload") || has("tile") || has("sweep") || has("survey"))
+        return ThreadQos::Background;
+    if (has("-rx") || has("-dec") || has("-dsp") || has("demod") || has("-fft") || has("-spec") || has("-pool") || has("-work")) return ThreadQos::Utility;
+    return ThreadQos::Normal;
+}
+inline void setThreadQos(ThreadQos q) {
+#if defined(__APPLE__)
+    if (q == ThreadQos::Utility) pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    else if (q == ThreadQos::Background) pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
+#elif defined(_WIN32)
+    if (q == ThreadQos::Background) SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#else
+    (void)q;
+#endif
+}
+
 // std::thread that names itself first. Arguments are copied like std::thread does.
 template <class F, class... A>
 std::thread namedThread(const char* name, F&& fn, A&&... args) {
     return std::thread([n = std::string(name ? name : ""), f = std::decay_t<F>(std::forward<F>(fn)),
                         tup = std::make_tuple(std::decay_t<A>(std::forward<A>(args))...)]() mutable {
         setThreadName(n.c_str());
+        setThreadQos(threadQosForName(n));
         std::apply(std::move(f), std::move(tup));
     });
 }

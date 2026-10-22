@@ -97,15 +97,17 @@ struct ShareServer::Impl {
             FD_ZERO(&rd); FD_ZERO(&wr);
             FD_SET(ls, &rd);
             sock_t mx = ls;
+            bool anyClient = false;
             {
                 std::lock_guard<std::mutex> lk(mu);
+                anyClient = !clients.empty();
                 for (const Client& cl : clients) {
                     FD_SET(cl.s, &rd);
                     if (!cl.pending.empty()) FD_SET(cl.s, &wr);
                     if (cl.s > mx) mx = cl.s;
                 }
             }
-            timeval tv{0, 20000};
+            timeval tv{0, anyClient ? 20000 : 250000};   // nobody connected: 4 wakeups a second, a new connection wakes select at once
             const int r = select((int)mx + 1, &rd, &wr, nullptr, &tv);
             if (r < 0) { if (wouldBlockNow()) continue; break; }
             std::lock_guard<std::mutex> lk(mu);

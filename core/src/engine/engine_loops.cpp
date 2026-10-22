@@ -4,6 +4,7 @@
 #include "engine_internal.h"
 #include "dect2/source/converter.h"
 #include "dect2/net/share.h"
+#include "dect2/power/power.h"
 #include "dect2/engine/device_claims.h"
 #include "dect2/hfdig/hfdig_ftx.h"
 #include "dect2/hfdig/hfdig_kbd.h"
@@ -77,7 +78,8 @@ void Engine::analysisLoop() {
         size_t n;
         catchUp();
         while ((n = ring_.read(buf.data(), buf.size())) > 0) { ingest(buf.data(), n); if (std::chrono::steady_clock::now() > next + std::chrono::milliseconds(250)) break; } // keep publishing spectrum/telemetry even when the receiver is behind
-        next += std::chrono::milliseconds(33);
+        // 30 spectrum / telemetry updates a second; half of that in Low power mode, a few a second while the window is hidden and the user chose to save power
+        next += std::chrono::milliseconds(power::pauseWhenHidden() ? 200 : power::lowPower() ? 66 : 33);
         watchRadio();
         checkDelivery();
         syncMultiTv();
@@ -210,7 +212,7 @@ void Engine::analysisLoop() {
             catchUp();
             size_t m = ring_.read(buf.data(), buf.size());
             if (m) ingest(buf.data(), m);
-            else std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            else std::this_thread::sleep_for(std::chrono::milliseconds(power::lowPower() ? 4 : 2));
         }
     }
 }
