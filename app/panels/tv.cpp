@@ -192,8 +192,8 @@ void teletextTab(App& a) {
     ImGui::SetNextItemWidth(80 * gUi);
     int pageIn = a.ttxPage;
     if (ImGui::InputInt("page", &pageIn, 0, 0) && pageIn != a.ttxPage) goPage(pageIn);
-    ImGui::SameLine(); if (ImGui::SmallButton("<")) goPage(a.ttxPage - 1);
-    ImGui::SameLine(); if (ImGui::SmallButton(">")) goPage(a.ttxPage + 1);
+    ImGui::SameLine(); if (ImGui::SmallButton("<")) goPage(a.ttxPage - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Previous page"));
+    ImGui::SameLine(); if (ImGui::SmallButton(">")) goPage(a.ttxPage + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Next page"));
     ImGui::SameLine(); if (ImGui::SmallButton("100")) goPage(100);
     ImGui::SameLine();
     if (ImGui::Checkbox("hold", &a.ttxHold)) { TtxPage cur; if (a.ttxHold && tx.page(a.ttxPage, cur, a.ttxSub)) a.ttxHeld = cur; else a.ttxHold = false; }
@@ -223,9 +223,9 @@ void teletextTab(App& a) {
         if (subs.size() > 1) {
             int at = 0;
             for (int i = 0; i < (int)subs.size(); i++) if (subs[i] == pg.subcode) at = i;
-            if (ImGui::SmallButton("<##sp")) { a.ttxSub = subs[(at + (int)subs.size() - 1) % (int)subs.size()]; a.ttxHold = false; }
+            if (ImGui::SmallButton("<##sp")) { a.ttxSub = subs[(at + (int)subs.size() - 1) % (int)subs.size()]; a.ttxHold = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Previous sub-page"));
             ImGui::SameLine(); ImGui::Text("subpage %d/%d", at + 1, (int)subs.size());
-            ImGui::SameLine(); if (ImGui::SmallButton(">##sp")) { a.ttxSub = subs[(at + 1) % (int)subs.size()]; a.ttxHold = false; }
+            ImGui::SameLine(); if (ImGui::SmallButton(">##sp")) { a.ttxSub = subs[(at + 1) % (int)subs.size()]; a.ttxHold = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Next sub-page"));
             ImGui::SameLine(); if (ImGui::SmallButton("newest")) a.ttxSub = -1;
         }
     }

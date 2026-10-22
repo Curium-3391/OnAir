@@ -303,9 +303,9 @@ void dabTransmittersTab(App& a) {
             if (ImGui::IsMouseReleased(0) && ImGui::GetIO().MouseDragMaxDistanceSqr[0] < 16.f) tuneTo(*hit->h);
         }
         ImGui::SetCursorScreenPos(ImVec2(p0.x + 6 * gUi, p0.y + 6 * gUi));
-        if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1);
+        if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
         ImGui::SameLine(0, 4 * gUi);
-        if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1);
+        if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
         ImGui::SameLine(0, 4 * gUi);
         if (ImGui::Button("fit")) S.fitted = false;
         ImGui::SameLine(0, 8 * gUi);
