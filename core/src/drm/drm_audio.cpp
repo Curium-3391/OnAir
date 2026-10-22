@@ -247,6 +247,15 @@ struct AudioDecoder::Impl {
     ExactResampler rs;
     bool rsReady = false;
     std::vector<cf32> rin, rout;
+    // lost audio as placeholders for the playout (setConcealment(true)): spans of `out` (frames) that stand for lost frames
+    bool external = false;
+    std::vector<std::pair<size_t, size_t>>* gaps = nullptr;
+    size_t auOut = 0;                      // 48 kHz frames that the last decoded xHE-AAC frame gave
+    void gap(std::vector<float>& out, size_t frames) {
+        if (!gaps || frames == 0) return;
+        gaps->push_back({out.size() / 2, frames});
+        out.resize(out.size() + 2 * frames, 0.f);
+    }
 
     ~Impl() { closeCodec(); }
     void closeCodec() {
@@ -334,16 +343,18 @@ struct AudioDecoder::Impl {
     bool decodeAu(const std::vector<uint8_t>& au, std::vector<float>& out) {
         if (!open) return false;
         if (!started) {
-            if (au.empty() || !(au[0] & 0x80)) return false;       // usacIndependencyFlag: the first frame the decoder can start with
+            if (au.empty() || !(au[0] & 0x80)) { gap(out, auOut); return false; }   // usacIndependencyFlag: the first frame the decoder can start with
             started = true;
         }
         if (fdk) {
             std::vector<int16_t> pcm; int rate = 0, ch = 0;
-            if (!fdk->decode(au, pcm, rate, ch)) { decFails++; lastErr = "libfdk-aac returned no audio"; return false; }
+            if (!fdk->decode(au, pcm, rate, ch)) { decFails++; lastErr = "libfdk-aac returned no audio"; gap(out, auOut); return false; }
             const size_t n = pcm.size() / (size_t)ch;
             rin.resize(n);
             for (size_t i = 0; i < n; i++) rin[i] = cf32(pcm[i * (size_t)ch] / 32768.f, pcm[i * (size_t)ch + (size_t)(ch > 1 ? 1 : 0)] / 32768.f);
+            const size_t before = out.size();
             pushResampled(rate, out);
+            if (out.size() > before) auOut = (out.size() - before) / 2;
             decFails = 0;
             return true;
         }
@@ -351,18 +362,25 @@ struct AudioDecoder::Impl {
         std::memcpy(pkt->data, au.data(), au.size());
         const int r = avcodec_send_packet(ctx, pkt);
         av_packet_unref(pkt);
-        if (r < 0) { decFails++; char eb[100]; av_strerror(r, eb, sizeof eb); lastErr = eb; return false; }
+        if (r < 0) { decFails++; char eb[100]; av_strerror(r, eb, sizeof eb); lastErr = eb; gap(out, auOut); return false; }
+        const size_t before = out.size();
         while (avcodec_receive_frame(ctx, frame) == 0) { emitFrame(out); av_frame_unref(frame); }
+        if (out.size() > before) auOut = (out.size() - before) / 2;
         decFails = 0;
         return true;
     }
 
     void superFrameXhe(const uint8_t* d, int len, std::vector<float>& out) {
         std::vector<XheFrame> frames;
-        if (!xhe.parse(d, len, frames)) { bad++; if (open && started) { if (ctx) avcodec_flush_buffers(ctx); if (fdk) fdk->open(xheAscFromSdc(cfg)); started = false; } return; }
+        if (!xhe.parse(d, len, frames)) {
+            bad++;
+            if (open && started) { if (ctx) avcodec_flush_buffers(ctx); if (fdk) fdk->open(xheAscFromSdc(cfg)); started = false; }
+            if (auOut) gap(out, (size_t)(modeE ? 9600 : 19200));            // the whole super frame (the playout evens out the difference)
+            return;
+        }
         const uint64_t before = samples;
         for (const XheFrame& f : frames) {
-            if (!f.crcOk) { bad++; if (open && started) { if (ctx) avcodec_flush_buffers(ctx); if (fdk) fdk->open(xheAscFromSdc(cfg)); started = false; } continue; }
+            if (!f.crcOk) { bad++; if (open && started) { if (ctx) avcodec_flush_buffers(ctx); if (fdk) fdk->open(xheAscFromSdc(cfg)); started = false; } gap(out, auOut); continue; }
             ok++;
             decodeAu(f.au, out);
         }
@@ -377,6 +395,7 @@ struct AudioDecoder::Impl {
         std::string why;
         const int rate = cfg.rateHz();
         aacOk = aac.configure(rate, cfg.mode == 2, &why);
+        aac.setLossFades(!external);
         char b[200];
         const char* what = cfg.sbr && cfg.mode == 1 ? "AAC + SBR + PS" : cfg.sbr ? "AAC + SBR" : "AAC";
         if (!aacOk) {
@@ -409,14 +428,22 @@ struct AudioDecoder::Impl {
         if (!n) return;
         if (!aacSuperFrameParse(d, len, lenA, n, sf)) {
             bad += (uint64_t)n;
-            if (aacOk) { core.assign((size_t)n * 960, 0.f); emitCore(out); aac.reset(); }
+            if (aacOk) {
+                const size_t o = out.size();
+                core.assign((size_t)n * 960, 0.f); emitCore(out); aac.reset();
+                if (gaps) gaps->push_back({o / 2, (out.size() - o) / 2});
+            }
             return;
         }
         for (int i = 0; i < n; i++) {
             const auto& f = sf.frames[(size_t)i];
             const AacFrameStatus st = aacOk ? aac.frame(f.data(), (int)f.size(), sf.crc[(size_t)i], core) : AacFrameStatus::kDamaged;
             if (st == AacFrameStatus::kDamaged) bad++; else ok++;
-            if (aacOk) emitCore(out);
+            if (aacOk) {
+                const size_t o = out.size();
+                emitCore(out);
+                if (gaps && st != AacFrameStatus::kOk) gaps->push_back({o / 2, (out.size() - o) / 2});
+            }
         }
         state = aacOk ? 2 : 1;
     }
@@ -445,12 +472,15 @@ void AudioDecoder::reset() {
     d.started = false;
     if (d.aacOk) d.aac.reset();
 }
-void AudioDecoder::superFrame(const uint8_t* data, int len, int lenA, std::vector<float>& out) {
+void AudioDecoder::superFrame(const uint8_t* data, int len, int lenA, std::vector<float>& out, std::vector<std::pair<size_t, size_t>>* gaps) {
     Impl& d = *p_;
     if (!d.configured) return;
+    d.gaps = gaps;
     if (d.cfg.coding == 3) d.superFrameXhe(data, len, out);
     else if (d.cfg.coding == 0) d.superFrameAac(data, len, lenA, out);
+    d.gaps = nullptr;
 }
+void AudioDecoder::setConcealment(bool external) { p_->external = external; p_->aac.setLossFades(!external); }
 std::string AudioDecoder::info() const { return p_->info; }
 int AudioDecoder::state() const { return p_->state; }
 uint64_t AudioDecoder::framesOk() const { return p_->ok; }

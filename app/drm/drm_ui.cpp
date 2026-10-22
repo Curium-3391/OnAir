@@ -282,6 +282,8 @@ void nowPlaying(App& a, float w, float h) {
     { ImGui::PushTextWrapPos(0); ImGui::TextColored(col, "%s", t.audioState == 2 ? "playing" : t.audioState == 1 ? "frames received, cannot decode" : s->audio ? "waiting for audio" : "no audio"); ImGui::PopTextWrapPos(); }
     ImGui::PushTextWrapPos(0);
     if (!t.audioInfo.empty() && t.audioState != 0 && t.audioInfo != s->codecText) ImGui::TextDisabled("%s", t.audioInfo.c_str());
+    if (t.holding) ImGui::TextColored(kWarn, "Fade: the receiver holds the synchronisation and bridges the sound until the signal comes back.");
+    else if (t.audioState == 2 && t.audioConcealedPct >= 0.5f) ImGui::TextColored(t.audioConcealedPct > 10 ? kWarn : ImVec4(0.62f, 0.65f, 0.68f, 1), "%.0f %% of the sound in the last 10 s was concealed (lost frames)", t.audioConcealedPct);
     if (t.hierarchicalUnsupported) ImGui::TextColored(kWarn, "The signal uses a hierarchical mapping, which this receiver does not decode.");
     if (s->conditionalAccess) ImGui::TextColored(kWarn, "Conditional access is flagged: the stream may be scrambled.");
     ImGui::PopTextWrapPos();
@@ -498,6 +500,8 @@ void status(App& a) {
     snprintf(b, sizeof b, "%.1f dB", t.snrDb); ro("SNR", b);
     snprintf(b, sizeof b, "%+.1f Hz", t.cfoHz); ro("CFO", b);
     snprintf(b, sizeof b, "%llu / %llu", (unsigned long long)t.blocksOk, (unsigned long long)t.blocksBad); ro("Audio ok/bad", b);
+    if (t.audioRealSecs > 0) { snprintf(b, sizeof b, "%.1f %%", t.audioConcealedPct); ro("Concealed", b); }
+    if (t.holding) ro("State", "fade, holding");
 }
 
 void summary(const App& a, std::string& l1, std::string& l2) {
@@ -521,7 +525,7 @@ void receiver(App& a) {
     auto kv = [&](const char* k, const std::string& v) { kvRow(a, k, v, 150); };
     auto kf = [&](const char* k, const char* fmt, auto... v) { snprintf(b, sizeof b, fmt, v...); kvRow(a, k, b, 150); };
     sectionHeader(Ic::Chip, "Receiver");
-    kv("state", stateText(t.state));
+    kv("state", t.holding ? "holding through a fade (frequency, timing and clock frozen)" : stateText(t.state));
     kv("status", t.status.empty() ? "-" : t.status);
     kf("level", "%.1f dBFS in the %s channel", t.levelDbfs, t.mode == 4 ? "192 kHz" : "48 kHz");
     kf("quality", "%.0f %%", t.quality * 100.0);
@@ -549,6 +553,7 @@ void receiver(App& a) {
     kf("delay spread", "%.3f ms", t.delaySpreadMs);
     kf("strongest path at", "%+.3f ms", t.timingMs);
     kf("guard correlation", "%.2f", t.correlation);
+    kf("fades held", "%llu  (re-synchronised at once %llu times)", (unsigned long long)t.fades, (unsigned long long)t.resyncs);
     sectionHeader(Ic::Layers, "Counters");
     kf("FAC blocks", "%llu ok, %llu bad", (unsigned long long)t.facOk, (unsigned long long)t.facBad);
     kf("SDC blocks", "%llu ok, %llu bad", (unsigned long long)t.sdcOk, (unsigned long long)t.sdcBad);
@@ -559,6 +564,9 @@ void receiver(App& a) {
     kv("decoder", t.audioState == 2 ? "decoding" : t.audioState == 1 ? "frames received, no usable decoder" : "no audio stream");
     kv("detail", t.audioInfo.empty() ? "-" : t.audioInfo);
     kf("samples out", "%llu  (%.1f s at 48 kHz)", (unsigned long long)t.audioSamples, t.audioSamples / 48000.0);
+    kf("concealed", "%.1f %% of the last 10 s;  %.1f s in all (%.1f s faded to silence), %llu times", t.audioConcealedPct, t.audioConcealedSecs + t.audioMutedSecs, t.audioMutedSecs,
+       (unsigned long long)t.audioConcealEvents);
+    kf("playout", "%.2f s queued, sound card %+.0f ppm from the radio, %d underruns", t.audioQueueSecs, t.audioDriftPpm, t.audioUnderruns);
     sectionHeader(Ic::Layers, "Services");
     if (t.services.empty()) ImGui::TextDisabled("none yet");
     for (const auto& s : t.services) {
@@ -653,6 +661,7 @@ void meters(const App& a, std::vector<ModeMeter>& out) {
     out.push_back({"SNR  dB", "%.1f", t.snrDb, 0, 40, t.state == 0 ? 0 : t.snrDb >= 15 ? 1 : t.snrDb >= 8 ? 2 : 3});
     out.push_back({"QUALITY  %", "%.0f", t.quality * 100.0, 0, 100, t.state == 0 ? 0 : t.quality > 0.9 ? 1 : t.quality > 0.5 ? 2 : 3});
     out.push_back({"AUDIO OK  %", "%.0f", okPct, 0, 100, n == 0 ? 0 : okPct > 95 ? 1 : okPct > 70 ? 2 : 3});
+    out.push_back({"CONCEALED  %", "%.1f", t.audioConcealedPct, 0, 100, t.audioRealSecs <= 0 ? 0 : t.audioConcealedPct < 2 ? 1 : t.audioConcealedPct < 15 ? 2 : 3});
     out.push_back({"LEVEL  dBFS", "%.0f", t.levelDbfs, -100, 0, t.levelDbfs > -6 ? 3 : 0});
 }
 

@@ -468,6 +468,7 @@ struct AacCoreDecoder::Impl {
     std::vector<uint8_t> bits;
     std::vector<float> last;          // the last good frame, for the fade out when the next one is lost
     bool prevOk = false;
+    bool fades = true;
 
     ~Impl() { close(); }
     void close() {
@@ -514,6 +515,7 @@ int AacCoreDecoder::rateHz() const { return p_->rate; }
 uint64_t AacCoreDecoder::framesDamaged() const { return p_->damaged; }
 uint64_t AacCoreDecoder::framesUnsupported() const { return p_->unsupported; }
 uint64_t AacCoreDecoder::framesDecoded() const { return p_->decoded; }
+void AacCoreDecoder::setLossFades(bool on) { p_->fades = on; }
 void AacCoreDecoder::reset() { if (p_->ctx) avcodec_flush_buffers(p_->ctx); p_->prevOk = false; }
 
 AacFrameStatus AacCoreDecoder::frame(const uint8_t* data, int len, uint8_t crc, std::vector<float>& out) {
@@ -523,7 +525,7 @@ AacFrameStatus AacCoreDecoder::frame(const uint8_t* data, int len, uint8_t crc, 
     // (its overlap with the missing frame is wrong)
     auto lost = [&](AacFrameStatus st) {
         out.resize(start + (size_t)kFrame, 0.f);
-        if (d.prevOk && d.last.size() == (size_t)kFrame)
+        if (d.fades && d.prevOk && d.last.size() == (size_t)kFrame)
             for (int i = 0; i < kFrame; i++) out[start + (size_t)i] = d.last[(size_t)i] * (1.f - (float)i / kFrame);
         d.prevOk = false;
         if (d.ctx) avcodec_flush_buffers(d.ctx);
@@ -559,7 +561,7 @@ AacFrameStatus AacCoreDecoder::frame(const uint8_t* data, int len, uint8_t crc, 
         av_frame_unref(d.frame);
     }
     if (got != (size_t)kFrame) { out.resize(start); d.damaged++; return lost(AacFrameStatus::kDamaged); }
-    if (!d.prevOk) for (int i = 0; i < kFrame; i++) out[start + (size_t)i] *= (float)i / kFrame;
+    if (!d.prevOk && d.fades) for (int i = 0; i < kFrame; i++) out[start + (size_t)i] *= (float)i / kFrame;
     d.last.assign(out.begin() + (ptrdiff_t)start, out.end());
     d.prevOk = true;
     d.decoded++;

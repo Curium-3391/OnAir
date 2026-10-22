@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dect2 { namespace drm {
@@ -20,8 +21,12 @@ public:
     bool decodable() const;                 // configure() worked and the decoder is open
     void reset();                           // frames were lost: forget the frames in progress and restart the decoder at the next frame that can start it
 
-    // One logical frame of the stream without the 4 bytes of the text message. Appends 48 kHz interleaved stereo to out.
-    void superFrame(const uint8_t* data, int len, int lenA, std::vector<float>& out);
+    // One logical frame of the stream without the 4 bytes of the text message. Appends 48 kHz interleaved stereo to out. With gaps, every lost audio
+    // frame (CRC, a decoder that refused it, a super frame that could not be read) also appends silence of its length to out and its span (first
+    // frame, frames) to gaps, for the concealment of the playout (drm_playout.h).
+    void superFrame(const uint8_t* data, int len, int lenA, std::vector<float>& out, std::vector<std::pair<size_t, size_t>>* gaps = nullptr);
+    // true: the playout conceals lost frames (the AAC decoder then neither fades out the last frame nor fades in the next one)
+    void setConcealment(bool external);
 
     std::string info() const;               // "xHE-AAC, 32 kHz stereo" or why the stream cannot be played
     int state() const;                      // 0 not configured, 1 frames come but nothing is decoded, 2 decoding
