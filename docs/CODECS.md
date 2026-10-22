@@ -58,6 +58,19 @@ OnAir tries these file names. Folders are searched in this order; inside each fo
 | macOS | `codecs/` next to `OnAir.app` | `~/Library/Application Support/OnAir/codecs/` |
 | Linux | `codecs/` next to the `dect2` program | `~/.local/share/onair/codecs/` (or `$XDG_DATA_HOME/onair/codecs/`) |
 
+Every codec loader (the voice plug-ins and all the libraries: mbelib, codec2, HDC, DRA+, AC-4, AVS) searches **all** of these, in this order,
+and the first folder that has the file wins:
+
+1. your user folder (table above, right column)
+2. the **extra folder** you type in **Help > Voice codecs** (saved in your settings)
+3. the folder in the `ONAIR_CODEC_DIR` environment variable, if set
+4. the `codecs` folder next to the program (table above, left column; on macOS also `OnAir.app/Contents/Resources/codecs`)
+
+Duplicates are dropped (on Windows, `C:/Radio/Onair` and `c:\radio\onair\` are the same folder). If you installed OnAir in a folder of your own
+(for example `C:\Radio\SDRApps\Onair`), a `codecs` folder next to `OnAir.exe` works for every plug-in, and so does the `%LOCALAPPDATA%` one.
+If the same plug-in file is in two folders, **Help > Voice codecs** shows which folder each plug-in was found in and warns about the copy that
+is ignored. Its **Open codecs folder** button opens your user folder; **Open folder next to OnAir** and **Open extra folder** open the others.
+
 The **?** popup prints the full paths on your computer. A DLL must match OnAir: 64-bit with 64-bit. If it needs other DLLs
 (for example `libgcc_s_seh-1.dll`, `libwinpthread-1.dll`), put them in the same folder.
 
@@ -337,8 +350,8 @@ OnAir ships no AC-4 code, no FFmpeg patch and downloads nothing; the build scrip
 
 ## Speech codec plug-ins (voice modes)
 
-A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from your user folder, never from
-the program: `onair-codec-<id>.dylib` / `.so` / `.dll` in the codecs folder under the app data folder (macOS
+A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from the codecs folders (see "The OnAir codecs folders" above: your user folder first, then the extra folder,
+`ONAIR_CODEC_DIR`, and the `codecs` folder next to the program): `onair-codec-<id>.dylib` / `.so` / `.dll` (user folder: macOS
 `~/Library/Application Support/OnAir/codecs/`, Linux `~/.local/share/onair/codecs/`, Windows `%LOCALAPPDATA%\OnAir\codecs\`). Without it the
 mode says "Codec not installed" and links here. The first time, OnAir shows a legal notice: you are responsible for following the laws
 where you live on listening to radio traffic and for the codec's licence; OnAir does not include or distribute the codec. The codec loads only

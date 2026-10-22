@@ -5,6 +5,7 @@
 #include "../platform/platform.h"
 #include "dect2/codec/speech_codec.h"
 #include "dect2/codec/codec_registry.h"
+#include "dect2/codec/codec_paths.h"
 #include "dect2/engine/updater.h"
 #include "dect2/dstar/dstar_ambe.h"
 #include "dect2/nxdn/nxdn_ambe.h"
@@ -33,7 +34,70 @@ std::string prefKey(const std::string& id) { return "codec_notice_" + id; }
 
 } // namespace
 
-std::string codecsFolder() { return plat::dataDir() + "/codecs"; }
+namespace {
+const char* kExtraKey = "codec_extra_dir";
+// The extra folder lives in the prefs; the core search list reads it from codec_paths (loaded once, then kept in step by setExtraFolder).
+void syncExtra() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    dect2::codec::setExtraCodecDir(plat::basePrefs().getS(kExtraKey, ""));
+}
+bool fileExists(const std::string& p) { std::error_code ec; return std::filesystem::is_regular_file(std::filesystem::path(p), ec); }
+void openFolder(const std::string& folder) {
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(folder), ec);
+    dect2::openUrl(folder);
+}
+} // namespace
+
+std::string codecsFolder() {
+    const std::string u = dect2::codec::userCodecDir();
+    return u.empty() ? plat::dataDir() + "/codecs" : u;
+}
+
+std::vector<dect2::codec::CodecDir> codecSearchFolders() {
+    syncExtra();
+    auto d = dect2::codec::systemCodecDirs();
+    if (d.empty()) d.push_back({codecsFolder(), "user"});
+    return d;
+}
+
+std::vector<std::string> codecSearchPaths() {
+    std::vector<std::string> v;
+    for (const auto& d : codecSearchFolders()) v.push_back(d.path);
+    return v;
+}
+
+void setExtraFolder(const std::string& dir) {
+    syncExtra();
+    plat::basePrefs().setS(kExtraKey, dir);
+    plat::basePrefs().flush();
+    dect2::codec::setExtraCodecDir(dir);
+    last.clear();
+    lastAt.clear();
+}
+
+bool openCodecFolderButtons() {
+    const auto dirs = codecSearchFolders();
+    if (ImGui::Button("Open codecs folder")) openFolder(codecsFolder());
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(your user folder; made if it does not exist)", codecsFolder().c_str());
+    for (const auto& d : dirs) {
+        if (d.source != "program") continue;
+        ImGui::SameLine();
+        if (ImGui::Button("Open folder next to OnAir")) openFolder(d.path);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(made if it does not exist)", d.path.c_str());
+        break;
+    }
+    for (const auto& d : dirs) {
+        if (d.source != "extra") continue;
+        ImGui::SameLine();
+        if (ImGui::Button("Open extra folder")) openFolder(d.path);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", d.path.c_str());
+        break;
+    }
+    return true;
+}
 
 dect2::codec::CodecLookup speechCodecPoll(const char* id, std::unique_ptr<dect2::codec::SpeechCodec>& out) {
     const std::string codec = id;
@@ -45,7 +109,7 @@ dect2::codec::CodecLookup speechCodecPoll(const char* id, std::unique_ptr<dect2:
         return it->second;
     acceptedAt[codec] = accepted;
     lastAt[codec] = now;
-    const dect2::codec::CodecLookup r = dect2::codec::loadSpeechCodec(codec, codecsFolder(), accepted, out);
+    const dect2::codec::CodecLookup r = dect2::codec::loadSpeechCodecInDirs(codec, codecSearchPaths(), accepted, out);
     last[codec] = r;
     // Log the reason whenever it changes, so a user with no audio can send the line.
     if (lastLogged[codec] != r.message) {
@@ -57,18 +121,13 @@ dect2::codec::CodecLookup speechCodecPoll(const char* id, std::unique_ptr<dect2:
 
 bool speechCodecGate(const char* id, std::unique_ptr<dect2::codec::SpeechCodec>& out) {
     const std::string codec = id;
-    const std::string folder = codecsFolder();
     const dect2::codec::CodecLookup r = speechCodecPoll(id, out);
 
     if (r.status == dect2::codec::CodecStatus::Ready) return true;
 
     if (r.status == dect2::codec::CodecStatus::NotInstalled) {
         ImGui::TextWrapped("%s", r.message.c_str());
-        if (ImGui::Button("Open codecs folder")) {
-            std::error_code ec;
-            std::filesystem::create_directories(std::filesystem::path(folder), ec);
-            dect2::openUrl(folder);
-        }
+        openCodecFolderButtons();
         ImGui::SameLine();
         if (ImGui::Button("Full instructions")) dect2::openUrl("https://github.com/adswill/OnAir/blob/main/docs/CODECS.md");
         return false;
@@ -131,7 +190,7 @@ bool voiceCodecTick(const char* id) {
     const dect2::codec::CodecLookup r = speechCodecPoll(id, probe);
     if (r.status != dect2::codec::CodecStatus::Ready) return false;
     probe.reset();
-    const std::string folder = codecsFolder();
+    const std::string folder = r.folder;   // the folder the plug-in was found in
     // every decoder (one per slot / speaker) is a new instance of the plug-in; the notice was accepted, or it would not be Ready
     dect2::codec::setPluginFactory(codec, [codec, folder]() {
         std::unique_ptr<dect2::codec::SpeechCodec> c;
@@ -142,10 +201,31 @@ bool voiceCodecTick(const char* id) {
     return true;
 }
 
+void codecFoldersList(const std::string& codec) {
+    const auto dirs = codecSearchFolders();
+    const std::string file = dect2::codec::speechCodecFileName(codec);
+    const auto hits = dect2::codec::dirsWithFile(dirs, file, fileExists);
+    ImGui::TextDisabled("Folders searched, in this order (the first one that has the file wins)");
+    for (const auto& d : dirs) {
+        const char* mark = "";
+        for (size_t h = 0; h < hits.size(); ++h)
+            if (dect2::codec::samePath(hits[h].path, d.path)) mark = h == 0 ? "  <- found here" : "  <- also here (not used)";
+        ImGui::BulletText("%s  [%s]%s", d.path.c_str(), d.source.c_str(), mark);
+    }
+    if (hits.size() > 1) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "Warning: %s is in %d folders. OnAir uses the one in %s and ignores the others. Delete the extra copy to avoid confusion.",
+                           file.c_str(), (int)hits.size(), hits[0].path.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
 void codecInstallHelper(const char* id) {
     const std::string codec = id;
     voiceCodecTick(id);
-    const std::string folder = codecsFolder();
+    const auto dirs = codecSearchFolders();
+    std::string folder;
+    for (const auto& d : dirs) folder += (folder.empty() ? "" : "; ") + d.path;
     std::string path;
     if (dect2::codec::pluginLoaded(codec, &path)) {
         ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "Codec plug-in loaded: %s", path.c_str());
@@ -158,12 +238,8 @@ void codecInstallHelper(const char* id) {
         ImGui::PopTextWrapPos();
         if (r.status == dect2::codec::CodecStatus::NoticeRequired) speechCodecGate(id, tmp);
     }
-    ImGui::TextDisabled("Codecs folder: %s", folder.c_str());
-    if (ImGui::Button("Open codecs folder")) {
-        std::error_code ec;
-        std::filesystem::create_directories(std::filesystem::path(folder), ec);
-        dect2::openUrl(folder);
-    }
+    codecFoldersList(codec);
+    openCodecFolderButtons();
     ImGui::SameLine();
     if (ImGui::Button("Build steps")) dect2::openUrl("https://github.com/adswill/OnAir/blob/main/docs/CODECS.md#speech-codec-plug-ins-voice-modes");
     ImGui::SameLine();
@@ -180,7 +256,6 @@ void voiceCodecsWindow(App& a) {
     ImGui::TextUnformatted("OnAir never ships a patented voice codec. Patented codecs are loaded at run time from a plug-in (or library) that you install yourself in the codecs folder; open codecs need nothing. Encrypted calls are never decoded. Check the patent and radio rules where you live.");
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
-    const std::string folder = codecsFolder();
     namespace cd = dect2::codec;
     if (ImGui::BeginTable("##vcodecs", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupColumn("Codec"); ImGui::TableSetupColumn("Modes"); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("Status");
@@ -206,12 +281,17 @@ void voiceCodecsWindow(App& a) {
                 std::string p;
                 const bool plug = cd::pluginLoaded(id, &p);
                 const bool mbe = !plug && (id == "ambe2" ? dect2::nxdnAmbeAvailable(&p) : id == "ambe" ? dect2::dstarAmbeAvailable(&p) : id == "imbe" ? dect2::p25ImbeAvailable(&p) : false);
-                std::error_code ec;
-                const bool onDisk = std::filesystem::is_regular_file(std::filesystem::path(folder) / cd::speechCodecFileName(id), ec);
-                if (plug) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "plug-in loaded: %s", p.c_str());
+                const auto hits = cd::dirsWithFile(codecSearchFolders(), cd::speechCodecFileName(id), fileExists);
+                const bool onDisk = !hits.empty();
+                if (plug) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "plug-in loaded from %s", p.c_str());
                 else if (mbe) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "libmbe loaded: %s", p.c_str());
                 else if (onDisk) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "plug-in file found: accept the notice or start the mode to load it");
                 else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: %s", cd::speechCodecFileName(id).c_str());
+                if (!plug && onDisk) ImGui::TextDisabled("found in %s", hits[0].path.c_str());
+                if (hits.size() > 1) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "Warning: also in %d other folder(s); %s wins:", (int)hits.size() - 1, hits[0].path.c_str());
+                    for (size_t h = 1; h < hits.size(); ++h) ImGui::BulletText("%s (ignored)", hits[h].path.c_str());
+                }
                 if (ImGui::SmallButton("Install helper")) ImGui::OpenPopup("##vch");
                 if (ImGui::BeginPopup("##vch")) {
                     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30);
@@ -225,12 +305,17 @@ void voiceCodecsWindow(App& a) {
         ImGui::EndTable();
     }
     ImGui::Spacing();
-    ImGui::TextDisabled("Codecs folder: %s", folder.c_str());
-    if (ImGui::Button("Open codecs folder")) {
-        std::error_code ec;
-        std::filesystem::create_directories(std::filesystem::path(folder), ec);
-        dect2::openUrl(folder);
-    }
+    ImGui::TextDisabled("Folders searched, in this order (the first one that has a plug-in wins)");
+    for (const auto& d : codecSearchFolders()) ImGui::BulletText("%s  [%s]", d.path.c_str(), d.source.c_str());
+    ImGui::TextDisabled("Also: set ONAIR_CODEC_DIR to a folder before starting OnAir, or type an extra folder below.");
+    static char extraBuf[1024];
+    static bool extraInit = false;
+    if (!extraInit) { extraInit = true; snprintf(extraBuf, sizeof extraBuf, "%s", plat::basePrefs().getS("codec_extra_dir", "").c_str()); }
+    ImGui::SetNextItemWidth(420 * gUi);
+    ImGui::InputText("Extra folder##codecextra", extraBuf, sizeof extraBuf);
+    ImGui::SameLine();
+    if (ImGui::Button("Apply##codecextra")) setExtraFolder(extraBuf);
+    openCodecFolderButtons();
     ImGui::SameLine();
     if (ImGui::Button("Instructions")) dect2::openUrl("https://github.com/adswill/OnAir/blob/main/docs/CODECS.md");
     ImGui::End();

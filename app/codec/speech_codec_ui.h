@@ -2,6 +2,8 @@
 // mode draws until its codec is ready. English only. See docs/CODECS.md.
 #pragma once
 #include "dect2/codec/speech_codec.h"
+#include "dect2/codec/codec_paths.h"
+#include <vector>
 #include <memory>
 #include <string>
 
@@ -9,8 +11,18 @@ struct App;
 
 namespace appcodec {
 
-// The user folder the plug-ins are looked for in: the app data folder + "/codecs".
+// The user folder (the first one searched, and the one "Open codecs folder" opens): the app data folder + "/codecs".
 std::string codecsFolder();
+// Every folder the plug-ins and libraries are looked for in, in order, with where each comes from (codec_paths.h): the user folder, the
+// extra folder set in Voice codecs, ONAIR_CODEC_DIR, then the folders next to the program.
+std::vector<dect2::codec::CodecDir> codecSearchFolders();
+std::vector<std::string> codecSearchPaths();
+// Saves the extra folder (empty clears it) and makes every loader look again.
+void setExtraFolder(const std::string& dir);
+// "Open codecs folder" (user folder) plus "Open folder next to OnAir" and "Open extra folder" when those exist, on the current line.
+bool openCodecFolderButtons();
+// Lists the searched folders for plug-in `codec`, marks where the file is, and warns when it is in more than one.
+void codecFoldersList(const std::string& codec);
 
 // Tries to load the speech codec `id` without drawing anything, so a voice mode can call it from its per-frame tick and get audio whatever
 // tab is shown. Retries a missing or failed plug-in at most once a second; logs the reason when it changes. `out` holds the codec when Ready.

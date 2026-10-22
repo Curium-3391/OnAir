@@ -3,6 +3,7 @@
 #pragma once
 #include "dect2/common/thread_name.h"
 #include "dect2/source/source.h"
+#include "dect2/codec/codec_paths.h"
 #include "dect2/common/ring.h"
 #include <algorithm>
 #include <atomic>
@@ -240,59 +241,36 @@ inline std::vector<std::string> libNames(const char* stem, std::initializer_list
 
 // ------------------------------------------------------------------ voice and audio codecs the user installs (docs/CODECS.md)
 
-// The OnAir "codecs" folders, where a user can put a codec library that OnAir does not ship: next to the program (macOS: next to OnAir.app,
-// and Contents/MacOS/codecs inside it) and in the user data folder (%LOCALAPPDATA%\OnAir\codecs, ~/Library/Application Support/OnAir/codecs,
-// $XDG_DATA_HOME/onair/codecs or ~/.local/share/onair/codecs). Each ends with the path separator.
-// Between the two come the places the libraries SHIPPED with OnAir are in (codec2, built from third_party/codec2): the program's own folder,
+// The OnAir "codecs" folders, where a user can put a codec library that OnAir does not ship. The list comes from dect2::codec::systemCodecDirs()
+// (codec_paths.h, the same one the voice plug-in loader uses): the user data folder (%LOCALAPPDATA%\OnAir\codecs, ~/Library/Application Support/OnAir/codecs,
+// $XDG_DATA_HOME/onair/codecs or ~/.local/share/onair/codecs), the extra folder set in Voice codecs, ONAIR_CODEC_DIR, then a codecs folder next to
+// the program (macOS: next to OnAir.app and in Contents/Resources). Each ends with the path separator.
+// After them come the places the libraries SHIPPED with OnAir are in (codec2, built from third_party/codec2): the program's own folder,
 // on macOS Contents/Frameworks and Contents/Resources of the app, on Linux ../lib/onair and ../lib of the program (the .deb and the portable
-// package). The user data folder stays last: it is where the "Open codecs folder" button goes.
+// package). The user data folder is the first one and is where the "Open codecs folder" button goes.
 inline std::vector<std::string> codecFolders() {
     std::vector<std::string> v;
+    auto add = [&](std::string d) {
+        if (d.empty()) return;
+        if (d.back() != '/' && d.back() != '\\') d += (d.find('\\') != std::string::npos) ? '\\' : '/';
+        for (const auto& e : v) if (dect2::codec::samePath(e, d)) return;
+        v.push_back(d);
+    };
+    for (const auto& d : dect2::codec::systemCodecDirs()) add(d.path);
+    const std::string exe = dect2::codec::programDir();
+    if (!exe.empty()) {
 #if defined(_WIN32)
-    char path[MAX_PATH * 2] = {0};
-    if (GetModuleFileNameA(nullptr, path, (DWORD)sizeof path - 1)) {
-        std::string d = path;
-        const size_t cut = d.find_last_of("\\/");
-        if (cut != std::string::npos) { v.push_back(d.substr(0, cut + 1) + "codecs\\"); v.push_back(d.substr(0, cut + 1)); }
+        add(exe);
+#elif defined(__APPLE__)
+        add(exe + "/../Frameworks/");
+        add(exe + "/../Resources/");
+        add(exe);
+#else
+        add(exe + "/../lib/onair/");
+        add(exe + "/../lib/");
+        add(exe);
+#endif
     }
-    if (const char* la = getenv("LOCALAPPDATA")) if (*la) v.push_back(std::string(la) + "\\OnAir\\codecs\\");
-#else
-    std::string exe;
-    char path[4096];
-#if defined(__APPLE__)
-    uint32_t size = sizeof path;
-    if (_NSGetExecutablePath(path, &size) == 0) exe = path;
-#else
-    const ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1);
-    if (n > 0) exe.assign(path, (size_t)n);
-#endif
-    const size_t sl = exe.find_last_of('/');
-    if (sl != std::string::npos) {
-        const std::string dir = exe.substr(0, sl + 1);
-        v.push_back(dir + "codecs/");
-#if defined(__APPLE__)
-        const size_t at = dir.rfind(".app/Contents/MacOS/");
-        if (at != std::string::npos) {   // the folder that holds OnAir.app
-            const size_t up = dir.find_last_of('/', at);
-            if (up != std::string::npos) v.push_back(dir.substr(0, up + 1) + "codecs/");
-        }
-        v.push_back(dir + "../Frameworks/");
-        v.push_back(dir + "../Resources/");
-#else
-        v.push_back(dir + "../lib/onair/");
-        v.push_back(dir + "../lib/");
-#endif
-        v.push_back(dir);
-    }
-    const char* home = getenv("HOME");
-#if defined(__APPLE__)
-    if (home && *home) v.push_back(std::string(home) + "/Library/Application Support/OnAir/codecs/");
-#else
-    const char* x = getenv("XDG_DATA_HOME");
-    if (x && *x) v.push_back(std::string(x) + "/onair/codecs/");
-    else if (home && *home) v.push_back(std::string(home) + "/.local/share/onair/codecs/");
-#endif
-#endif
     return v;
 }
 
