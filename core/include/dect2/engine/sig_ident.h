@@ -128,6 +128,12 @@ public:
     struct Found { Region region; Result res; };
     bool resultAll(std::vector<Found>& out, uint64_t& seq) const;
     double regionCentre() const;   // the centreOffHz of the last start()
+    // Signal Lab (Tools > Signal Lab): with keepSamples(true) the samples of the last single-signal capture are kept after it was
+    // identified (at most 4 M samples, 32 MB), so the lab can analyse the very signal the user selected. Off by default.
+    void keepSamples(bool on);
+    struct Kept { std::vector<cf32> x; double rateHz = 0, centreOffHz = 0, widthHz = 0, rfHz = 0; uint64_t seq = 0; };
+    bool keptSamples(Kept& out, uint64_t& seq) const;   // true when a capture newer than seq is there (seq updated)
+    uint64_t keptSeq() const;                            // the number of the capture kept (0: none), cheap
 private:
     struct Impl;
     std::unique_ptr<Impl> p_;

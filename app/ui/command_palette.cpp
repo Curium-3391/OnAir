@@ -26,7 +26,7 @@ struct Panel { const char* name; bool App::*on; };
 const Panel kPanels[] = {
     {"Passes", &App::passesOpen}, {"SatNOGS transmitters", &App::satnogsOpen}, {"Direction finder", &App::dfOpen}, {"Interference hunter", &App::rfiOpen},
     {"Passive radar", &App::passiveRadarOpen}, {"Images", &App::galleryOpen}, {"Data feeds...", &App::feedsOpen},
-    {"Messages...", &App::msgdbOpen}, {"Protocol lab...", &App::protolabOpen}, {"Watchlists...", &App::watchlistOpen},
+    {"Messages...", &App::msgdbOpen}, {"Protocol lab...", &App::protolabOpen}, {"Signal Lab...", &App::signallabOpen}, {"Watchlists...", &App::watchlistOpen},
     {"Automations...", &App::automationOpen}, {"Plugins...", &App::pluginsOpen}, {"Memory...", &App::memoryOpen},
     {"Data packs...", &App::packsOpen}, {"Frequencies...", &App::freqOpen}, {"Map", &App::mapOpen}, {"Propagation...", &App::propOpen},
     {"Sweep scanner", &App::sweepOpen}, {"Station health", &App::stationHealthOpen}, {"Antenna rotator...", &App::rotatorOpen},

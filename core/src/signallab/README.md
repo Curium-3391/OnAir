@@ -1,0 +1,3 @@
+# core/src/signallab: Signal Lab
+
+The stages of the blind analysis of unknown digital signals (Tools > Signal Lab): small DSP helpers (dsp.cpp), bursts / bandwidth / offset (channel.cpp), modulation family (classify.cpp), symbol rate (rate.cpp), symbol recovery with timing and carrier loops (recover.cpp), line codes and descramblers (linecode.cpp), preamble / sync / frames (frame.cpp), checksum catalogue and search (checksum.cpp), field analysis and interpretations (fields.cpp), the pipeline (pipeline.cpp), exports and the JSON reader (export.cpp), and the synthetic signals with the evaluation harness (gen.cpp). Every stage is a pure function. Built as the small library dect2_signallab with no dependencies. See docs/SIGNAL-LAB.md.

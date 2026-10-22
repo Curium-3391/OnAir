@@ -226,6 +226,13 @@ target_link_libraries(dect2core PUBLIC dect2_lua)
 add_library(dect2_protolab STATIC core/src/protolab/iq.cpp core/src/protolab/baud.cpp core/src/protolab/frame.cpp core/src/protolab/crc.cpp core/src/protolab/fields.cpp core/src/protolab/pipeline.cpp core/src/protolab/export.cpp core/src/protolab/gen.cpp)
 target_include_directories(dect2_protolab PUBLIC core/include)
 target_link_libraries(dect2core PUBLIC dect2_protolab)
+# Signal Lab (Tools > Signal Lab): blind analysis of unknown digital signals, every stage a pure function (core/src/signallab, docs/SIGNAL-LAB.md)
+add_library(dect2_signallab STATIC core/src/signallab/dsp.cpp core/src/signallab/channel.cpp core/src/signallab/classify.cpp core/src/signallab/rate.cpp
+            core/src/signallab/recover.cpp core/src/signallab/linecode.cpp core/src/signallab/frame.cpp core/src/signallab/checksum.cpp
+            core/src/signallab/fields.cpp core/src/signallab/pipeline.cpp core/src/signallab/export.cpp core/src/signallab/gen.cpp)
+target_include_directories(dect2_signallab PUBLIC core/include)
+target_compile_definitions(dect2_signallab PRIVATE _USE_MATH_DEFINES)
+target_link_libraries(dect2core PUBLIC dect2_signallab)
 
 # the automations (rules, expressions, Lua scripts, the engine): their own small library so its test builds without the receivers
 add_library(dect2_automation STATIC core/src/automation/catalog.cpp core/src/automation/expr.cpp core/src/automation/json_mini.cpp core/src/automation/rules.cpp core/src/automation/engine.cpp core/src/automation/script.cpp core/src/automation/recipes.cpp)
@@ -440,7 +447,7 @@ if(DECT2_BUILD_APP)
   set(IMGUI_SOURCES
     third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_glfw.cpp)
-  set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp)
+  set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/signallab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp)
   list(APPEND APP_SOURCES app/map/contact_lines.cpp)   # contact lines on the QSO-mode maps
   foreach(m ${DECT2_MODES})   # app/<mode>/*.cpp: the screens of a mode added after FM
     file(GLOB DECT2_MODE_UI CONFIGURE_DEPENDS app/${m}/*.cpp)
@@ -714,6 +721,11 @@ if(DECT2_BUILD_TESTS)
   target_link_libraries(test_protolab PRIVATE dect2_protolab)
   add_test(NAME protolab COMMAND test_protolab quick)
   add_test(NAME protolab_sweep COMMAND test_protolab sweep)
+  add_executable(test_signallab tests/signallab/test_signallab.cpp)
+  target_link_libraries(test_signallab PRIVATE dect2_signallab)
+  target_compile_definitions(test_signallab PRIVATE _USE_MATH_DEFINES)
+  add_test(NAME signallab COMMAND test_signallab quick)
+  add_test(NAME signallab_eval COMMAND test_signallab gate)
 
   # automations: expression language, rules engine, Lua sandbox, templates, recipes
   add_executable(test_automation tests/automation/test_automation.cpp)
@@ -1650,7 +1662,7 @@ if(DECT2_BUILD_TESTS)
   # the full CI runs them nightly and on release tags.
   foreach(t gain overload channel t2_payload dvbt_rx dab_rx atsc3_synth_options
             atv_impair atv_interf atv_engine drm_impair drm_rx adsb_engine ism_rx
-            protolab_sweep gnss_loops gnss_rates gnss_sweep gnss_rate20 gnss_gap gnss_qzss_sbas gnss_galileo gnss_beidou gnss_glonass iq_modes)
+            protolab_sweep signallab_eval gnss_loops gnss_rates gnss_sweep gnss_rate20 gnss_gap gnss_qzss_sbas gnss_galileo gnss_beidou gnss_glonass iq_modes)
     if(TEST ${t})
       set_tests_properties(${t} PROPERTIES LABELS slow)
     endif()
