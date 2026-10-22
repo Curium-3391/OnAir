@@ -409,6 +409,7 @@ struct App {
     bool mapSend = false, mapConsent = false;     // Server > Send data to map server (opt-in; consent once)
     bool mapVoice = false;                        // Server > also share transcripts of airband radio calls (public text; own choice, off until chosen)
     bool mapJam = false;                          // Server > also share GPS interference cells (counts per 0.5 degree cell, no aircraft ids); off until chosen
+    bool mapHam = false, mapHamConsent = false, mapHam6 = false;   // Server > also share ham contacts (FT8/FT4/WSPR/JS8/logged QSOs: callsigns, locator squares, mode, band, time); own consent; 6-character squares only when chosen; all off until chosen
     bool mapMsgs = false;                         // Server > also share interesting ACARS messages (free text becomes public); off until chosen
     std::string mapDeclinedVersion;               // ONAIR_VERSION when "No, do not ask again" was chosen; another version asks again
     bool mapDeclined = false;                     // the start-up question was answered "No, do not ask again" (the Server menu still works)
@@ -717,6 +718,8 @@ bool mapPauseForTransmit(App& a);                   // turn the map connection o
 void mapTransmitAbort(App& a);                      // the radio did not start: put the connection back if it was on
 void mapTransmitEnded();                            // the radio is quiet: the Server control works again; the next send skips what is already on screen
 void aeroToolsTick(App& a);                         // aero_ui.cpp: SNR-sound tone while Inmarsat Aero is the mode
+void mapHamRemember(const std::string& call, const std::string& grid);   // map_send.cpp: a callsign's locator, for the partner position of a contact (own station included)
+void mapHamHeard(const char* mode, double rfHz, const std::string& from, const std::string& fromGrid, const std::string& to, double tUtc);   // a decoded or logged contact; ignored unless Server > share ham contacts is on and consented
 void mapSendShutdown();                             // join the ingest thread before exit
 bool mapFamilySends(int family);                    // this mode can put decoded positions on the public map
 std::string mapSendStatusLine();                    // short "connected / N sent" line for the mode header (empty when off)

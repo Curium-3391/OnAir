@@ -113,6 +113,8 @@ void load(HamUi& h) {
         ham::QsoRecord r = q;
         std::string err;
         if (ham::adifAppend(h.logPath, r, err)) { h.worked.add(r); h.logged++; h.lastLog = r.call; } else h.status = err;
+        mapHamRemember(r.myCall, r.myGrid); mapHamRemember(r.call, r.grid);   // the public map's ham contacts (only if chosen): callsigns, locators, mode, frequency; never the RST or notes
+        mapHamHeard(r.mode.c_str(), r.freqHz, r.myCall, std::string(), r.call, r.endUtc > 0 ? r.endUtc : (double)time(nullptr));
         h.up.enqueue(r, (long long)time(nullptr));   // queued only; nothing leaves unless a service is on and auto upload is ticked
     };
     h.upCfg.autoUpload = p.getB("ham.up.auto", false);
@@ -333,6 +335,17 @@ void hamPanel(App& a) {
     for (const auto& d : f.decodes) {
         if (d.mode != h.mode || d.slotUtc <= h.lastFed) continue;
         h.eng.onDecode(now, d.msg, (int)std::lround(d.snrDb), d.slotUtc, d.hz);
+        {   // the public map's ham contacts (Server > Share ham contacts; ignored unless chosen): who is talking to whom, from the message text only
+            const double rf = (d.dialHz > 0 ? d.dialHz : a.freqMhz * 1e6) + d.hz;
+            mapHamRemember(h.call, h.grid);
+            if (d.mode == 3) { if (!d.call.empty() && !d.grid.empty()) mapHamHeard("WSPR", rf, d.call, d.grid, h.call, d.slotUtc); }
+            else {
+                const ham::ParsedMsg pm = ham::parseMessage(d.msg);
+                if (!d.call.empty() && !d.grid.empty()) mapHamRemember(d.call, d.grid);
+                if (pm.kind != ham::ParsedMsg::Cq && pm.kind != ham::ParsedMsg::Other && !pm.from.empty() && !pm.to.empty())
+                    mapHamHeard(ham::hamModeName(d.mode), rf, pm.from, pm.kind == ham::ParsedMsg::Grid ? pm.grid : std::string(), pm.to, d.slotUtc);
+            }
+        }
         newest = std::max(newest, d.slotUtc);
     }
     h.lastFed = newest;

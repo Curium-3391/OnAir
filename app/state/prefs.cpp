@@ -130,7 +130,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(num("mtvGrid", AT(a.mtvGrid), 0, 0, 2, true)),
         shared(flagI("reduceCpuHidden", AT(a.reduceCpuHidden), true)),
         shared(flagI("discordOn", AT(a.discordOn), false)), shared(flagI("discordFreq", AT(a.discordFreq), true)),
-        shared(rx1(flagI("mapSend", AT(a.mapSend), false, false))), shared(rx1(flagI("mapConsent", AT(a.mapConsent), false, false))), shared(rx1(flagI("mapMsgs", AT(a.mapMsgs), false, false))), shared(rx1(flagI("mapJam", AT(a.mapJam), false, false))), shared(rx1(flagI("mapVoice", AT(a.mapVoice), false, false))),
+        shared(rx1(flagI("mapSend", AT(a.mapSend), false, false))), shared(rx1(flagI("mapConsent", AT(a.mapConsent), false, false))), shared(rx1(flagI("mapMsgs", AT(a.mapMsgs), false, false))), shared(rx1(flagI("mapJam", AT(a.mapJam), false, false))), shared(rx1(flagI("mapHam", AT(a.mapHam), false, false))), shared(rx1(flagI("mapHamConsent", AT(a.mapHamConsent), false, false))), shared(rx1(flagI("mapHam6", AT(a.mapHam6), false, false))), shared(rx1(flagI("mapVoice", AT(a.mapVoice), false, false))),
         shared(rx1(flagI("mapDeclined", AT(a.mapDeclined), false, false))), shared(rx1(text("mapDeclinedVersion", AT(a.mapDeclinedVersion)))),
         shared(rx1(text("mapStationId", AT(a.mapStationId)))), shared(rx1(text("mapServer", AT(a.mapServer)))),
         shared(flagI("lightUi", AT(a.lightUi), false)), shared(flagI("highContrast", AT(a.highContrast), false)),
@@ -345,6 +345,7 @@ void loadPrefs(App& a) {
     loadSpectrumRanges(d, a);
     if (d.has("wideMaskLo")) a.wideFamMask = (uint64_t)(uint32_t)d.getI("wideMaskLo", 0) | ((uint64_t)(uint32_t)d.getI("wideMaskHi", 0) << 32);
     if (a.rxId == 1 && a.mapSend && !a.mapConsent) a.mapSend = false;   // never on without consent
+    if (a.rxId == 1 && a.mapHam && !a.mapHamConsent) a.mapHam = false;   // ham contacts: never on without their own consent
     i18n::set(a.uiLang.empty() ? plat::uiLanguage() : a.uiLang);
     loadFmStations(d, a);
     if (d.has("fmSaved")) {   // the saved-stations library, separate from the band-scan list in fmStations
