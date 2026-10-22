@@ -65,6 +65,7 @@ struct WideOps {
     std::function<double(const Tel&)> freqCorrection;        // optional: Hz to add to the finder's frequency of the carrier (the decoder's own carrier-offset measurement)
     std::function<bool(const Tel&)> hasLog;                  // optional: false = this telemetry has no list entries, a carrier that goes is not kept in the log
     std::function<int(const Tel&)> rowState;                 // optional: the table's state (0 searching, 1 partly locked, 2 locked) when the telemetry's own state is not that scale
+    std::function<void(Rx&, double absHz)> bind;             // optional: a receiver was made for a carrier at this absolute frequency (the span's centre set by setCenterHz plus the carrier's offset; the offset alone while no centre is known)
 };
 
 template <class Rx, class Tel>
@@ -112,9 +113,9 @@ public:
         }
         feedCarriers(x, n);
         if (ops_.preRollSec > 0) {   // keep the last preRollSec of the span (before this block) for a carrier found later
-            const size_t cap = (size_t)(ops_.preRollSec * spanRate_);
+            const size_t cap = histCap();
             hist_.insert(hist_.end(), x, x + n);
-            if (hist_.size() > cap) hist_.erase(hist_.begin(), hist_.end() - (long)cap);
+            if (hist_.size() > 2 * cap) hist_.erase(hist_.begin(), hist_.end() - (long)cap);   // trimmed in steps: a wide span would otherwise move the whole history on every block
         }
     }
 
@@ -197,11 +198,14 @@ private:
         s->rx.reset(new Rx());
         s->rx->configure(ops_.outRate);
         if (ops_.setup) ops_.setup(*s->rx);
+        if (ops_.bind) ops_.bind(*s->rx, center_ + c.hz);
         if (!s->ch.configure(spanRate_, ops_.outRate, c.hz, ops_.occupiedHz)) return nullptr;
         if (ops_.audio) ops_.audio(*s->rx, !muted_ && c.id == effSel());
         if (!hist_.empty()) {   // the start of the transmission that made the finder notice the carrier
             std::vector<cf32> out;
-            s->ch.process(hist_.data(), hist_.size(), out);
+            const size_t cap = histCap();
+            const size_t keep = std::min(cap, hist_.size());
+            s->ch.process(hist_.data() + (hist_.size() - keep), keep, out);
             if (!out.empty()) s->rx->feed(out.data(), out.size());
         }
         live_.push_back(std::move(s));
@@ -221,6 +225,7 @@ private:
         const double c = ops_.freqCorrection ? ops_.freqCorrection(s.tel) : 0.0;
         return s.car.hz + (std::fabs(c) < 0.3 * cfg_.stepHz ? c : 0.0);
     }
+    size_t histCap() const { return (size_t)(ops_.preRollSec * spanRate_); }
     void retireAll() { while (!live_.empty()) retire(live_.back()->car.id); }
     void applyAudio() { if (!ops_.audio) return; for (auto& s : live_) ops_.audio(*s->rx, !muted_ && s->car.id == effSel()); }
     int effSel() const { return sel_ ? sel_ : autoPlay_; }   // the carrier whose sound plays: the chosen one, else the best locked one
