@@ -418,6 +418,7 @@ struct App {
     bool watchlistOpen = false;    // View > Watchlists: alerts when listed aircraft, ships, call signs, frequencies or words are heard (watchlist_ui.cpp)
     bool msgdbOpen = false;        // View > Messages: the decoded-message database (msgdb_ui.cpp)
     bool protolabOpen = false;     // View > Protocol lab: reverse-engineering workbench for unknown signals (protolab_ui.cpp)
+    bool modeBuilderOpen = false;  // Tools > Mode Builder: decoders built from a JSON definition (modebuilder_ui.cpp)
     bool pluginsOpen = false;      // View > Plugins: the plugin manager (plugin/plugin_app.cpp)
     bool automationOpen = false;   // View > Automations: rules and scripts (automation_ui.cpp)
     dect2::FeedConfig feeds;  // the data feeds out (all off by default), saved with the preferences
@@ -870,6 +871,9 @@ void shareTick(App& a);             // feeds_ui.cpp: carries out the frequency /
 void watchlistWindow(App& a);   // app/watchlist/watchlist_ui.cpp: the Watchlists window (View > Watchlists); also starts the alerts
 void msgdbWindow(App& a);   // msgdb_ui.cpp: the Messages window (View > Messages); also starts the database and its feed
 void protolabWindow(App& a);   // protolab_ui.cpp: the Protocol lab window (View > Protocol lab)
+void modeBuilderWindow(App& a);   // modebuilder_ui.cpp: the Mode Builder window (Tools > Mode Builder)
+void modeBuilderFrame(App& a);    // modebuilder_ui.cpp, every frame: lists the registered custom modes, runs the selected one on receiver 1
+bool customModeSink(const float* iq, size_t nComplex, double rate);   // modebuilder_ui.cpp: the samples of a running custom mode (true: taken)
 void pluginFrame(App& a);          // plugin/plugin_app.cpp, every frame: discovery at the first call, starts and stops the running plugin mode, ticks the host
 void pluginShutdown();             // at exit: stops the plugins and removes the crash marker
 void pluginManagerWindow(App& a);  // View > Plugins
@@ -947,9 +951,13 @@ constexpr int kModeCapacity = 400;   // the built-in rows and the plugins' (mode
 extern ModeDef kModes[];
 extern int kNumModes;
 bool addPluginModeRow(int family, const std::string& name, const std::string& blurb, const std::string& sub);   // appends a row in the PLUGINS group; false when the table is full
+// Custom modes (Mode Builder): family numbers from 20000, stored in <data folder>/modes/registered.txt and never reused; the engine standard is family + 2
+constexpr int kCustomFamilyBase = 20000;
+inline bool isCustomFamily(int f) { return f >= kCustomFamilyBase && f < kCustomFamilyBase + 10000; }
+bool addCustomModeRow(int family, const std::string& name, const std::string& blurb, const std::string& sub);   // a row in the CUSTOM MODES group (updates the texts of an existing one)
 struct ModeRange { const ModeDef* b; const ModeDef* e; const ModeDef* begin() const { return b; } const ModeDef* end() const { return e; } };
 inline ModeRange allModes() { return {kModes, kModes + kNumModes}; }   // for (const auto& m : allModes())
-constexpr int kNumGroups = 16;   // the headings of the mode lists (mode_table.cpp); UI only, never saved by number
+constexpr int kNumGroups = 17;   // the headings of the mode lists (mode_table.cpp); UI only, never saved by number
 extern const char* const kGroupNames[kNumGroups];
 extern const ImU32 kGroupCols[kNumGroups];
 // The screens of a mode added after FM (family 6 and up). Each mode has one in its app/<mode>_ui.cpp and modeui.cpp lists them; the shell calls whichever

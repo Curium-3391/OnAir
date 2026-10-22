@@ -716,6 +716,14 @@ std::string pattern(const BitPattern& p) {
 }
 }   // namespace
 
+bool parsePattern(const std::string& text, int bits, BitPattern& out, std::string& err) {
+    return readPattern(aj::Value::string(text), bits, out, err);
+}
+std::string patternText(const BitPattern& p) {
+    const std::string q = pattern(p);
+    return q.size() >= 2 ? q.substr(1, q.size() - 2) : q;
+}
+
 std::string toJson(const Definition& d) {
     std::string o = "{\n";
     auto line = [&](const std::string& k, const std::string& v, bool comma = true) { o += "  " + q(k) + ": " + v + (comma ? ",\n" : "\n"); };

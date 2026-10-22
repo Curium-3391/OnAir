@@ -41,6 +41,7 @@ The user guides and notes that live in the repository. The same text is on the [
 | [plugins.md](plugins.md) | Plugins | Plugins let other people add decoders ("modes") and actions to OnAir without rebuilding it. |
 | [position-estimation.md](position-estimation.md) | Aircraft position estimation | One estimator serves ADS-B, UAT, ACARS, VDL2 and HFDL (`core/include/dect2/track/`, `core/src/track/`, test `tests/track/test_track.cpp`). |
 | [protocol-lab.md](protocol-lab.md) | Protocol lab | View > Protocol lab... |
+| [MODE-BUILDER.md](MODE-BUILDER.md) | Mode Builder: decoders from a JSON definition (format shared with the Signal Lab) | Tools > Mode Builder... |
 | [rf-camera.md](rf-camera.md) | RF camera | The RF camera lays the direction finder's bearing spectrum over a picture as a heat map, so you see roughly where in a scene a signal comes from. |
 | [rfi-hunter.md](rfi-hunter.md) | Interference hunter (View > Interference hunter) | Watches a band for new interference, guesses what kind of source it is, and helps you walk to it with a loud / quiet meter. |
 | [same.md](same.md) | NOAA Weather Radio SAME (EAS alerts, US and Canada) | Receive only. |

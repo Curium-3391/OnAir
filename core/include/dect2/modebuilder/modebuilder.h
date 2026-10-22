@@ -148,6 +148,8 @@ ParseResult parseDefinition(const std::string& json);
 std::vector<Issue> validate(const Definition& d);   // the checks of meaning (parseDefinition runs them too)
 std::string toJson(const Definition& d);            // pretty, keys in the order of the documentation
 std::string makeId(const std::string& name);        // "OOK 433 sensor" -> "ook-433-sensor"
+bool parsePattern(const std::string& text, int bits, BitPattern& out, std::string& err);   // "0x2DD4", "0b1011", "1011"; bits 0: from the text
+std::string patternText(const BitPattern& p);       // hex when the length is a multiple of 4, else bits
 
 // ---------------------------------------------------------------- the stages (also used by the tests)
 namespace stage {

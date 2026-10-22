@@ -208,6 +208,8 @@ static void floatingWindows(App& a, ImVec2 disp) {
     feedsWindow(a);
     automationWindow(a);
     protolabWindow(a);
+    modeBuilderFrame(a);
+    modeBuilderWindow(a);
     pluginFrame(a);
     pluginManagerWindow(a);
     msgdbWindow(a);
