@@ -26,6 +26,13 @@ void tourMark(const char* id, ImVec2 lo, ImVec2 hi) {
     gAnchors.set(id, tour::Rect{lo.x, lo.y, hi.x, hi.y}, ImGui::GetFrameCount());
 }
 
+bool tourAnchor(const char* id, ImVec2& lo, ImVec2& hi) {
+    if (!gAnchors.has(id, ImGui::GetFrameCount())) return false;
+    const tour::Rect r = gAnchors.get(id);
+    lo = ImVec2(r.x0, r.y0); hi = ImVec2(r.x1, r.y1);
+    return true;
+}
+
 static void tourClose(App& a, bool done = false) {
     a.wizOpen = false;
     if (a.wizTour >= 0) {   // a guided tour: finishing forgets the place, skipping keeps it so the tour resumes there

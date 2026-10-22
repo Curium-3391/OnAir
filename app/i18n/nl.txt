@@ -668,7 +668,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	Vliegtuigen
 All set. OnAir will start here:	Alles klaar. OnAir start hier:
 Allow remote control (frequency and gain)	Afstandsbediening toestaan (frequentie en versterking)
-Amateur radio	Zendamateurisme
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Er is een SDRplay RSP aangesloten, maar de SDRplay Hardware API is niet geïnstalleerd. Installeer die apart, ook als SDRconnect al met de radio werkt.
 Another program is using the HackRF	Een ander programma gebruikt de HackRF
 Australia and New Zealand	Australië en Nieuw-Zeeland
@@ -709,7 +708,6 @@ Drag to resize, double click for the automatic size	Sleep om het formaat te wijz
 Drones, 2.4 / 5.8 GHz	Drones, 2.4 / 5.8 GHz
 Elsewhere	Elders
 Europe	Europa
-FM / DAB radio	FM- / DAB-radio
 FM radio	FM-radio
 Files: audio and IQ	Bestanden: audio en IQ
 Fill under the line	Vlak onder de lijn vullen
@@ -827,10 +825,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	Zoeken
 Seen	Gezien
 Send spots to PSK Reporter (pskreporter.info)	Spots naar PSK Reporter sturen (pskreporter.info)
-Sensors and IoT	Sensoren en IoT
 Services	Diensten
 Set the LO above 0 MHz.	Stel de LO in boven 0 MHz.
-Setup	Installatie
 Setup wizard	Installatiewizard
 Share my radio (rtl_tcp server)	Mijn radio delen (rtl_tcp-server)
 Share the radio's samples as an rtl_tcp server	De samples van de radio delen als rtl_tcp-server
@@ -841,7 +837,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	Snelheid (rijen per seconde)
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	Spots zijn openbaar. Een geldige zendamateur-roepletters is vereist; de dialfrequentie is de afgestemde frequentie.
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	Stop met rijen toevoegen: het beeld blijft staan en slepen of het wiel op de waterval scrolt en zoomt erin terug
-Television	Televisie
 Text size	Tekstgrootte
 Text size %d%%	Tekstgrootte %d%%
 The FreeDV / M17 voice codec (codec2) was not found	De FreeDV-/M17-spraakcodec (codec2) is niet gevonden
@@ -880,7 +875,6 @@ This user may not open the radio	Deze gebruiker mag de radio niet openen
 Time constant of the averaged line: longer is calmer	Tijdconstante van de gemiddelde lijn: langer is rustiger
 Tools	Hulpmiddelen
 Trace	Trace
-Trunked and two-way radio	Trunking en portofoons
 Try another USB port and a short cable.	Probeer een andere USB-poort en een korte kabel.
 Try another USB port, directly on the computer (not a hub), and a short cable.	Probeer een andere USB-poort, rechtstreeks op de computer (geen hub), en een korte kabel.
 Try another USB port, directly on the computer (not a hub).	Probeer een andere USB-poort, rechtstreeks op de computer (geen hub).
@@ -902,13 +896,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	Golfboeien, HF
 Weather alerts, 162.55 MHz	Weerwaarschuwingen, 162.55 MHz
 Weather pictures, 1.7 GHz	Weerbeelden, 1.7 GHz
-What do you want to receive? Tick anything that interests you.	Wat wil je ontvangen? Vink alles aan wat je interesseert.
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Wat je bij een niveau in dBFS optelt om dBm voor deze radio te krijgen (zijn kalibratie: een bekend signaal in de antenne-aansluiting toont het). Ook in de radio-instellingen.
-Where are you? This picks the right TV standard and FM band.	Waar ben je? Dit kiest de juiste tv-norm en FM-band.
 Which language do you want OnAir in?	In welke taal wil je OnAir?
-Which radio do you have?	Welke radio heb je?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Je kunt de modus op elk moment wijzigen en deze installatie opnieuw starten via Help > Installatiewizard.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Je kunt ook zonder doorgaan: het synthetische signaal en IQ-bestanden werken zonder hardware.
 Your callsign	Je roepletters
 Your locator	Je locator
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Zoom: muiswiel (beide assen), Ctrl+wiel (frequentie), Shift+wiel (niveau).\nCtrl+PageUp / PageDown: beeld een scherm opschuiven in frequentie. Dubbelklik: herstellen.

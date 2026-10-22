@@ -675,7 +675,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	Orlaiviai
 All set. OnAir will start here:	Viskas paruošta. OnAir prasidės čia:
 Allow remote control (frequency and gain)	Leisti nuotolinį valdymą (dažnis ir stiprinimas)
-Amateur radio	Radijo mėgėjai
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Prijungtas SDRplay RSP, bet SDRplay Hardware API neįdiegta. Įdiekite ją atskirai, net jei SDRconnect jau veikia su radiju.
 Another program is using the HackRF	Kita programa naudoja HackRF
 Australia and New Zealand	Australija ir Naujoji Zelandija
@@ -716,7 +715,6 @@ Drag to resize, double click for the automatic size	Tempkite, kad pakeistumėte 
 Drones, 2.4 / 5.8 GHz	Dronai, 2,4 / 5,8 GHz
 Elsewhere	Kitur
 Europe	Europa
-FM / DAB radio	FM / DAB radijas
 FM radio	FM radijas
 Files: audio and IQ	Failai: garsas ir IQ
 Fill under the line	Užpildyti po linija
@@ -834,10 +832,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	Ieškoti
 Seen	Matyta
 Send spots to PSK Reporter (pskreporter.info)	Siųsti spotus į PSK Reporter (pskreporter.info)
-Sensors and IoT	Jutikliai ir IoT
 Services	Paslaugos
 Set the LO above 0 MHz.	Nustatykite LO aukščiau nei 0 MHz.
-Setup	Sąranka
 Setup wizard	Sąrankos vedlys
 Share my radio (rtl_tcp server)	Bendrinti mano radiją (rtl_tcp serveris)
 Share the radio's samples as an rtl_tcp server	Bendrinti radijo imtis kaip rtl_tcp serverį
@@ -848,7 +844,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	Greitis (eilučių per sekundę)
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	Spotai yra vieši. Reikalingas galiojantis radijo mėgėjo šaukinys; ciferblato dažnis yra sureguliuotas dažnis.
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	Nebepridėti eilučių: vaizdas lieka, o tempimas ar ratukas ant krioklio leidžia slinkti ir keisti mastelį
-Television	Televizija
 Text size	Teksto dydis
 Text size %d%%	Teksto dydis %d%%
 The FreeDV / M17 voice codec (codec2) was not found	FreeDV / M17 balso kodekas (codec2) nerastas
@@ -889,7 +884,6 @@ This user may not open the radio	Šis naudotojas negali atidaryti radijo
 Time constant of the averaged line: longer is calmer	Vidurkintos linijos laiko pastovioji: ilgesnė – ramesnė
 Tools	Įrankiai
 Trace	Kreivė
-Trunked and two-way radio	Trunkingo ir dvipusis radijas
 Try another USB port and a short cable.	Išbandykite kitą USB prievadą ir trumpą laidą.
 Try another USB port, directly on the computer (not a hub), and a short cable.	Išbandykite kitą USB prievadą tiesiai kompiuteryje (ne šakotuve) ir trumpą laidą.
 Try another USB port, directly on the computer (not a hub).	Išbandykite kitą USB prievadą tiesiai kompiuteryje (ne šakotuve).
@@ -911,13 +905,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	Bangų plūdurai, HF
 Weather alerts, 162.55 MHz	Oro perspėjimai, 162,55 MHz
 Weather pictures, 1.7 GHz	Orų paveikslėliai, 1,7 GHz
-What do you want to receive? Tick anything that interests you.	Ką norite priimti? Pažymėkite viską, kas jus domina.
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Ką pridėti prie dBFS lygio, kad gautumėte šio radijo dBm (jo kalibravimas: žinomas signalas antenos lizde jį parodo). Taip pat radijo nustatymuose.
-Where are you? This picks the right TV standard and FM band.	Kur esate? Pagal tai parenkamas tinkamas TV standartas ir FM juosta.
 Which language do you want OnAir in?	Kokia kalba norite naudoti OnAir?
-Which radio do you have?	Kokį radiją turite?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Režimą galite keisti bet kada ir šią sąranką paleisti iš naujo per Pagalba > Sąrankos vedlys.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Galite tęsti ir be jo: sintetinis signalas ir IQ failai veikia be aparatūros.
 Your callsign	Jūsų šaukinys
 Your locator	Jūsų lokatorius
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Mastelis: pelės ratukas (abi ašys), Ctrl+ratukas (dažnis), Shift+ratukas (lygis).\nCtrl+PageUp / PageDown: perstumti vaizdą per vieną ekraną dažniu. Dukart spustelėkite: atstatyti.
