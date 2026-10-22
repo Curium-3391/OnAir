@@ -36,6 +36,7 @@ struct TonesTelemetry {
     // details
     double timeSec = 0, inputRate = 0;
     bool audioInput = false;        // real audio samples (sound card / recording), not a radio's FM
+    int demod = 0;                  // the radio's channel: TonesDemod (tones_rx.h), 0 FM
     float audioDb = -200;           // the audio, rms, 0 dB = 5 kHz deviation (or full scale for audio input)
     // sub-audible
     int ctcssIdx = -1;              // locked tone (index into tones::ctcssHz), -1 none
