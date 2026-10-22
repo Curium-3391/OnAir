@@ -147,7 +147,7 @@ void strip(App& first, ImVec2 disp, float h) {
     const float btn = chipH, plusW = chipH + 2 * gUi;
     char cpu[24];
     snprintf(cpu, sizeof cpu, "CPU %.0f%%", gCpuPct);
-    const float cpuW = compact ? 0.f : ImGui::CalcTextSize(cpu).x + 14 * gUi;
+    const float cpuW = 0.f;   // the CPU level is a cell of the status strip now
     const float viewR = ImGui::GetWindowPos().x + disp.x - cpuW - plusW - 10 * gUi;   // chips are clipped here
     const float viewW = std::max(40.f, viewR - x0);
     const float maxChip = (compact ? 190.f : 330.f) * gUi, minChip = 96 * gUi;
@@ -159,7 +159,7 @@ void strip(App& first, ImVec2 disp, float h) {
     float x = 0;
     for (App* r : all) {
         const char* mn = modeName(*r);
-        std::string t = rxbar::label(r->rxId, mn, r->freqMhz);
+        std::string t = all.size() == 1 ? "RX " + std::to_string(r->rxId) : rxbar::label(r->rxId, mn, r->freqMhz);   // one receiver: its mode and frequency are in the status strip
         const float tw = ImGui::CalcTextSize(t.c_str()).x;
         const float w = rxbar::chipWidth(tw, 12 * gUi + 14 * gUi + btn * (r->rxId > 1 ? 2.f : 1.f), minChip, maxChip);
         chips.push_back({r, std::move(t), x, w});

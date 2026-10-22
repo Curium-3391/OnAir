@@ -7,6 +7,8 @@
 #include "../codec/speech_codec_ui.h"
 #include "ui_common.h"
 #include "tour_logic.h"
+#include "status_strip.h"
+#include <thread>
 #include "../state/workspace.h"
 #include "../state/layout.h"
 #ifdef _WIN32
@@ -290,31 +292,154 @@ static double processCpuSeconds() {
 }
 #endif
 
-// WSJT-X style status bar: fields separated by rules
+// height of the labelled cells of the status strip: caption row + value row + padding (follows the text size)
+float statusStripBlockHeight() {
+    const float fs = ImGui::GetFontSize();
+    return std::max(ImGui::GetFrameHeight(), fs * 0.78f + fs * 1.3f + 8 * gUi);
+}
+
+// the status strip: labelled cells (frequency, mode, receiver, state, CPU level, mute), then the rate / level / load / log fields separated by rules
 void statusLine(App& a) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const bool run = a.engine.running();
     const ModeDef* cur = &kModes[0];
     for (int i = 0; i < kNumModes; i++) if (modeSelected(a, kModes[i])) cur = &kModes[i];
     const float lh = ImGui::GetTextLineHeight();
+    // ---- the labelled cells: FREQUENCY, MODE, RECEIVER, STATE, CPU level, and the mute button at the right edge (collapse order: statusstrip::plan)
+    const bool scanning = !run && a.scanner.progress().running;   // the receiver let go of the radio for a channel scan
+    static double cpuPct = 0, lastCpu = 0, lastWall = 0;   // this process's CPU (100 = one core), measured once a second
+    {
+        const double wall = ImGui::GetTime();
+        if (wall - lastWall >= 1.0) {
+            const double cpu = processCpuSeconds();
+            if (lastWall > 0) cpuPct = (cpu - lastCpu) / (wall - lastWall) * 100;
+            lastCpu = cpu; lastWall = wall;
+        }
+        gCpuPct = (float)cpuPct;
+    }
+    const SampleLoss sl = a.engine.sampleLoss();
+    const float stripX0 = ImGui::GetCursorScreenPos().x, stripY0 = ImGui::GetCursorScreenPos().y, stripR = stripX0 + ImGui::GetContentRegionAvail().x;
+    const float blockH = statusStripBlockHeight();
+    float limit = stripR;   // the trailing fields (rate, level, log) stop here
+    {
+        const float fs = ImGui::GetFontSize(), capS = fs * 0.78f, valS = fs * 1.3f;
+        const float padX = 8 * gUi, gap = 6 * gUi, spc = 0.8f * gUi, rnd = 3.5f * gUi;
+        ImFont* mono = typo::fonts().mono ? typo::fonts().mono : a.mono;
+        ImFont* monoB = typo::fonts().monoBold ? typo::fonts().monoBold : mono;
+        const auto upper = [](std::string s) { for (char& c : s) if (c >= 'a' && c <= 'z') c = (char)(c - 32); return s; };
+        const auto capW = [&](const std::string& s) { ImGui::PushFont(nullptr, capS); float w = 0; for (char c : s) { char t[2] = {c, 0}; w += ImGui::CalcTextSize(t).x + spc; } ImGui::PopFont(); return w; };
+        const auto textW = [&](const std::string& s, ImFont* f, float sz) { ImGui::PushFont(f, sz); const float w = ImGui::CalcTextSize(s.c_str()).x; ImGui::PopFont(); return w; };
+        const std::string capF = upper(tr("Frequency")), capM = upper(tr("Mode")), capR = upper(tr("Receiver")), capS2 = upper(tr("State")), capC = "CPU";
+        const std::string stateTxt = tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped");
+        const statusstrip::FreqParts fp = statusstrip::splitFreq(a.freqMhz);
+        const std::string rxTxt = std::to_string(a.rxId), mhzTxt = " MHz";
+        char pc[16]; snprintf(pc, sizeof pc, "%.0f%%", cpuPct);
+        const float lampW = 9 * gUi, barW = 44 * gUi, mhzSz = valS * 0.62f;
+        const float freqV = textW(fp.lead, monoB, valS) + textW(fp.rest, monoB, valS) + textW(mhzTxt, a.mono, mhzSz) + 3 * gUi;
+        const float modeV = textW(cur->name, monoB, valS * 0.85f), rxV = textW(rxTxt, monoB, valS * 0.85f);
+        const float stateV = lampW + textW(stateTxt, nullptr, fs), cpuV = barW + 6 * gUi + textW(pc, mono, fs);
+        const auto cell = [&](float cap, float val) { return statusstrip::Cell{std::max(cap, val) + 2 * padX, val + 2 * padX}; };
+        statusstrip::Widths w{cell(capW(capF), freqV), cell(capW(capM), modeV), cell(capW(capR), rxV), cell(capW(capS2), stateV), cell(capW(capC), cpuV),
+                              barW + 2 * padX, ImGui::GetFrameHeight(), gap};
+        const statusstrip::Plan pl = statusstrip::plan(stripR - stripX0, w);
+        limit = stripR - w.mute - gap;
+        ImDrawList* dl2 = ImGui::GetWindowDrawList();
+        float x = stripX0;
+        const float capY = stripY0 + 3 * gUi, valY = capY + capS + 2 * gUi, valH = valS;
+        const auto box = [&](float cw, float& cx) { const ImVec2 a0(cx, stripY0), b0(cx + cw, stripY0 + blockH);
+            dl2->AddRectFilled(a0, b0, u32(T.bg), rnd); dl2->AddRect(a0, b0, u32(T.edge), rnd, 0, 1.f); return a0; };
+        const auto caption = [&](float cx, const std::string& s) {
+            if (!pl.captions || s.empty()) return;
+            ImGui::PushFont(nullptr, capS);
+            float px = cx + padX;
+            for (char c : s) { char t[2] = {c, 0}; dl2->AddText(ImVec2(px, capY), u32(T.dim), t); px += ImGui::CalcTextSize(t).x + spc; }
+            ImGui::PopFont();
+        };
+        const auto valueAt = [&](float cx, float cw, float tw, float vy, float sz, ImFont* f, ImU32 col, const std::string& s) {   // centred in the value row
+            ImGui::PushFont(f, sz); dl2->AddText(ImVec2(cx + (cw - tw) * 0.5f, vy), col, s.c_str()); ImGui::PopFont();
+        };
+        const float rowY = pl.captions ? valY : stripY0 + (blockH - valH) * 0.5f;
+        const auto rowYFor = [&](float sz) { return rowY + (valH - sz) * 0.5f; };
+        {   // FREQUENCY: first three digits in the accent, the rest bright, MHz small and dim
+            const float cw = pl.captions ? w.freq.cap : w.freq.bare;
+            const ImVec2 o = box(cw, x);
+            caption(x, capF);
+            float px = x + padX + (cw - 2 * padX - freqV) * 0.5f;
+            ImGui::PushFont(monoB, valS);
+            dl2->AddText(ImVec2(px, rowY), u32(T.accent), fp.lead.c_str()); px += ImGui::CalcTextSize(fp.lead.c_str()).x;
+            dl2->AddText(ImVec2(px, rowY), u32(T.bright), fp.rest.c_str()); px += ImGui::CalcTextSize(fp.rest.c_str()).x + 3 * gUi;
+            ImGui::PopFont();
+            ImGui::PushFont(a.mono, mhzSz); dl2->AddText(ImVec2(px, rowY + valS - mhzSz * 1.15f), u32(T.dim), "MHz"); ImGui::PopFont();
+            (void)o; x += cw + gap;
+        }
+        if (pl.showMode) {
+            const float cw = pl.captions ? w.mode.cap : w.mode.bare;
+            box(cw, x); caption(x, capM);
+            valueAt(x, cw, modeV, rowYFor(valS * 0.85f), valS * 0.85f, monoB, u32(T.bright), cur->name);
+            x += cw + gap;
+        }
+        if (pl.showRx) {
+            const float cw = pl.captions ? w.rx.cap : w.rx.bare;
+            box(cw, x); caption(x, capR);
+            valueAt(x, cw, rxV, rowYFor(valS * 0.85f), valS * 0.85f, monoB, u32(T.bright), rxTxt);
+            x += cw + gap;
+        }
+        if (pl.showState) {
+            const float cw = pl.captions ? w.state.cap : w.state.bare;
+            box(cw, x); caption(x, capS2);
+            const ImVec4 lamp = run || scanning ? pal::okGreen() : pal::grey();
+            const float tx = x + (cw - stateV) * 0.5f, cy = rowY + valH * 0.5f;
+            dl2->AddCircleFilled(ImVec2(tx + 3.5f * gUi, cy), 3.5f * gUi, u32(lamp));
+            ImGui::PushFont(nullptr, fs); dl2->AddText(ImVec2(tx + lampW, cy - ImGui::GetTextLineHeight() * 0.5f), u32(run || scanning ? T.bright : T.dim), stateTxt.c_str()); ImGui::PopFont();
+            x += cw + gap;
+        }
+        if (pl.showCpu) {   // CPU as a level: a thin bar and the percentage, amber then orange then red
+            const float cw = !pl.showCpuLabel ? w.cpuNoLabel : pl.captions ? w.cpu.cap : w.cpu.bare;
+            const float cx0 = x;
+            box(cw, x); if (pl.showCpuLabel) caption(x, capC);
+            const int lv = statusstrip::cpuLevel((float)cpuPct);
+            const ImVec4 lc = lv == 2 ? pal::badRed() : lv == 1 ? pal::warnAmber() : T.accent;
+            const float bx = x + (cw - cpuV) * 0.5f, cy = rowY + valH * 0.5f, bh = 4 * gUi;
+            dl2->AddRectFilled(ImVec2(bx, cy - bh * 0.5f), ImVec2(bx + barW, cy + bh * 0.5f), u32(T.edge), 2 * gUi);
+            const float fill = statusstrip::cpuFill((float)cpuPct, (int)std::max(1u, std::thread::hardware_concurrency()));
+            dl2->AddRectFilled(ImVec2(bx, cy - bh * 0.5f), ImVec2(bx + std::max(fill, 0.02f) * barW, cy + bh * 0.5f), u32(lc), 2 * gUi);
+            ImGui::PushFont(mono, fs); dl2->AddText(ImVec2(bx + barW + 6 * gUi, cy - ImGui::GetTextLineHeight() * 0.5f), u32(lv ? lc : T.bright), pc); ImGui::PopFont();
+            if (ImGui::IsMouseHoveringRect(ImVec2(cx0, stripY0), ImVec2(cx0 + cw, stripY0 + blockH)) && ImGui::IsWindowHovered()) {
+                ImGui::BeginTooltip();
+                ImGui::Text("Process CPU: %.0f%% (100%% = one core)", cpuPct);
+                if (run && sl.live) ImGui::Text("DSP load: %.0f%% of real time on the sample thread (processing time, not lost samples)", sl.loadPct);
+                if (run && sl.live && sl.deliveredPct >= 0)
+                    ImGui::Text(sl.rateLow ? "Samples arriving: %.1f%% of the set rate (below 97%%: the radio or its driver)" : "Samples arriving: %.1f%% of the set rate", sl.deliveredPct);
+                ImGui::TextDisabled("Drawing is slowed when nothing moves and paused while hidden.");
+                ImGui::EndTooltip();
+            }
+            x += cw + gap;
+        }
+        // the mute button at the right edge (the same click as the volume control)
+        ImGui::SetCursorScreenPos(ImVec2(stripR - w.mute, stripY0 + (blockH - w.mute) * 0.5f));
+        if (iconFlat(a.muted ? Ic::Mute : Ic::Speaker, tr(a.muted ? "Unmute" : "Mute"))) {
+            a.muted = !a.muted;
+            a.engine.player().setMuted(a.muted); a.engine.dabAudio().setMuted(a.muted);
+        }
+        ImGui::SetCursorScreenPos(ImVec2(x, stripY0 + (blockH - lh) * 0.5f));   // the trailing fields continue after the cells
+    }
+    bool fresh = true;
     auto field = [&](const char* text, bool first = false, ImVec4 col = ImVec4(-1, 0, 0, 0), bool fit = false) {
-        if (!first) {
+        const float gap = 8 * gUi;
+        const float left = fresh ? ImGui::GetCursorScreenPos().x : ImGui::GetItemRectMax().x + 0;
+        if (!first && !fresh) {
             // the rule sits in the middle of an 8 px gap on each side: text, rule, text never touch
-            const float gap = 8 * gUi;
-            if (!sameLineIf(2 * gap + 1 + (fit ? 40 * gUi : ImGui::CalcTextSize(text).x), gap)) return;   // no room left on the bar
+            if (left + 2 * gap + 1 + (fit ? 40 * gUi : ImGui::CalcTextSize(text).x) > limit) return;   // no room left on the bar
+            ImGui::SameLine(0, gap);
             const ImVec2 p = ImGui::GetCursorScreenPos();   // gap after the previous text
             dl->AddLine(ImVec2(p.x + 0.5f, p.y + 1), ImVec2(p.x + 0.5f, p.y + lh - 1), u32(T.dim));
             ImGui::SameLine(0, gap + 1);   // the next text starts a gap past the rule (1 px wide)
-        }
-        const std::string t = fit ? ellipsize(text, ImGui::GetContentRegionAvail().x, ImGui::GetFontSize()) : text;   // the log line: as much as fits
+        } else if (ImGui::GetCursorScreenPos().x + (fit ? 40 * gUi : ImGui::CalcTextSize(text).x) > limit) return;
+        const std::string t = fit ? ellipsize(text, limit - ImGui::GetCursorScreenPos().x, ImGui::GetFontSize()) : text;   // the log line: as much as fits
         if (col.x < 0) ImGui::TextUnformatted(t.c_str()); else ImGui::TextColored(col, "%s", t.c_str());
+        fresh = false;
     };
     char b[96];
-    ImGui::AlignTextToFramePadding();
-    const bool scanning = !run && a.scanner.progress().running;   // the receiver let go of the radio for a channel scan
-    field(tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped"), true, run || scanning ? pal::okGreen() : pal::grey());
-    field(cur->name);
-    snprintf(b, sizeof b, "%.3f MHz", a.freqMhz); field(b);
     if (run) { snprintf(b, sizeof b, "%.3f Msps", a.engine.sampleRate() / 1e6); field(b); }
     if (run) { snprintf(b, sizeof b, tr("level %.1f dBFS"), a.spec.stats.rmsDbfs); field(b); }
     if (run) {
@@ -323,29 +448,6 @@ void statusLine(App& a) {
         if (hint.update(l.cpuEvents, ImGui::GetTime())) a.engine.log(tr("This mode is too slow for this computer: samples are being dropped. Try a lower sample rate or a narrower mode."));
         if (l.live) { snprintf(b, sizeof b, tr("load %.0f%%"), l.loadPct); field(b, false, l.loadPct > 90 ? pal::warnAmber() : ImVec4(-1, 0, 0, 0)); lossTooltip(l); }
         if (l.radioEvents || l.cpuEvents || l.rateLow) { field((std::string(tr("dropped")) + " " + lossText(l)).c_str(), false, lossColour(l)); lossTooltip(l); }
-    }
-    {   // CPU load meter: this process's CPU (100 = one core) and, while receiving, the receiver's DSP load
-        static double cpuT = 0, cpuPct = 0, lastCpu = 0, lastWall = 0;
-        const double wall = ImGui::GetTime();
-        if (wall - lastWall >= 1.0) {
-            const double cpu = processCpuSeconds();
-            if (lastWall > 0) cpuPct = (cpu - lastCpu) / (wall - lastWall) * 100;
-            lastCpu = cpu; lastWall = wall; cpuT = wall;
-        }
-        gCpuPct = (float)cpuPct;
-        const SampleLoss l = a.engine.sampleLoss();
-        snprintf(b, sizeof b, "CPU %.0f%%", cpuPct);
-        field(b, false, cpuPct > 250 ? pal::warnAmber() : ImVec4(-1, 0, 0, 0));
-        if (ImGui::IsItemHovered()) {
-            ImGui::BeginTooltip();
-            ImGui::Text("Process CPU: %.0f%% (100%% = one core)", cpuPct);
-            if (run && l.live) ImGui::Text("DSP load: %.0f%% of real time on the sample thread (processing time, not lost samples)", l.loadPct);
-            if (run && l.live && l.deliveredPct >= 0)
-                ImGui::Text(l.rateLow ? "Samples arriving: %.1f%% of the set rate (below 97%%: the radio or its driver)" : "Samples arriving: %.1f%% of the set rate", l.deliveredPct);
-            ImGui::TextDisabled("Drawing is slowed when nothing moves and paused while hidden.");
-            ImGui::EndTooltip();
-        }
-        (void)cpuT;
     }
     {
         size_t n = 0;

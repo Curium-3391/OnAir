@@ -54,6 +54,7 @@ void endModule();
 void chip(const char* label, bool sel, bool& clicked);
 
 // ui2_shell.cpp
+float statusStripBlockHeight();
 void summary(App& a, float x, float y, float scale = 1.f, float maxW = FLT_MAX);
 void modeList(App& a);
 void sidebar(App& a);
