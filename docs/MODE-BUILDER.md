@@ -14,7 +14,8 @@ Code: `core/include/dect2/modebuilder/modebuilder.h`, `core/src/modebuilder` (li
 
 ## Using it
 
-1. Open Tools > Mode Builder. Pick an example from the **Library** (or *New*), or paste a definition.
+1. Open Tools > Mode Builder. Pick one of the **Examples** (or *New*, *Saved*, *Open file*), or paste a definition. The Protocol lab's
+   Export tab has **Open in Mode Builder**, which turns what the lab worked out of a recording into a definition to finish here.
 2. Edit it in the **Form** tab or in the **JSON** tab. The JSON is checked as you type: every problem is listed with the line or the
    key it is about ("fields[2].width_bits: must be 1..64"). A definition with errors does not run.
 3. **Test on recording**: pick an IQ file (cf32, cs16, cu8, cs8), its sample rate and the offset of the signal from the centre of the
