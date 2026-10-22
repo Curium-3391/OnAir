@@ -292,6 +292,7 @@ struct App {
     bool passesOpen = false;            // the satellite pass planner window (View > Passes)
     bool stationHealthOpen = false;     // the station health report window (View > Station health; app/panels/station_health_ui.cpp)
     bool sweepOpen = false;             // the sweep scanner window (View > Sweep scanner)
+    bool scanViewOpen = false;          // the merged Scanner view: memory table + scan list + tones (View > Scanner)
     bool scannerOpen = false;           // the scanner window (View > Scanner, highly experimental)
     bool memoryOpen = false;            // the Memory window (View > Memory, Ctrl+M; app/memory)
     bool packsOpen = false;             // the Data packs window (View > Data packs; app/packs): offline map tiles, satellite elements, airports
@@ -984,8 +985,14 @@ void secondModeTabs(App& a);                 // in mainTabs(): the tab "Second: 
 void secondModeControl(App& a, bool vertical);   // the tuner panel: the button and its pop-up (pick a mode and its frequency)
 std::string scanModeKey(const ModeDef& m);         // scanner_ui.cpp: the mode key the scan list and the memories store (the protocol id, the mode's id, or dvb / atsc / ... / fm)
 int scanModeIndex(const std::string& key);         // its index in kModes, -1 when this build has no such mode
-struct ScanSeed { double mhz = 0; std::string mode, name; double dwellSec = 2; };
-void scannerLoadList(App& a, const std::vector<ScanSeed>& list);   // scanner_ui.cpp: replaces the scan list (the memory scan), opens the window and starts it
+struct ScanSeed { double mhz = 0; std::string mode, name; double dwellSec = 2; bool priority = false, lockout = false; };
+void scannerLoadList(App& a, const std::vector<ScanSeed>& list, bool openClassic = true);   // scanner_ui.cpp: replaces the scan list (the memory scan), opens the window and starts it
+// the merged Scanner view (scan_view_ui.cpp) drives the scanner's machine through these (scanner_ui.cpp)
+struct ScanLive { bool running = false; int state = 0 /* 0 idle 1 listening 2 active 3 hang */; double mhz = 0; std::string mode, name, what; bool priority = false; int entry = -1; float levelDb = 0; uint64_t hitSeq = 0; };
+ScanLive scannerLive();
+void scannerControl(App& a, int what);                                  // 0 stop, 1 skip, 2 lockout the current channel
+void scannerTuning(float squelchDb, double hangSec, double holdMaxSec, double prioritySec);
+void scanViewWindow(App& a);                                            // scan_view_ui.cpp: the merged Scanner view (a.scanViewOpen)
 void selectMode(App& a, int family, const char* subId = nullptr);
 bool modeSelected(const App& a, const ModeDef& m);    // the row of the current mode
 const char* modeSearchBox();                          // a search box at the top of a mode drop-down (mode_select.cpp); returns the query

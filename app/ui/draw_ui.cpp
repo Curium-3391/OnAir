@@ -187,6 +187,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     rfiWindow(a);
     galleryWindow(a);
     scannerWindow(a);
+    scanViewWindow(a);
     sweepWindow(a);
     stationHealthWindow(a);
     memoryWindow(a);

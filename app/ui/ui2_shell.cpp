@@ -251,7 +251,7 @@ void sidebar(App& a) {
         tool("Antenna rotator...", a.rotatorOpen, "Connect a GS-232-compatible rotator (serial or TCP), set azimuth and elevation");
         tool("Sweep scanner", a.sweepOpen, N_("Fast wideband sweep with a noise-floor measurement, signal log and waterfall"));
         tool("Station health", a.stationHealthOpen, N_("Noise floor, ADC level and reference stations per band, with plain advice on gain, filters and antenna placement"));
-        tool("Scanner (highly experimental)", a.scannerOpen, "HIGHLY EXPERIMENTAL: step through a list of frequencies and modes, or a band, and stop on activity");
+        tool("Scanner (highly experimental)", a.scanViewOpen, "HIGHLY EXPERIMENTAL: memories, scan list and tones in one view; steps through them and stops on activity");
         ImGui::Separator();
         themeChoice(a, false);
         accentMenu();
@@ -431,7 +431,7 @@ static void viewMenu(App& a) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A world map: find a position by coordinates or Maidenhead locator, distance and bearing from your location"));
         if (ImGui::MenuItem(tr("Sweep scanner"), nullptr, &a.sweepOpen)) {}
         if (ImGui::MenuItem(tr("Station health"), nullptr, &a.stationHealthOpen)) {}
-        if (ImGui::MenuItem(tr("Scanner (highly experimental)"), nullptr, &a.scannerOpen)) {}
+        if (ImGui::MenuItem(tr("Scanner (highly experimental)"), nullptr, &a.scanViewOpen)) {}
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("HIGHLY EXPERIMENTAL: step through a list of frequencies and modes, or a band, and stop on activity"));
         ImGui::MenuItem(tr("Propagation..."), nullptr, &a.propOpen);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Where a transmitter can be received: predicted SNR on the map from power, frequency, time and the SNR you need. No terrain."));
