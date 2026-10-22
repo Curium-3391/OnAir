@@ -26,7 +26,7 @@ namespace {
 std::mutex gKiwiMu;
 std::map<std::string, KiwiStatus> gStatus;
 std::map<std::string, std::string> gPass;
-std::atomic<int> gBackMin{5000}, gBackMax{120000};
+std::atomic<int> gBackMin{5000}, gBackMax{120000}, gStallMs{8000};
 
 void noteStatus(const std::string& a, const std::function<void(KiwiStatus&)>& f) { std::lock_guard<std::mutex> lk(gKiwiMu); f(gStatus[a]); }
 std::string passFor(const std::string& a) { std::lock_guard<std::mutex> lk(gKiwiMu); auto it = gPass.find(a); return it == gPass.end() ? std::string() : it->second; }
@@ -49,10 +49,11 @@ double kiwiGpsToUnix(uint32_t gpsSec, uint32_t gpsNsec, double nowUnix, int leap
 namespace native {
 
 void kiwiSetBackoffForTest(int minMs, int maxMs) { gBackMin = minMs; gBackMax = maxMs; }
+void kiwiSetStallForTest(int ms) { gStallMs = ms; }
 
 namespace {
 
-constexpr int kConnectMs = 4000, kAnswerMs = 2000, kStallMs = 8000, kKeepaliveMs = 1000;
+constexpr int kConnectMs = 4000, kAnswerMs = 2000, kKeepaliveMs = 1000;
 constexpr size_t kMaxMessage = 1u << 16;     // an SND frame is about 2 KiB; a W/F line about 1 KiB
 constexpr size_t kMaxFrameSamples = 8192;
 constexpr double kMinFreq = 10e3, kMaxFreq = 30e6;
@@ -251,15 +252,25 @@ protected:
         std::vector<cf32> in, out;
         Why end = Why::Closed;
         std::string endText;
-        auto last = std::chrono::steady_clock::now();
-        uint64_t bad = 0;
+        // the stall timer runs on IQ samples, not on any message: a Kiwi that goes on sending MSG lines, audio or waterfall frames but no IQ
+        // used to keep the connection "alive" while the engine reported "radio stopped sending samples" for good (issue #257)
+        auto last = std::chrono::steady_clock::now(), lastIq = last;
+        uint64_t bad = 0, notIq = 0;
+        const int stallMs = gStallMs.load();
         while (run_) {
             const auto now = std::chrono::steady_clock::now();
             if (now - lastKeep_ >= std::chrono::milliseconds(kKeepaliveMs)) {
                 if (!ws_.sendText("SET keepalive")) break;
                 lastKeep_ = now;
             }
-            if (now - last > std::chrono::milliseconds(kStallMs)) { end = Why::Stalled; endText = "no data from the KiwiSDR for " + std::to_string(kStallMs / 1000) + " s"; break; }
+            if (now - lastIq > std::chrono::milliseconds(stallMs)) {
+                end = Why::Stalled;
+                const std::string secs = std::to_string(std::max(1, stallMs / 1000)) + " s";
+                if (now - last > std::chrono::milliseconds(stallMs)) endText = "no data from the KiwiSDR for " + secs;
+                else if (notIq) endText = "the KiwiSDR sent audio frames but no IQ for " + secs + " (it did not take SET mod=iq)";
+                else endText = "the KiwiSDR sent messages but no IQ samples for " + secs;
+                break;
+            }
             const auto kind = ws_.readMessage(m, kMaxMessage);
             if (kind == WsClient::Kind::Timeout) continue;
             if (kind == WsClient::Kind::Closed) { end = Why::Closed; endText = "the KiwiSDR closed the connection (many public Kiwis end a session after about 30 minutes)"; break; }
@@ -281,14 +292,17 @@ protected:
             kiwi::Snd snd;
             const kiwi::SndResult r = kiwi::parseSnd(m.data(), m.size(), snd);
             if (r == kiwi::SndResult::NotSnd) continue;   // W/F, EXT: not asked for here
+            if (r == kiwi::SndResult::NotIq || r == kiwi::SndResult::Compressed) notIq++;
             if ((r != kiwi::SndResult::Ok && r != kiwi::SndResult::OddSize) || snd.samples == 0 || snd.samples > kMaxFrameSamples) { bad++; noteStatus(addr_, [](KiwiStatus& st) { st.badFrames++; }); continue; }
             if (r == kiwi::SndResult::OddSize) bad++;
-            // sequence: a gap is filled with silence (the time base of FT8 and WSPR slots goes on), a repeat or a late frame is dropped
+            // sequence: a gap is filled with silence (the time base of FT8 and WSPR slots goes on), a repeat of the last frame is dropped.
+            // TCP keeps the order, so any other step backwards is the server counting from a new start (an audio restart on its side):
+            // follow it, as kiwiclient does. Dropping those frames instead kept every later frame out, and the stream went silent (#257).
             uint32_t gap = 0;
             if (haveSeq_) {
                 const uint32_t d = snd.seq - expectSeq_;
-                if (d != 0 && d >= 0x80000000u) { bad++; continue; }
-                gap = d;
+                if (d == 0xFFFFFFFFu) { bad++; continue; }   // the same frame again
+                gap = d >= 0x80000000u ? 0 : d;
             }
             haveSeq_ = true;
             expectSeq_ = snd.seq + 1;
@@ -304,6 +318,8 @@ protected:
             in.resize(snd.samples);
             for (size_t k = 0; k < snd.samples; k++) in[k] = cf32(fl[2 * k], fl[2 * k + 1]);
             push2(in, out);
+            lastIq = now;
+            notIq = 0;   // the reason of a stall is what came after the last IQ
             const bool gpsOk = snd.gpsStatus != 254 && snd.gpsStatus != 255;
             noteStatus(addr_, [&](KiwiStatus& st) {
                 st.frames++; st.gapFrames += gap; st.rssiDbm = snd.rssiDbm; st.adcOverload = snd.flags & kiwi::kOverflow;

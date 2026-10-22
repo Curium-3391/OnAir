@@ -197,6 +197,11 @@ void netRadioWindow(App& a) {
     if (a.netAddType == NetRadio::SoapyRemote) {
         ImGui::InputTextWithHint(tr("Remote driver"), "mirisdr  (empty: list what the server offers)", a.netAddRemote, sizeof a.netAddRemote);
         ImGui::TextDisabled("%s", tr("The radio's SoapySDR driver on the server, or a key=value list: driver=sdrplay,serial=1."));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 460 * gUi);
+        ImGui::TextDisabled("%s", tr("On the radio's computer run SoapySDRServer --bind=\"0.0.0.0:55132\" (port 55132, open it in the firewall). "
+                                     "The samples go over UDP by default, which works on a LAN; through the internet, a VPN or NAT add prot=tcp to the field "
+                                     "(driver=sdrplay,prot=tcp). Client and server should run the same SoapyRemote version."));
+        ImGui::PopTextWrapPos();
     }
     if (ImGui::Button(tr("Connect"))) {
         NetRadio r;

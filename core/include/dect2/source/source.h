@@ -208,6 +208,14 @@ std::unique_ptr<TxSink> makeNativeTxSink(const DeviceInfo& d);           // sour
 // Radios the user hid from the list (by display name; saved in the settings). Synthetic/file entries are never hidden.
 void setHiddenRadios(const std::vector<std::string>& names);
 std::vector<std::string> hiddenRadios();
+// Whether listing the radios may search the network by itself (#215): the SoapySDR modules that look for servers or boards on the LAN
+// (SoapyRemote, SoapyPlutoSDR's mDNS and pluto.local, SoapyUHD, ...), UHD's network broadcast and librfnm's network search. Off by default:
+// then only radios on USB (or PCIe) are looked for, and a network radio is listed when the user adds its address (Add network radio).
+void setNetworkDiscovery(bool on);
+bool networkDiscovery();
+// The SoapySDR enumerate arguments for one module while network discovery is off: "" = skip the module (it searches the network), else the
+// arguments that keep it to local devices ("driver=uhd,type=b200": USB USRPs only)
+std::string soapyLocalEnumerateArgs(const std::string& module);
 std::vector<DeviceInfo> listHackrfDevices(std::string& err);
 // Every other radio that SoapySDR knows (Airspy, SDRplay, RTL-SDR, PlutoSDR, LimeSDR, BladeRF, USRP, ...). Empty when built without SoapySDR.
 std::vector<DeviceInfo> listSoapyDevices(std::string& err);

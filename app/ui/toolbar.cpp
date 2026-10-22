@@ -55,6 +55,11 @@ static void toolbarSource(App& a, bool vertical, bool running) {
             ImGui::EndMenu();
         }
         if (ImGui::Selectable(tr("Add network radio…"))) a.netAddOpen = true;
+        {   // off by default (#215): only radios on USB are looked for; a network radio is added by its address
+            bool net = networkDiscovery();
+            if (ImGui::MenuItem(tr("Search the network for radios"), nullptr, &net)) { setNetworkDiscovery(net); a.devicesDirty = true; savePrefs(a); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Off: the list shows only radios on USB, and the network radios you added. On: SoapyRemote servers, PlutoSDRs\n(mDNS, pluto.local), network USRPs and other boards on your network are looked for and contacted when the list is built."));
+        }
         if (hamlibSupported() && ImGui::Selectable(tr("Add Hamlib rig…"))) a.hamlibAddOpen = true;
         ImGui::EndCombo();
     }

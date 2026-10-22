@@ -27,6 +27,19 @@ int main(int argc, char** argv) {
     for (auto& d : listSoapyDevices(err)) if (d.board == "onairtest") { radio = d; found = true; }
     CHECK(found, "fake radio not listed (%s)", err.c_str());
     if (!found) { printf("soapy tests FAILED\n"); return 1; }
+    {   // #215: a module that searches the network is not asked while "Search the network for radios" is off (the default)
+        bool net = false;
+        CHECK(!networkDiscovery(), "network discovery is on by default");
+        CHECK(getenv("ONAIR_TEST_NETFIND") == nullptr, "the network module's find() was called while network discovery is off");
+        setNetworkDiscovery(true);
+        for (auto& d : listSoapyDevices(err)) if (d.board == "iris") net = true;
+        CHECK(net && getenv("ONAIR_TEST_NETFIND") != nullptr, "with network discovery on, the network module is not asked");
+        setNetworkDiscovery(false);
+        bool own = false;
+        net = false;
+        for (auto& d : listSoapyDevices(err)) { if (d.board == "iris") net = true; if (d.board == "onairtest") own = true; }
+        CHECK(!net && own, "with network discovery off again: network radio listed %d, local radio listed %d", (int)net, (int)own);
+    }
     printf("listed: %s, rates %.3f..%.3f Msps, gain %.0f..%.0f dB, args '%s'\n", radio.name.c_str(), radio.minRateHz / 1e6, radio.maxRateHz / 1e6, radio.gainMinDb, radio.gainMaxDb, radio.soapyArgs.c_str());
     CHECK(radio.isRadio() && radio.kind == DeviceInfo::Soapy, "not a radio");
     // the listing does not open the radio (that could take it from another program): its ranges are learned at the first start

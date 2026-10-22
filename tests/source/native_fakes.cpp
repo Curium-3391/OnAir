@@ -304,7 +304,7 @@ EXPORT int uhd_string_vector_make(strvec** h) { *h = new strvec; return 0; }
 EXPORT int uhd_string_vector_free(strvec** h) { delete *h; *h = nullptr; return 0; }
 EXPORT int uhd_string_vector_size(strvec* h, size_t* n) { *n = h->v.size(); return 0; }
 EXPORT int uhd_string_vector_at(strvec* h, size_t i, char* out, size_t len) { snprintf(out, len, "%s", h->v[i].c_str()); return 0; }
-EXPORT int uhd_usrp_find(const char*, strvec** h) { (*h)->v.push_back(fake_state("usrp.b210") == 1 ? "type=b200,name=,serial=30C6E4D,product=B210" : "type=b200,name=,serial=30C6E4D,product=B200"); return 0; }   // ---- radios: usrp.b210 = a B210
+EXPORT int uhd_usrp_find(const char* hint, strvec** h) { rec("usrp.findHintB200", hint && strcmp(hint, "type=b200") == 0 ? 1 : 0); (*h)->v.push_back(fake_state("usrp.b210") == 1 ? "type=b200,name=,serial=30C6E4D,product=B210" : "type=b200,name=,serial=30C6E4D,product=B200"); return 0; }   // ---- radios: usrp.b210 = a B210
 EXPORT int uhd_usrp_make(void** h, const char* args) { rec("usrp.argsOk", args && strstr(args, "b200") ? 1 : 0); *h = new int(1); return 0; }
 EXPORT int uhd_usrp_free(void** h) { delete (int*)*h; *h = nullptr; return 0; }
 EXPORT int uhd_usrp_set_rx_rate(void*, double r, size_t) { rec("usrp.rate", r); return 0; }

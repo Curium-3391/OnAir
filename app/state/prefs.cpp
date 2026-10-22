@@ -322,6 +322,7 @@ void loadPrefs(App& a) {
         for (char c : d.getS("hiddenRadios", "") + "\n") { if (c == '\n') { if (!cur.empty()) a.hiddenRadios.push_back(cur); cur.clear(); } else cur += c; }
         setHiddenRadios(a.hiddenRadios);
     }
+    setNetworkDiscovery(d.getB("netDiscovery", false));   // listing searches the LAN by itself only when the user turned it on (#215)
     loadKeys(d, a, true);   // the Hamlib picker, the frequency and the gains
     a.recFormat = fixRecFormat((int)d.getI("recFormat", 0));
     a.recSigmf = d.getB("recSigmf", true);
@@ -360,6 +361,7 @@ void savePrefs(const App& a) {
         d.setS("netRadios", netRadiosToString(a.netRadios));
         d.setS("hamlibRigs", hamlibRigsToString(a.hamlibRigs));
         { std::string j; for (const auto& n : a.hiddenRadios) j += n + "\n"; d.setS("hiddenRadios", j); }
+        d.setB("netDiscovery", networkDiscovery());
     }
     d.setS("devName", a.devIdx >= 2 && a.devIdx < (int)a.devices.size() ? a.devices[a.devIdx].name : std::string());   // the radio of this receiver, found again at the next start
     saveModeAndGains(d, a);

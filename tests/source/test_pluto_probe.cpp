@@ -22,6 +22,11 @@ int main() {
     CHECK(!native::plutoProbeAllowed("usb:1.4.5", false));
     CHECK(!native::plutoProbeAllowed("usb:1.4.5", true));
     CHECK(!native::plutoProbeAllowed("", false));
+    // SoapySDR modules that search the network are not asked while network discovery is off (the default); UHD is kept to USB
+    CHECK(!networkDiscovery());
+    for (const char* m : {"remote", "plutosdr", "redpitaya", "hpsdr", "netsdr", "iris"}) CHECK(soapyLocalEnumerateArgs(m).empty());
+    CHECK(soapyLocalEnumerateArgs("uhd") == "driver=uhd,type=b200");
+    CHECK(soapyLocalEnumerateArgs("rtlsdr") == "driver=rtlsdr" && soapyLocalEnumerateArgs("lime") == "driver=lime" && soapyLocalEnumerateArgs("sdrplay") == "driver=sdrplay");
     if (fails) { fprintf(stderr, "%d checks failed\n", fails); return 1; }
     printf("test_pluto_probe ok\n");
     return 0;

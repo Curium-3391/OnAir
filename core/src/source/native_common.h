@@ -693,6 +693,7 @@ std::unique_ptr<IqSource> makeKiwiSdr(const DeviceInfo& d);
 bool kiwiProbe(const std::string& host, int port, int timeoutMs, std::string& err);
 void kiwiSdrCaps(DeviceInfo& d);
 void kiwiSetBackoffForTest(int minMs, int maxMs);
+void kiwiSetStallForTest(int ms);   // how long without IQ samples before the connection counts as stalled and is opened again (8 s)
 // a TCI text message "name:a,b;name2;" into (lower-case name, arguments); false when it has no complete command
 bool tciParseCommands(const std::string& text, std::vector<std::pair<std::string, std::vector<std::string>>>& out);
 bool nrspParseMessage(const std::string& json, std::map<std::string, std::string>& out);
