@@ -278,6 +278,10 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxFusion_.setSignalOffset(o);
         rxFusion_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxMilhf_.setSignalOffset(o);
+        rxArgos_.setSignalOffset(o);
+        rxArgos_.setDialHz(tune.centerHz);   // a file: the link from where it says it was taken, or the uplink
+        rxSfx_.setSignalOffset(o);
+        rxSfx_.setDialHz(tune.centerHz);
         rxMilhf_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxDgps_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxMpt_.setSignalOffset(o);
@@ -469,6 +473,10 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxEloran_.setLogCallback([this](const std::string& s) { log(s); });
     rxMilhf_.configure(rate_);
     rxMilhf_.setLogCallback([this](const std::string& s) { log(s); });
+    rxArgos_.configure(rate_);
+    rxArgos_.setLogCallback([this](const std::string& s) { log(s); });
+    rxSfx_.configure(rate_);
+    rxSfx_.setLogCallback([this](const std::string& s) { log(s); });
     rxDgps_.configure(rate_);
     rxFusion_.configure(rate_);
     rxFusion_.setLogCallback([this](const std::string& s) { log(s); });

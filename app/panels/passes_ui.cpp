@@ -30,7 +30,7 @@ namespace {
 namespace fs = std::filesystem;
 fs::path fsPath(const std::string& p) { return fs::path(reinterpret_cast<const char8_t*>(p.c_str())); }
 
-constexpr int kSpecx = 41, kAprs = 24, kOrbcomm = 44, kMeteor = 59, kCubesat = 61, kGlobalstar = 62;   // mode families: Spectrum explorer (no decoder), APRS (AFSK), Orbcomm, Meteor-M LRPT, CubeSat telemetry
+constexpr int kSpecx = 41, kAprs = 24, kOrbcomm = 44, kMeteor = 59, kCubesat = 61, kGlobalstar = 62, kArgos = 148;   // mode families: Spectrum explorer (no decoder), APRS (AFSK), Orbcomm, Meteor-M LRPT, CubeSat telemetry, Argos
 
 struct Source { const char* file; const char* url; };
 const Source kSources[] = {
@@ -54,6 +54,8 @@ const Known kKnown[] = {
     {"NOAA 19", 33591, 137.100, "APT", kSpecx, Weather},
     {"Meteor-M N2-3", 57166, 137.100, "LRPT", kMeteor, Weather},
     {"Meteor-M N2-4", 59051, 137.900, "LRPT", kMeteor, Weather},
+    {"MetOp-B Argos", 38771, 465.9875, "Argos downlink", kArgos, Weather},   // A-DCS downlink (SatNOGS transmitter entry for MetOp-B)
+    {"MetOp-C Argos", 43689, 465.9875, "Argos downlink", kArgos, Weather},
     {"ISS APRS", 25544, 145.825, "APRS", kAprs, Iss},
     {"ISS voice", 25544, 145.800, "FM voice", kSpecx, Iss},
 };
@@ -1038,6 +1040,23 @@ void passesWindow(App& a) {
     dopplerCollect(a);
     aosBanner(a);
     if (a.passesOpen) drawWindow(a);
+}
+
+// The Argos mode's overlay: the MetOp satellites (Argos downlink, kArgos rows of kKnown) above the horizon at this time and the Doppler of a
+// carrier at freqHz for the receiver's position (empty without TLEs or a position).
+std::vector<std::pair<std::string, double>> passesArgosDoppler(double unixSec, double freqHz) {
+    loadState();
+    std::vector<std::pair<std::string, double>> out;
+    if (!receiverLocationSet()) return out;
+    double lat, lon;
+    receiverLocation(lat, lon);
+    dect2::Observer o; o.latDeg = lat; o.lonDeg = lon; o.altKm = receiverAltitudeM() / 1000;
+    for (const Sat& s : S.sats) {
+        if (s.family != kArgos) continue;
+        dect2::Look l;
+        if (dect2::lookAt(s.sgp, o, unixSec, l) && l.elDeg > 0) out.push_back({s.name, dect2::dopplerHz(freqHz, l.rangeRateKmS)});
+    }
+    return out;
 }
 
 // The Globalstar activity monitor's overlay: every Globalstar satellite above the horizon at this time with the Doppler shift a link to it would have

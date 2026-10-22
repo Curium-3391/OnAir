@@ -1,13 +1,9 @@
 // Sigfox uplink receiver. See ism_sigfox.h.
 //
-// Sources: public reverse engineering of the Sigfox radio interface (Apvrille, "Sigfox security" / Hack.lu 2017 style frame breakdown;
-// the open "sigfox-decoder" / "renard" descriptions): uplink = DBPSK, 100 bit/s (600 bit/s RC2 / RC4), preamble 0xAAAAA, frame type,
-// length indicator, sequence number, device ID, payload, authentication code, CRC-16.
-// NOT verified against a real capture (no Sigfox IQ was available): the exact preamble length (19 vs 20 bits), the 13-bit frame type
-// values (shown as received, not used to find the length), the layout of the 16 bits after the frame type (LI 2, repeat flag 1,
-// spare 1, sequence number 12), the authentication code length per payload length (16 + 8 * ceil(N / 4) bits is assumed; the
-// payload length is found from the burst's length), whether a 0 bit is a phase inversion (assumed) or no change, the CRC polynomial.
-// The authentication code and CRC are shown as received; the key is secret, so nothing can be checked.
+// Frame layer: sigfox/sigfox_proto.h, from the public Sigfox radio specification (EP-SPECS Rev. 1.3, 2019). The demodulator (narrow carrier
+// tracks on a spectrogram, carrier frequency from the squared signal, symbol timing, differential bits) is this file's own.
+// Not stated in the public text: which bit value is a phase change in the D-BPSK (both are tried; the frame type and the CRC decide).
+// The authentication code is shown as received; the key is secret, so it is never checked.
 #include "dect2/ism/ism_sigfox.h"
 #include "dect2/dsp/fftutil.h"
 #include "dect2/dsp/portable_rng.h"
@@ -18,6 +14,7 @@
 #include <random>
 #include "dect2/common/crc.h"
 #include "dect2/common/mathconst.h"
+#include "dect2/sigfox/sigfox_proto.h"
 
 namespace dect2 {
 
@@ -31,13 +28,8 @@ constexpr double kMaxDurSec = 3.2;
 constexpr double kGapSec = 0.15;     // an established track (kSureSec on the air) ends after this long without its peak
 constexpr double kSureSec = 0.3;
 constexpr double kRingSec = 3.8;
-constexpr int kPreambleBits = 19;
+constexpr int kPreambleBits = sigfox::kPreambleBits;
 using dect2::math::kPi;
-
-int macBits(int n) { return 16 + 8 * ((n + 3) / 4); }
-int frameBits(int n) { return kPreambleBits + 13 + 16 + 32 + 8 * n + macBits(n) + 16; }
-
-uint16_t crc16(const std::vector<uint8_t>& bits, size_t a, size_t b) { return (uint16_t)crc::bits(bits.data() + a, b - a, 16, 0x1021, 0xFFFF); }   // CRC-16/CCITT over bits [a, b)
 
 std::string hexOf(uint64_t v, int digits) {
     char b[24];
@@ -48,20 +40,26 @@ std::string hexOf(uint64_t v, int digits) {
 
 // ------------------------------------------------------------------ test signal
 
-std::vector<uint8_t> sigfoxFrameBits(uint32_t id, uint32_t seq, const std::vector<uint8_t>& payload, bool rep) {
-    std::vector<uint8_t> b;
-    auto put = [&](uint64_t v, int n) { for (int i = n - 1; i >= 0; i--) b.push_back((uint8_t)((v >> i) & 1)); };
-    const int n = (int)std::min<size_t>(payload.size(), 12);
-    for (int j = 0; j < kPreambleBits; j++) b.push_back((uint8_t)(j % 2 == 0));
-    put((0x0B2Fu + 0x0111u * (unsigned)n) & 0x1FFF, 13);
-    const size_t crcStart = b.size();
-    put(0, 2); put(rep ? 1 : 0, 1); put(0, 1); put(seq & 0xFFF, 12);
-    put(id, 32);
-    for (int i = 0; i < n; i++) put(payload[i], 8);
-    uint32_t h = id * 2654435761u ^ (seq * 40503u + 12345u);
-    for (int i = 0; i < macBits(n) / 8; i++) { h = h * 1664525u + 1013904223u; put((h >> 16) & 0xFF, 8); }
-    put(crc16(b, crcStart, b.size()), 16);
-    return b;
+std::vector<uint8_t> sigfoxFrameBits(uint32_t id, uint32_t seq, const std::vector<uint8_t>& payload, bool bf, int rank) {
+    return sigfox::buildFrame(id, seq & 0xFFF, payload, rank, bf);
+}
+
+void sigfoxAddBurst(cf32* x, size_t n, int64_t first, const SigfoxTx& t, double rate, double freqHz, double amp) {
+    const std::vector<uint8_t> bits = sigfox::buildFrame(t.id, t.seq & 0xFFF, t.payload, t.rank, t.downlinkRequest, t.singleBit, t.bitValue);
+    std::vector<int> s(bits.size() + 1, 1);   // one reference symbol, then a phase inversion for each 0 bit
+    for (size_t i = 0; i < bits.size(); i++) s[i + 1] = bits[i] ? s[i] : -s[i];
+    const int64_t i0 = (int64_t)std::llround(t.startSec * rate), cnt = (int64_t)((double)s.size() / t.baud * rate);
+    const int64_t k0 = std::max<int64_t>(0, first - i0), k1 = std::min<int64_t>(cnt, first + (int64_t)n - i0);
+    for (int64_t k = k0; k < k1; k++) {
+        const double tt = (double)k / rate;
+        const double pos = tt * t.baud;
+        const size_t sy = std::min(s.size() - 1, (size_t)pos);
+        const double fr = pos - (double)sy;
+        double a = s[sy];
+        if (sy > 0 && fr < 0.1) { const double q = 0.5 - 0.5 * std::cos(kPi * fr / 0.1); a = s[sy - 1] * (1 - q) + s[sy] * q; }
+        const double ph = 2 * kPi * (freqHz * ((double)(i0 + k) / rate) + 0.5 * t.driftHzPerSec * tt * tt);
+        x[i0 + k - first] += cf32((float)(amp * a * std::cos(ph)), (float)(amp * a * std::sin(ph)));
+    }
 }
 
 std::vector<cf32> sigfoxSynth(double rate, double dialOff, double seconds, double snrDb, double cfoHz, const std::vector<SigfoxTx>& txs, uint32_t seed) {
@@ -71,24 +69,8 @@ std::vector<cf32> sigfoxSynth(double rate, double dialOff, double seconds, doubl
     for (auto& v : x) v = cf32((float)rng.gauss(0.1), (float)rng.gauss(0.1));
     const double n0 = 2 * 0.1 * 0.1 / rate;   // noise power per Hz
     for (const auto& t : txs) {
-        const std::vector<uint8_t> bits = sigfoxFrameBits(t.id, t.seq, t.payload, t.repeatFlag);
-        std::vector<int> s(bits.size() + 1, 1);
-        for (size_t i = 0; i < bits.size(); i++) s[i + 1] = bits[i] ? s[i] : -s[i];
         const double amp = std::sqrt(std::pow(10.0, snrDb / 10.0) * 100.0 * n0) * std::pow(10.0, t.levelDb / 20.0);
-        const size_t i0 = (size_t)(t.startSec * rate), cnt = (size_t)(s.size() / (double)t.baud * rate);
-        const double w = 2 * kPi * (dialOff + t.offsetHz + cfoHz) / rate;
-        std::complex<double> ph = std::polar(1.0, w * (double)i0), rot = std::polar(1.0, w);
-        for (size_t k = 0; k < cnt && i0 + k < n; k++) {
-            const double pos = (double)k / rate * t.baud;
-            const size_t sy = std::min(s.size() - 1, (size_t)pos);
-            const double fr = pos - (double)sy;
-            double a = s[sy];
-            if (sy > 0 && fr < 0.1) { const double q = 0.5 - 0.5 * std::cos(kPi * fr / 0.1); a = s[sy - 1] * (1 - q) + s[sy] * q; }
-            const std::complex<double> v = ph * (amp * a);
-            x[i0 + k] += cf32((float)v.real(), (float)v.imag());
-            ph *= rot;
-            if ((k & 1023) == 1023) ph /= std::abs(ph);
-        }
+        sigfoxAddBurst(x.data(), n, 0, t, rate, dialOff + t.offsetHz + cfoHz, amp);
     }
     return x;
 }
@@ -126,9 +108,9 @@ struct SigfoxRx::Impl {
     struct Rep { double sec; };
     std::vector<std::vector<double>> repSecs;   // per message (parallel to tel.messages): the times of its repetitions (parallel to freqs)
 
-    void configure(double r, double off, double dial) {
+    void configure(double r, double off, double dial, bool anyBand) {
         rate = r; dialOff = off; dialHz = dial;
-        on = SigfoxRx::onSigfoxBand(dial) && r >= 4e5;
+        on = (anyBand || SigfoxRx::onSigfoxBand(dial)) && r >= 4e5;
         tel = SigfoxTelemetry();
         tel.active = on;
         repSecs.clear();
@@ -377,43 +359,54 @@ struct SigfoxRx::Impl {
         for (int i = 0; i + 1 < ns; i++) if (pw[i] > gate && pw[i + 1] > gate) { n0 = i; break; }
         for (int i = ns - 1; i > 0; i--) if (pw[i] > gate && pw[i - 1] > gate) { n1 = i; break; }
         if (n0 < 0 || n1 <= n0 + kPreambleBits) return false;
+        // differential products, turned back by the local phase step per symbol: a carrier that drifts during the burst (the specification allows
+        // tens of Hz per second, and a residual offset adds to it) turns each product a little; the square of the products removes the
+        // modulation, and its average over 31 symbols gives that turn (within +-90 degrees per symbol)
+        std::vector<std::complex<double>> dp(ns - 1), d2(ns - 1);
+        for (int i = 0; i + 1 < ns; i++) { dp[i] = S[i + 1] * std::conj(S[i]); d2[i] = dp[i] * dp[i] / (std::abs(dp[i]) + 1e-30); }
+        std::vector<std::complex<double>> c2(ns);
+        c2[0] = 0;
+        for (int i = 0; i + 1 < ns; i++) c2[i + 1] = c2[i] + d2[i];
         std::vector<uint8_t> b(ns - 1);
-        for (int i = 0; i + 1 < ns; i++) b[i] = (S[i + 1] * std::conj(S[i])).real() > 0 ? 1 : 0;   // 1: no phase change
+        for (int i = 0; i + 1 < ns; i++) {
+            const int lo = std::max(0, i - 15), hi = std::min(ns - 1, i + 16);
+            const std::complex<double> w = c2[hi] - c2[lo];
+            const double turn = 0.5 * std::arg(w);
+            b[i] = (dp[i] * std::polar(1.0, -turn)).real() > 0 ? 1 : 0;   // 1: no phase change (or the other way: both tried)
+        }
         // the preamble (alternating bits) starts at the power step, give or take a few symbols: as it repeats every two bits, more than one
-        // start fits it, and the CRC decides
-        int i0 = -1, N12 = -1;
-        for (int sh = -2; sh <= 5 && N12 < 0; sh++) {
-            const int st = n0 + sh;
-            if (st < 0 || st + kPreambleBits > (int)b.size()) continue;
-            int ok = 0;
-            for (int j = 0; j < kPreambleBits; j++) ok += b[st + j] == (uint8_t)(j % 2 == 0);
-            if (ok < 18) continue;
-            const int nbits = n1 - st;
-            // the payload length from the carrier's duration, confirmed by the CRC (from the flags to the end of the MAC): a carrier lost
-            // in the noise before its end would otherwise give a shorter frame with the wrong payload.
-            for (int n = 0; n <= 12 && N12 < 0; n++) {
-                if (std::abs(frameBits(n) - nbits) > 3 || st + frameBits(n) > (int)b.size()) continue;
-                const size_t c0 = (size_t)st + kPreambleBits + 13, c1 = (size_t)st + frameBits(n) - 16;
-                uint16_t got = 0;
-                for (size_t i = c1; i < c1 + 16; i++) got = (uint16_t)(got << 1 | b[i]);
-                if (crc16(b, c0, c1) == got) { N12 = n; i0 = st; }
+        // start fits it, and the frame type and the CRC decide
+        sigfox::Uplink u;
+        bool found = false;
+        for (int pol = 0; pol < 2 && !found; pol++) {
+            std::vector<uint8_t> bb = b;
+            if (pol) for (auto& v : bb) v ^= 1;
+            for (int sh = -2; sh <= 5 && !found; sh++) {
+                const int st = n0 + sh;
+                if (st < 0 || st + kPreambleBits > (int)bb.size()) continue;
+                int ok = 0;
+                for (int j = 0; j < kPreambleBits; j++) ok += bb[st + j] == (uint8_t)(j % 2 == 0);
+                if (ok < 17) continue;
+                if (sigfox::parseFrame(bb, (size_t)st + kPreambleBits, u) && st + kPreambleBits + sigfox::frameBitsAfterPreamble(u.container) <= n1 + 4) found = true;
             }
         }
-        if (N12 < 0) return false;
-        size_t pos = (size_t)i0 + kPreambleBits;
-        auto get = [&](int n) { uint64_t v = 0; for (int i = 0; i < n; i++) v = (v << 1) | b[pos++]; return v; };
+        if (!found) return false;
         msg = SigfoxMessage();
         msg.baud = baud;
-        msg.len = N12;
-        msg.frameType = (uint32_t)get(13);
-        msg.li = (int)get(2);
-        msg.repeatFlag = get(1) != 0;
-        get(1);
-        msg.seq = (uint32_t)get(12);
-        msg.id = hexOf(get(32), 8);
-        for (int i = 0; i < N12; i++) msg.payload += hexOf(get(8), 2);
-        for (int i = 0; i < macBits(N12) / 8; i++) msg.mac += hexOf(get(8), 2);
-        msg.crc = hexOf(get(16), 4);
+        msg.len = (int)u.payload.size();
+        msg.frameType = u.ft;
+        msg.li = u.li;
+        msg.repeatFlag = u.rep;
+        msg.downlinkRequest = u.downlinkRequest;
+        msg.singleBit = u.singleBit; msg.bitValue = u.bitValue;
+        msg.control = u.control;
+        msg.container = u.container;
+        msg.rankMask = 1 << (u.rank - 1);
+        msg.seq = u.mc;
+        msg.id = sigfox::idHex(u.id);
+        msg.payload = sigfox::hexOf(u.payload);
+        msg.mac = sigfox::hexOf(u.auth);
+        msg.crc = hexOf(u.crc, 4);
         double acc = 0;
         for (int i = n0; i <= n1; i++) acc += pw[i];
         msg.levelDb = (float)(10 * std::log10(std::max(1e-30, acc / (n1 - n0 + 1))));
@@ -437,6 +430,7 @@ struct SigfoxRx::Impl {
             }
             if (!nearBy) continue;
             if (!same) { q.reps++; q.freqs.push_back(fAbs); ts.push_back(m.sec); q.sec = std::min(q.sec, m.sec); }
+            q.rankMask |= m.rankMask;
             q.wallTime = now;
             q.levelDb = std::max(q.levelDb, m.levelDb);
             seqNo++;
@@ -456,14 +450,16 @@ struct SigfoxRx::Impl {
 
 SigfoxRx::SigfoxRx() : p_(std::make_unique<Impl>()) {}
 SigfoxRx::~SigfoxRx() = default;
-void SigfoxRx::configure(double r, double off, double dial) { p_->configure(r, off, dial); }
+void SigfoxRx::configure(double r, double off, double dial, bool anyBand) { p_->configure(r, off, dial, anyBand); }
 void SigfoxRx::feed(const cf32* x, size_t n) { p_->feed(x, n); }
 const SigfoxTelemetry& SigfoxRx::telemetry() const { return p_->tel; }
 void SigfoxRx::clear() { p_->tel.messages.clear(); p_->repSecs.clear(); p_->tel.carriers = p_->tel.frames = 0; }
 
 bool SigfoxRx::onSigfoxBand(double dialHz) {
     if (dialHz <= 0) return true;
-    for (double c : {868.130e6, 902.200e6, 920.800e6}) if (std::fabs(dialHz - c) < 0.15e6) return true;
+    int nz = 0;
+    const sigfox::Zone* z = sigfox::zones(nz);
+    for (int i = 0; i < nz; i++) if (std::fabs(dialHz - z[i].ulMhz * 1e6) < 0.15e6) return true;
     return false;
 }
 

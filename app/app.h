@@ -722,6 +722,7 @@ bool mapFamilySends(int family);                    // this mode can put decoded
 std::string mapSendStatusLine();                    // short "connected / N sent" line for the mode header (empty when off)
 std::string mapSendDiagnosticsBlock(const App& a);  // map.on-air.dev ingest state + recent log for Copy diagnostics
 void passesDevTle(const std::string& path);       // dev (--tle): TLEs from a file, as if pasted
+std::vector<std::pair<std::string, double>> passesArgosDoppler(double unixSec, double freqHz);       // passes_ui.cpp: MetOp (Argos downlink) satellites above the horizon and their Doppler
 std::vector<std::pair<std::string, double>> passesGlobalstarDoppler(double unixSec, double freqHz);   // passes_ui.cpp: Globalstar satellites above the horizon and their Doppler (TLEs from the planner)
 struct DfMapLine { double lat = 0, lon = 0, bearing = 0, sigma = 5, conf = 0, freqHz = 0, ageSec = 0; };
 void rfiWindow(App& a);                             // rfi_ui.cpp: the interference hunter window (a.rfiOpen), every frame

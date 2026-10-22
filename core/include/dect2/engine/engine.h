@@ -128,6 +128,8 @@
 #include "dect2/ltr/ltr_rx.h"
 #include "dect2/edacs/edacs_rx.h"
 #include "dect2/milhf/milhf_engine.h"
+#include "dect2/argos/argos_rx.h"
+#include "dect2/sigfox/sigfox_rx.h"
 #include "dect2/uat/uat_rx.h"
 #include "dect2/hrpt/hrpt_rx.h"
 #include "dect2/tv/bbunpack.h"
@@ -458,6 +460,8 @@ public:
     FusionReceiver& fusion() { return rxFusion_; }   // Yaesu Fusion (WIP): callsigns and slow data, the speech codec plug-in (telemetry through latestRx)
     LtrReceiver& ltr() { return rxLtr_; }   // LTR control channel (telemetry through latestRx)
     EdacsReceiver& edacs() { return rxEdacs_; }   // EDACS control channel (telemetry through latestRx)
+    ArgosReceiver& argos() { return rxArgos_; }   // Argos uplink / downlink: link choice, clear (telemetry through latestRx)
+    SigfoxReceiver& sigfox() { return rxSfx_; }   // Sigfox uplinks: clear (telemetry through latestRx)
     MilhfReceiver& milhf() { return rxMilhf_; }   // HF waveform identifier: the audio clip for sigidwiki (telemetry through latestRx)
     DgpsReceiver& dgps() { return rxDgps_; }   // DGPS beacons: the station, the frames (telemetry through latestRx)
     RailwayReceiver& klw() { return rxKlw_; }
@@ -740,6 +744,8 @@ private:
     LtrReceiver rxLtr_;
     EdacsReceiver rxEdacs_;
     MilhfReceiver rxMilhf_;
+    ArgosReceiver rxArgos_;
+    SigfoxReceiver rxSfx_;
     Vdl4Receiver rxVdl4_;
     UatReceiver rxUat_;
     HrptReceiver rxHrpt_;
