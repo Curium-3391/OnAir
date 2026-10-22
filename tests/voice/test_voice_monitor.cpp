@@ -3,7 +3,9 @@
 // the recording of a played call (WAV + JSON, never an encrypted one), the history search and the settings text.
 // NOT covered here: a receiver (test_voice_loopback.cpp runs DMR through the stub plug-in into the monitor).
 #include "dect2/voice/voice_monitor.h"
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>

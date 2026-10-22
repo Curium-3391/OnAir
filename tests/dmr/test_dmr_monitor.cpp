@@ -11,6 +11,8 @@
 #include "dect2/dmr/dmr_rx.h"
 #include "dect2/voice/voice_monitor.h"
 #include "../codec/plugin_test_util.h"
+#include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <set>

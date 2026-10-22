@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
@@ -393,13 +394,13 @@ void Monitor::openRecLocked(Live& l, int channels, int rate) {
     r.rate = rate;
     const fs::path base = set_.recordDir.empty() ? fs::path(defaultRecordDir()) / mode_ : fs::path(set_.recordDir);
     struct tm g; gmTime((time_t)l.e.wallStart, &g);
-    char day[16], tm[16];
+    char day[16], hms[16];
     snprintf(day, sizeof day, "%04d-%02d-%02d", g.tm_year + 1900, g.tm_mon + 1, g.tm_mday);
-    snprintf(tm, sizeof tm, "%02d%02d%02d", g.tm_hour, g.tm_min, g.tm_sec);
+    snprintf(hms, sizeof hms, "%02d%02d%02d", g.tm_hour, g.tm_min, g.tm_sec);
     const fs::path dir = base / day;
     std::error_code ec;
     fs::create_directories(dir, ec);
-    std::string stem = std::string(tm) + "_" + safe(mode_) + "_" + safe(targetText(l.e.info)) + "_from_" + safe(sourceText(l.e.info));
+    std::string stem = std::string(hms) + "_" + safe(mode_) + "_" + safe(targetText(l.e.info)) + "_from_" + safe(sourceText(l.e.info));
     fs::path p = dir / (stem + ".wav");
     for (int k = 2; fs::exists(p, ec) && k < 1000; k++) p = dir / (stem + "_" + std::to_string(k) + ".wav");
     r.f = fopen(p.string().c_str(), "wb");
