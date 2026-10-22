@@ -55,6 +55,8 @@ struct AisMsg {
     float sog = -1, cog = -1; int heading = -1;
     bool hasRot = false; float rotDegMin = 0;
     int navStatus = -1;
+    int posAccuracy = -1, raim = -1;          // position accuracy flag (1 = better than 10 m) and RAIM flag of the position reports (1 - 3, 18, 27)
+    int posLatency = -1;                      // message 27: GNSS position latency, 0 = under 5 s, 1 = 5 s or more
     int second = 60;                          // UTC second of the position report, 60 = not available
     // static and voyage
     std::string name, callsign, destination;

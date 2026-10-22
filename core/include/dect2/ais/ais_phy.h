@@ -32,5 +32,8 @@ struct AisBurstResult {
 // x[0..n): samples around the burst (some noise before and after is fine). [core0, core1) is where the power detector saw the signal;
 // the carrier offset is measured inside it.
 AisBurstResult aisDecodeBurst(const cf32* x, size_t n, size_t core0, size_t core1, const AisPhyConfig& cfg = AisPhyConfig());
+// The same with the frequency given instead of measured: the burst is shifted down by freqHz and put through the narrow filter first, so a burst on
+// top of another one at a different Doppler shift can be decoded on its own (the satellite mode's frequency candidates). cfoHz includes freqHz.
+AisBurstResult aisDecodeBurstAt(const cf32* x, size_t n, size_t core0, size_t core1, double freqHz, const AisPhyConfig& cfg = AisPhyConfig());
 
 } // namespace dect2

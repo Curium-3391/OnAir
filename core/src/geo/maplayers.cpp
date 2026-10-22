@@ -48,6 +48,7 @@ std::vector<MapMarker> markersFromAis(const AisTelemetry& t) {
         m.headingDeg = s.heading >= 0 ? s.heading : (s.cog >= 0 ? s.cog : -1);
         m.ageSec = s.ageSec;
         m.detail = s.destination.empty() ? s.callsign : "to " + s.destination;
+        if (s.longRange) m.detail = "long-range AIS (message 27)" + (m.detail.empty() ? std::string() : ", " + m.detail);
         if (s.altitudeM >= 0) { m.hasAlt = true; m.altM = s.altitudeM; }
         for (const auto& p : s.track) m.track.push_back({p.lat, p.lon});
         v.push_back(std::move(m));
