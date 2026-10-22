@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0b0a">
+<title>OnAir Web</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#spectrum">Skip to spectrum</a>
+
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">&#9679;</span> <span id="srvName">OnAir Web</span><span id="srvWhere" class="dim"></span></div>
+  <div class="status" role="status" aria-live="polite">
+    <span id="conn" class="pill">offline</span>
+    <span id="users" class="pill dim" title="Listeners on this server">- / -</span>
+  </div>
+</header>
+
+<div id="notice" class="notice" role="note" hidden>
+  <p id="noticeText"></p>
+  <button id="noticeOk" type="button">Understood</button>
+</div>
+
+<div id="banner" class="banner" role="alert" hidden></div>
+
+<form id="login" class="panel login" hidden autocomplete="off">
+  <h2>Join this receiver</h2>
+  <label>Your name (shown to the host only)<input id="loginName" maxlength="32" autocomplete="nickname"></label>
+  <label id="loginPwRow">Password<input id="loginPw" type="password" maxlength="128" autocomplete="current-password"></label>
+  <label id="loginInvRow">Invite code<input id="loginInv" maxlength="128" autocomplete="off"></label>
+  <button id="loginGo" type="submit" class="primary">Connect</button>
+</form>
+
+<main id="app" class="app" hidden>
+  <section class="panel tuner" aria-label="Receiver">
+    <div class="freqrow">
+      <div id="freq" class="freq" role="spinbutton" tabindex="0" aria-label="Frequency in hertz. Arrow keys tune by the step, Page Up and Page Down by ten steps, Enter to type a frequency" aria-valuemin="0" aria-valuenow="0"></div>
+      <div class="freqtools">
+        <label class="small">Step
+          <select id="step" aria-label="Tuning step"></select>
+        </label>
+        <button id="freqType" type="button" title="Type a frequency">Type</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="modes" id="modes" role="radiogroup" aria-label="Mode"></div>
+      <label class="slider bw">Bandwidth <output id="bwOut" class="mono">-</output>
+        <input id="bw" type="range" min="0" max="100" step="1" aria-label="Bandwidth">
+      </label>
+    </div>
+
+    <div class="row meters">
+      <div class="smeter" aria-label="Signal strength">
+        <div class="sbar" role="meter" id="sbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Signal level"><i id="sfill"></i><b id="speak"></b></div>
+        <div class="sticks" aria-hidden="true"><span>1</span><span>3</span><span>5</span><span>7</span><span>9</span><span>+20</span><span>+40</span></div>
+        <div class="sread"><span id="stext" class="mono">S0</span> <span id="sdb" class="mono dim">-- dBFS</span></div>
+      </div>
+      <label class="slider">Squelch <output id="sqOut" class="mono">open</output>
+        <input id="sq" type="range" min="-150" max="-20" step="1" value="-150" aria-label="Squelch">
+      </label>
+      <label class="slider">Volume <output id="volOut" class="mono">70</output>
+        <input id="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Volume">
+      </label>
+      <button id="audioBtn" type="button" class="primary" aria-pressed="false">Listen</button>
+      <button id="muteBtn" type="button" aria-pressed="false" title="Mute (M)">Mute</button>
+    </div>
+  </section>
+
+  <section class="panel scope" aria-label="Spectrum and waterfall">
+    <div class="scopebar">
+      <button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out (-)">&minus;</button>
+      <button id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+      <button id="zoomFull" type="button" title="Show the whole capture">Full</button>
+      <button id="zoomSig" type="button" title="Zoom around the tuned frequency">Around</button>
+      <select id="palette" aria-label="Waterfall colours"></select>
+      <label class="small">Range <input id="range" type="range" min="20" max="120" step="1" value="70" aria-label="Spectrum range in dB"></label>
+      <label class="small">Floor <input id="floorAdj" type="range" min="-30" max="30" step="1" value="0" aria-label="Spectrum floor offset in dB"></label>
+      <span id="viewText" class="dim mono"></span>
+    </div>
+    <div id="spectrum" class="canvaswrap" tabindex="0" role="application" aria-label="Spectrum. Click to tune, drag to pan, scroll or pinch to zoom, arrow keys to tune">
+      <canvas id="spec"></canvas>
+    </div>
+    <div class="canvaswrap wf">
+      <canvas id="wf" aria-label="Waterfall. Click to tune, drag to pan"></canvas>
+    </div>
+  </section>
+
+  <section class="panel side" aria-label="Bands and bookmarks">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-tab="bands" id="tabBands">Bands</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="marks" id="tabMarks">Bookmarks</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="dec" id="tabDec">Decoders</button>
+    </div>
+    <div id="paneBands" role="tabpanel" aria-labelledby="tabBands"><div id="bandList" class="chips"></div></div>
+    <div id="paneMarks" role="tabpanel" aria-labelledby="tabMarks" hidden>
+      <div class="markadd">
+        <input id="markName" maxlength="40" placeholder="Name" aria-label="Bookmark name">
+        <button id="markAdd" type="button">Save current</button>
+      </div>
+      <ul id="markList" class="marks"></ul>
+    </div>
+    <div id="paneDec" role="tabpanel" aria-labelledby="tabDec" hidden>
+      <div id="decList" class="chips"></div>
+      <div id="decOut" class="decout" aria-live="off"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot dim">OnAir Web. Receive only: there is no transmit control. <span id="footInfo"></span></footer>
+
+<script src="onair-lib.js"></script>
+<script src="onair-worklet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
