@@ -1,5 +1,6 @@
 // Operating-system services for the UI: file dialogs, saved settings, fonts.
 #pragma once
+#include "dect2/backup/backup.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -33,6 +34,8 @@ struct Prefs {
     // Start over with no saved settings (after starts that kept crashing): the old ones are kept aside, not deleted.
     // Returns where they went (UTF-8), empty when they could not be kept.
     virtual std::string setAside() = 0;
+    // Every saved key with its type (D, I, B or S), for Tools > Backup and restore. The scan channels are not in it (getChannels).
+    virtual std::vector<dect2::backup::PrefItem> dumpAll() { return {}; }
 };
 Prefs& prefs();       // what the app reads and writes: the keys of one receiver get its prefix (rx_prefs.cpp)
 Prefs& basePrefs();   // the platform's store itself

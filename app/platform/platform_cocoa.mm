@@ -252,6 +252,23 @@ struct DefaultsPrefs : Prefs {
             [arr addObject:@{@"f": @(c.freqMhz), @"bw": @(c.bwMhz), @"name": nsText(c.name), @"mode": nsText(c.mode), @"snr": @(c.snrDb), @"n": @(c.nServices), @"fav": @(c.favourite)}];
         [d setObject:arr forKey:@"channels"];
     }
+    std::vector<dect2::backup::PrefItem> dumpAll() override {
+        std::vector<dect2::backup::PrefItem> o;
+        NSString* domain = NSBundle.mainBundle.bundleIdentifier ?: NSProcessInfo.processInfo.processName;
+        NSDictionary* all = [d persistentDomainForName:domain];
+        for (NSString* key in all) {
+            id v = all[key];
+            if ([key isEqualToString:@"channels"] || key.UTF8String == nullptr) continue;
+            if ([v isKindOfClass:[NSString class]]) o.push_back({key.UTF8String, 'S', std::string(((NSString*)v).UTF8String ?: "")});
+            else if ([v isKindOfClass:[NSNumber class]]) {
+                NSNumber* n = v;
+                if (CFGetTypeID((__bridge CFTypeRef)n) == CFBooleanGetTypeID()) o.push_back({key.UTF8String, 'B', n.boolValue ? "1" : "0"});
+                else if (!strcmp(n.objCType, "d") || !strcmp(n.objCType, "f")) { char b[64]; snprintf(b, sizeof b, "%.17g", n.doubleValue); o.push_back({key.UTF8String, 'D', b}); }
+                else o.push_back({key.UTF8String, 'I', std::to_string(n.longLongValue)});
+            }
+        }
+        return o;
+    }
     std::string setAside() override {
         NSString* domain = NSBundle.mainBundle.bundleIdentifier ?: NSProcessInfo.processInfo.processName;
         NSDictionary* old = [d persistentDomainForName:domain];
