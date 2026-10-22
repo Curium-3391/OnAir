@@ -1,0 +1,295 @@
+# Marine VHF channels, 156.000 to 162.025 MHz: ITU Radio Regulations Appendix 18, 47 CFR 80.371, Canadian practice, CEPT and Baltic national plans.
+# regions: INT international, EUR Europe, BAL Baltic Sea, USA, CAN. use: V voice, D DSC (no voice), A AIS (no voice), L long range AIS (no voice).
+# flags: d distress, c calling, s SAR, b bridge-to-bridge, p port operations / VTS, i intership, e public correspondence, m safety broadcasts, g government / Coast Guard, l low power.
+# ship_mhz is where a ship transmits, coast_mhz where a coast station transmits; equal = simplex. One row per region and designator (number + A/B suffix); typical uses, local rules apply.
+regions;number;suffix;ship_mhz;coast_mhz;use;flags;power_w;name;purpose
+INT;1;;156.050;160.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;2;;156.100;160.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;3;;156.150;160.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;4;;156.200;160.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;5;;156.250;160.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;6;;156.300;156.300;V;is;25;Intership safety, SAR;Intership safety communications and search and rescue coordination with aircraft
+INT;7;;156.350;160.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;8;;156.400;156.400;V;i;25;Intership;Intership working channel
+INT;9;;156.450;156.450;V;ip;25;Intership, port ops;Intership, port operations and ship movement, commercial and non-commercial calling in some areas
+INT;10;;156.500;156.500;V;ips;25;Intership, port ops, pollution;Intership, port operations, pollution response and SAR operations in many countries
+INT;11;;156.550;156.550;V;p;25;Port ops, VTS;Port operations and vessel traffic services
+INT;12;;156.600;156.600;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+INT;13;;156.650;156.650;V;ib;25;Bridge to bridge;Intership navigation safety (bridge-to-bridge): meeting and passing, low power recommended
+INT;14;;156.700;156.700;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+INT;15;;156.750;156.750;V;il;1;Intership, on board;Intership and on-board communications, low power (1 W)
+INT;16;;156.800;156.800;V;dc;25;Distress, safety, calling;International distress, safety and calling channel, listen at all times at sea
+INT;17;;156.850;156.850;V;il;1;On board, intership;On-board communications and intership, low power (1 W)
+INT;18;;156.900;161.500;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;19;;156.950;161.550;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;20;;157.000;161.600;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;21;;157.050;161.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;22;;157.100;161.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;23;;157.150;161.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;24;;157.200;161.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;25;;157.250;161.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;26;;157.300;161.900;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;27;;157.350;161.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;28;;157.400;162.000;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;60;;156.025;160.625;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;61;;156.075;160.675;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;62;;156.125;160.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;63;;156.175;160.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;64;;156.225;160.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;65;;156.275;160.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;66;;156.325;160.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;67;;156.375;156.375;V;ib;25;Intership, bridge to bridge;Intership and navigation safety, used by some countries as bridge-to-bridge or SAR working channel
+INT;68;;156.425;156.425;V;ip;25;Port ops, intership;Port operations, ship movement and intership
+INT;69;;156.475;156.475;V;ip;25;Intership, port ops;Intership and port operations, leisure craft in several countries
+INT;70;;156.525;156.525;D;;25;DSC (digital selective calling);Digital selective calling for distress, safety and calling (1200 bd FM-FSK), no voice allowed
+INT;71;;156.575;156.575;V;p;25;Port ops;Port operations and ship movement
+INT;72;;156.625;156.625;V;i;25;Intership only;Intership communications only
+INT;73;;156.675;156.675;V;ips;25;Port ops, SAR, intership;Port operations, used for SAR, pollution response and intership in many countries
+INT;74;;156.725;156.725;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+INT;75;;156.775;156.775;L;l;1;Long range AIS 1 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+INT;76;;156.825;156.825;L;l;1;Long range AIS 2 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+INT;77;;156.875;156.875;V;i;25;Intership;Intership communications
+INT;78;;156.925;161.525;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;79;;156.975;161.575;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;80;;157.025;161.625;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;81;;157.075;161.675;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;82;;157.125;161.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;83;;157.175;161.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;84;;157.225;161.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;85;;157.275;161.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;86;;157.325;161.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+INT;87;A;157.375;157.375;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+INT;87;B;161.975;161.975;A;;12.5;AIS 1;AIS 1: ship and coast station position reports (see the AIS mode), no voice
+INT;88;A;157.425;157.425;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+INT;88;B;162.025;162.025;A;;12.5;AIS 2;AIS 2: ship and coast station position reports (see the AIS mode), no voice
+EUR;1;;156.050;160.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;2;;156.100;160.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;3;;156.150;160.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;4;;156.200;160.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;5;;156.250;160.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;6;;156.300;156.300;V;is;25;Intership safety, SAR;Intership safety communications and search and rescue coordination with aircraft
+EUR;7;;156.350;160.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;8;;156.400;156.400;V;i;25;Intership;Intership working channel
+EUR;9;;156.450;156.450;V;ip;25;Intership, port ops;Intership, port operations and ship movement, commercial and non-commercial calling in some areas
+EUR;10;;156.500;156.500;V;ips;25;Intership, port ops, pollution;Intership, port operations, pollution response and SAR operations in many countries
+EUR;11;;156.550;156.550;V;p;25;Port ops, VTS;Port operations and vessel traffic services
+EUR;12;;156.600;156.600;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+EUR;13;;156.650;156.650;V;ib;25;Bridge to bridge;Intership navigation safety (bridge-to-bridge): meeting and passing, low power recommended
+EUR;14;;156.700;156.700;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+EUR;15;;156.750;156.750;V;il;1;Intership, on board;Intership and on-board communications, low power (1 W)
+EUR;16;;156.800;156.800;V;dc;25;Distress, safety, calling;International distress, safety and calling channel, listen at all times at sea
+EUR;17;;156.850;156.850;V;il;1;On board, intership;On-board communications and intership, low power (1 W)
+EUR;18;;156.900;161.500;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;19;;156.950;161.550;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;20;;157.000;161.600;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;21;;157.050;161.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;22;;157.100;161.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;23;;157.150;161.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;24;;157.200;161.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;25;;157.250;161.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;26;;157.300;161.900;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;27;;157.350;161.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;28;;157.400;162.000;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;37;;157.850;157.850;V;i;25;Marina, yacht clubs (M);Marina and yacht club working channel (M) in the United Kingdom, Ireland and other countries, simplex
+EUR;60;;156.025;160.625;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;61;;156.075;160.675;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;62;;156.125;160.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;63;;156.175;160.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;64;;156.225;160.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;65;;156.275;160.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;66;;156.325;160.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;67;;156.375;156.375;V;ib;25;Intership, bridge to bridge;Intership and navigation safety, used by some countries as bridge-to-bridge or SAR working channel
+EUR;68;;156.425;156.425;V;ip;25;Port ops, intership;Port operations, ship movement and intership
+EUR;69;;156.475;156.475;V;ip;25;Intership, port ops;Intership and port operations, leisure craft in several countries
+EUR;70;;156.525;156.525;D;;25;DSC (digital selective calling);Digital selective calling for distress, safety and calling (1200 bd FM-FSK), no voice allowed
+EUR;71;;156.575;156.575;V;p;25;Port ops;Port operations and ship movement
+EUR;72;;156.625;156.625;V;i;25;Intership only;Intership communications only
+EUR;73;;156.675;156.675;V;ips;25;Port ops, SAR, intership;Port operations, used for SAR, pollution response and intership in many countries
+EUR;74;;156.725;156.725;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+EUR;75;;156.775;156.775;L;l;1;Long range AIS 1 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+EUR;76;;156.825;156.825;L;l;1;Long range AIS 2 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+EUR;77;;156.875;156.875;V;i;25;Intership;Intership communications
+EUR;78;;156.925;161.525;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;79;;156.975;161.575;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;80;;157.025;161.625;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;81;;157.075;161.675;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;82;;157.125;161.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;83;;157.175;161.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;84;;157.225;161.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;85;;157.275;161.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;86;;157.325;161.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+EUR;87;A;157.375;157.375;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+EUR;87;B;161.975;161.975;A;;12.5;AIS 1;AIS 1: ship and coast station position reports (see the AIS mode), no voice
+EUR;88;A;157.425;157.425;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+EUR;88;B;162.025;162.025;A;;12.5;AIS 2;AIS 2: ship and coast station position reports (see the AIS mode), no voice
+BAL;1;;156.050;160.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;2;;156.100;160.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;3;;156.150;160.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;4;;156.200;160.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;5;;156.250;160.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;6;;156.300;156.300;V;is;25;Intership safety, SAR;Intership safety communications and search and rescue coordination with aircraft
+BAL;7;;156.350;160.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;8;;156.400;156.400;V;i;25;Intership;Intership working channel
+BAL;9;;156.450;156.450;V;ip;25;Intership, port ops;Intership, port operations and ship movement, commercial and non-commercial calling in some areas
+BAL;10;;156.500;156.500;V;ips;25;Intership, port ops, pollution;Intership, port operations, pollution response and SAR operations in many countries
+BAL;11;;156.550;156.550;V;p;25;Port ops, VTS;Port operations and vessel traffic services
+BAL;12;;156.600;156.600;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+BAL;13;;156.650;156.650;V;ib;25;Bridge to bridge;Intership navigation safety (bridge-to-bridge): meeting and passing, low power recommended
+BAL;14;;156.700;156.700;V;p;25;Port ops, VTS;Port operations, ship movement and vessel traffic services
+BAL;15;;156.750;156.750;V;il;1;Intership, on board;Intership and on-board communications, low power (1 W)
+BAL;16;;156.800;156.800;V;dc;25;Distress, safety, calling;International distress, safety and calling channel, listen at all times at sea
+BAL;17;;156.850;156.850;V;il;1;On board, intership;On-board communications and intership, low power (1 W)
+BAL;18;;156.900;161.500;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;19;;156.950;161.550;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;20;;157.000;161.600;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;21;;157.050;161.650;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;22;;157.100;161.700;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;23;;157.150;161.750;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;24;;157.200;161.800;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;25;;157.250;161.850;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;26;;157.300;161.900;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;27;;157.350;161.950;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;28;;157.400;162.000;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;60;;156.025;160.625;V;p;25;Helsinki Traffic (GOFREP);Gulf of Finland reporting system: Helsinki Traffic
+BAL;61;;156.075;160.675;V;p;25;Tallinn Traffic (GOFREP);Gulf of Finland reporting system: Tallinn Traffic
+BAL;62;;156.125;160.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;63;;156.175;160.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;64;;156.225;160.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;65;;156.275;160.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;66;;156.325;160.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;67;;156.375;156.375;V;ib;25;Intership, bridge to bridge;Intership and navigation safety, used by some countries as bridge-to-bridge or SAR working channel
+BAL;68;;156.425;156.425;V;ip;25;Port ops, intership;Port operations, ship movement and intership
+BAL;69;;156.475;156.475;V;ip;25;Intership, port ops;Intership and port operations, leisure craft in several countries
+BAL;70;;156.525;156.525;D;;25;DSC (digital selective calling);Digital selective calling for distress, safety and calling (1200 bd FM-FSK), no voice allowed
+BAL;71;;156.575;156.575;V;p;25;Port ops;Port operations and ship movement
+BAL;72;;156.625;156.625;V;i;25;Intership only;Intership communications only
+BAL;73;;156.675;156.675;V;ips;25;SAR, ice, intership;Search and rescue, ice navigation information and intership in the Baltic
+BAL;74;;156.725;156.725;V;p;25;St. Petersburg Traffic;Gulf of Finland reporting system: St. Petersburg Traffic, port operations
+BAL;75;;156.775;156.775;L;l;1;Long range AIS 1 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+BAL;76;;156.825;156.825;L;l;1;Long range AIS 2 (guard);Guard band for channel 16: long range AIS (message 27) and similar, low power (1 W), no voice
+BAL;77;;156.875;156.875;V;i;25;Intership;Intership communications
+BAL;78;;156.925;161.525;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;79;;156.975;161.575;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;80;;157.025;161.625;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;81;;157.075;161.675;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;82;;157.125;161.725;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;83;;157.175;161.775;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;84;;157.225;161.825;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;85;;157.275;161.875;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;86;;157.325;161.925;V;pe;25;Port ops, correspondence;Port operations, ship movement and public correspondence (duplex)
+BAL;87;A;157.375;157.375;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+BAL;87;B;161.975;161.975;A;;12.5;AIS 1;AIS 1: ship and coast station position reports (see the AIS mode), no voice
+BAL;88;A;157.425;157.425;V;pi;25;Port ops, intership;Port operations and intership (simplex on the lower frequency of the pair)
+BAL;88;B;162.025;162.025;A;;12.5;AIS 2;AIS 2: ship and coast station position reports (see the AIS mode), no voice
+USA;1;A;156.050;156.050;V;p;25;Port ops;Port operations and commercial (simplex)
+USA;3;A;156.150;156.150;V;p;25;Port ops;Port operations and commercial (simplex)
+USA;5;A;156.250;156.250;V;p;25;Port ops, VTS;Port operations and vessel traffic services (simplex)
+USA;6;;156.300;156.300;V;is;25;Intership safety, SAR;Intership safety, search and rescue with aircraft, Coast Guard
+USA;7;A;156.350;156.350;V;p;25;Commercial;Commercial (simplex)
+USA;8;;156.400;156.400;V;i;25;Commercial intership;Commercial intership only
+USA;9;;156.450;156.450;V;ic;25;Calling (leisure, commercial);Calling channel for recreational boats and commercial, boater calling
+USA;10;;156.500;156.500;V;ips;25;Commercial;Commercial, Coast Guard pollution response
+USA;11;;156.550;156.550;V;p;25;Commercial, VTS;Commercial, vessel traffic services
+USA;12;;156.600;156.600;V;p;25;Port ops, VTS;Port operations and vessel traffic services
+USA;13;;156.650;156.650;V;ib;1;Bridge to bridge;Navigation safety (bridge-to-bridge), 1 W low power
+USA;14;;156.700;156.700;V;p;25;Port ops, VTS;Port operations and vessel traffic services
+USA;15;;156.750;156.750;V;l;1;Environmental (receive only);Environmental (EPIRB testing, weather), ships listen only, 1 W
+USA;16;;156.800;156.800;V;dc;25;Distress, safety, calling;Distress, safety and calling, Coast Guard watch
+USA;17;;156.850;156.850;V;gl;1;State control;State control (government, 1 W)
+USA;18;A;156.900;156.900;V;p;25;Commercial;Commercial (simplex)
+USA;19;A;156.950;156.950;V;p;25;Commercial;Commercial (simplex)
+USA;20;;157.000;161.600;V;p;25;Port ops (duplex);Port operations (duplex ship 157.000 / coast 161.600)
+USA;20;A;157.000;157.000;V;p;25;Port ops;Port operations (simplex)
+USA;21;A;157.050;157.050;V;g;25;Coast Guard;Coast Guard working (simplex)
+USA;22;A;157.100;157.100;V;gm;25;Coast Guard liaison, MSI;Coast Guard liaison and marine safety broadcasts (announced on channel 16)
+USA;23;A;157.150;157.150;V;g;25;Coast Guard;Coast Guard working (simplex)
+USA;24;;157.200;161.800;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;25;;157.250;161.850;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;26;;157.300;161.900;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;27;;157.350;161.950;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;28;;157.400;162.000;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;63;A;156.175;156.175;V;p;25;Port ops, VTS;Port operations and vessel traffic services (simplex)
+USA;65;A;156.275;156.275;V;p;25;Port ops;Port operations (simplex)
+USA;66;A;156.325;156.325;V;p;25;Port ops;Port operations (simplex)
+USA;67;;156.375;156.375;V;ib;25;Bridge to bridge (commercial);Commercial, bridge-to-bridge on the lower Mississippi
+USA;68;;156.425;156.425;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+USA;69;;156.475;156.475;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+USA;70;;156.525;156.525;D;;25;DSC (digital selective calling);Digital selective calling, no voice
+USA;71;;156.575;156.575;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+USA;72;;156.625;156.625;V;i;25;Non-commercial intership;Non-commercial intership only
+USA;73;;156.675;156.675;V;p;25;Port ops;Port operations (U.S.), SAR in some areas
+USA;74;;156.725;156.725;V;p;25;Port ops;Port operations
+USA;75;;156.775;156.775;L;l;1;Long range AIS 1 (guard);Guard band for channel 16: long range AIS, 1 W, no voice
+USA;76;;156.825;156.825;L;l;1;Long range AIS 2 (guard);Guard band for channel 16: long range AIS, 1 W, no voice
+USA;77;;156.875;156.875;V;ip;25;Port ops, intership;Port operations and intership (commercial)
+USA;78;A;156.925;156.925;V;i;25;Non-commercial;Non-commercial (simplex)
+USA;79;A;156.975;156.975;V;p;25;Commercial;Commercial (simplex)
+USA;80;A;157.025;157.025;V;p;25;Commercial;Commercial (simplex)
+USA;81;A;157.075;157.075;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+USA;82;A;157.125;157.125;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+USA;83;A;157.175;157.175;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+USA;84;;157.225;161.825;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;85;;157.275;161.875;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;86;;157.325;161.925;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+USA;87;A;157.375;157.375;V;p;25;Port ops;Port operations (simplex)
+USA;87;B;161.975;161.975;A;;12.5;AIS 1;AIS 1: ship and coast station position reports (see the AIS mode), no voice
+USA;88;A;157.425;157.425;V;p;25;Commercial;Commercial (simplex)
+USA;88;B;162.025;162.025;A;;12.5;AIS 2;AIS 2: ship and coast station position reports (see the AIS mode), no voice
+CAN;1;A;156.050;156.050;V;p;25;Port ops;Port operations and commercial (simplex)
+CAN;3;A;156.150;156.150;V;p;25;Port ops;Port operations and commercial (simplex)
+CAN;5;A;156.250;156.250;V;p;25;Port ops, VTS;Port operations and vessel traffic services (simplex)
+CAN;6;;156.300;156.300;V;is;25;Intership safety, SAR;Intership safety, search and rescue with aircraft, Coast Guard
+CAN;7;A;156.350;156.350;V;p;25;Commercial;Commercial (simplex)
+CAN;8;;156.400;156.400;V;i;25;Commercial intership;Commercial intership only
+CAN;9;;156.450;156.450;V;ic;25;Calling (leisure);Recreational calling channel (Canada)
+CAN;10;;156.500;156.500;V;ips;25;Commercial, CCG;Commercial, Canadian Coast Guard pollution response and SAR
+CAN;11;;156.550;156.550;V;p;25;VTS, commercial;Canadian Coast Guard vessel traffic services and commercial
+CAN;12;;156.600;156.600;V;p;25;VTS, port ops;Canadian Coast Guard vessel traffic services and port operations
+CAN;13;;156.650;156.650;V;ib;1;Bridge to bridge;Navigation safety (bridge-to-bridge), 1 W low power
+CAN;14;;156.700;156.700;V;p;25;VTS, port ops;Canadian Coast Guard vessel traffic services and port operations
+CAN;15;;156.750;156.750;V;il;1;Intership, on board;On-board and intership (Canada), low power
+CAN;16;;156.800;156.800;V;dc;25;Distress, safety, calling;Distress, safety and calling, Coast Guard watch
+CAN;17;;156.850;156.850;V;il;1;Intership, on board;On-board and intership (Canada), low power
+CAN;18;A;156.900;156.900;V;p;25;Commercial;Commercial (simplex)
+CAN;19;A;156.950;156.950;V;p;25;Commercial;Commercial (simplex)
+CAN;20;;157.000;161.600;V;p;25;Port ops (duplex);Port operations (duplex ship 157.000 / coast 161.600)
+CAN;20;A;157.000;157.000;V;p;25;Port ops;Port operations (simplex)
+CAN;21;A;157.050;157.050;V;g;25;Coast Guard;Coast Guard working (simplex)
+CAN;21;B;161.650;161.650;V;g;25;Coast Guard (coast half);Coast Guard simplex on the coast station half (161.650)
+CAN;22;A;157.100;157.100;V;gm;25;Coast Guard liaison, MSI;Canadian Coast Guard liaison and marine information broadcasts (announced on channel 16)
+CAN;23;A;157.150;157.150;V;g;25;Coast Guard;Coast Guard working (simplex)
+CAN;24;;157.200;161.800;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;25;;157.250;161.850;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;26;;157.300;161.900;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;27;;157.350;161.950;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;28;;157.400;162.000;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;61;A;156.075;156.075;V;p;25;Port ops;Port operations (simplex, Canada)
+CAN;63;A;156.175;156.175;V;p;25;Port ops, VTS;Port operations and vessel traffic services (simplex)
+CAN;64;A;156.225;156.225;V;p;25;Port ops;Port operations (simplex, Canada)
+CAN;65;A;156.275;156.275;V;p;25;Port ops;Port operations (simplex)
+CAN;66;A;156.325;156.325;V;p;25;Port ops;Port operations (simplex)
+CAN;67;;156.375;156.375;V;ib;25;Bridge to bridge (commercial);Commercial, bridge-to-bridge on the lower Mississippi
+CAN;68;;156.425;156.425;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+CAN;69;;156.475;156.475;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+CAN;70;;156.525;156.525;D;;25;DSC (digital selective calling);Digital selective calling, no voice
+CAN;71;;156.575;156.575;V;i;25;Non-commercial;Non-commercial (recreational) working channel
+CAN;72;;156.625;156.625;V;i;25;Non-commercial intership;Non-commercial intership only
+CAN;73;;156.675;156.675;V;p;25;Port ops;Port operations (U.S.), SAR in some areas
+CAN;74;;156.725;156.725;V;p;25;Port ops;Port operations
+CAN;75;;156.775;156.775;L;l;1;Long range AIS 1 (guard);Guard band for channel 16: long range AIS, 1 W, no voice
+CAN;76;;156.825;156.825;L;l;1;Long range AIS 2 (guard);Guard band for channel 16: long range AIS, 1 W, no voice
+CAN;77;;156.875;156.875;V;ip;25;Port ops, intership;Port operations and intership (commercial)
+CAN;78;A;156.925;156.925;V;i;25;Non-commercial;Non-commercial (simplex)
+CAN;79;A;156.975;156.975;V;p;25;Commercial;Commercial (simplex)
+CAN;80;A;157.025;157.025;V;p;25;Commercial;Commercial (simplex)
+CAN;81;A;157.075;157.075;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+CAN;82;A;157.125;157.125;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+CAN;83;A;157.175;157.175;V;g;25;Coast Guard;Coast Guard / government working (simplex)
+CAN;83;B;161.775;161.775;V;g;25;Coast Guard (coast half);Coast Guard simplex on the coast station half (161.775)
+CAN;84;;157.225;161.825;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;85;;157.275;161.875;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;86;;157.325;161.925;V;e;25;Public correspondence;Public correspondence (marine operator, duplex)
+CAN;87;A;157.375;157.375;V;p;25;Port ops;Port operations (simplex)
+CAN;87;B;161.975;161.975;A;;12.5;AIS 1;AIS 1: ship and coast station position reports (see the AIS mode), no voice
+CAN;88;A;157.425;157.425;V;p;25;Commercial;Commercial (simplex)
+CAN;88;B;162.025;162.025;A;;12.5;AIS 2;AIS 2: ship and coast station position reports (see the AIS mode), no voice
