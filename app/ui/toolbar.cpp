@@ -3,6 +3,7 @@
 // The source, rig windows, status bar and mode selection are in toolbar_source.cpp, toolbar_rig.cpp, statusbar.cpp and mode_select.cpp.
 #include "../app.h"
 #include "touch.h"
+#include "../state/presets_app.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/engine/click_tune.h"
 #include "dect2/source/antenna_ports.h"
@@ -317,6 +318,8 @@ static void toolbarStartStop(App& a, bool running) {
     }
     flowNext(8 * gUi);
     memoryToolbarButton(a);   // the quick list of the memories (app/memory)
+    flowNext(8 * gUi);
+    presetsapp::toolbarButton(a);   // per-mode presets (app/state/presets_app.cpp)
 }
 
 // the LDPC decoder backend: CPU, GPU or Auto (DVB-T2 and ATSC 3.0)
@@ -451,6 +454,7 @@ void toolbarParts(App& a, int mask, bool vertical) {
     if (mask & TbTuner) { if (!vertical) flowNext(10 * gUi); freqdbKnownCombo(a, vertical ? -1.f : 170 * gUi); }
 
     if (mask & TbGain) toolbarGain(a, vertical, running, retune);
+    if (a.newUi && (mask & TbGain)) presetsapp::toolbarButton(a);   // the classic bar has it beside the Start button
 
     if (!a.newUi) toolbarStartStop(a, running);   // the new interface has its Start button in the side rail
 
