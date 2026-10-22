@@ -59,6 +59,7 @@ ImVec2 fitButton(const char* label, float minW) {
     return ImVec2(std::max(minW, ImGui::CalcTextSize(label, nullptr, true).x + 2 * ImGui::GetStyle().FramePadding.x), 0);
 }
 
+int gSpaceClaimFrame = -10;
 bool gTightTabs = false;
 void setUiLanguage(App& a, const std::string& code) {
     a.uiLang = code;

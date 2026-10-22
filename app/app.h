@@ -696,6 +696,9 @@ void restoreCursor(ImVec2 screenPos);
 // once a frame: a floating window whose title bar went past the edge of the display (a saved position from a larger or a second monitor,
 // a smaller window after a DPI change) is moved back so it can be grabbed again
 void keepWindowsReachable();
+// a panel that answers Space itself (the TV picture, the transmitter) sets this to the frame number; the new interface's Space = start /
+// stop the receiver is then left out, so one key press does not do two things (widgets.cpp)
+extern int gSpaceClaimFrame;
 // the size of a button that is at least minW wide and always wide enough for its (translated) label
 ImVec2 fitButton(const char* label, float minW);
 // a combo box of translated items: each item is marked with N_() where it is written and passed through tr() here

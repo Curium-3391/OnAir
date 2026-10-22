@@ -390,6 +390,7 @@ void playerTab(App& a) {
     const bool vboxKeys = (ImGui::IsWindowFocused() || ImGui::IsWindowHovered()) && !ImGui::GetIO().WantTextInput;   // Space and R act on the video panel
     ImGui::EndChild();
     if (vboxKeys && pl.selected() >= 0) {
+        gSpaceClaimFrame = ImGui::GetFrameCount();
         if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) { if (pl.shift().paused) pl.play(); else pl.pause(); }
         if (ImGui::IsKeyPressed(ImGuiKey_R, false)) { if (pl.recording().active) pl.stopRecording(); else tvRecordStart(a); }
     }

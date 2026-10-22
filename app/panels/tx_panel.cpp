@@ -78,6 +78,7 @@ bool bigButton(const char* lab, bool stop, bool enabled, float w) {
 // Space / Esc: only when no text box wants the keyboard
 void shortcuts(App& a, TxUi& s, const DeviceInfo* radio, int conflict, const TxModeSpec* mode) {
     ImGuiIO& io = ImGui::GetIO();
+    gSpaceClaimFrame = ImGui::GetFrameCount();   // Space is the transmitter's here, not the receiver's
     if (io.WantTextInput || ImGui::IsPopupOpen("##txnotice") || ImGui::IsPopupOpen("##freqtype")) return;
     const bool running = s.session.running();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && (running || s.pendingStart)) stopTx(a, s, "(Esc)");
