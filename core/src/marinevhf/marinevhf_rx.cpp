@@ -433,7 +433,7 @@ void MarineVhfReceiver::configure(double inputRateHz) {
 }
 void MarineVhfReceiver::setSignalOffset(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->offHz = hz; p_->regrid(); }
 void MarineVhfReceiver::setCenterHz(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->centerHz = hz; p_->regrid(); }
-void MarineVhfReceiver::setDialHz(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->dialHz = hz; p_->regrid(); }
+void MarineVhfReceiver::setDialHz(double hz) { if (hz <= 0) return; std::lock_guard<std::mutex> lk(p_->mu); p_->dialHz = hz; p_->regrid(); }   // 0 (a recording: not known on a retune) keeps the last
 bool MarineVhfReceiver::ready() const { return p_->rate >= marineVhfTuning().minSampleRate - 1 && p_->bank.ready(); }
 void MarineVhfReceiver::reset() { p_->bank.reset(); std::lock_guard<std::mutex> lk(p_->mu); p_->autoKey = -1; p_->ctx.playKey = -1; }
 void MarineVhfReceiver::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }
@@ -621,7 +621,7 @@ bool MarineVhfReceiver::telemetry(MarineVhfTelemetry& out, uint64_t lastSeq) {
 
 ModeTuning marineVhfTuning() {
     ModeTuning t;
-    t.stdMode = 148;
+    t.stdMode = 150;
     t.id = "marinevhf";
     t.name = "Marine VHF";
     t.minMhz = 156.0;

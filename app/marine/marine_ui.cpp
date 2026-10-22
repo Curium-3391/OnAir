@@ -10,6 +10,7 @@
 #include "dect2/marine/marine_mmsi.h"
 #include "dect2/marine/marine_bands.h"
 #include "dect2/marine/marine_dsc_geo.h"
+#include "dect2/marinevhf/marinevhf_channels.h"
 #include "platform/platform.h"
 #include <fstream>
 #include <map>
@@ -302,6 +303,16 @@ void dscDetail(App& a, const DscCall* c, ImVec2 size) {
     kv("telecommand", c->telecmdText);
     kv("frequency rx", c->freqRx);
     kv("frequency tx", c->freqTx);
+    {   // a call that names a VHF working channel (or a distress alert: the channel to listen on is 16): one click to the Marine VHF mode on that channel
+        int ch = dect2::marinevhf::channelFromDscText(c->freqRx);
+        if (!ch) ch = dect2::marinevhf::channelFromDscText(c->freqTx);
+        const bool isDistress = c->distress;
+        if (c->vhf && (ch || isDistress)) {
+            char bl[64]; snprintf(bl, sizeof bl, "Listen on VHF channel %d##dscvhf", ch ? ch : 16);
+            if (ImGui::SmallButton(bl)) marineVhfJump(a, ch ? ch : 16);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Opens the Marine VHF voice mode on that channel (it needs a radio that covers 156 to 162 MHz).");
+        }
+    }
     kv("end", c->eos == 117 ? "acknowledgement requested" : c->eos == 122 ? "acknowledgement" : c->eos == 127 ? "other call" : "");
     char b[64];
     snprintf(b, sizeof b, "%s, %d symbols lost%s", c->eccOk ? "check ok" : "check failed", c->erasures, c->vhf ? ", VHF ch 70" : ", MF/HF");

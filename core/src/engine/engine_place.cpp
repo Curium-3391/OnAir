@@ -190,6 +190,7 @@ void Engine::configureReceiver(int a, double r) {
     case 145: rxSb_.configure(r); break;
     case 130: rxLtr_.configure(r); break;
     case 131: rxEdacs_.configure(r); break;
+    case 149: rxMarineVhf_.configure(r); break;
     default: break;
     }
 }
@@ -217,6 +218,7 @@ void Engine::muteReceiver(int a, bool m) {
     case 56: rxGeneral_.setMuted(m); break;
     case 108: rxCq_.setMuted(m); break;
     case 123: rxKaal_.setMuted(m); break;
+    case 149: rxMarineVhf_.setMuted(m); break;
     default: break;   // no sound
     }
 }
@@ -314,6 +316,7 @@ void Engine::placeReceiver(int a, double o, double centreHz, double dialHz, doub
     case 145: rxSb_.setSignalOffset(o); rxSb_.setCenterHz(centreHz); break;
     case 130: rxLtr_.setSignalOffset(o); rxLtr_.setCenterHz(centreHz); break;
     case 131: rxEdacs_.setSignalOffset(o); rxEdacs_.setCenterHz(centreHz); break;
+    case 149: rxMarineVhf_.setSignalOffset(o); rxMarineVhf_.setCenterHz(centreHz); rxMarineVhf_.setDialHz(dialHz); break;
     case 134: rxKaws_.setSignalOffset(o); break;
     default: break;   // DMR, ADS-B, Mode S uplink: the channel on the centre, nothing to place
     }

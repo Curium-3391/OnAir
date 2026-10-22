@@ -127,6 +127,7 @@
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_rx.h"
 #include "dect2/edacs/edacs_rx.h"
+#include "dect2/marinevhf/marinevhf_rx.h"
 #include "dect2/milhf/milhf_engine.h"
 #include "dect2/uat/uat_rx.h"
 #include "dect2/hrpt/hrpt_rx.h"
@@ -457,6 +458,7 @@ public:
     MptReceiver& mpt1327() { return rxMpt_; }   // MPT1327 trunking control channel (WIP): messages and channel table (telemetry through latestRx)
     FusionReceiver& fusion() { return rxFusion_; }   // Yaesu Fusion (WIP): callsigns and slow data, the speech codec plug-in (telemetry through latestRx)
     LtrReceiver& ltr() { return rxLtr_; }   // LTR control channel (telemetry through latestRx)
+    MarineVhfReceiver& marineVhf() { return rxMarineVhf_; }   // Marine VHF voice: all channels of the span (telemetry through latestRx)
     EdacsReceiver& edacs() { return rxEdacs_; }   // EDACS control channel (telemetry through latestRx)
     MilhfReceiver& milhf() { return rxMilhf_; }   // HF waveform identifier: the audio clip for sigidwiki (telemetry through latestRx)
     DgpsReceiver& dgps() { return rxDgps_; }   // DGPS beacons: the station, the frames (telemetry through latestRx)
@@ -739,6 +741,7 @@ private:
     FusionReceiver rxFusion_;
     LtrReceiver rxLtr_;
     EdacsReceiver rxEdacs_;
+    MarineVhfReceiver rxMarineVhf_;
     MilhfReceiver rxMilhf_;
     Vdl4Receiver rxVdl4_;
     UatReceiver rxUat_;

@@ -987,6 +987,7 @@ int scanModeIndex(const std::string& key);         // its index in kModes, -1 wh
 struct ScanSeed { double mhz = 0; std::string mode, name; double dwellSec = 2; };
 void scannerLoadList(App& a, const std::vector<ScanSeed>& list);   // scanner_ui.cpp: replaces the scan list (the memory scan), opens the window and starts it
 void selectMode(App& a, int family, const char* subId = nullptr);
+void marineVhfJump(App& a, int channel, char suffix = 0);   // marinevhf_ui.cpp: open the Marine VHF mode on this channel (the DSC screen names one in a call)
 bool modeSelected(const App& a, const ModeDef& m);    // the row of the current mode
 const char* modeSearchBox();                          // a search box at the top of a mode drop-down (mode_select.cpp); returns the query
 bool modeMatches(const ModeDef& m, const char* query); // the search box: name, subtitle, description and keywords

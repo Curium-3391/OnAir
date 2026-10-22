@@ -54,6 +54,7 @@
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_tel.h"
 #include "dect2/edacs/edacs_tel.h"
+#include "dect2/marinevhf/marinevhf_tel.h"
 #include "dect2/milhf/milhf_engine.h"
 #include "dect2/dvbc/dvbc_tel.h"
 #include "dect2/orbcomm/orbcomm_tel.h"
@@ -258,6 +259,7 @@ struct RxTelemetry {
     MptTelemetry mpt1327;       // valid when standard == 128 (MPT1327 trunking, family 127)
     FusionTelemetry fusion;     // valid when standard == 129 (Yaesu Fusion, family 128, stdMode 130)
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)
+    MarineVhfTelemetry marinevhf;   // valid when standard == 149 (Marine VHF voice, engine standard 150)
     EdacsTelemetry edacs;       // valid when standard == 131 (EDACS control channel, engine standard 132)
     MilhfTelemetry milhf;       // valid when standard == 146 (HF waveform ID, engine standard 147)
     DgpsTelemetry dgps;         // valid when standard == 122 (DGPS beacon, engine standard 122)
