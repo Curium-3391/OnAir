@@ -156,6 +156,9 @@ struct Demod::Impl {
     // frame
     double posS = 0, perS = 0, chipS = 0;   // next symbol (channel samples), symbol and chip lengths
     double cfoBins = 0, drift = 0;
+    double theta0 = 0, lastAdj = 0; bool thetaOk = false;
+    double cfoStartBins = 0;
+    double cfoRate = 0;          // cfoTrack > 0: the carrier offset's change per symbol, bins (a satellite's Doppler rate)
     double loopInt = 0;
     double posS0 = 0;              // the data start (a frame that fails its CRC is demodulated again from here)
     int retried = 0;
@@ -490,12 +493,14 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
             epsUp = (sy - slope * sx) / sw + slope * -2.5;
         }
         double dres = 0.5 * (epsUp + epsDn);
-        const double tres = 0.5 * (epsDn - epsUp) - 0.5 * slope;    // at the first down-chirp
+        const double tres = 0.5 * (epsDn - epsUp) - (p.cfoTrack > 0 ? 0.0 : 0.5 * slope);    // at the first down-chirp (a frequency ramp does not move the symbol clock)
         if (std::abs(acc) > 0) {
-            const double ph = std::arg(acc) / (2 * kPi);
+            double ph = std::arg(acc) / (2 * kPi);
+            // a drifting carrier: the phase step measures the offset in the middle of the preamble, the estimate is wanted at the down-chirps
+            if (p.cfoTrack > 0) ph += -slope * ((J + 1) / 2.0 + 2.5);
             double dd = ph - dres;
             dd -= std::round(dd);
-            dres += dd;
+            if (p.cfoTrack <= 0 || (it > 0 && std::abs(dd) < 0.3)) dres += dd;   // a drifting carrier: the two estimates must agree before the finer one is taken
         }
         cfo += dres;
         s += tres;
@@ -508,6 +513,15 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
     }
     cfoBins = cfo;
     drift = slope;                                     // chips per symbol
+    cfoRate = 0; thetaOk = false; lastAdj = 0;
+    if (p.cfoTrack > 0) {
+        // a carrier that drifts (Doppler rate): what the preamble showed as a clock drift is a frequency ramp, which the loop in
+        // dataSymbol() follows; the symbol clock stays at the nominal rate
+        cfoRate = -slope;
+        cfoBins += (1.75 + sfdExtraSymbols(sf)) * cfoRate;   // the estimate is valid half a symbol into the down-chirps
+        cfoStartBins = cfoBins;
+        drift = 0;
+    }
     chipS = rho * (1 + drift / N);
     perS = N * chipS;
     // the data start 2.25 symbols after the first down-chirp (and the clock error of 2.25 symbols later)
@@ -526,6 +540,23 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
     const int k = argmax();
     const double q = pw[(size_t)k] / mean;
     fd.push((uint16_t)k);
+    // Carrier offset (cfoTrack > 0): the phase of the peak bin advances by 2 pi times the carrier offset (in bins) from symbol to
+    // symbol (the chirps' phase is continuous and returns to zero at every symbol start), once the mixer's own phase at the window
+    // start is added back. Moving the window by x chips turns the phase by x / 2 cycles (lastAdj). The offset comes out modulo one
+    // bin, relative to the loop's own estimate.
+    double eF = 0;
+    bool haveF = false;
+    if (p.cfoTrack > 0) {
+        const double theta = std::arg(cd(re[(size_t)k], im[(size_t)k])) + 2 * kPi * cfoBins * posS / ((double)N * rho);
+        if (thetaOk) {
+            const double d = (theta - theta0) / (2 * kPi) - 0.5 * lastAdj;
+            eF = d - (cfoBins - 0.5 * cfoRate);   // the phase step is the offset half a symbol back
+            eF -= std::round(eF);
+            eF = std::max(-0.5, std::min(0.5, eF));
+            haveF = true;
+        }
+        theta0 = theta; thetaOk = true;
+    }
     // Timing loop. The peak's fractional position does not show a timing error: the shift of the tone is undone, on average,
     // by the phase step where the chirp wraps. That step itself measures it: the de-chirped symbol's two parts (before and after
     // the wrap at chip N - k) differ in phase by pi (tau + residual carrier offset), tau = how late the symbol starts, in chips.
@@ -545,18 +576,26 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
             if (i < fold) s1 += v; else s2 += v;
             rot *= stp;
         }
-        const double tau = std::arg(s2 * std::conj(s1)) / kPi;
+        const double tau = std::arg(s2 * std::conj(s1)) / kPi - eF;   // the carrier offset (known from the phase) is not a timing error
         const double e = std::max(-0.5, std::min(0.5, tau)) * w;
         loopInt += kI * e;
         adj = kP_ * e + loopInt;
     } else adj = loopInt;
+    if (p.cfoTrack > 0) {
+        if (haveF) {
+            const double kp = 0.5 * p.cfoTrack, ki = 0.1 * p.cfoTrack;
+            cfoRate += ki * eF;
+            cfoBins += cfoRate + kp * eF;
+        } else cfoBins += cfoRate;
+        lastAdj = adj;
+    }
     posS += perS + adj * chipS;
     if (fd.pushed() == 8 && !fd.header().ok) { st.headerBad++; toSearch(posS); return; }
     if (fd.done()) {
         RxFrame f;
         int corr = 0;
         fd.finish(f.payload, f.crcOk, corr);
-        if (fd.header().crc && !f.crcOk && retried < 3) {
+        if (fd.header().crc && !f.crcOk && retried < 3 && p.cfoTrack <= 0) {
             // A short preamble at a low SNR leaves the clock drift poorly known: the timing loop catches up, but the first symbols
             // may be lost. The loop's integral then holds the rest of the drift: demodulate the frame again from its start with it.
             retried++;
@@ -573,6 +612,7 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
         f.hdr = fd.header();
         f.corrected = corr;
         f.cfoHz = cfoBins * p.bwHz / N;
+        if (p.cfoTrack > 0) { f.cfoStartHz = cfoStartBins * p.bwHz / N; f.cfoRateHzS = cfoRate * p.bwHz * p.bwHz / ((double)N * N); }
         f.sfoPpm = (drift + loopInt) / N * 1e6;
         f.snrDb = 10 * std::log10(snrLin);
         f.levelDb = 10 * std::log10(std::max(levelLin, 1e-20));
