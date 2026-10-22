@@ -21,6 +21,13 @@
 #else
 #include <pthread.h>
 #endif
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#elif defined(__linux__)
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 namespace dect2 {
 
@@ -73,12 +80,38 @@ inline std::string currentThreadName() {
 #endif
 }
 
-// std::thread that names itself first. Arguments are copied like std::thread does.
+// The class of work a thread does by its name: 2 = background (saving, clean-up, watchdogs: may run late and slowly), 1 = utility (uploads
+// and downloads nobody waits on), 0 = everything else (keeps what the system gives it; the sample path sets its own priority).
+inline int threadNameClass(const char* name) {
+    static const char* const kBackground[] = {"onair-results", "onair-tmsave", "onair-reap", "onair-plg-dog", "onair-scandb", "onair-msgdb",
+                                              "onair-upd", "onair-ntp", "onair-discord", "onair-health"};
+    static const char* const kUtility[] = {"onair-mapsend", "onair-mapsend2", "onair-feeds", "onair-feedtargets", "onair-psk", "onair-packs",
+                                           "onair-updl", "onair-airport"};
+    if (!name) return 0;
+    for (const char* n : kBackground) if (std::string(n) == name) return 2;
+    for (const char* n : kUtility) if (std::string(n) == name) return 1;
+    return 0;
+}
+
+// The calling thread gets the scheduling its name asks for (macOS: a QoS class, so the efficiency cores take it and the timers coalesce;
+// Linux: a higher nice value). Best effort; nothing happens for class 0.
+inline void applyThreadNameClass(const char* name) {
+    const int c = threadNameClass(name);
+    if (!c) return;
+#if defined(__APPLE__)
+    pthread_set_qos_class_self_np(c == 2 ? QOS_CLASS_BACKGROUND : QOS_CLASS_UTILITY, 0);
+#elif defined(__linux__)
+    (void)setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), c == 2 ? 10 : 5);
+#endif
+}
+
+// std::thread that names itself first (and takes the scheduling class of its name, see threadNameClass). Arguments are copied like std::thread does.
 template <class F, class... A>
 std::thread namedThread(const char* name, F&& fn, A&&... args) {
     return std::thread([n = std::string(name ? name : ""), f = std::decay_t<F>(std::forward<F>(fn)),
                         tup = std::make_tuple(std::decay_t<A>(std::forward<A>(args))...)]() mutable {
         setThreadName(n.c_str());
+        applyThreadNameClass(n.c_str());
         std::apply(std::move(f), std::move(tup));
     });
 }
