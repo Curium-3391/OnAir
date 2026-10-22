@@ -156,7 +156,7 @@ uint64_t editDialogs() {
             else commit(m, false);
         }
         ImGui::SameLine(0, 8 * gUi);
-        if (ImGui::Button(tr("Cancel"), ImVec2(90 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel"), ImVec2(90 * gUi, 0)) || (ImGui::IsKeyPressed(ImGuiKey_Escape) && !ImGui::IsPopupOpen("##mdup"))) ImGui::CloseCurrentPopup();
         if (e.askDup) { ImGui::OpenPopup("##mdup"); e.askDup = false; }
         if (ImGui::BeginPopupModal("##mdup", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
             const dect2::Memory* d = memoryBank().find(e.dupId);

@@ -49,12 +49,12 @@ void saveNamed(App& a, const std::string& name) {
 void workspaceMenu(App& a) {
     const bool running = a.engine.running();
     const std::vector<Workspace> list = workspaceList();
-    if (ImGui::MenuItem("Save workspace...")) {
+    if (ImGui::MenuItem(tr("Save workspace..."))) {
         gSave.request = true;
         snprintf(gSave.name, sizeof gSave.name, "%s", nextDefaultName(list).c_str());
     }
-    if (ImGui::BeginMenu("Load workspace", !list.empty())) {
-        if (running) ImGui::TextDisabled("Stop the receiver to load one");
+    if (ImGui::BeginMenu(tr("Load workspace"), !list.empty())) {
+        if (running) ImGui::TextDisabled("%s", tr("Stop the receiver to load one"));
         for (const Workspace& w : list) {
             if (ImGui::MenuItem(w.name.c_str(), nullptr, false, !running)) {
                 std::string why;
@@ -65,7 +65,7 @@ void workspaceMenu(App& a) {
         }
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Delete workspace", !list.empty())) {
+    if (ImGui::BeginMenu(tr("Delete workspace"), !list.empty())) {
         for (const Workspace& w : list) {
             if (ImGui::MenuItem(w.name.c_str())) {
                 std::vector<Workspace> keep;
@@ -79,45 +79,45 @@ void workspaceMenu(App& a) {
 }
 
 void workspaceDialogs(App& a) {
-    if (gSave.request) { ImGui::OpenPopup("Save workspace"); gSave.request = false; }
-    if (ImGui::BeginPopupModal("Save workspace", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Name this workspace. It keeps the source, mode, frequency,\nsample rate, gains and open windows.");
+    if (gSave.request) { ImGui::OpenPopup(trw("Save workspace")); gSave.request = false; }
+    if (ImGui::BeginPopupModal(trw("Save workspace"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(tr("Name this workspace. It keeps the source, mode, frequency,\nsample rate, gains and open windows."));
         ImGui::SetNextItemWidth(280 * gUi);
         const bool enter = ImGui::InputText("##wsname", gSave.name, sizeof gSave.name, ImGuiInputTextFlags_EnterReturnsTrue);
         const std::string name = trimmed(gSave.name);
         if (name.empty()) ImGui::BeginDisabled();
-        if (ImGui::Button("Save") || (enter && !name.empty())) {
+        if (ImGui::Button(tr("Save")) || (enter && !name.empty())) {
             saveNamed(a, name);
             ImGui::CloseCurrentPopup();
         }
         if (name.empty()) ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 
     // Another popup (the data-sharing consent, a crash note) opened at the same level closes this one without answering it: keep asking
     // while the answer is pending, but only when no other popup is up, so the two dialogs wait for each other instead of one erasing the other.
-    if (workspaceRestorePending() && !ImGui::IsPopupOpen("Restore last session?") &&
+    if (workspaceRestorePending() && !ImGui::IsPopupOpen(trw("Restore last session?")) &&
         !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        ImGui::OpenPopup("Restore last session?");
+        ImGui::OpenPopup(trw("Restore last session?"));
         gRestoreAsked = true;
     }
-    if (ImGui::BeginPopupModal("Restore last session?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::BeginPopupModal(trw("Restore last session?"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (!workspaceRestorePending()) { ImGui::CloseCurrentPopup(); ImGui::EndPopup(); return; }
         const Workspace& w = workspaceRecovered();
-        ImGui::TextUnformatted("OnAir did not close cleanly last time.");
-        ImGui::Text("Last session: %s, %.3f MHz", w.devName.empty() ? "no radio" : w.devName.c_str(), w.freqMhz);
-        if (!w.panels.empty()) ImGui::Text("Windows open: %s", w.panels.c_str());
-        ImGui::TextUnformatted("Restore last session? The settings come back; press Start to listen again.");
-        if (ImGui::Button("Restore")) {
+        ImGui::TextUnformatted(tr("OnAir did not close cleanly last time."));
+        ImGui::Text(tr("Last session: %s, %.3f MHz"), w.devName.empty() ? tr("no radio") : w.devName.c_str(), w.freqMhz);
+        if (!w.panels.empty()) ImGui::Text(tr("Windows open: %s"), w.panels.c_str());
+        ImGui::TextUnformatted(tr("Restore last session? The settings come back; press Start to listen again."));
+        if (ImGui::Button(tr("Restore"))) {
             std::string why;
             workspaceRestoreAnswer(a, true, why);
             if (!why.empty()) a.engine.log("Last session: " + why);
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Start fresh")) {
+        if (ImGui::Button(tr("Start fresh"))) {
             std::string why;
             workspaceRestoreAnswer(a, false, why);
             ImGui::CloseCurrentPopup();

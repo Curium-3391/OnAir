@@ -380,6 +380,6 @@ void roomsPopups(App& a) {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button(tr("Cancel"), ImVec2(120 * gUi, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button(tr("Cancel"), ImVec2(120 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }

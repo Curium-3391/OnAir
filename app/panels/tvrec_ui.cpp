@@ -773,7 +773,7 @@ void tvRecordingsTab(App& a) {
                 s.lastRecs = -1000; ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(tr("Cancel"))) ImGui::CloseCurrentPopup();
+            if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
         if (ImGui::SmallButton(tr("Open folder"))) dect2::openUrl(s.cfg.dir);

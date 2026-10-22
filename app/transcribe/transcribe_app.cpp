@@ -755,7 +755,7 @@ void modelPopups() {
             }
             ImGui::SameLine();
         }
-        if (ImGui::Button(tr("Cancel##txask"), ImVec2(100 * gUi, 0))) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
+        if (ImGui::Button(tr("Cancel##txask"), ImVec2(100 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
     }
     if (U.askDelete) { ImGui::OpenPopup("##txdel"); U.askDelete = false; }
@@ -763,7 +763,7 @@ void modelPopups() {
         ImGui::TextUnformatted(tr("Delete all saved transcripts? This cannot be undone."));
         if (ImGui::Button(tr("Delete all"), ImVec2(140 * gUi, 0))) { gStore.clear(); U.ver = ~0ull; ImGui::CloseCurrentPopup(); }
         ImGui::SameLine();
-        if (ImGui::Button(tr("Cancel##txdelc"), ImVec2(100 * gUi, 0))) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel##txdelc"), ImVec2(100 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }

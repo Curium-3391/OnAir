@@ -625,7 +625,7 @@ void runConfirmPopup() {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(tr("Cancel"))) { S.confirmId.clear(); ImGui::CloseCurrentPopup(); }
+            if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { S.confirmId.clear(); ImGui::CloseCurrentPopup(); }
         }
         ImGui::EndPopup();
     }
