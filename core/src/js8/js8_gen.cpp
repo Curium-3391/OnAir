@@ -3,6 +3,7 @@
 #include "dect2/js8/js8_proto.h"
 #include "dect2/js8/js8_rx.h"
 #include "dect2/dsp/gen_util.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <complex>
@@ -117,7 +118,16 @@ public:
         c.slotPhaseSec = std::fmod(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(), 3600.0);
         c.stations = js8TestStations();
         if (s.modeOpt[0] == 1) c.stations.resize(1);
-        for (auto& g : c.stations) g.snrDb += s.snrDb;
+        if (s.snrDb >= 150) {
+            // a transmitter (cleanSynth asks for 200 dB): no noise, the strongest station at amplitude 0.2, the others at their relative levels
+            // (adding 200 dB made the demo 10^10 too strong and the output limiter flattened it)
+            c.noiseSigma = 0;
+            double top = -1e9;
+            for (const auto& g : c.stations) top = std::max(top, g.snrDb);
+            const double off = 20 * std::log10(0.2) - 10 * std::log10(2 * 0.02 * 0.02 * 2500 / rate) - top;   // amp = sqrt(2 sigma^2 2500 / rate 10^(snr/10))
+            for (auto& g : c.stations) g.snrDb += off;
+        } else
+            for (auto& g : c.stations) g.snrDb += s.snrDb;
         gen_ = std::make_unique<Js8Generator>(c);
     }
     double sampleRate() const override { return rate_; }

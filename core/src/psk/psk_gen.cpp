@@ -4,6 +4,7 @@
 #include "dect2/psk/psk_tel.h"
 #include "dect2/psk/psk_varicode.h"
 #include "dect2/dsp/gen_util.h"
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include "dect2/common/mathconst.h"
@@ -124,7 +125,16 @@ public:
         c.noiseSigma = 0.05;
         c.signals = pskTestSignals();
         if (s.modeOpt[0] == 1) c.signals.resize(1);
-        for (auto& g : c.signals) g.snrDb += s.snrDb;
+        if (s.snrDb >= 150) {
+            // a transmitter (cleanSynth asks for 200 dB): no noise, and the strongest station at amplitude 0.25 with the others at their relative levels.
+            // Adding 200 dB to the stations made the demo 10^10 too strong: the output limiter flattened the PSK31 envelope and it splattered.
+            c.noiseSigma = 0;
+            double top = -1e9;
+            for (const auto& g : c.signals) top = std::max(top, g.snrDb + 10 * std::log10(pskBaud(g.mode)));
+            const double off = 20 * std::log10(0.25) - 10 * std::log10(2 * 0.02 * 0.02 / rate) - top;   // amp = sqrt(2 sigma^2 baud / rate 10^(snr/10)), sigma 0.02
+            for (auto& g : c.signals) g.snrDb += off;
+        } else
+            for (auto& g : c.signals) g.snrDb += s.snrDb;
         gen_ = std::make_unique<PskGenerator>(c);
     }
     double sampleRate() const override { return rate_; }

@@ -36,7 +36,17 @@ public:
     double sampleRate() const override { return fs_; }
     void generate(cf32* out, size_t n) override {
         const int sps = (int)kSpecxSymDiv, span = (int)sym_.size() - 1;
+        // the two carriers as phasors turned by a fixed step, anchored at the start of every 4096 samples from the exact phase
+        // (cos and sin of a growing time per sample were half the cost)
+        const double fq = kSpecxQpskOffset, fc = kSpecxCwOffset;
+        const std::complex<double> sq = std::polar(1.0, 2 * M_PI * fq), sc = std::polar(1.0, 2 * M_PI * fc);
+        double qr = 0, qi = 0, cr = 0, ci = 0;
         for (size_t i = 0; i < n; i++, k_++) {
+            if ((i & 4095) == 0) {
+                const double t = (double)k_;
+                const double aq = 2 * M_PI * std::fmod(fq * t, 1.0), ac = 2 * M_PI * std::fmod(fc * t, 1.0);
+                qr = std::cos(aq); qi = std::sin(aq); cr = std::cos(ac); ci = std::sin(ac);
+            }
             if (k_ % sps == 0) {
                 lfsr_ = lfsr_ * 1103515245u + 12345u;
                 const int b = (int)(lfsr_ >> 16) & 3;
@@ -44,16 +54,17 @@ public:
                 sym_.push_back(std::complex<double>(b & 1 ? 0.7071 : -0.7071, b & 2 ? 0.7071 : -0.7071));
             }
             const int ph = (int)(k_ % sps);
-            std::complex<double> v(0, 0);
+            double vr = 0, vi = 0;
             for (int j = 0; j <= span; j++) {
                 const int idx = (span - j) * sps + ph;
-                if (idx < (int)h_.size()) v += sym_[(size_t)j] * h_[(size_t)idx];
+                if (idx < (int)h_.size()) { vr += sym_[(size_t)j].real() * h_[(size_t)idx]; vi += sym_[(size_t)j].imag() * h_[(size_t)idx]; }
             }
-            const double t = (double)k_;
-            v = v * amp_ * std::polar(1.0, 2 * M_PI * kSpecxQpskOffset * t) + std::polar(0.03, 2 * M_PI * kSpecxCwOffset * t);
-            out[i] = cf32((float)v.real(), (float)v.imag());
+            vr *= amp_; vi *= amp_;
+            out[i] = cf32((float)(vr * qr - vi * qi + 0.03 * cr), (float)(vr * qi + vi * qr + 0.03 * ci));
+            double t = qr * sq.real() - qi * sq.imag(); qi = qr * sq.imag() + qi * sq.real(); qr = t;
+            t = cr * sc.real() - ci * sc.imag(); ci = cr * sc.imag() + ci * sc.real(); cr = t;
         }
-        noise_.add(out, n, sigma_);
+        if (sigma_ > 1e-6f) noise_.add(out, n, sigma_);   // a transmitter (200 dB) has no noise worth making
     }
 
 private:

@@ -3,9 +3,11 @@
 #include "dect2/ble/ble_proto.h"
 #include "dect2/ble/ble_rx.h"
 #include "dect2/dsp/gen_util.h"
+#include "dect2/dsp/fast_sincos.h"
 #include "dect2/source/source.h"
 #include <cmath>
-#include <deque>
+#include <algorithm>
+#include <vector>
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -13,22 +15,44 @@ namespace dect2 {
 namespace {
 using dect2::math::kPi;
 
+// The BT 0.5 Gaussian frequency pulse as a table (1024 points per bit over -3 .. 3 bits, linear in between: below 1e-7 of the exact
+// value). Five erf pairs per sample were the generator's whole cost: at the 40 Msps that Drone Remote ID runs it at, 0.6 x real time.
+struct PulseTable {
+    static constexpr int kPerBit = 1024, kHalf = 3;
+    std::vector<float> t;
+    PulseTable() {
+        t.resize((size_t)(2 * kHalf * kPerBit + 2));
+        for (size_t i = 0; i < t.size(); i++) t[i] = (float)genutil::gfskPulse(-kHalf + (double)i / kPerBit, 0.5);
+    }
+    double operator()(double tau) const {
+        const double x = (tau + kHalf) * kPerBit;
+        if (x <= 0 || x >= (double)(t.size() - 2)) return 0;
+        const size_t i = (size_t)x;
+        const double f = x - (double)i;
+        return t[i] + f * (t[i + 1] - t[i]);
+    }
+};
+const PulseTable& pulse05() { static const PulseTable p; return p; }
+
+
 } // namespace
 
 struct BleGenerator::Impl {
     BleGenConfig cfg;
     genutil::NoiseSource noise;
     float sigma = 0;
-    std::deque<cf32> q;
+    std::vector<cf32> q;   // samples made and not yet handed out, from qPos on
+    size_t qPos = 0;
     size_t idx = 0;
     bool done = false;
     double ph = 0;
 
     explicit Impl(const BleGenConfig& c) : cfg(c), noise(c.seed) {}
 
-    void silence(double sec) { const size_t n = (size_t)std::llround(sec * cfg.rate); for (size_t i = 0; i < n; i++) q.push_back(cf32(0.f, 0.f)); }
+    void silence(double sec) { const size_t n = (size_t)std::llround(sec * cfg.rate); q.insert(q.end(), n, cf32(0.f, 0.f)); }
 
     void refill() {
+        if (qPos > 0) { q.erase(q.begin(), q.begin() + (ptrdiff_t)qPos); qPos = 0; }
         if (done || cfg.pkts.empty()) { silence(0.001); return; }
         const BleGenPacket& p = cfg.pkts[idx];
         std::vector<uint8_t> bits;
@@ -40,16 +64,21 @@ struct BleGenerator::Impl {
         const size_t ns = (size_t)std::ceil((nb + 2 * pad) / bitsPerSample);
         const double off = cfg.dialOffsetHz + cfg.cfoHz + p.cfoHz;
         const double amp = cfg.amp * p.ampScale;
+        const PulseTable& pulse = pulse05();
+        const FastSinCos& st = FastSinCos::get();
+        q.reserve(q.size() + ns);
         for (size_t i = 0; i < ns; i++) {
             const double u = i * bitsPerSample - pad;   // bit time from the first bit's start
             double f = 0;
             const int k0 = (int)std::floor(u);
             for (int k = k0 - 2; k <= k0 + 2; k++) {
                 if (k < 0 || k >= nb) continue;
-                f += (bits[(size_t)k] ? 1.0 : -1.0) * genutil::gfskPulse(u - k - 0.5, 0.5);
+                f += (bits[(size_t)k] ? 1.0 : -1.0) * pulse(u - k - 0.5);
             }
-            ph = std::remainder(ph + 2 * kPi * (f * ble::kDevHz + off) / cfg.rate, 2 * kPi);
-            q.push_back(cf32((float)(amp * std::cos(ph)), (float)(amp * std::sin(ph))));
+            ph += 2 * kPi * (f * ble::kDevHz + off) / cfg.rate;
+            while (ph > kPi) ph -= 2 * kPi;
+            while (ph < -kPi) ph += 2 * kPi;
+            q.push_back(st.polar((float)amp, ph));
         }
         silence(p.gapSec);
         if (++idx >= cfg.pkts.size()) { idx = 0; if (!cfg.loop) done = true; }
@@ -70,10 +99,13 @@ BleGenerator::~BleGenerator() = default;
 
 void BleGenerator::generate(cf32* out, size_t n) {
     Impl& m = *p_;
-    for (size_t i = 0; i < n; i++) {
-        if (m.q.empty()) m.refill();
-        out[i] = m.q.front();
-        m.q.pop_front();
+    size_t i = 0;
+    while (i < n) {
+        if (m.qPos >= m.q.size()) { m.refill(); continue; }
+        const size_t k = std::min(n - i, m.q.size() - m.qPos);
+        std::copy(m.q.begin() + (ptrdiff_t)m.qPos, m.q.begin() + (ptrdiff_t)(m.qPos + k), out + i);
+        m.qPos += k;
+        i += k;
     }
     if (m.sigma > 0) m.noise.add(out, n, m.sigma);
 }

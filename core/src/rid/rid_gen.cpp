@@ -3,6 +3,8 @@
 #include "dect2/ble/ble_proto.h"
 #include "dect2/rid/rid_rx.h"
 #include "dect2/wifi/wifi_proto.h"
+#include "dect2/dsp/fir_dot.h"
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include "dect2/common/mathconst.h"
@@ -104,8 +106,8 @@ struct RidGenerator::Impl {
     std::unique_ptr<WifiGenerator> wifi;
     std::complex<double> lo{1, 0}, loStep{1, 0};
     int loCount = 0;
-    std::vector<float> taps;
-    std::vector<cf32> hist, a, b;   // hist: the last taps of the double-rate signal
+    std::vector<float> taps, taps2;   // taps2: the doubled layout of firDot
+    std::vector<cf32> hist, a, b, x;   // hist: the last taps of the double-rate signal; x: history + block, kept between calls
 };
 
 RidGenerator::RidGenerator(const RidGenConfig& c) : p_(std::make_unique<Impl>()) {
@@ -138,6 +140,7 @@ RidGenerator::RidGenerator(const RidGenConfig& c) : p_(std::make_unique<Impl>())
         m.taps[(size_t)i] = (float)(s * w); sum += s * w;
     }
     for (float& t : m.taps) t = (float)(t / sum);
+    m.taps2 = firDoubleTaps(m.taps.data(), L);
     m.hist.assign((size_t)L - 1, cf32(0, 0));
 }
 RidGenerator::~RidGenerator() = default;
@@ -150,22 +153,26 @@ void RidGenerator::generate(cf32* out, size_t n) {
     if (m.wifi) {
         m.b.resize(n2);
         m.wifi->generate(m.b.data(), n2);
+        // the oscillator written out by hand (a std::complex<double> product may go through the NaN-checking library call)
+        double lr = m.lo.real(), li = m.lo.imag();
+        const double sr = m.loStep.real(), si = m.loStep.imag();
         for (size_t i = 0; i < n2; i++) {
-            m.a[i] += m.b[i] * cf32((float)m.lo.real(), (float)m.lo.imag());
-            m.lo *= m.loStep;
-            if (++m.loCount >= 4096) { m.loCount = 0; m.lo /= std::abs(m.lo); }
+            const cf32 v = m.b[i];
+            const float fr = (float)lr, fi = (float)li;
+            m.a[i] += cf32(v.real() * fr - v.imag() * fi, v.real() * fi + v.imag() * fr);
+            const double nr = lr * sr - li * si;
+            li = lr * si + li * sr;
+            lr = nr;
+            if (++m.loCount >= 4096) { m.loCount = 0; const double g = 1.0 / std::sqrt(lr * lr + li * li); lr *= g; li *= g; }
         }
+        m.lo = std::complex<double>(lr, li);
     }
-    // filter and keep every second sample
-    std::vector<cf32> x(m.hist);
-    x.insert(x.end(), m.a.begin(), m.a.end());
-    for (size_t k = 0; k < n; k++) {
-        const cf32* w = x.data() + 2 * k;
-        float re = 0, im = 0;
-        for (size_t t = 0; t < L; t++) { re += m.taps[t] * w[t].real(); im += m.taps[t] * w[t].imag(); }
-        out[k] = cf32(re, im);
-    }
-    m.hist.assign(x.end() - (ptrdiff_t)(L - 1), x.end());
+    // filter and keep every second sample (the history and the block in one buffer that is reused, not allocated per call)
+    m.x.resize(L - 1 + n2);
+    std::copy(m.hist.begin(), m.hist.end(), m.x.begin());
+    std::copy(m.a.begin(), m.a.end(), m.x.begin() + (ptrdiff_t)(L - 1));
+    for (size_t k = 0; k < n; k++) out[k] = firDot(m.taps2.data(), m.x.data() + 2 * k, (int)L);
+    m.hist.assign(m.x.end() - (ptrdiff_t)(L - 1), m.x.end());
 }
 
 namespace {

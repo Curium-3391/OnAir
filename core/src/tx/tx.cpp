@@ -1,6 +1,7 @@
 // Transmit: the list of modes OnAir can send (see tx.h for the reasoning), their generators, and the TxSession that feeds a radio.
 #include "dect2/common/thread_name.h"
 #include "dect2/tx/tx.h"
+#include "dect2/tx/tx_shape.h"
 #include "dect2/common/timecompat.h"
 #include "dect2/atsc/atsc_gen.h"
 #include "dect2/engine/device_claims.h"
@@ -725,6 +726,7 @@ std::unique_ptr<TxGenerator> makeTxGenerator(const TxModeSpec& m, const TxReques
         if (!ms) ms = makeModeSynth(m.stdMode, s, rr);
         if (!ms) { char b[200]; snprintf(b, sizeof b, "the %s generator cannot make a signal at %.3f Msps with these options", m.name, rr / 1e6); err = b; return nullptr; }
         g = std::make_unique<SynthGen>(std::move(ms), rr);
+        if (const double ramp = txBurstRampSec(m.id); ramp > 0) g = std::make_unique<TxBurstShaper>(std::move(g), ramp);   // hard-keyed bursts get ramps (tx_shape.h)
         native = rr;
     }
     if (rateHz > 0 && std::fabs(rateHz - native) > 0.5) {

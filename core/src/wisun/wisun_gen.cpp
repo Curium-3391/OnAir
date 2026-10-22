@@ -4,7 +4,7 @@
 #include "dect2/wisun/wisun_proto.h"
 #include "dect2/wisun/wisun_rx.h"
 #include <cmath>
-#include <deque>
+#include "dect2/dsp/fast_sincos.h"
 #include <random>
 #include "dect2/common/mathconst.h"
 
@@ -88,7 +88,7 @@ struct WisunGenerator::Impl {
             const double edge = std::min(1.0, std::min((double)s / cfg.rate * br, (double)(n - s) / cfg.rate * br));
             ph += 2 * kPi * (off + dev * fr) / cfg.rate;
             if (ph > kPi) ph -= 2 * kPi * std::floor((ph + kPi) / (2 * kPi));
-            q.push_back(cf32((float)(a * edge * std::cos(ph)), (float)(a * edge * std::sin(ph))));
+            q.push_back(FastSinCos::get().polar((float)(a * edge), ph));   // a table, not cos and sin in double per sample
         }
     }
 

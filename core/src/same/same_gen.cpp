@@ -95,7 +95,7 @@ struct SameGenerator::Impl {
         } else bb.assign((size_t)(kWork * 4), cf32(0.f, 0.f));
         if (bb.empty()) bb.assign(1, cf32(0.f, 0.f));
         const double pn = c.rate / kChanBw / std::pow(10.0, c.snrDb / 10.0);
-        sigma = c.snrDb < -100 ? 0.f : (float)std::sqrt(pn / 2);
+        sigma = c.snrDb < -100 || c.snrDb >= 150 ? 0.f : (float)std::sqrt(pn / 2);   // 200 dB: a transmitter, no noise and the clean level below (not full scale)
         scale = sigma > 0.15f ? 0.15f / sigma : 1.f;
         if (sigma == 0.f) scale = 0.4f;
         const double w = 2 * kPi * (c.cfoHz - c.tuneOffsetHz) / c.rate;
