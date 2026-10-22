@@ -4,6 +4,7 @@
 #include "dect2/p25/p25_tel.h"
 #include "dect2/p25/p25_proto.h"
 #include "dect2/p25/p25_imbe.h"
+#include "dect2/voicekeys/voice_decrypt.h"
 #include "dect2/audio/audioout.h"
 #include <algorithm>
 #include <atomic>
@@ -245,6 +246,12 @@ struct P25Receiver::Impl {
     double snrAvg = 0;
     std::vector<float> dl;       // the frame's data dibits (status symbols out) as normalised levels
     std::unique_ptr<P25Imbe> imbe;
+    // User-supplied-key decryption of the current call (see voice_decrypt.h). Null unless the call is encrypted AND a key the user loaded
+    // matches it. Never an auto-decrypter: when it is null the encrypted voice is reported and skipped, exactly as before.
+    std::unique_ptr<voicekeys::Decryptor> dec;
+    uint8_t curMi[9] = {};
+    bool triedKey = false;              // we have already looked up a key for this encryption state (so we do not re-match every frame)
+    std::string decStatus;              // "decrypted with key <name>" / "encrypted: add your key" / "key mismatch"
     std::vector<float> aud8, pcmOut;
     float upPrev = 0;
     std::unique_ptr<AudioOut> audioOut;
@@ -374,6 +381,25 @@ struct P25Receiver::Impl {
         tel.now = n;
         if (late) tel.lateEntries++;
         imbe = tel.imbe ? std::make_unique<P25Imbe>() : nullptr;
+        dec.reset(); triedKey = false; decStatus.clear();
+        std::memset(curMi, 0, sizeof curMi);
+    }
+
+    // Build (or clear) the decryptor for the current call from the key the user loaded that matches it. Never searches: lookupForCall
+    // consults the user's own table and, only for a call with no key id, the user's small enabled list in stored order.
+    void rebuildDecryptor() {
+        triedKey = true;
+        dec.reset();
+        if (!tel.now.encrypted) { decStatus.clear(); return; }
+        voicekeys::CallKeyInfo info;
+        info.protocol = voicekeys::Protocol::P25;
+        info.keyId = tel.now.keyId; info.algId = tel.now.algId; info.nac = tel.now.nac;
+        info.talkgroup = tel.now.group ? tel.now.dst : -1; info.unitId = tel.now.src;
+        auto look = voicekeys::lookupForCall(info, true, 144, curMi, sizeof curMi);
+        decStatus = voicekeys::Decryptor::statusLine(look.status, look.keyName);
+        if (look.decryptor) dec = std::move(look.decryptor);
+        tel.now.decrypt = decStatus;
+        event("P25 " + decStatus);
     }
     void endCall(bool term) {
         if (!tel.now.active) return;
@@ -402,6 +428,8 @@ struct P25Receiver::Impl {
         startCall(f.nac, false);
         tel.now.dst = c.tg > 0 ? c.tg : -1; tel.now.group = true;
         tel.now.algId = c.algId; tel.now.keyId = c.keyId; tel.now.encrypted = c.algId != p25::kAlgClear;
+        std::memcpy(curMi, c.mi, sizeof curMi);
+        rebuildDecryptor();
         char b[160];
         snprintf(b, sizeof b, "HDU NAC %03X talkgroup %d%s", f.nac, c.tg, tel.now.encrypted ? "" : ", clear");
         std::string s2 = b;
@@ -435,18 +463,23 @@ struct P25Receiver::Impl {
                 }
                 tel.now.src = l.src; tel.now.dst = dst; tel.now.group = grp;
                 tel.now.emergency = (l.svcOpts & 0x80) != 0;
-                if (l.svcOpts & 0x40) tel.now.encrypted = true;
+                if ((l.svcOpts & 0x40) && !tel.now.encrypted) { tel.now.encrypted = true; if (!triedKey) rebuildDecryptor(); }
             }
         } else {
             (ok ? tel.esOk : tel.esBad)++;
             if (ok && tel.now.active) {
                 p25::Crypto c;
                 p25::esParse(hex, c);
-                if (c.algId != tel.now.algId || c.keyId != tel.now.keyId) {
+                const bool algChanged = c.algId != tel.now.algId || c.keyId != tel.now.keyId;
+                if (algChanged) {
                     tel.now.algId = c.algId; tel.now.keyId = c.keyId;
                     tel.now.encrypted = c.algId != p25::kAlgClear;
                     if (tel.now.encrypted) { char b[120]; snprintf(b, sizeof b, "LDU2 encrypted: %s (0x%02X), key %d", p25::algName(c.algId), c.algId, c.keyId); event(b); }
                 }
+                // The message indicator updates each LDU2: reseed the keystream (OFB / ADP) from it, or match a key the first time.
+                std::memcpy(curMi, c.mi, sizeof curMi);
+                if (algChanged || !triedKey) rebuildDecryptor();
+                else if (dec) dec->setIv(curMi, sizeof curMi);
             }
         }
         if (!tel.now.active) return;
@@ -617,9 +650,16 @@ struct P25Receiver::Impl {
         p25::imbeDeinterleave(dib, fr);
         tel.now.voiceFrames++;
         tel.voiceFrames++;
-        const bool clear = !tel.now.encrypted;
+        bool clear = !tel.now.encrypted;
+        // Encrypted, and the user loaded a matching key: decrypt the voice bits in place (never a search). Without a key, dec is null and
+        // the frame is reported and skipped, exactly as before.
+        if (!clear && dec) {
+            uint8_t bits[144];
+            p25::imbeFlatten(fr, bits);
+            if (dec->decryptFrame(bits)) { p25::imbeUnflatten(bits, fr); clear = true; }
+        }
         if (vtap) { uint8_t bits[144]; p25::imbeFlatten(fr, bits); vtap(bits, clear); }
-        if (!clear) return;   // encrypted: reported, never decoded
+        if (!clear) return;   // encrypted with no usable key: reported, never decoded
         tel.now.clearFrames++;
         if (!imbe || !imbe->ok()) return;
         int16_t pcm[160];

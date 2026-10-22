@@ -174,6 +174,8 @@ target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
+# User-supplied voice decryption keys: the key store, standard cipher primitives, per-call decryption and encrypted-at-rest persistence (docs/KEYS.md). Never an auto-decrypter.
+target_sources(dect2core PRIVATE core/src/voicekeys/voice_crypto.cpp core/src/voicekeys/voice_keys.cpp core/src/voicekeys/voice_decrypt.cpp core/src/voicekeys/key_persist.cpp)
 # TLS for the remote-control API (headless server): OpenSSL, off by default so the packages need no extra library (docs/headless-server.md)
 option(DECT2_WITH_TLS "Serve the remote-control API over HTTPS / wss (links OpenSSL)" OFF)
 target_sources(dect2core PRIVATE core/src/net/tls_conn.cpp core/src/net/remote_json.cpp)
@@ -1486,6 +1488,12 @@ if(DECT2_BUILD_TESTS)
   endforeach()
   add_test(NAME mesh_proto_rs COMMAND test_mesh_proto_rs)
   add_test(NAME fuzz_mesh_proto COMMAND fuzz_mesh_proto)
+
+  # User-supplied voice keys: cipher KATs, synthetic-frame round-trip, wrong-key flagging, store policy, CSV and encrypted-at-rest persistence
+  add_executable(test_voice_keys tests/voicekeys/test_voice_keys.cpp)
+  target_include_directories(test_voice_keys PRIVATE core/include core/src/mesh)
+  target_link_libraries(test_voice_keys PRIVATE dect2core)
+  add_test(NAME voice_keys COMMAND test_voice_keys)
 
   onair_rust_golden_tests(wisun)
 

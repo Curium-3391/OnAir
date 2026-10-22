@@ -18,8 +18,9 @@ struct P25Call {
     int src = -1, dst = -1;      // unit ID; talkgroup (group) or unit (unit to unit); -1 not known yet
     bool group = true;
     bool emergency = false;
-    bool encrypted = false;      // reported only: nothing is decrypted
+    bool encrypted = false;      // the call is encrypted (reported; decrypted only when the user loaded a matching key, see `decrypt`)
     int algId = 0x80, keyId = 0;
+    std::string decrypt;         // status text: ""/clear, "encrypted: add your key", "decrypted with key <name>", "key mismatch"
     int nac = -1;
     int channel = -1;            // grants: the channel number (identifier and channel)
     double freqHz = 0;           // grants: its frequency, when the identifier update was heard

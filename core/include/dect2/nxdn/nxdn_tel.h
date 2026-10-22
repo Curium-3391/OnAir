@@ -17,7 +17,8 @@ struct NxdnCall {
     int kind = 0;                // 0 voice, 1 status, 2 short data
     int src = -1, dst = -1;      // radio unit id, talkgroup (group calls) or unit; -1 not known yet
     int callType = 1;            // nxdn::callTypeName
-    int cipher = 0, keyId = 0;
+    int cipher = 0, keyId = 0;   // cipher: 0 none, 1 scrambler, 2 DES, 3 AES (decrypted only with a user-supplied key, see `decrypt`)
+    std::string decrypt;         // status text: ""/clear, "encrypted: add your key", "decrypted with key <name>", "key mismatch"
     int ran = -1;                // radio access number (from the SACCH / CAC)
     int baud = 0;                // 2400 (NXDN48) or 4800 (NXDN96)
     bool lateEntry = false;      // found from the SACCH superframe in the middle of the call (the header was missed)
