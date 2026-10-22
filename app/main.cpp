@@ -326,6 +326,7 @@ int main(int argc, char** argv) {
             const double tUi0 = glfwGetTime();
             receiversFrame(app, io.DisplaySize);
             popOutFrame(app);
+            keepWindowsReachable();
             ImGui::Render();
             if (app.highContrast) lightenDrawData(ImGui::GetDrawData(), false, true);   // High contrast wins over Light
             else if (app.lightUi) lightenDrawData(ImGui::GetDrawData());

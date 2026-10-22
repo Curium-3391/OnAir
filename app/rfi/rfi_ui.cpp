@@ -449,8 +449,8 @@ void windowPanel(App& a) {
     pump();
     controls(a);
     if (ImGui::BeginTabBar("##rfitabs")) {
-        if (ImGui::BeginTabItem(tr("Monitor"))) { monitorTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Walk"))) { walkTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Monitor"))) { monitorTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Walk"))) { walkTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();

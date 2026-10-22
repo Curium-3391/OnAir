@@ -362,7 +362,7 @@ void tuner(App& a, bool& retune) {
     ImGui::TextDisabled("Country");
     ImGui::SameLine(0, 5 * gUi);
     ImGui::SetNextItemWidth(std::min(110 * gUi, ImGui::GetContentRegionAvail().x));
-    if (ImGui::Combo("##samecountry", &S.country, "United States\0Canada\0")) { plat::prefs().setI("sameCountry", S.country); plat::prefs().flush(); }
+    if (comboTr("##samecountry", &S.country, {N_("United States"), N_("Canada")})) { plat::prefs().setI("sameCountry", S.country); plat::prefs().flush(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("How the state part of a location code is named. The US FIPS state codes and Canada's province codes overlap (35 is New Mexico\n"
                                                   "or Ontario), and the message does not say which: choose the country of the transmitter you listen to.");
 }

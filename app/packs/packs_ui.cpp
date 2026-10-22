@@ -206,7 +206,7 @@ void body() {
     snprintf(fb, sizeof fb, "%s", u.filter.c_str());
     if (ImGui::InputTextWithHint("##packfilter", tr("Search"), fb, sizeof fb)) u.filter = fb;
     // the area around the station
-    if (ImGui::CollapsingHeader(tr("Map tiles around a position"))) {
+    if (ImGui::CollapsingHeader(trw("Map tiles around a position"))) {
         bool ch = false;
         ImGui::SetNextItemWidth(110 * gUi); ch |= ImGui::InputDouble(tr("Latitude"), &u.lat, 0, 0, "%.4f");
         ImGui::SameLine(); ImGui::SetNextItemWidth(110 * gUi); ch |= ImGui::InputDouble(tr("Longitude"), &u.lon, 0, 0, "%.4f");

@@ -142,7 +142,7 @@ void body(App& a, bool inWindow) {
         std::string sig = std::string(tr("Signal")) + ": " + (c.mode ? c.mode->name : tr("none chosen")) + "###txsigsec";
         if (ImGui::CollapsingHeader(sig.c_str(), c.mode ? 0 : ImGuiTreeNodeFlags_DefaultOpen)) stepSignal(a, s, running, 280 * gUi);
         ImGui::Spacing();
-        if (ImGui::CollapsingHeader(tr("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) stepSend(a, s, c.radio, c.conflict, c.mode, running);
+        if (ImGui::CollapsingHeader(trw("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) stepSend(a, s, c.radio, c.conflict, c.mode, running);
         ImGui::EndChild();
     }
     txNoticePopup(s);
@@ -339,7 +339,7 @@ void txPanel(App& a) {
         if (ImGui::Button(tr("Bring it back here"))) s.popped = false;
         ImGui::SetNextWindowSize(ImVec2(560 * gUi, 720 * gUi), ImGuiCond_FirstUseEver);
         bool open = true;
-        if (ImGui::Begin(tr("Transmit##txpop"), &open, ImGuiWindowFlags_NoSavedSettings)) {
+        if (ImGui::Begin(trw("Transmit##txpop"), &open, ImGuiWindowFlags_NoSavedSettings)) {
             if (gBarFrame != ImGui::GetFrameCount()) fallbackBar(a);
             body(a, true);
         }

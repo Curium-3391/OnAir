@@ -260,7 +260,7 @@ void controls(App& a) {
     ImGui::BeginDisabled(!S.sqOn);
     ImGui::SetNextItemWidth(80 * gUi);
     int sm = S.sqAuto ? 0 : 1;
-    if (ImGui::Combo("##gsqm", &sm, "Auto\0Level\0")) { S.sqAuto = sm == 0; save(); }
+    if (comboTr("##gsqm", &sm, {N_("Auto"), N_("Level")})) { S.sqAuto = sm == 0; save(); }
     tip("Auto: USB and LSB open when the voice passband is 6 dB over its own noise (speech, no carrier needed). NFM, AM and the others open 6 dB over the noise beside the channel. Level: opens at the threshold in dBFS.");
     if (!S.sqAuto) {
         ImGui::SameLine(0, 4 * gUi);

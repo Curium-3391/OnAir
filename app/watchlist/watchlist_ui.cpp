@@ -375,14 +375,14 @@ void historyTab() {
 
 void windowPanel(App& a) {
     ImGui::SetNextWindowSize(ImVec2(820 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("Watchlists"), &a.watchlistOpen)) { ImGui::End(); return; }
+    if (!ImGui::Begin(trw("Watchlists"), &a.watchlistOpen)) { ImGui::End(); return; }
     if (ImGui::Checkbox(tr("Watch for these"), &S.set.enabled)) S.dirty = true;
     if (!S.note.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.note.c_str()); }
     if (ImGui::BeginTabBar("wltabs")) {
-        if (ImGui::BeginTabItem(tr("Lists"))) { listsTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Alerts"))) { alertsTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Limits"))) { limitsTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("History"))) { historyTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Lists"))) { listsTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Alerts"))) { alertsTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Limits"))) { limitsTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("History"))) { historyTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     if (S.dirty) { S.dirty = false; apply(); save(); }

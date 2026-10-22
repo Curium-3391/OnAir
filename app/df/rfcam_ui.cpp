@@ -187,7 +187,7 @@ static void saveSnapshot() {
 void rfCamSection(App&) {
     load();
     bool ch = false;
-    if (!ImGui::CollapsingHeader(tr("RF camera"))) return;
+    if (!ImGui::CollapsingHeader(trw("RF camera"))) return;
     ch |= ImGui::Checkbox(tr("Enable RF camera"), &S.on);
     ImGui::SameLine(); ImGui::TextDisabled("%s", tr("azimuth only; the picture is just a backdrop"));
     if (!S.on) { if (ch) save(); return; }
@@ -211,7 +211,7 @@ void rfCamSection(App&) {
         float fov = (float)S.view.hfovDeg, cen = (float)S.view.centerAzDeg;
         ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Field of view"), &fov, 10, 360, "%.1f\xC2\xB0")) { S.view.hfovDeg = std::min(fov, S.view.proj == Projection::Rectilinear ? 170.0f : 360.0f); ch = true; }
         ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Centre azimuth"), &cen, 0, 359.9f, "%.1f\xC2\xB0")) { S.view.centerAzDeg = cen; ch = true; }
-        if (ImGui::TreeNode(tr("Calibrate from two landmarks"))) {
+        if (ImGui::TreeNode(trw("Calibrate from two landmarks"))) {
             for (int i = 0; i < 2; i++) {
                 ImGui::PushID(i);
                 ImGui::RadioButton("##lm", &S.landmark, i); ImGui::SameLine();

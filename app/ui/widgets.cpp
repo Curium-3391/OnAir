@@ -4,6 +4,7 @@
 #include "touch.h"
 #include "command_palette.h"
 #include "imgui_internal.h"
+#include "window_fit.h"
 
 // Frequency step arrows: one step on press, then after 0.40 s one more step every 0.08 s.
 // At most one step per frame so a hitch does not jump many channels.
@@ -30,6 +31,28 @@ void restoreCursor(ImVec2 screenPos) {
     ImGui::SetCursorScreenPos(screenPos);
     // the spot came from the layout (GetCursorScreenPos after the last item): nothing is extended, so the check at End()/EndChild() is not wanted
     ImGui::GetCurrentWindow()->DC.IsSetPos = false;
+}
+
+void keepWindowsReachable() {
+    ImGuiContext& g = *GImGui;
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    if (d.x < 64 || d.y < 64) return;   // minimised
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) return;   // not while the user moves one: it would fight the drag
+    const float grab = 4 * ImGui::GetFrameHeight();
+    for (ImGuiWindow* w : g.Windows) {
+        if (!w->WasActive || w->Hidden) continue;
+        if (w->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_Popup | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) continue;
+        const winfit::V2 p0{w->Pos.x, w->Pos.y};
+        const winfit::V2 p = winfit::reachablePos(p0, {w->Size.x, w->Size.y}, {d.x, d.y}, grab, w->TitleBarHeight);
+        if (winfit::moved(p, p0)) ImGui::SetWindowPos(w, ImVec2(p.x, p.y), ImGuiCond_Always);
+    }
+}
+
+bool comboTr(const char* label, int* v, std::initializer_list<const char*> items) {
+    const char* t[32];
+    int n = 0;
+    for (const char* s : items) if (n < 32) t[n++] = tr(s);
+    return ImGui::Combo(label, v, t, n);
 }
 
 bool gTightTabs = false;

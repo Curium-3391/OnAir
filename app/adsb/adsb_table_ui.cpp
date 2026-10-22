@@ -30,7 +30,7 @@ void unitsControls() {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(130 * gUi);
     int sys = S.units.metric() ? 1 : 0;
-    if (ImGui::Combo("##adsbunits", &sys, "Aviation (kt, ft, nm)\0Metric\0")) { S.units.sys = sys ? au::System::Metric : au::System::Aviation; ch = true; }
+    if (comboTr("##adsbunits", &sys, {N_("Aviation (kt, ft, nm)"), N_("Metric")})) { S.units.sys = sys ? au::System::Metric : au::System::Aviation; ch = true; }
     if (S.units.metric()) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70 * gUi);

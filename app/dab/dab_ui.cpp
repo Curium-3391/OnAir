@@ -476,7 +476,7 @@ static void dabRecordUi(App& a, const DabEnsemble& ens) {
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::SetNextItemWidth(130 * gUi);
-        if (ImGui::Combo("##recfmt", &a.dabRecFmt, "WAV (decoded)\0As broadcast (m4a / mp2)\0")) plat::prefs().setI("dabRecFmt", a.dabRecFmt);
+        if (comboTr("##recfmt", &a.dabRecFmt, {N_("WAV (decoded)"), N_("As broadcast (m4a / mp2)")})) plat::prefs().setI("dabRecFmt", a.dabRecFmt);
         {
             ImGui::SameLine();
             if (ImGui::Checkbox("Label log", &a.dabRecLog)) plat::prefs().setB("dabRecLog", a.dabRecLog);

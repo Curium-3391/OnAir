@@ -692,7 +692,7 @@ void settingsPanel() {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", have ? tr("Already downloaded") : tr("English only. tiny is the fastest (real time on a laptop), small hears more words and needs a stronger computer."));
         }
-        if (ImGui::TreeNode(tr("Other languages (multilingual models)"))) {
+        if (ImGui::TreeNode(trw("Other languages (multilingual models)"))) {
             for (const char* id : {"tiny", "base", "small"}) {
                 const dect2::SpeechModel* m = dect2::findSpeechModel(id);
                 if (!m) continue;
@@ -1048,7 +1048,7 @@ void captionsSettings(App& a) {
     (void)a;
     load();
     ImGui::Spacing();
-    if (!ImGui::TreeNode(tr("Auto subtitles (captions)"))) return;
+    if (!ImGui::TreeNode(trw("Auto subtitles (captions)"))) return;
     ImGui::PushTextWrapPos(0);
     ImGui::TextDisabled("%s", tr("Captions from the speech of the sound you hear: FM and AM broadcast, DAB, TV audio, amateur and digital voice. They are made here with the offline speech model, shown on the receiver, and kept only in memory (and in .srt / .vtt files if you save them). Music is skipped. Off until you turn it on."));
     ImGui::PopTextWrapPos();

@@ -244,7 +244,7 @@ void airportSection(App& a, const std::function<void(const std::vector<dect2::Ai
     pollDownload();
     const dect2::AirportDb& db = airportDb();
     ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-    S.open = ImGui::CollapsingHeader(tr("Airports##airportsec"));
+    S.open = ImGui::CollapsingHeader(trw("Airports##airportsec"));
     if (!S.open) return;
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", tr("Airport"));

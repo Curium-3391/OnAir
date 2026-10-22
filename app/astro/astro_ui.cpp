@@ -462,18 +462,18 @@ void tab(App& a) {
     in.ratio = &S.res.ratio; in.on = &S.on;
     in.centerHz = S.par.centerHz; in.rate = S.par.rate; in.restHz = S.par.restHz; in.integSec = a.rx.astro.doneSec; in.edge = S.par.edge;
     if (!ImGui::BeginTabBar("##astabs")) return;
-    if (ImGui::BeginTabItem(tr("Spectrum"))) {
+    if (ImGui::BeginTabItem(trw("Spectrum"))) {
         controls(a);
         const float avail = ImGui::GetContentRegionAvail().y;
         chart(a, std::max(140 * gUi, avail * 0.64f));
         waterfall(a, std::max(40 * gUi, ImGui::GetContentRegionAvail().y - 2));
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(tr("Waterfall"))) { waterfall(a, std::max(80 * gUi, ImGui::GetContentRegionAvail().y - 2)); ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem(trw("Waterfall"))) { waterfall(a, std::max(80 * gUi, ImGui::GetContentRegionAvail().y - 2)); ImGui::EndTabItem(); }
     const std::pair<const char*, HlineTab> more[] = {{N_("Velocity"), HlineTab::Velocity}, {N_("Map"), HlineTab::Map}, {N_("Pointing"), HlineTab::Pointing},
                                                      {N_("Calibration / RFI"), HlineTab::Calibration}, {N_("Log"), HlineTab::Log}};
     for (const auto& m : more)
-        if (ImGui::BeginTabItem(tr(m.first))) { hlineTab(a, m.second, in); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw(m.first))) { hlineTab(a, m.second, in); ImGui::EndTabItem(); }
     ImGui::EndTabBar();
 }
 

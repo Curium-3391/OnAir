@@ -314,8 +314,8 @@ void windowPanel(App& a) {
         ImGui::EndTable();
     }
     localMap(ImGui::GetContentRegionAvail().x - 4 * gUi, 220 * gUi);
-    if (ImGui::CollapsingHeader(tr("Illuminator"), ImGuiTreeNodeFlags_DefaultOpen)) illuminatorSection();
-    if (ImGui::CollapsingHeader(tr("Processing"))) {
+    if (ImGui::CollapsingHeader(trw("Illuminator"), ImGuiTreeNodeFlags_DefaultOpen)) illuminatorSection();
+    if (ImGui::CollapsingHeader(trw("Processing"))) {
         bool pc = false;
         ImGui::SetNextItemWidth(80 * gUi); pc |= ImGui::InputInt(tr("Cancellation taps"), &S.taps); S.taps = std::clamp(S.taps, 4, 32);
         pc |= ImGui::Checkbox(tr("NLMS instead of ECA"), &S.nlms);
@@ -323,7 +323,7 @@ void windowPanel(App& a) {
         if (pc) { rebuild = true; save(); build(a); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Targets closer than the tap count in range samples are hidden by the cancellation."));
     }
-    if (S.src == SrcSim && ImGui::CollapsingHeader(tr("Simulator"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (S.src == SrcSim && ImGui::CollapsingHeader(trw("Simulator"), ImGuiTreeNodeFlags_DefaultOpen)) {
         bool sc = false;
         ImGui::SetNextItemWidth(160 * gUi); sc |= ImGui::SliderFloat(tr("Target range (km)"), &S.simRangeKm, 25, 65, "%.0f");
         ImGui::SetNextItemWidth(160 * gUi); sc |= ImGui::SliderFloat(tr("Range rate (m/s)"), &S.simRate, -300, 300, "%.0f");

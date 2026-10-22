@@ -256,7 +256,7 @@ void inputsUi(App& a) {
     ImGui::TextDisabled("a map click sets");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(130 * gUi);
-    ImGui::Combo("##propclick", &S.clickSets, "the transmitter\0a probe point\0");
+    comboTr("##propclick", &S.clickSets, {N_("the transmitter"), N_("a probe point")});
     if (!S.msg.empty()) { ImGui::SameLine(); ImGui::TextColored(pal::warnAmber(), "%s", S.msg.c_str()); }
 
     // power
@@ -283,11 +283,11 @@ void inputsUi(App& a) {
     ImGui::SameLine(); ImGui::TextDisabled("antenna gain"); ImGui::SameLine(); dInput("##proprxg", &i.rxGainDbi, 55 * gUi); ImGui::SameLine(); ImGui::TextDisabled("dBi");
     ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("noise figure"); ImGui::SameLine(); dInput("##propnf", &i.rxNfDb, 50 * gUi); ImGui::SameLine(); ImGui::TextDisabled("dB");
     ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("noise at the receiver"); ImGui::SameLine(); ImGui::SetNextItemWidth(110 * gUi);
-    ImGui::Combo("##propenv", &i.env, "quiet rural\0rural\0residential\0city\0");
+    comboTr("##propenv", &i.env, {N_("quiet rural"), N_("rural"), N_("residential"), N_("city")});
     if (i.fMHz >= 30) {
         ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("heights TX/RX"); ImGui::SameLine(); dInput("##proptxh", &i.txH, 45 * gUi); ImGui::SameLine(); dInput("##proprxh", &i.rxH, 45 * gUi); ImGui::SameLine(); ImGui::TextDisabled("m");
     } else {
-        ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("ground"); ImGui::SameLine(); ImGui::SetNextItemWidth(90 * gUi); ImGui::Combo("##propgnd", &i.ground, "sea\0wet land\0average land\0dry land\0");
+        ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("ground"); ImGui::SameLine(); ImGui::SetNextItemWidth(90 * gUi); comboTr("##propgnd", &i.ground, {N_("sea"), N_("wet land"), N_("average land"), N_("dry land")});
         ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("solar flux (SFI)"); ImGui::SameLine(); dInput("##propsfi", &i.sfi, 55 * gUi);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "The 10.7 cm solar flux index, 65 (quiet) to 250 (very active). Enter today's value from any space-weather source; nothing is downloaded here.");
     }
@@ -308,7 +308,7 @@ void inputsUi(App& a) {
         i.hour = std::clamp(i.hour, 0, 23); i.minute = std::clamp(i.minute, 0, 59);
     }
     ImGui::SameLine(0, 12 * gUi); ImGui::TextDisabled("resolution"); ImGui::SameLine(); ImGui::SetNextItemWidth(110 * gUi);
-    ImGui::Combo("##propres", &i.resolution, "coarse (40)\0medium (80)\0fine (140)\0");
+    comboTr("##propres", &i.resolution, {N_("coarse (40)"), N_("medium (80)"), N_("fine (140)")});
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Grid cells per side. Coarse is the cheapest, for a phone or a Raspberry Pi.");
     (void)a;
     i.fMHz = std::clamp(i.fMHz, 0.01, 100000.0);

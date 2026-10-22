@@ -4,6 +4,7 @@
 // core/src/protolab; this file is the window only. Nothing here decrypts anything.
 #include "dect2/common/thread_name.h"
 #include "../app.h"
+#include "../ui/window_fit.h"
 #include "dect2/common/u8file.h"
 #include "dect2/protolab/protolab.h"
 #include "dect2/source/source.h"
@@ -182,7 +183,7 @@ void inputPanel() {
     ImGui::TextWrapped("%s", tr("Load a recording of the unknown signal, or paste packets you already have, and the lab works out how the signal is built: modulation, baud rate, preamble, CRC and fields. Nothing is decrypted."));
     const bool busy = S.run == 1;
     if (ImGui::BeginTabBar("##plin")) {
-        if (ImGui::BeginTabItem(tr("Recording"))) {
+        if (ImGui::BeginTabItem(trw("Recording"))) {
             ImGui::SetNextItemWidth(-90 * gUi);
             ImGui::InputText("##plpath", S.path, sizeof S.path);
             ImGui::SameLine();
@@ -214,7 +215,7 @@ void inputPanel() {
             ImGui::EndDisabled();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr("Packets"))) {
+        if (ImGui::BeginTabItem(trw("Packets"))) {
             ImGui::TextWrapped("%s", tr("One packet per line, as hex bytes or as bits. The packets are taken as sliced from the air: the preamble and the sync word may still be in them."));
             ImGui::Checkbox(tr("Lines are bits (0 and 1)"), &S.pastedBits);
             struct Cb { static int resize(ImGuiInputTextCallbackData* d) { if (d->EventFlag == ImGuiInputTextFlags_CallbackResize) { auto* s = static_cast<std::string*>(d->UserData); s->resize((size_t)d->BufTextLen); d->Buf = s->data(); } return 0; } };
@@ -224,7 +225,7 @@ void inputPanel() {
             ImGui::EndDisabled();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr("Demo signals"))) {
+        if (ImGui::BeginTabItem(trw("Demo signals"))) {
             ImGui::TextWrapped("%s", tr("Made-up signals with a known structure, to see what the lab finds. None of them is a real protocol."));
             ImGui::SetNextItemWidth(-1);
             ImGui::Combo("##pldemo", &S.demo,
@@ -241,7 +242,7 @@ void inputPanel() {
     }
     ImGui::Separator();
     ImGui::SetNextItemWidth(150 * gUi);
-    ImGui::Combo(tr("Demodulator"), &S.demod, "Auto\0OOK / ASK\0" "2FSK / GFSK\0" "4FSK\0" "BPSK\0" "QPSK\0" "FM\0");
+    comboTr(tr("Demodulator"), &S.demod, {N_("Auto"), N_("OOK / ASK"), N_("2FSK / GFSK"), N_("4FSK"), N_("BPSK"), N_("QPSK"), N_("FM")});
     ImGui::SameLine();
     ImGui::SetNextItemWidth(110 * gUi);
     ImGui::InputDouble(tr("Baud (0 = find it)"), &S.baud, 0, 0, "%.1f");
@@ -351,7 +352,7 @@ void packetsTab(const pl::Candidate& c) {
         for (size_t k = i; k < v.size() && k < i + 24; k++) a += v[k] >= 0x20 && v[k] < 0x7F ? (char)v[k] : '.';
         ImGui::Text("ASCII  %s", a.c_str());
         auto ints = pl::interpret(v);
-        if (!ints.empty() && ImGui::TreeNode(tr("Readings that could fit this packet"))) {
+        if (!ints.empty() && ImGui::TreeNode(trw("Readings that could fit this packet"))) {
             for (const auto& it : ints) ImGui::BulletText("@%d  %s  %s", it.offset, it.kind.c_str(), it.text.c_str());
             ImGui::TreePop();
         }
@@ -477,18 +478,22 @@ void resultPanel() {
     const pl::Candidate& c = S.rep.candidates[(size_t)S.sel];
     ImGui::Spacing();
     if (ImGui::BeginTabBar("##plres")) {
-        if (ImGui::BeginTabItem(tr("Bytes"))) { packetsTab(c); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Fields"))) { fieldsTab(c); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Compare"))) { compareTab(c); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Check value"))) { crcTab(c); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Export"))) { exportTab(c); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Bytes"))) { packetsTab(c); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Fields"))) { fieldsTab(c); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Compare"))) { compareTab(c); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Check value"))) { crcTab(c); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Export"))) { exportTab(c); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(900, 700), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("Protocol lab"), &a.protolabOpen)) { ImGui::End(); return; }
+    {
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        const winfit::V2 sz = winfit::firstSize({900 * gUi, 700 * gUi}, {d.x, d.y}, 24 * gUi);
+        ImGui::SetNextWindowSize(ImVec2(sz.x, sz.y), ImGuiCond_FirstUseEver);
+    }
+    if (!ImGui::Begin(trw("Protocol lab"), &a.protolabOpen)) { ImGui::End(); return; }
     if (S.run == 2) {
         if (S.worker.joinable()) S.worker.join();
         S.run = 0;

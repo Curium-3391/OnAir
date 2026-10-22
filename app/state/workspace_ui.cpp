@@ -82,7 +82,7 @@ void workspaceDialogs(App& a) {
     if (gSave.request) { ImGui::OpenPopup("Save workspace"); gSave.request = false; }
     if (ImGui::BeginPopupModal("Save workspace", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Name this workspace. It keeps the source, mode, frequency,\nsample rate, gains and open windows.");
-        ImGui::SetNextItemWidth(280.f);
+        ImGui::SetNextItemWidth(280 * gUi);
         const bool enter = ImGui::InputText("##wsname", gSave.name, sizeof gSave.name, ImGuiInputTextFlags_EnterReturnsTrue);
         const std::string name = trimmed(gSave.name);
         if (name.empty()) ImGui::BeginDisabled();

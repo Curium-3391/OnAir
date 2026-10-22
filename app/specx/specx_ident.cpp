@@ -262,7 +262,7 @@ void identifyWindow(App& a) {
                             ImGui::PopID();
                         }
                     }
-                    if (ImGui::TreeNode(tr("Measured"))) {
+                    if (ImGui::TreeNode(trw("Measured"))) {
                         if (ImGui::BeginTable("##sidf", 2, ImGuiTableFlags_SizingFixedFit)) {
                             char b[128];
                             row(N_("Centre"), fq(f.rfHz));
@@ -289,7 +289,7 @@ void identifyWindow(App& a) {
                         }
                         ImGui::TreePop();
                     }
-                    if (ImGui::TreeNode(tr("Why?"))) {
+                    if (ImGui::TreeNode(trw("Why?"))) {
                         if (!I.res.priors.empty()) {
                             ImGui::TextDisabled("%s", tr("The frequency list has here:"));
                             for (const std::string& p : I.res.priors) ImGui::BulletText("%s", p.c_str());

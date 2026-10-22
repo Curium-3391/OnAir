@@ -206,10 +206,10 @@ bool calibrateDialog(App& a, const DeviceInfo& d) {
     bool changed = false;
     if (!c.loaded) { c.store.fromText(plat::prefs().getS("selfcal.hist", "")); c.loaded = true; c.carrierMhz = a.freqMhz; }
     const std::string serial = radioKeyOf(d);
-    if (c.open) { ImGui::OpenPopup(tr("Frequency calibration")); c.open = false; }
+    if (c.open) { ImGui::OpenPopup(trw("Frequency calibration")); c.open = false; }
     ImGui::SetNextWindowSize(ImVec2(440 * gUi, 0), ImGuiCond_Appearing);
     bool keep = true;
-    if (!ImGui::BeginPopupModal(tr("Frequency calibration"), &keep, ImGuiWindowFlags_AlwaysAutoResize)) return false;
+    if (!ImGui::BeginPopupModal(trw("Frequency calibration"), &keep, ImGuiWindowFlags_AlwaysAutoResize)) return false;
     ImGui::PushTextWrapPos(420 * gUi);
     ImGui::TextDisabled("%s", tr("Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction."));
     ImGui::PopTextWrapPos();

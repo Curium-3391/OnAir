@@ -693,6 +693,11 @@ bool tabItem(const char* name, Ic icon);
 // below the last item, so a plain SetCursorScreenPos() there followed by the end of the window is the ImGui error "Code uses SetCursorPos()
 // to extend window/parent boundaries" (seen in ##main2)
 void restoreCursor(ImVec2 screenPos);
+// once a frame: a floating window whose title bar went past the edge of the display (a saved position from a larger or a second monitor,
+// a smaller window after a DPI change) is moved back so it can be grabbed again
+void keepWindowsReachable();
+// a combo box of translated items: each item is marked with N_() where it is written and passed through tr() here
+bool comboTr(const char* label, int* v, std::initializer_list<const char*> items);
 // the interface language: menu items (View > Language) or a small button with a list (the classic interface); both save the choice
 void languageMenuItems(App& a);
 void languageButton(App& a);

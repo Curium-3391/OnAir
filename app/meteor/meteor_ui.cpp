@@ -202,7 +202,7 @@ void tab(App& a) {
                                                   "automatic picks from the channels the satellite sends. A channel alone is shown in grey.");
     flowNext(6 * gUi);
     ImGui::SetNextItemWidth(130 * gUi);
-    if (ImGui::Combo("##metenh", &S.enh, "As received\0Contrast stretch\0Thermal colours\0Stretch + brighten\0")) { plat::prefs().setI("meteorEnh", S.enh); plat::prefs().flush(); }
+    if (comboTr("##metenh", &S.enh, {N_("As received"), N_("Contrast stretch"), N_("Thermal colours"), N_("Stretch + brighten")})) { plat::prefs().setI("meteorEnh", S.enh); plat::prefs().flush(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enhancement of the picture (saved PNGs too). Contrast stretch: each channel's own 2-98 %% range to the full range.\nThermal colours colour a single (infrared) channel by temperature; pick a Channel view for it.");
     flowNext(8 * gUi);
     if (ImGui::Button("Save PNG")) savePng(t);

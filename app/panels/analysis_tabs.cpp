@@ -502,7 +502,7 @@ void constellationsTab(App& a) {
             if (pillButton("clusters", a.constView == 2, 8)) a.constView = 2;
         } else {   // narrower than the three buttons: the same choice as a drop-down under the plot
             ImGui::SetNextItemWidth(side);
-            ImGui::Combo("##cview", &a.constView, "cells\0density\0clusters\0");
+            comboTr("##cview", &a.constView, {N_("cells"), N_("density"), N_("clusters")});
         }
         ImGui::PopID();
         if (a.constView == 2 && ImGui::IsItemHovered()) ImGui::SetTooltip("One ring per transmitted point: centre = average received position, radius = 1 sigma of the error.\nColour is relative to the average ring: green = tighter, red = looser.\nAt this MER the rings overlap their neighbours; the LDPC code corrects the resulting errors.");

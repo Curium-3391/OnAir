@@ -186,7 +186,7 @@ void stepSettings(App& a, TxUi& s, const DeviceInfo* radio, int conflict, const 
     ImGui::BeginDisabled(running);
     payloadPanel(s, *mode, running);
     if (const ModeUi* mu = modeUi(familyOf(*mode)); mu && mu->synth && !isVoiceId(mode->id ? mode->id : "") && !isFtxId(mode->id ? mode->id : "") && std::string(mode->id) != "rtty" && std::string(mode->id) != "atv") {
-        if (ImGui::TreeNode(tr("Receiver-style options (demo signal)"))) {
+        if (ImGui::TreeNode(trw("Receiver-style options (demo signal)"))) {
             const SynthConfig saved = a.tune.synth;
             a.tune.synth = s.synth;
             bool changed = false;
@@ -201,7 +201,7 @@ void stepSettings(App& a, TxUi& s, const DeviceInfo* radio, int conflict, const 
     ImGui::Spacing();
     ImGui::SetNextItemOpen(s.advOpen, ImGuiCond_Appearing);
     ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(1, 1, 1, 0.045f));
-    s.advOpen = ImGui::CollapsingHeader(tr("Advanced"));
+    s.advOpen = ImGui::CollapsingHeader(trw("Advanced"));
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Every setting of this signal: modulation, audio, filters, output and timing. The defaults are sensible; open this only to change them."));
     if (s.advOpen) advancedPanel(s, *mode, running);
