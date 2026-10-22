@@ -131,6 +131,10 @@ struct DabAudioStats {
     uint64_t superframesOk = 0, superframesBad = 0;
     uint64_t rsCorrected = 0;     // bytes fixed by Reed-Solomon
     uint64_t auOk = 0, auBad = 0; // access units with a good / bad CRC
+    uint64_t concealedFrames = 0; // audio frames (access units, MP2 frames) that were lost and replaced by concealment
+    uint64_t rsUncorrectable = 0; // DAB+ Reed-Solomon code words beyond repair
+    uint64_t concealMs = 0, silenceMs = 0;   // audio put out by the concealment, of it silent (a long loss)
+    double rateCorrPpm = 0;       // the playout's rate correction against the sound card's clock
     uint64_t pcmFrames = 0;
     int bufferedMs = 0;
     int underruns = 0;
@@ -171,6 +175,12 @@ struct DabTelemetry {
     struct Tii { int mainId = 0, subId = 0; float levelDb = 0, marginDb = 0; };
     std::vector<Tii> tii;
     int tiiFrames = 0;                  // null symbols analysed since the lock
+    // the robustness of the reception (docs/DAB-AUDIT.md)
+    double sroPpm = 0;                  // sample clock error measured (ppm; the tuner's crystal is off by about as much)
+    uint64_t syncLosses = 0;            // frames where the sync was lost (a fade longer than 1.15 s, lost samples)
+    uint64_t relocks = 0;               // of them found again by the quick search, the decoding kept going
+    uint64_t erasedCifs = 0;            // CIFs lost on the way, put into the de-interleaver as erasures
+    uint64_t impulses = 0;              // samples zeroed by the impulse blanker
 };
 
 } // namespace dect2

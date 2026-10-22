@@ -27,6 +27,8 @@ using cd = std::complex<double>;
 using dect2::math::kPi;
 constexpr int kMaxShift = 80;      // integer carrier offset searched at the start: +-80 kHz covers 50 ppm at L band (1.49 GHz, 75 kHz)
 constexpr int kBackoff = 16;        // demodulation windows start this many samples before the useful part (inside the guard interval)
+constexpr int kCoast = 12;          // frames decoded on the timing and carrier offset held through a fade before the sync counts as lost (1.15 s)
+constexpr int kQuickShift = 2;      // a re-acquisition searches this many carriers around the offset known
 
 // A 16-byte label in the charset FIG 1 names (EN 300 401 5.2.2.2.1; EBU Latin unless it says otherwise) to clean UTF-8
 std::string labelText(int charset, const uint8_t* d, int n) {
@@ -60,6 +62,29 @@ struct DabReceiver::Impl {
     uint64_t syncSample = 0, endSample = 0;
     float cirPeak = 0;
     std::vector<float> cirKeep;
+    // ---- fades, lost samples and re-acquisition (docs/DAB-AUDIT.md)
+    double magRef = 0;        // slow average of the differential cell magnitude over good frames: the scale of the soft bits, so a faded frame gives weak ones
+    double powRef = 0;        // mean sample power of the good frames: a frame far weaker than that is a fade, not a lost timing
+    bool quick = false;       // the next search re-acquires: only around the carrier offset known, the decoding state is kept
+    int quickTries = 0;
+    uint64_t lastU = 0;       // useful start of the last frame whose MSC was decoded (absolute)
+    bool haveLast = false;
+    int lastCif = -1;         // CIF count of the first CIF of that frame
+    int curSlot = 0;          // the FIB being parsed (its FIG 0/0 tells the CIF count of its CIF)
+    int frameCif = -1;        // CIF count of the first CIF of the frame being decoded, -1 when its FIC did not say
+    int gapCifs = 0;          // CIFs lost before the frame being decoded
+    bool dupFrame = false;    // the frame being decoded was decoded before (a re-acquisition on the same frame)
+    uint64_t syncLosses = 0, relocks = 0, erasedCifs = 0, impulses = 0;
+    double impPow = 0;        // the impulse blanker's running mean power
+    double sro = 0;           // sample clock error (relative): symbol l of a frame starts at U + l * kTs * (1 + sro), the next frame kFrame * (1 + sro) later
+    // the start of symbol l of the frame at U, with the clock error: the window goes on the nearest sample, `rest` is what is left over (turned
+    // out per carrier after the FFT)
+    uint64_t symStart(uint64_t U, int l, double* rest = nullptr) const {
+        const double x = (double)l * kTs * (1.0 + sro);
+        const double r = std::round(x);
+        if (rest) *rest = x - r;
+        return U + (uint64_t)(int64_t)r;
+    }
     dabtii::Detector tii;     // transmitter identification from the null symbols
 
     // ---- decoding state
@@ -88,11 +113,47 @@ struct DabReceiver::Impl {
     std::vector<cf32> constel;
 
     std::vector<int8_t> ficSoft, mscSoft;
+    // The time de-interleaver and the decoding of one sub-channel: 16 CIFs of soft bits. CIFs lost on the way (lost samples, frames that were not
+    // demodulated) go in as erasures (soft value 0), so the logical frames around them still decode: every one is spread over 16 CIFs and the code
+    // copes with a quarter of them missing. Nothing is flushed on a short loss.
+    struct SubDec {
+        std::vector<std::vector<int8_t>> hist = std::vector<std::vector<int8_t>>(16);
+        uint64_t count = 0;
+        std::vector<int8_t> mother, one;
+        std::vector<uint8_t> dec, bytes;
+        void reset() { hist.assign(16, {}); count = 0; }
+        // one CIF of the sub-channel (src nullptr: erased); out(bytes, n, erased) gets every logical frame decoded, erased when most of its soft bits were
+        template <class F> bool cif(const DabSubchannel& sub, const int8_t* src, F&& out) {
+            int n, br, info, sz, lv;
+            if (sub.eep ? !eepGeometry(sub.size, sub.option, sub.level, n, br, info) : !uepGeometry(sub.uepIndex, sz, br, lv, info)) return false;
+            const int bits = sub.size * kCuBits;
+            std::vector<int8_t>& h = hist[count % 16];
+            if (src) h.assign(src, src + bits);
+            else h.assign((size_t)bits, 0);
+            count++;
+            if (count < 16) return true;
+            static const int kMap[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+            mother.resize((size_t)(4 * (info + 6))); one.resize((size_t)bits); dec.resize((size_t)info); bytes.resize((size_t)info / 8);
+            int zeros = 0;
+            for (int i = 0; i < bits; i++) {
+                const uint64_t t = count - 1 - (uint64_t)(15 - kMap[i & 15]);
+                const std::vector<int8_t>& c = hist[t % 16];
+                const int8_t v = (size_t)i < c.size() ? c[(size_t)i] : (int8_t)0;
+                one[(size_t)i] = v;
+                zeros += v == 0;
+            }
+            if (sub.eep ? !eepDepuncture(one.data(), sub.size, sub.option, sub.level, mother.data()) : !uepDepuncture(one.data(), sub.uepIndex, mother.data())) return false;
+            viterbiDecode(mother.data(), info, dec.data());
+            descramble(dec.data(), info);
+            for (int i = 0; i < info / 8; i++) { uint8_t v = 0; for (int b = 0; b < 8; b++) v = (uint8_t)((v << 1) | dec[(size_t)i * 8 + (size_t)b]); bytes[(size_t)i] = v; }
+            out(bytes.data(), (int)bytes.size(), zeros * 4 > bits * 3);
+            return true;
+        }
+    };
+    SubDec mainDec, spiDecI;
     // selected sub-channel
     int selReq = -1, sel = -1;
     DabSubchannel selSub;
-    std::vector<std::vector<int8_t>> hist;   // 16 CIFs of the sub-channel's soft bits
-    uint64_t cifCount = 0;
     DabAudio audio;
     std::function<void(int, const uint8_t*, int)> tap;
     // a DMB video sub-channel (TS 102 427 / 102 428): its transport stream for the player
@@ -110,8 +171,6 @@ struct DabReceiver::Impl {
     int spiReq = -1, spiAddr = -1, spiSel = -1;
     bool spiDirty = false;
     DabSubchannel spiSub;
-    std::vector<std::vector<int8_t>> spiHist;
-    uint64_t spiCif = 0;
 
     Impl() : bin(kCarriers), prsConj(kTu) {
         const auto& tab = freqInterleaver();
@@ -120,11 +179,9 @@ struct DabReceiver::Impl {
         for (int i = 0; i < kTu; i++) prsConj[(size_t)i] = std::conj(x[(size_t)i]);
         ficSoft.resize((size_t)kFicSymbols * 2 * kCarriers);
         mscSoft.resize((size_t)(kSymbols - 1 - kFicSymbols) * 2 * kCarriers);
-        hist.assign(16, {});
         audio.select(-1, false, 0);
         audio.setDataGroupSink([this](const uint8_t* g, size_t n) { if (selJlPad) jl.feedDataGroup(g, n); });
         audio.setMotSink([this](const MotObject& o) { if (spiReq >= 0 && spiAddr == -2) spiDec.motObject(o); });   // SPI in the PAD of the selected service (spiAddr -2)
-        spiHist.assign(16, {});
         dmb.setPacketSink([this](const uint8_t* pk, size_t n) { if (pktCb) pktCb(pk, n, 0.024); });
     }
 
@@ -180,6 +237,41 @@ struct DabReceiver::Impl {
         return pk / (c[(size_t)kTu / 2] + 1e-9f);
     }
 
+    // Mean sample power over the first `symbols` symbols of the frame whose useful part starts at U (every 7th sample)
+    double framePower(uint64_t U, int symbols = kSymbols - 1) const {
+        const uint64_t a = U >= (uint64_t)kTg ? U - (uint64_t)kTg : 0, b = U + (uint64_t)symbols * kTs - (uint64_t)kTg;
+        if (a < base || b > base + buf.size()) return 0;
+        double s = 0; size_t n = 0;
+        for (uint64_t i = a; i < b; i += 7) { s += std::norm(buf[(size_t)(i - base)]); n++; }
+        return n ? s / (double)n : 0;
+    }
+
+    // Where the useful part starts, from the impulse response `mag` of a window (index = delay from its start, `peak` the strongest path as a
+    // signed offset). The strongest path is not always the one to follow: in a single frequency network a weaker transmitter is often heard
+    // first, and two of nearly equal strength make the strongest one jump between them. The window goes on the earliest path within 10 dB of
+    // the strongest when all of them fit in the guard interval; when they do not, where the most of their energy does.
+    int placeWindow(const std::vector<float>& mag, int peak) const {
+        if (mag.size() != (size_t)kTu) return peak;
+        auto P = [&](int off) { const float m = mag[(size_t)(((off % kTu) + kTu) % kTu)]; return m * m; };
+        static thread_local std::vector<float> c;
+        c.resize(kTu);
+        for (int i = 0; i < kTu; i++) c[(size_t)i] = mag[(size_t)i] * mag[(size_t)i];
+        std::nth_element(c.begin(), c.begin() + kTu / 2, c.end());
+        const float pk = P(peak), thr = std::max(0.1f * pk, 12.f * c[(size_t)kTu / 2]);
+        const int span = kTg - kBackoff;   // paths from kBackoff before to span after the useful start are free of interference
+        int first = peak, last = peak;
+        for (int o = peak - span; o < peak; o++) if (P(o) >= thr) { first = o; break; }
+        for (int o = peak + span; o > peak; o--) if (P(o) >= thr) { last = o; break; }
+        if (last - first <= span - 8) return first;
+        int best = peak; double bestE = -1;
+        for (int u = first; u <= last; u++) {
+            double e = 0;
+            for (int o = u - kBackoff; o <= u + span; o++) { const float v = P(o); if (v >= thr) e += v; }
+            if (e > bestE + 1e-12) { bestE = e; best = u; }
+        }
+        return best;
+    }
+
     void trim(uint64_t keepFrom) {
         if (keepFrom <= base) return;
         const size_t drop = (size_t)std::min<uint64_t>(keepFrom - base, buf.size());
@@ -219,10 +311,12 @@ struct DabReceiver::Impl {
         std::vector<cf32> R, tmp;
         struct Cand { float fast; long p; int sh; };
         Cand top[3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+        // a re-acquisition after a lost sync only looks near the carrier offset it had (53 times less work, and no false lock far off)
+        const int shLo = quick ? (int)std::lround(cfo) - kQuickShift : -kMaxShift, shHi = quick ? (int)std::lround(cfo) + kQuickShift : kMaxShift;
         for (long p = nominal - 1400; p <= nominal + 1000; p += 128) {
             if (p < 0 || p + kTu > (long)buf.size()) continue;
             windowFft(base + (uint64_t)p, 0.0, R);
-            for (int sh = -kMaxShift; sh <= kMaxShift; sh++) {
+            for (int sh = shLo; sh <= shHi; sh++) {
                 const float f = cirFast(R, sh, tmp);
                 if (f > top[2].fast) {
                     top[2] = {f, p, sh};
@@ -238,6 +332,11 @@ struct DabReceiver::Impl {
             if (pk > bestPk) { bestPk = pk; bestP = c.p; bestShift = c.sh; bestIdx = idx; }
         }
         if (bestPk < 25.f) {
+            if (quick && ++quickTries < 6) {   // the signal may still be fading: look again near the same offset, the spectrum is not mirrored
+                trim(base + buf.size() - (size_t)kFrame);
+                return false;
+            }
+            if (quick) { quick = false; haveLast = false; lastCif = -1; mainDec.reset(); spiDecI.reset(); audio.flushSync(); }   // a full search: start over
             // no phase reference: the next attempt looks at the mirrored spectrum (I and Q swapped by the radio or the file format)
             mirror = !mirror;
             for (auto& v : buf) v = std::conj(v);
@@ -253,7 +352,9 @@ struct DabReceiver::Impl {
         missed = 0;
         state = 2;
         searchFails = 0; searchNext = 0;
-        tii.reset();   // a new lock: which frames carry TII may have changed sides
+        if (quick) relocks++;
+        else tii.reset();   // a new lock: which frames carry TII may have changed sides
+        quick = false; quickTries = 0;
         cirPeak = bestPk;
         syncSample = U;
         trim(U > 2 * kTs ? U - 2 * kTs : 0);
@@ -274,8 +375,28 @@ struct DabReceiver::Impl {
             int idx;
             std::vector<float> mag;
             cirPeak = cirOf(R, 0, idx, tmp, &mag);
-            if (cirPeak >= 12.f) { U = p + (uint64_t)(int64_t)idx; missed = 0; cirKeep = mag; }
-            else { missed++; if (missed >= 4) { state = 0; publish(); return true; } }
+            if (cirPeak >= 12.f) {
+                const uint64_t Un = p + (uint64_t)(int64_t)placeWindow(mag, idx);
+                // the sample clock error, from how far the frame moved against the prediction (jumps between echoes are left out)
+                const int64_t e = (int64_t)Un - (int64_t)U;
+                if (!missed && std::llabs(e) <= 48) sro = std::max(-4e-4, std::min(4e-4, sro + 0.25 * (double)e / kFrame));
+                U = Un; missed = 0; cirKeep = mag;
+            }
+            else {
+                missed++;
+                // A fade (the frame far weaker than the good ones) keeps the timing and the carrier offset and is decoded: its soft bits come out
+                // weak and the de-interleaver keeps going. A frame of normal strength without the phase reference where it should be means lost
+                // samples or a jump: it is not decoded (its CIFs go in as erasures) and the sync is found again at once, near the offset known.
+                // (the power of the phase reference symbol itself: a fade that ends within the frame still took the reference)
+                const double pw = framePower(U, 1);
+                const bool fade = powRef > 0 && pw < 0.3 * powRef;
+                if (!fade || missed >= kCoast) {
+                    state = 0; quick = true; quickTries = 0; syncLosses++;
+                    trim(U > (uint64_t)kFrame / 2 + 2 * kTs ? U - (uint64_t)kFrame / 2 - 2 * kTs : 0);   // the search starts before the frame expected
+                    publish();
+                    return true;
+                }
+            }
         } else {
             windowFft(U, cfo, R);
             int idx; std::vector<float> mag;
@@ -287,14 +408,14 @@ struct DabReceiver::Impl {
         {
             cd acc = 0;
             for (int l = 0; l < kSymbols; l++) {
-                const uint64_t u = U + (uint64_t)l * kTs;
+                const uint64_t u = symStart(U, l);
                 const cf32* a = at(u - kTg);
                 const cf32* b = at(u + kTu - kTg);
                 for (int i = 0; i < kTg; i++) acc += cd(a[i].real(), -a[i].imag()) * cd(b[i].real(), b[i].imag());
             }
             const double e = std::arg(acc) / (2.0 * kPi);
             const double d = e - cfo;
-            double nc = cfo + d - std::round(d);
+            double nc = missed ? cfo : cfo + d - std::round(d);   // held through a fade (the cyclic prefixes of noise say nothing)
             if (wasFresh) {
                 // The integer part comes from the search at the start and the cyclic prefix only knows the offset modulo one carrier spacing. At an
                 // offset of n + 1/2 spacings both neighbours of the true value look equally good in the search and the unwrapping above may take
@@ -325,23 +446,42 @@ struct DabReceiver::Impl {
         // demodulate all symbols
         std::vector<cf32> prev, cur;
         windowFft(U - kBackoff, cfo, prev);
-        const float inv = 1.f;
-        (void)inv;
-        // pass 1: differential cells; scale by the mean magnitude
+        // pass 1: differential cells; scale by the mean magnitude. With a sample clock error the windows follow the symbols (symStart) and the
+        // fraction of a sample left between two symbols, a phase slope across the carriers, is turned out of their product.
         std::vector<cf32> q((size_t)(kSymbols - 1) * kCarriers);
-        double magSum = 0;
+        static thread_local std::vector<cf32> rot;
+        rot.resize((size_t)kCarriers + 1);
+        const auto& carrier = freqInterleaver();
+        double magSum = 0, restPrev = 0;
         for (int l = 1; l < kSymbols; l++) {
-            windowFft(U + (uint64_t)l * kTs - kBackoff, cfo, cur);
+            double rest = 0;
+            windowFft(symStart(U, l, &rest) - kBackoff, cfo, cur);
+            const double dr = rest - restPrev;
+            restPrev = rest;
+            const bool turn = std::fabs(dr) > 1e-4;
+            if (turn) {   // exp(j 2 pi k dr / kTu) for the carriers k = -768..768
+                const cd step = std::polar(1.0, 2.0 * kPi * dr / kTu);
+                cd z = std::polar(1.0, -2.0 * kPi * dr * (kCarriers / 2) / kTu);
+                for (int i = 0; i <= kCarriers; i++) { rot[(size_t)i] = cf32((float)z.real(), (float)z.imag()); z *= step; }
+            }
             cf32* o = &q[(size_t)(l - 1) * kCarriers];
             for (int n = 0; n < kCarriers; n++) {
                 const int k = bin[(size_t)n];
                 o[n] = cur[(size_t)k] * std::conj(prev[(size_t)k]);
+                if (turn) o[n] *= rot[(size_t)(carrier[(size_t)n] + kCarriers / 2)];
                 magSum += std::abs(o[n]);
             }
             prev.swap(cur);
         }
         const double meanMag = magSum / ((double)(kSymbols - 1) * kCarriers) + 1e-12;
-        const float sc = (float)(40.0 / meanMag);
+        // The soft bits are scaled by a slow average of the cell magnitude over the good frames, not by this frame's own: a faded frame (or one of
+        // noise) then gives weak soft bits that the Viterbi decoder takes as nearly erased, instead of confident noise spread over 16 CIFs.
+        if (!missed) {
+            magRef = magRef > 0 ? 0.8 * magRef + 0.2 * meanMag : meanMag;
+            const double pw = framePower(U);
+            powRef = powRef > 0 ? 0.8 * powRef + 0.2 * pw : pw;
+        }
+        const float sc = (float)(40.0 / std::max(meanMag, magRef));
         auto soft = [&](int l, int8_t* dst) {   // l = 1..75: first half real parts, second half imaginary parts (positive = bit 1)
             const cf32* o = &q[(size_t)(l - 1) * kCarriers];
             for (int n = 0; n < kCarriers; n++) {
@@ -370,11 +510,27 @@ struct DabReceiver::Impl {
             if (msum > 1e-9) { const float g = (float)(constel.size() / msum); for (auto& c : constel) c *= g; }   // unit mean radius, whatever the input level
         }
         decodeFic();
-        decodeMsc();
+        // CIFs lost since the last frame decoded: from FIG 0/0 (the CIF count) when this frame's FIC carried it, else from the samples between
+        gapCifs = 0; dupFrame = false;
+        if (haveLast) {
+            const double fr = (double)(int64_t)(U - lastU) / kFrame;
+            gapCifs = 4 * std::max(0, (int)std::llround(fr) - 1);
+            dupFrame = fr < 0.5;
+            if (frameCif >= 0 && lastCif >= 0) {
+                const int c = (((frameCif - lastCif - 4) % 5000) + 5000) % 5000;
+                if (c >= 5000 - 64) dupFrame = true;                 // the count went back: this frame was decoded already
+                else if (c < 2500) { gapCifs = c; dupFrame = false; }
+            }
+        }
+        if (!dupFrame) {
+            decodeMsc();
+            lastCif = frameCif >= 0 ? frameCif : (lastCif >= 0 ? (lastCif + 4 + gapCifs) % 5000 : -1);
+            lastU = U; haveLast = true;
+        }
         framesDone++;
         endSample = U;
-        nextU = U + kFrame;
-        trim(nextU > 2 * kTs ? nextU - 2 * kTs : 0);
+        nextU = U + (uint64_t)std::llround((double)kFrame * (1.0 + sro));
+        trim(nextU > (uint64_t)kFrame / 2 + 2 * kTs ? nextU - (uint64_t)kFrame / 2 - 2 * kTs : 0);   // half a frame more is kept for a re-acquisition
         publish();
         return true;
     }
@@ -383,6 +539,7 @@ struct DabReceiver::Impl {
     void decodeFic() {
         int ok = 0;
         std::lock_guard<std::mutex> lk(mu);
+        frameCif = -1;
         for (int cw = 0; cw < 4; cw++) {
             int8_t mother[3096];
             uint8_t bits[768];
@@ -393,7 +550,7 @@ struct DabReceiver::Impl {
             for (int i = 0; i < 96; i++) { uint8_t v = 0; for (int b = 0; b < 8; b++) v = (uint8_t)((v << 1) | bits[i * 8 + b]); by[i] = v; }
             for (int f = 0; f < 3; f++) {
                 const uint8_t* fib = by + f * 32;
-                if (crc16(fib, 30) == (uint16_t)((fib[30] << 8) | fib[31])) { ok++; fibOk++; parseFib(fib, cw * 3 + f); }
+                if (crc16(fib, 30) == (uint16_t)((fib[30] << 8) | fib[31])) { ok++; fibOk++; curSlot = cw * 3 + f; parseFib(fib, cw * 3 + f); }
                 else { fibBad++; ficBadN++; lastFill[cw * 3 + f] = -1; }
             }
         }
@@ -462,6 +619,8 @@ struct DabReceiver::Impl {
         // followed (the new one arrives with C/N = 0 once it is in force).
         if ((d[0] & 0x80) && (ext == 1 || ext == 2)) return;
         if (ext == 0) {
+            // the CIF count (modulo 5000) of the CIF of this FIB's group: the frame's first CIF is that minus the group
+            if (n >= 5) frameCif = (((d[3] & 0x1F) * 250 + d[4] - curSlot / 3) % 5000 + 5000) % 5000;
             int eid;
             if (dabp::fig0Eid(d, n, eid)) {
                 // a different ensemble id on the same tuning (a new mux): drop what the previous one told us, the sub-channel ids are only valid per ensemble
@@ -614,7 +773,7 @@ struct DabReceiver::Impl {
     void applySelection() {
         // (ens is locked by the caller)
         if (selReq == sel) return;
-        if (selReq < 0) { sel = -1; selDmb = false; audio.select(-1, false, 0); dmb.reset(); hist.assign(16, {}); cifCount = 0; return; }
+        if (selReq < 0) { sel = -1; selDmb = false; audio.select(-1, false, 0); dmb.reset(); mainDec.reset(); return; }
         auto it = ens.subs.find(selReq);
         if (it == ens.subs.end()) return;   // wait until the ensemble tells us about it
         selSub = it->second;
@@ -626,8 +785,7 @@ struct DabReceiver::Impl {
         }
         sel = selReq;
         selDmb = isDmb;
-        hist.assign(16, {});
-        cifCount = 0;
+        mainDec.reset();
         dmb.reset();
         demux.setAddress(selPktAddr);
         if (isDmb || selPktAddr >= 0) audio.select(-1, false, 0);
@@ -637,6 +795,14 @@ struct DabReceiver::Impl {
     void decodeMsc() {
         decodeMain();
         decodeAux();
+    }
+
+    // The CIFs lost before this frame go in as erasures (up to 20: beyond that nothing of the 16 CIFs of interleaving is left, the decoding
+    // starts over); then the frame's own four
+    template <class F> void feedCifs(SubDec& d, const DabSubchannel& sub, F&& out) {
+        if (gapCifs > 20) d.reset();
+        else for (int k = 0; k < gapCifs; k++) d.cif(sub, nullptr, out);
+        for (int c = 0; c < kCifPerFrame; c++) d.cif(sub, &mscSoft[(size_t)c * kCifBits + (size_t)sub.start * kCuBits], out);
     }
 
     // The programme guide sub-channel (packet mode): decoded next to the selected one, its packets go to the SPI decoder
@@ -649,36 +815,18 @@ struct DabReceiver::Impl {
             if (it == ens.subs.end()) return;
             if (spiDirty || spiSel != spiReq) {
                 spiSub = it->second; spiSel = spiReq; spiDirty = false;
-                spiHist.assign(16, {}); spiCif = 0;
+                spiDecI.reset();
                 spiDemux.setAddress(spiAddr);
                 spiDemux.setMaxGroup(16384);
             } else if (it->second.start != spiSub.start || it->second.size != spiSub.size || it->second.eep != spiSub.eep || it->second.option != spiSub.option || it->second.level != spiSub.level || it->second.uepIndex != spiSub.uepIndex) {
-                spiSub = it->second; spiHist.assign(16, {}); spiCif = 0;
+                spiSub = it->second; spiDecI.reset();
             }
         }
         if (spiSub.size <= 0 || spiSub.start + spiSub.size > kCifCu) return;
-        int n, br, info, sz, lv;
-        if (spiSub.eep ? !eepGeometry(spiSub.size, spiSub.option, spiSub.level, n, br, info) : !uepGeometry(spiSub.uepIndex, sz, br, lv, info)) return;
-        const int bits = spiSub.size * kCuBits;
-        std::vector<int8_t> mother((size_t)(4 * (info + 6))), one((size_t)bits);
-        std::vector<uint8_t> dec((size_t)info), bytes((size_t)info / 8);
-        static const int kMap[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
-        for (int c = 0; c < kCifPerFrame; c++) {
-            const int8_t* src = &mscSoft[(size_t)c * kCifBits + (size_t)spiSub.start * kCuBits];
-            spiHist[spiCif % 16].assign(src, src + bits);
-            spiCif++;
-            if (spiCif < 16) continue;
-            for (int i = 0; i < bits; i++) {
-                const uint64_t t = spiCif - 1 - (uint64_t)(15 - kMap[i & 15]);
-                one[(size_t)i] = spiHist[t % 16][(size_t)i];
-            }
-            if (spiSub.eep ? !eepDepuncture(one.data(), spiSub.size, spiSub.option, spiSub.level, mother.data()) : !uepDepuncture(one.data(), spiSub.uepIndex, mother.data())) return;
-            viterbiDecode(mother.data(), info, dec.data());
-            descramble(dec.data(), info);
-            for (int i = 0; i < info / 8; i++) { uint8_t v = 0; for (int b = 0; b < 8; b++) v = (uint8_t)((v << 1) | dec[(size_t)i * 8 + (size_t)b]); bytes[(size_t)i] = v; }
-            if (tap) tap(spiSel, bytes.data(), (int)bytes.size());
-            spiDemux.feed(bytes.data(), bytes.size(), [this](const uint8_t* g, size_t m) { spiDec.dataGroup(g, m); });
-        }
+        feedCifs(spiDecI, spiSub, [this](const uint8_t* bytes, int n, bool) {
+            if (tap) tap(spiSel, bytes, n);
+            spiDemux.feed(bytes, (size_t)n, [this](const uint8_t* g, size_t m) { spiDec.dataGroup(g, m); });
+        });
     }
 
     void decodeMain() {
@@ -692,38 +840,22 @@ struct DabReceiver::Impl {
                     const DabSubchannel& n = it->second;
                     if (n.start != selSub.start || n.size != selSub.size || n.eep != selSub.eep || n.option != selSub.option || n.level != selSub.level || n.uepIndex != selSub.uepIndex) {
                         selSub = n;
-                        hist.assign(16, {});
-                        cifCount = 0;
+                        mainDec.reset();
+                        audio.flushSync();   // the superframes start over with the de-interleaver
                     }
                 }
             }
         }
         if (sel < 0) return;
         if (selSub.size <= 0 || selSub.start + selSub.size > kCifCu) return;
-        int n, br, info, sz, lv;
-        if (selSub.eep ? !eepGeometry(selSub.size, selSub.option, selSub.level, n, br, info) : !uepGeometry(selSub.uepIndex, sz, br, lv, info)) return;
-        const int bits = selSub.size * kCuBits;
-        std::vector<int8_t> mother((size_t)(4 * (info + 6))), one((size_t)bits);
-        std::vector<uint8_t> dec((size_t)info), bytes((size_t)info / 8);
-        static const int kMap[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
-        for (int c = 0; c < kCifPerFrame; c++) {
-            const int8_t* src = &mscSoft[(size_t)c * kCifBits + (size_t)selSub.start * kCuBits];
-            hist[cifCount % 16].assign(src, src + bits);
-            cifCount++;
-            if (cifCount < 16) continue;
-            for (int i = 0; i < bits; i++) {
-                const uint64_t t = cifCount - 1 - (uint64_t)(15 - kMap[i & 15]);
-                one[(size_t)i] = hist[t % 16][(size_t)i];
-            }
-            if (selSub.eep ? !eepDepuncture(one.data(), selSub.size, selSub.option, selSub.level, mother.data()) : !uepDepuncture(one.data(), selSub.uepIndex, mother.data())) return;
-            viterbiDecode(mother.data(), info, dec.data());
-            descramble(dec.data(), info);
-            for (int i = 0; i < info / 8; i++) { uint8_t v = 0; for (int b = 0; b < 8; b++) v = (uint8_t)((v << 1) | dec[(size_t)i * 8 + (size_t)b]); bytes[(size_t)i] = v; }
-            if (tap) tap(sel, bytes.data(), (int)bytes.size());
-            if (selPktAddr >= 0) demux.feed(bytes.data(), bytes.size(), [this](const uint8_t* g, size_t n) { jl.feedDataGroup(g, n); });
-            else if (selDmb) dmb.push(bytes.data(), (int)bytes.size());
-            else audio.push(bytes.data(), (int)bytes.size());
-        }
+        if (gapCifs > 20) audio.flushSync();   // the superframe phase is lost with them
+        erasedCifs += (uint64_t)std::min(gapCifs, 20);
+        feedCifs(mainDec, selSub, [this](const uint8_t* bytes, int n, bool erased) {
+            if (tap) tap(sel, bytes, n);
+            if (selPktAddr >= 0) demux.feed(bytes, (size_t)n, [this](const uint8_t* g, size_t m) { jl.feedDataGroup(g, m); });
+            else if (selDmb) dmb.push(bytes, n);
+            else audio.push(bytes, n, erased);
+        });
     }
 
     // ------------------------------------------------------------ telemetry
@@ -748,18 +880,22 @@ struct DabReceiver::Impl {
         t.dmb.sub = selDmb ? sel : -1;
         for (const auto& f : tii.found()) t.tii.push_back({f.mainId, f.subId, f.levelDb, f.marginDb});
         t.tiiFrames = tii.framesSeen();
+        t.sroPpm = sro * 1e6;
+        t.syncLosses = syncLosses; t.relocks = relocks; t.erasedCifs = erasedCifs; t.impulses = impulses;
         t.seq = ++telSeq;
         tel = std::move(t);
     }
 
     void reset() {
         buf.clear(); base = 0; state = 0; mirror = false; cfo = 0; searchNext = 0; searchFails = 0; cc.reset(); missed = 0; framesDone = 0; rs.reset(); tii.reset();
+        magRef = 0; powRef = 0; sro = 0; quick = false; quickTries = 0; haveLast = false; lastCif = -1; frameCif = -1; gapCifs = 0; impPow = 0;
+        syncLosses = 0; relocks = 0; erasedCifs = 0; impulses = 0;
         std::lock_guard<std::mutex> lk(mu);
         telSeq++;
         ens = DabEnsemble();   // services of the previous mux must not survive a retune (#179)
-        spiDec.reset(); spiDec.clearStore(); spiDirty = true; spiHist.assign(16, {}); spiCif = 0;
+        spiDec.reset(); spiDec.clearStore(); spiDirty = true; spiDecI.reset();
         tel = DabTelemetry(); tel.seq = telSeq;
-        hist.assign(16, {}); cifCount = 0;
+        mainDec.reset();
         ptyInfo.clear(); annSup.clear(); annSw.clear(); fig2Segs.clear(); fig2Done.clear();
         figs.clear(); figStat.clear(); ficFill = 0; ficFibs = 0; ficBadN = 0; ficFrames = 0; ficSeq++;
         for (int& v : lastFill) v = 0;
@@ -800,7 +936,20 @@ void DabReceiver::feed(const cf32* x, size_t n) {
     if (I.resample) { I.rsOut.clear(); I.rs.process(x, n, I.rsOut); I.buf.insert(I.buf.end(), I.rsOut.begin(), I.rsOut.end()); }
     else I.buf.insert(I.buf.end(), x, x + n);
     if (I.mirror) for (size_t i = from; i < I.buf.size(); i++) I.buf[i] = std::conj(I.buf[i]);
+    // Impulse blanker: a sample 12 dB over the mean power (ignition, switching, a spark) is zeroed. OFDM itself goes that high about once in
+    // ten million samples; a zeroed sample costs the symbol far less than the impulse would.
+    if (I.buf.size() > from) {
+        double s = 0;
+        for (size_t i = from; i < I.buf.size(); i++) s += std::min<double>(std::norm(I.buf[i]), I.impPow > 0 ? 16.0 * I.impPow : 1e30);
+        const double m = s / (double)(I.buf.size() - from);
+        if (std::isfinite(m)) I.impPow = I.impPow > 0 ? 0.95 * I.impPow + 0.05 * m : m;
+        if (I.impPow > 0) {
+            const float lim = (float)(16.0 * I.impPow);
+            for (size_t i = from; i < I.buf.size(); i++) if (std::norm(I.buf[i]) > lim) { I.buf[i] = cf32(0, 0); I.impulses++; }
+        }
+    }
     I.run();
+    I.audio.tick();
 }
 
 bool DabReceiver::telemetry(DabTelemetry& out, uint64_t lastSeq) {

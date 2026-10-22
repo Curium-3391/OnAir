@@ -86,9 +86,31 @@ void dabStatus(App& a) {
     flowBreak();
     if (live && d.state == 2) {
         snprintf(b, sizeof b, "%+.1f Hz", d.cfoHz); ro("CFO", b);
+        // the sample clock error the receiver follows: the radio's crystal is off by about as much (a ppm correction for the device)
+        if (std::fabs(d.sroPpm) >= 0.5) { snprintf(b, sizeof b, "%+.1f ppm", d.sroPpm); ro("Clock", b); }
         snprintf(b, sizeof b, "%.1f dB", d.snrDb); ro("SNR", b);
         const double tot = (double)(d.fibOk + d.fibBad);
         snprintf(b, sizeof b, "%.1f%%", tot > 0 ? 100.0 * (double)d.fibOk / tot : 0.0); ro("FIC ok", b);
+        if (d.audio.sub >= 0) {   // the audio's health: what share of the audio frames had to be concealed (docs/DAB-AUDIT.md)
+            const DabAudioStats& au = d.audio;
+            const double units = au.dabPlus ? (double)(au.auOk + au.auBad) : (double)au.frames;
+            const double pc = units > 0 ? 100.0 * (double)au.concealedFrames / units : 0.0;
+            snprintf(b, sizeof b, "%.1f%% concealed", pc);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("Audio"); ImGui::SameLine(0, 5 * gUi);
+            ImGui::PushFont(a.mono, 0);
+            ImGui::TextColored(pc < 0.5 ? ImVec4(0.93f, 0.95f, 0.97f, 1) : pc < 5 ? ImVec4(0.95f, 0.70f, 0.15f, 1) : ImVec4(0.95f, 0.35f, 0.25f, 1), "%s", b);
+            ImGui::PopFont();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Reed-Solomon: %llu bytes fixed, %llu code words beyond repair\n%s: %llu ok, %llu lost and concealed\nSilent after long losses: %.1f s\n"
+                                  "Sync lost %llu times (%llu found again at once), %llu CIFs lost on the way (decoded as erasures)\n"
+                                  "Impulse blanker: %llu samples\nOutput: %d ms queued, rate correction %+.0f ppm",
+                                  (unsigned long long)au.rsCorrected, (unsigned long long)au.rsUncorrectable, au.dabPlus ? "Access units" : "MP2 frames",
+                                  (unsigned long long)(au.dabPlus ? au.auOk : au.frames - std::min(au.frames, au.concealedFrames)), (unsigned long long)au.concealedFrames,
+                                  (double)au.silenceMs / 1000.0, (unsigned long long)d.syncLosses, (unsigned long long)d.relocks, (unsigned long long)d.erasedCifs,
+                                  (unsigned long long)d.impulses, au.bufferedMs, au.rateCorrPpm);
+            flowNext(15 * gUi);
+        }
     }
     if (run) { snprintf(b, sizeof b, "%.3f Msps", a.engine.sampleRate() / 1e6); ro("fs", b); }
     ImGui::AlignTextToFramePadding();

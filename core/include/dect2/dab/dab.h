@@ -110,10 +110,12 @@ private:
 // and played through AudioOut.
 class DabAudio {
 public:
+    static constexpr int kStartFrames = 19200;           // audio queued (48 kHz frames) before the output starts playing (DabPlayout::kTarget)
     DabAudio();
     ~DabAudio();
     void select(int sub, bool dabPlus, int bitrate);     // starts from scratch
-    void push(const uint8_t* frame, int n);              // one 24 ms logical frame
+    void push(const uint8_t* frame, int n, bool erased = false);   // one 24 ms logical frame (erased: lost on the way, concealed)
+    void tick();                                         // called for every block of input: fills the gaps in the output when no audio comes
     void flushSync();                                    // the stream was interrupted
     DabAudioStats stats() const;
     // The slide show picture last received in the PAD of the selected DAB+ service (empty after select()). false when its seq is lastSeq.
@@ -141,6 +143,10 @@ public:
     void setMotSink(std::function<void(const MotObject&)> cb);   // the MOT objects other than pictures heard in the PAD (SPI)
     void setDataGroupSink(std::function<void(const uint8_t* g, size_t n)> cb);   // the MSC data groups of types 0 and 6 heard in the PAD (Journaline)
     void setAuTap(std::function<void(const uint8_t* au, int n, uint8_t header)> cb);
+    // Tests: every block of 48 kHz stereo samples handed to the audio output (decoded or concealed), in the order played
+    void setPcmTap(std::function<void(const float* stereo, int frames)> cb);
+    // Tests: the frames queued in a simulated output (the rate control and gap filling follow it as they follow the real output)
+    void setFillProbe(std::function<int()> probe);
     void setSilent(bool s);                               // decode but do not open the audio device (tests)
 
 private:

@@ -59,6 +59,9 @@ std::string rxTelemetryJson(const RxTelemetry& rx, const QualityReport* q) {
     case 3:
         d.b("sync", rx.dab.sync); d.num("snrDb", rx.dab.snrDb); d.b("ensemble", rx.dab.ensemble); d.str("ensembleLabel", rx.dab.ensembleLabel);
         d.u64("fibOk", rx.dab.fibOk); d.u64("fibBad", rx.dab.fibBad);
+        d.u64("syncLosses", rx.dab.syncLosses); d.num("clockPpm", rx.dab.sroPpm);
+        d.u64("rsCorrected", rx.dab.audio.rsCorrected); d.u64("rsUncorrectable", rx.dab.audio.rsUncorrectable);
+        d.u64("auOk", rx.dab.audio.auOk); d.u64("auBad", rx.dab.audio.auBad); d.u64("concealed", rx.dab.audio.concealedFrames);
         break;
     case 6:
         d.b("carrier", rx.fm.carrier); d.num("snrDb", rx.fm.snrDb); d.num("levelDbfs", rx.fm.levelDbfs); d.num("deviationKhz", rx.fm.devKhz);
