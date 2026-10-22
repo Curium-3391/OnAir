@@ -33,6 +33,23 @@ Conn* accept(Ctx* c, sock_t s, std::string& err) {
     if (SSL_accept(ssl) != 1) { err = sslErr(); SSL_free(ssl); return nullptr; }
     return new Conn{ssl};
 }
+Ctx* makeClientCtx(std::string& err) {
+    SSL_CTX* c = SSL_CTX_new(TLS_client_method());
+    if (!c) { err = "TLS: " + sslErr(); return nullptr; }
+    SSL_CTX_set_min_proto_version(c, TLS1_2_VERSION);
+    SSL_CTX_set_verify(c, SSL_VERIFY_PEER, nullptr);
+    if (SSL_CTX_set_default_verify_paths(c) != 1) { err = "TLS: no system CA certificates found (set SSL_CERT_FILE)"; SSL_CTX_free(c); return nullptr; }
+    return new Ctx{c};
+}
+Conn* connect(Ctx* c, sock_t s, const std::string& host, std::string& err) {
+    SSL* ssl = SSL_new(c->c);
+    if (!ssl) { err = sslErr(); return nullptr; }
+    SSL_set_fd(ssl, (int)s);
+    SSL_set_tlsext_host_name(ssl, host.c_str());
+    SSL_set1_host(ssl, host.c_str());
+    if (SSL_connect(ssl) != 1) { err = "TLS handshake failed: " + sslErr(); SSL_free(ssl); return nullptr; }
+    return new Conn{ssl};
+}
 long read(Conn* c, void* d, size_t n) { return SSL_read(c->s, d, (int)n); }
 long write(Conn* c, const void* d, size_t n) { return SSL_write(c->s, d, (int)n); }
 bool pending(Conn* c) { return SSL_pending(c->s) > 0; }
@@ -44,6 +61,8 @@ bool available() { return false; }
 Ctx* makeCtx(const std::string&, const std::string&, std::string& err) { err = "this build has no TLS support (built without OpenSSL): use a reverse proxy such as Caddy or nginx in front of the server"; return nullptr; }
 void freeCtx(Ctx*) {}
 Conn* accept(Ctx*, sock_t, std::string& err) { err = "no TLS"; return nullptr; }
+Ctx* makeClientCtx(std::string& err) { err = "this build has no TLS support (built without OpenSSL)"; return nullptr; }
+Conn* connect(Ctx*, sock_t, const std::string&, std::string& err) { err = "no TLS"; return nullptr; }
 long read(Conn*, void*, size_t) { return -1; }
 long write(Conn*, const void*, size_t) { return -1; }
 bool pending(Conn*) { return false; }

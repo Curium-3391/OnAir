@@ -6,9 +6,6 @@
 
 namespace onair_web {
 
-// The directory module is not built in (webonair-dir adds it): the extension point says so
-DirectoryHeartbeat* makeDirectoryHeartbeat() { return nullptr; }
-
 static std::vector<std::string> splitComma(const std::string& s) {
     std::vector<std::string> v;
     std::stringstream ss(s);
@@ -78,6 +75,16 @@ WebSettings loadWebSettings(onair_server::ConfigFile& c, bool& madeAdminToken) {
     w.directory.on = c.flag("web_directory", false);
     w.directory.url = c.get("web_directory_url");
     w.directory.publicUrl = c.get("web_public_url");
+    w.directory.intervalSec = clampi("web_directory_interval", 300, 60, 3600);
+    w.directory.keyFile = c.get("web_directory_key");
+    w.directory.loc = c.get("web_directory_loc");
+    w.directory.locDecimals = clampi("web_directory_loc_decimals", 2, 0, 5);
+    w.directory.freq = c.get("web_directory_freq");
+    w.directory.radio = c.get("web_directory_radio");
+    w.directory.contact = c.get("web_directory_contact");
+    w.directory.desc = c.get("web_directory_desc");
+    w.directory.reach = c.flag("web_directory_reach", false);
+    w.directory.ack = c.get("web_directory_ack");
     const bool network = s.bind != "127.0.0.1";
     if (network && s.tlsCert.empty()) {
         w.warnings.push_back(s.plainInternet ? "web: plain HTTP for everyone, also from the internet (web_plain_internet=1): passwords and invites travel unencrypted"

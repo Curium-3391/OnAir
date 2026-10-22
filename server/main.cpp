@@ -59,6 +59,7 @@ static void usage() {
            "  --web              OnAir Web: many listeners, each with an own receiver in this radio's capture (docs/ONAIR-WEB.md)\n"
            "  --web-port N       OnAir Web port (default 8073)\n"
            "  --web-lan          OnAir Web on every interface (without TLS only private addresses are let in)\n"
+           "  --directory-remove remove this server from the public OnAir Web directory now (signed with its key), then exit\n"
            "  --version, --help\n\n"
            "Settings file: plain key=value lines (see docs/headless-server.md).\n",
            ONAIR_SERVER_VERSION, defaultConfigPath().c_str());
@@ -85,6 +86,7 @@ int main(int argc, char** argv) {
     api.token = cfg.get("token");
     api.tlsCert = cfg.get("tls_cert");
     api.tlsKey = cfg.get("tls_key");
+    bool dirRemove = false;
     bool newToken = false, share = cfg.flag("share_rtltcp", false);
     int sharePort = (int)cfg.num("share_port", 1234);
     for (int i = 1; i < argc; i++) {
@@ -104,6 +106,7 @@ int main(int argc, char** argv) {
         else if (a == "--web") cfg.set("web", "1");
         else if (a == "--web-port") cfg.set("web_port", next());
         else if (a == "--web-lan") cfg.set("web_lan", "1");
+        else if (a == "--directory-remove") dirRemove = true;
         else if (a == "--share-rtltcp") { share = true; if (i + 1 < argc && argv[i + 1][0] != '-') sharePort = atoi(argv[++i]); }
         else { fprintf(stderr, "unknown option %s (try --help)\n", a.c_str()); return 2; }
     }
@@ -121,6 +124,15 @@ int main(int argc, char** argv) {
     bool madeAdmin = false;
     onair_web::WebSettings webCfg = onair_web::loadWebSettings(cfg, madeAdmin);
     if (madeAdmin) { saveCfg = true; fprintf(stderr, "onair-server: OnAir Web admin token made (web_admin_token in %s)\n", path.c_str()); }
+    if (webCfg.directory.keyFile.empty()) webCfg.directory.keyFile = (std::filesystem::path(path).parent_path() / "web_directory.key").string();
+    webCfg.directory.version = ONAIR_SERVER_VERSION;
+    if (dirRemove) {
+        std::unique_ptr<onair_web::DirectoryHeartbeat> d(onair_web::makeDirectoryHeartbeat());
+        std::string err;
+        if (!d->removeNow(webCfg.directory, err)) { fprintf(stderr, "onair-server: directory removal failed: %s\n", err.c_str()); return 1; }
+        printf("onair-server: removed from the directory %s. It stays removed until web_directory is on and a heartbeat is sent again.\n", webCfg.directory.url.c_str());
+        return 0;
+    }
     if (saveCfg) {
         std::string err;
         if (!cfg.save(path, err)) fprintf(stderr, "onair-server: %s (the settings will not be saved)\n", err.c_str());
@@ -151,6 +163,7 @@ int main(int argc, char** argv) {
     }
     std::unique_ptr<onair_web::WebHub> hub;
     std::unique_ptr<onair_web::WebServer> web;
+    std::unique_ptr<onair_web::DirectoryHeartbeat> directory;   // OnAir Web directory (off unless web_directory=1 and confirmed)
     if (webCfg.on && webCfg.server.webRoot.empty()) {
         // the browser UI's files: beside the program (web/onair-web), or where a package puts them (../share/onair/web/onair-web)
         std::error_code ec;
@@ -184,7 +197,15 @@ int main(int argc, char** argv) {
             const auto st = web->status();
             printf("onair-server: OnAir Web on %s://%s:%d/ (%s access, at most %d listeners)\n", st.tls ? "https" : "http", webCfg.server.bind.c_str(), st.port,
                    onair_web::authModeName(webCfg.server.auth.mode), webCfg.limits.maxUsers);
-            if (webCfg.directory.on && !onair_web::makeDirectoryHeartbeat()) fprintf(stderr, "onair-server: web_directory is on, but this build has no directory module (nothing is sent)\n");
+            if (webCfg.directory.on) {
+                directory.reset(onair_web::makeDirectoryHeartbeat());
+                std::string derr;
+                onair_web::WebHub* h = hub.get();
+                if (!directory->start(webCfg.directory, [h] { return h->infoJson(); }, derr)) {
+                    fprintf(stderr, "onair-server: %s\n", derr.c_str());
+                    directory.reset();
+                }
+            }
         }
     }
     signal(SIGINT, onSignal);
@@ -199,6 +220,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 10 && !gQuit; i++) std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     printf("onair-server: stopping\n");
+    if (directory) directory->stop();
     if (web) web->stop();
     host.setWebHub(nullptr);
     if (hub) hub->stop();
