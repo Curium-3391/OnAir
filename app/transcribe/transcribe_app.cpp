@@ -748,22 +748,22 @@ void modelPopups() {
             ImGui::TextUnformatted(tr("OnAir asks the model repository (huggingface.co) for this one file and sends nothing else. The file is checked against a fixed SHA-256 checksum and thrown away if it does not match. The model is MIT licensed."));
             ImGui::PopTextWrapPos();
             ImGui::Spacing();
-            if (ImGui::Button(tr("Download"), ImVec2(140 * gUi, 0))) {
+            if (ImGui::Button(tr("Download"), fitButton(tr("Download"), 140 * gUi))) {
                 gDl.start(*U.askModel, modelsDir());
                 U.askModel = nullptr;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
         }
-        if (ImGui::Button(tr("Cancel##txask"), ImVec2(100 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
+        if (ImGui::Button(tr("Cancel##txask"), fitButton(tr("Cancel##txask"), 100 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
     }
     if (U.askDelete) { ImGui::OpenPopup("##txdel"); U.askDelete = false; }
     if (ImGui::BeginPopupModal("##txdel", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted(tr("Delete all saved transcripts? This cannot be undone."));
-        if (ImGui::Button(tr("Delete all"), ImVec2(140 * gUi, 0))) { gStore.clear(); U.ver = ~0ull; ImGui::CloseCurrentPopup(); }
+        if (ImGui::Button(tr("Delete all"), fitButton(tr("Delete all"), 140 * gUi))) { gStore.clear(); U.ver = ~0ull; ImGui::CloseCurrentPopup(); }
         ImGui::SameLine();
-        if (ImGui::Button(tr("Cancel##txdelc"), ImVec2(100 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel##txdelc"), fitButton(tr("Cancel##txdelc"), 100 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }

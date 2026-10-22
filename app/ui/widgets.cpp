@@ -55,6 +55,10 @@ bool comboTr(const char* label, int* v, std::initializer_list<const char*> items
     return ImGui::Combo(label, v, t, n);
 }
 
+ImVec2 fitButton(const char* label, float minW) {
+    return ImVec2(std::max(minW, ImGui::CalcTextSize(label, nullptr, true).x + 2 * ImGui::GetStyle().FramePadding.x), 0);
+}
+
 bool gTightTabs = false;
 void setUiLanguage(App& a, const std::string& code) {
     a.uiLang = code;
@@ -180,13 +184,14 @@ void handleFullscreenHotkeys() {
 bool pillButton(const char* label, bool selected, float padX) {
     ImGui::PushID(label);
     const ImVec2 ts = ImGui::CalcTextSize(label);
-    const ImVec2 sz(ts.x + padX * 2, ImGui::GetFrameHeight() - 3);
+    padX *= gUi;   // the padding is given in unscaled pixels
+    const ImVec2 sz(ts.x + padX * 2, ImGui::GetFrameHeight() - 3 * gUi);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     const bool clicked = ImGui::InvisibleButton("##pill", sz);
     const bool hov = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImU32 bg = selected ? pal::remap(IM_COL32(52, 92, 108, 255)) : hov ? IM_COL32(46, 56, 68, 255) : IM_COL32(30, 35, 42, 255);
-    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, pal::rnd(3.f));
+    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, pal::rnd(3.f * gUi));
     dl->AddText(ImVec2(p.x + padX, p.y + (sz.y - ts.y) * 0.5f), selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(176, 184, 194, 255), label);
     ImGui::PopID();
     return clicked;
@@ -196,7 +201,7 @@ bool pillButton(const char* label, bool selected, float padX) {
 int subNav(const char* id, int& cur, std::initializer_list<const char*> names) {
     ImGui::PushID(id);
     int i = 0;
-    for (const char* n : names) { if (i) sameLineIf(ImGui::CalcTextSize(n).x + 22, 6 * gUi); if (pillButton(n, cur == i)) cur = i; i++; }   // wraps in a narrow tab
+    for (const char* n : names) { if (i) sameLineIf(ImGui::CalcTextSize(n).x + 22 * gUi, 6 * gUi); if (pillButton(n, cur == i)) cur = i; i++; }   // wraps in a narrow tab
     ImGui::PopID();
     ImGui::Spacing();
     return cur;

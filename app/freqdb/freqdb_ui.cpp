@@ -304,7 +304,7 @@ void addDialog() {
     label(tr("Notes")); ImGui::InputText("##fnotes", u.aNotes, sizeof u.aNotes);
     if (!u.aErr.empty()) ImGui::TextColored(pal::badRed(), "%s", u.aErr.c_str());
     ImGui::Spacing();
-    if (ImGui::Button(tr("Save"), ImVec2(90 * gUi, 0))) {
+    if (ImGui::Button(tr("Save"), fitButton(tr("Save"), 90 * gUi))) {
         FreqEntry e;
         e.name = u.aName; e.hz = (uint64_t)std::max(0.0, u.aMhz * 1e6 + 0.5); e.mode = u.aMode.empty() ? "general" : u.aMode;
         e.bwHz = std::max(0.0, u.aBwKhz * 1e3); e.region = u.aRegion; e.category = u.aCat; e.notes = u.aNotes; e.user = true;
@@ -319,7 +319,7 @@ void addDialog() {
         }
     }
     ImGui::SameLine(0, 8 * gUi);
-    if (ImGui::Button(tr("Cancel"), ImVec2(90 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    if (ImGui::Button(tr("Cancel"), fitButton(tr("Cancel"), 90 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 

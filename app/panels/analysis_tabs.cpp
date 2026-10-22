@@ -495,11 +495,11 @@ void constellationsTab(App& a) {
         }
         ImGui::PushID("cview");
         if (ImGui::CalcTextSize("cellsdensityclusters").x + 6 * 8 + 8 * gUi <= side) {
-            if (pillButton("cells", a.constView == 0, 8)) a.constView = 0;
+            if (pillButton(tr("cells"), a.constView == 0, 8)) a.constView = 0;
             ImGui::SameLine(0, 4 * gUi);
-            if (pillButton("density", a.constView == 1, 8)) a.constView = 1;
+            if (pillButton(tr("density"), a.constView == 1, 8)) a.constView = 1;
             ImGui::SameLine(0, 4 * gUi);
-            if (pillButton("clusters", a.constView == 2, 8)) a.constView = 2;
+            if (pillButton(tr("clusters"), a.constView == 2, 8)) a.constView = 2;
         } else {   // narrower than the three buttons: the same choice as a drop-down under the plot
             ImGui::SetNextItemWidth(side);
             comboTr("##cview", &a.constView, {N_("cells"), N_("density"), N_("clusters")});

@@ -696,6 +696,8 @@ void restoreCursor(ImVec2 screenPos);
 // once a frame: a floating window whose title bar went past the edge of the display (a saved position from a larger or a second monitor,
 // a smaller window after a DPI change) is moved back so it can be grabbed again
 void keepWindowsReachable();
+// the size of a button that is at least minW wide and always wide enough for its (translated) label
+ImVec2 fitButton(const char* label, float minW);
 // a combo box of translated items: each item is marked with N_() where it is written and passed through tr() here
 bool comboTr(const char* label, int* v, std::initializer_list<const char*> items);
 // the interface language: menu items (View > Language) or a small button with a list (the classic interface); both save the choice
