@@ -51,6 +51,7 @@
 #include "dect2/dgps/dgps_engine.h"
 #include "dect2/eloran/eloran_engine.h"
 #include "dect2/mpt1327/mpt1327_engine.h"
+#include "dect2/isdbs/isdbs_rx.h"
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_tel.h"
 #include "dect2/edacs/edacs_tel.h"
@@ -255,6 +256,7 @@ struct RxTelemetry {
     RailwayTelemetry klw, tdcs; // active standards 147 and 148
     LbjTelemetry lbj;           // valid when standard == 82 (LBJ, engine standard 83)
     ElLoranTelemetry eloran;    // valid when standard == 127 (eLoran / Loran-C, family 126)
+    IsdbsTelemetry isdbs;       // valid when standard == 155 (ISDB-S, family 154)
     MptTelemetry mpt1327;       // valid when standard == 128 (MPT1327 trunking, family 127)
     FusionTelemetry fusion;     // valid when standard == 129 (Yaesu Fusion, family 128, stdMode 130)
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)

@@ -280,6 +280,8 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxMilhf_.setSignalOffset(o);
         rxMilhf_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxDgps_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
+        rxIsdbs_.setSignalOffset(o);
+        rxIsdbs_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxMpt_.setSignalOffset(o);
         rxMpt_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxLtr_.setSignalOffset(o);
@@ -411,6 +413,9 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxDvbc_.setBlocking(dev.kind == DeviceInfo::File);
     rxDvbc_.setPacketCallback([this](const uint8_t* pk, size_t n, double secs) { onTsPackets(pk, n, secs); });   // runs on the receiver thread
     rxDvbc_.setLogCallback([this](const std::string& s) { log(s); });
+    rxIsdbs_.configure(rate_);
+    rxIsdbs_.setPacketCallback([this](const uint8_t* pk, size_t n, double secs) { onTsPackets(pk, n, secs); });   // runs on the receiver thread
+    rxIsdbs_.setLogCallback([this](const std::string& s) { log(s); });
     rxOrb_.configure(rate_);
     rxOrb_.setLogCallback([this](const std::string& s) { log(s); });
     rxUplink_.configure(rate_);
