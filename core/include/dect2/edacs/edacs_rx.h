@@ -1,12 +1,17 @@
-// EDACS control channel receiver: FM discriminator at 76.8 kHz (8 samples per bit), dotting search, three-copy majority voting.
+// EDACS control channel receiver: FM discriminator at 76.8 kHz (8 samples per bit), dotting search, three-copy majority voting; the message layer on top (assumed
+// layout, edacs_msg.h): calls, talkgroups and site information; and, with a table of the system's voice channel frequencies and a capture wide enough to hold
+// them, a power scan of those channels and the following of one analog voice channel (FM, the sound of the call that the control channel announced, or of a
+// carrier seen on a channel). ProVoice digital voice is not decoded (no codec); nothing encrypted is handled.
 #pragma once
 #include "dect2/common/ring.h"
+#include "dect2/edacs/edacs_msg.h"
 #include "dect2/engine/mode_tuning.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace dect2 {
 
@@ -26,6 +31,16 @@ public:
     void feed(const cf32* x, size_t n);
     bool telemetry(EdacsTelemetry& out, uint64_t lastSeq);
     void setLogCallback(std::function<void(const std::string&)> cb);
+    // ---- voice channels. The table lists the frequency of LCN 1, 2, 3 ... in Hz (absolute); the capture must contain them (the radio's centre is setCenterHz)
+    void setLcnTable(const std::vector<double>& freqHz);
+    void setLayout(const edacs::Layout& l);              // the control message field positions (the default is an assumption)
+    void setFollow(bool on);                              // listen to the voice channel of an announced call
+    void setFollowActivity(bool on);                      // ... also to a carrier on a channel of the table that no message announced
+    void setFollowGroups(const std::vector<int>& gids);   // only these groups (empty: every call)
+    void setVolume(float v);
+    void setMuted(bool m);
+    void setSilent(bool s);                               // follow and decode but never open the sound device
+    void setAudioTap(std::function<void(int lcn, const float* x, size_t n)> cb);   // tests: the 48 kHz sound of the followed channel (and which one it is)
 private:
     struct Impl;
     std::unique_ptr<Impl> p_;

@@ -1,0 +1,641 @@
+// P25 Phase 2 receiver (see p25p2_rx.h; the protocol layout is in p25p2_proto.h and is this program's own reading of public descriptions).
+#include "dect2/p25p2/p25p2_rx.h"
+#include "dect2/p25p2/p25p2_proto.h"
+#include "dect2/p25/p25_proto.h"
+#include "dect2/p25p2/p25p2_tel.h"
+#include "dect2/nxdn/nxdn_ambe.h"
+#include "dect2/audio/audioout.h"
+#include "dect2/common/mathconst.h"
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <complex>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <mutex>
+#include <vector>
+
+namespace dect2 {
+
+namespace {
+using dect2::math::kPi;
+constexpr double kFs = 48000;                 // working rate: 8 samples per symbol
+constexpr int kSps = 8;
+constexpr int kTaps = 65;                     // the root raised cosine matched filter, +-4 symbols
+constexpr int kRing = 256, kRMask = kRing - 1;
+constexpr uint64_t kMask40 = (1ULL << 40) - 1;
+constexpr int kSyncMax = 4;                   // bit errors allowed in the 40-bit sync word
+constexpr size_t kMaxEvents = 200;
+
+float wrapPi(float a) { while (a > (float)kPi) a -= (float)(2 * kPi); while (a < -(float)kPi) a += (float)(2 * kPi); return a; }
+} // namespace
+
+struct P25p2Receiver::Impl {
+    std::mutex mu;
+    double rateSet = 0, offsetSet = 0;
+    std::atomic<bool> resetReq{true};
+    std::function<void(const std::string&)> log;
+    std::function<void(const float*, size_t)> tapSet, tap;
+    std::function<void(int, const uint8_t*, bool)> vtapSet, vtap;
+    std::atomic<bool> tapReq{false};
+    std::atomic<float> volume{1.f};
+    std::atomic<bool> muted{false}, silent{false};
+    std::atomic<int> listen{0};
+    P25p2Telemetry pub, tel;
+
+    double rate = 0, offset = 0;
+    double power = 0; int64_t nPower = 0, nIn = 0;
+    double nextReport = 0;
+    double sigSec() const { return rate > 0 ? (double)nIn / rate : 0; }
+
+    // ------------------------------------------------------------ front end: mix, CIC, windowed-sinc to 48 kHz (complex)
+    int D = 1;
+    double fd = 0, inv = 1;
+    std::complex<double> lo{1, 0}, loStep{1, 0};
+    int loCount = 0;
+    std::complex<double> integ[3], combPrev[3];
+    int decCount = 0;
+    std::vector<cf32> dbuf;
+    int64_t dN = 0;
+    double rp = 0, rstep = 0;
+    int M = 0, nPh = 64;
+    std::vector<float> fir;
+
+    void initFront() {
+        D = std::max(1, (int)std::floor(rate / 100000.0));
+        fd = rate > 0 ? rate / D : 0;
+        inv = 1.0 / ((double)D * D * D);
+        lo = 1; loCount = 0;
+        loStep = rate > 0 ? std::polar(1.0, -2 * kPi * offset / rate) : std::complex<double>(1, 0);
+        for (int i = 0; i < 3; i++) integ[i] = combPrev[i] = 0;
+        decCount = 0;
+        dbuf.assign(8192, cf32(0, 0)); dN = 0;
+        rstep = fd / kFs;
+        M = std::max(8, (int)std::ceil(8.0 * fd / 6000.0 / 2));
+        fir.assign((size_t)nPh * 2 * M, 0.f);
+        const double fc = std::min(0.45, 7000.0 / std::max(1.0, fd));
+        for (int ph = 0; ph < nPh; ph++) {
+            const double frac = (double)ph / nPh;
+            double sum = 0;
+            for (int k = 0; k < 2 * M; k++) {
+                const double t = (double)(k - M + 1) - frac;
+                const double x = 2 * fc * t;
+                const double s = std::fabs(x) < 1e-9 ? 1.0 : std::sin(kPi * x) / (kPi * x);
+                const double w = 0.42 + 0.5 * std::cos(kPi * t / M) + 0.08 * std::cos(2 * kPi * t / M);
+                const double v = std::fabs(t) < M ? 2 * fc * s * w : 0;
+                fir[(size_t)ph * 2 * M + k] = (float)v;
+                sum += v;
+            }
+            for (int k = 0; k < 2 * M; k++) fir[(size_t)ph * 2 * M + k] /= (float)sum;
+        }
+        rp = M + 2;
+    }
+
+    void input(std::complex<double> x) {
+        const std::complex<double> v = x * lo;
+        lo *= loStep;
+        if (++loCount >= 4096) { loCount = 0; lo /= std::abs(lo); }
+        integ[0] += v; integ[1] += integ[0]; integ[2] += integ[1];
+        if (++decCount >= D) {
+            decCount = 0;
+            std::complex<double> c = integ[2];
+            for (int k = 0; k < 3; k++) { const std::complex<double> t = c; c = c - combPrev[k]; combPrev[k] = t; }
+            dbuf[(size_t)(dN & 8191)] = cf32((float)(c.real() * inv), (float)(c.imag() * inv));
+            dN++;
+            while (dN > (int64_t)std::floor(rp) + M) {
+                const int64_t base = (int64_t)std::floor(rp);
+                const int ph = std::min(nPh - 1, (int)std::lround((rp - (double)base) * nPh));
+                const float* h = &fir[(size_t)ph * 2 * M];
+                cf32 acc(0, 0);
+                const int64_t i0 = base - M + 1;
+                for (int k = 0; k < 2 * M; k++) acc += dbuf[(size_t)((i0 + k) & 8191)] * h[k];
+                rp += rstep;
+                sample(acc);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ symbol filter, parallel differential demodulators, sync search
+    float h[kTaps];
+    cf32 zr[kRing], yr[kRing];
+    float angr[kRing];
+    uint64_t reg[kSps] = {};
+    int64_t n = 0;                 // 48 kHz sample count
+    double cfoStep = 0;            // rad per symbol of carrier offset
+    bool win = false;
+    int64_t winStart = 0;
+    int winDist[kSps] = {};
+    // the lock
+    bool locked = false;
+    int64_t nextDibitN = 0, syncEndPred = 0, pendingShift = 0;   // syncEndPred: a sample at which a sync word ends, modulo one superframe
+    int slotIdx = 0, slotPos = 0, missed = 0, badRun = 0;
+    uint8_t buf[p25p2::kSlotDibits];
+    double lastSync = -10, snrAvg = 0;
+
+    void initFilter() {
+        double sum = 0;
+        for (int k = 0; k < kTaps; k++) { h[k] = (float)p25p2::rrcImpulse((double)(k - kTaps / 2) / kSps, 0.2); sum += h[k]; }
+        for (float& v : h) v = (float)(v / sum);
+        for (auto& v : zr) v = cf32(0, 0);
+        for (auto& v : yr) v = cf32(0, 0);
+        for (auto& v : angr) v = 0;
+        for (auto& r : reg) r = 0;
+        n = 0; win = false; locked = false; cfoStep = 0; slotIdx = slotPos = missed = badRun = 0;
+    }
+
+    void sample(cf32 z) {
+        zr[n & kRMask] = z;
+        cf32 y(0, 0);
+        for (int k = 0; k < kTaps; k++) y += zr[(n - k) & kRMask] * h[k];
+        yr[n & kRMask] = y;
+        if (n >= kSps) {
+            const cf32 d = y * std::conj(yr[(n - kSps) & kRMask]);
+            const float ang = std::atan2(d.imag(), d.real());
+            angr[n & kRMask] = ang;
+            const float a2 = wrapPi(ang - (float)cfoStep);
+            const int step = a2 >= (float)(kPi / 2) ? 3 : a2 >= 0 ? 1 : a2 >= -(float)(kPi / 2) ? -1 : -3;
+            const int dib = p25p2::stepDibit(step);
+            const int ph = (int)(n & 7);
+            reg[ph] = ((reg[ph] << 2) | (uint64_t)dib) & kMask40;
+            const int dist = __builtin_popcountll(reg[ph] ^ p25p2::kSyncWord);
+            if (win) winDist[n - winStart] = dist;
+            else if (dist <= kSyncMax) { win = true; winStart = n; for (int& v : winDist) v = 99; winDist[0] = dist; }
+            if (win && n >= winStart + kSps - 1) { commitSync(); win = false; }
+            if (locked && n == nextDibitN) { nextDibitN += kSps; takeDibit(dib); }
+        }
+        n++;
+    }
+
+    // the sync was seen between winStart and winStart + 7: the sample whose 20 residuals are the most alike is the symbol centre
+    void commitSync() {
+        int64_t bestN = -1;
+        double bestVar = 1e9, bestMean = 0;
+        for (int j = 0; j < kSps; j++) {
+            if (winDist[j] > kSyncMax) continue;
+            const int64_t m = winStart + j;
+            double sx = 0, sy = 0;
+            float res[p25p2::kIschDibits];
+            for (int k = 0; k < p25p2::kIschDibits; k++) {
+                const int64_t at = m - (int64_t)kSps * (p25p2::kIschDibits - 1 - k);
+                const int d = (int)((p25p2::kSyncWord >> (38 - 2 * k)) & 3);
+                res[k] = wrapPi(angr[at & kRMask] - (float)(p25p2::dibitStep(d) * kPi / 4));
+                sx += std::cos(res[k]); sy += std::sin(res[k]);
+            }
+            const double mean = std::atan2(sy, sx);
+            double var = 0;
+            for (int k = 0; k < p25p2::kIschDibits; k++) { const double e = wrapPi(res[k] - (float)mean); var += e * e; }
+            var /= p25p2::kIschDibits;
+            if (var < bestVar) { bestVar = var; bestN = m; bestMean = mean; }
+        }
+        if (bestN < 0) return;
+        tel.syncs++;
+        lastSync = sigSec();
+        const double snr = 10 * std::log10(1.0 / std::max(1e-4, bestVar));
+        snrAvg = snrAvg == 0 ? snr : snrAvg + 0.3 * (snr - snrAvg);
+        if (!locked || missed >= 2) {
+            cfoStep = bestMean;
+            locked = true; missed = 0; badRun = 0;
+            slotIdx = 0; slotPos = p25p2::kIschDibits;
+            for (int k = 0; k < p25p2::kIschDibits; k++) buf[k] = (uint8_t)((p25p2::kSyncWord >> (38 - 2 * k)) & 3);
+            syncEndPred = bestN; pendingShift = 0;
+            nextDibitN = bestN + kSps;
+            return;
+        }
+        constexpr int64_t kSf = (int64_t)p25p2::kSlotsPerSuperframe * p25p2::kSlotDibits * kSps;
+        int64_t shift = ((bestN - syncEndPred) % kSf + kSf) % kSf;
+        if (shift > kSf / 2) shift -= kSf;
+        if (std::llabs((long long)shift) <= 3) {
+            pendingShift += shift;             // the symbol clock follows the sync, from the next slot on
+            syncEndPred += shift;
+            cfoStep += 0.5 * wrapPi((float)(bestMean - cfoStep));
+            missed = 0;
+        }
+    }
+
+    void takeDibit(int dib) {
+        buf[slotPos++] = (uint8_t)dib;
+        if (slotPos == p25p2::kIschDibits) {
+            if (slotIdx == 0) {
+                if (p25p2::syncDistance(buf) <= 8) { missed = 0; badRun = 0; } else { missed++; tel.ischBad++; if (missed >= 3) { unlock(); return; } }
+            } else {
+                int slot = 0, sf = 0;
+                if (p25p2::ischDecode(buf, slot, sf)) { slotIdx = slot; badRun = 0; }
+                else { tel.ischBad++; if (++badRun >= 12) { unlock(); return; } }
+            }
+        }
+        if (slotPos == p25p2::kSlotDibits) {
+            processSlot();
+            slotIdx = (slotIdx + 1) % p25p2::kSlotsPerSuperframe;
+            slotPos = 0;
+            nextDibitN += pendingShift; pendingShift = 0;
+        }
+    }
+
+    void unlock() { locked = false; tel.unlocks++; slotPos = 0; }
+
+    // ------------------------------------------------------------ events, tables
+    void event(const std::string& s) {
+        char b[24];
+        const time_t t = time(nullptr);
+        struct tm g;
+#ifdef _WIN32
+        gmtime_s(&g, &t);
+#else
+        gmtime_r(&t, &g);
+#endif
+        snprintf(b, sizeof b, "%02d:%02d:%02d  ", g.tm_hour, g.tm_min, g.tm_sec);
+        tel.events.insert(tel.events.begin(), b + s);
+        if (tel.events.size() > kMaxEvents) tel.events.pop_back();
+        if (log) log(s);
+    }
+    void pushLog(const P25p2Call& c) {
+        tel.log.insert(tel.log.begin(), c);
+        if (tel.log.size() > kP25p2LogMax) tel.log.pop_back();
+    }
+    double freqOf(int ch) const { const P25IdenRow& i = tel.idens[(ch >> 12) & 15]; return i.valid ? i.baseHz + (ch & 0xFFF) * i.spacingHz : 0; }
+    void touchTg(int tg, int src, double freq, bool enc, bool emerg, bool grant, bool call) {
+        if (tg <= 0) return;
+        auto it = std::find_if(tel.talkgroups.begin(), tel.talkgroups.end(), [&](const P25Talkgroup& t) { return t.tg == tg; });
+        P25Talkgroup t;
+        if (it != tel.talkgroups.end()) { t = *it; tel.talkgroups.erase(it); }
+        t.tg = tg;
+        if (src >= 0) t.lastSrc = src;
+        if (freq > 0) t.lastFreqHz = freq;
+        t.encrypted = t.encrypted || enc; t.emergency = t.emergency || emerg;
+        if (grant) t.grants++;
+        if (call) t.calls++;
+        t.lastWall = (int64_t)time(nullptr);
+        t.active = true;
+        tel.talkgroups.insert(tel.talkgroups.begin(), t);
+        if (tel.talkgroups.size() > kP25TgMax) tel.talkgroups.pop_back();
+    }
+
+    // ------------------------------------------------------------ calls
+    double lastAct[2] = {-10, -10};
+    struct Grant { int tg, src, ch; bool group; double last; };
+    std::vector<Grant> grants;
+
+    void startCall(int ci, int src, int dst, bool group, bool cryptoKnown, int alg, int svc, bool late) {
+        P25p2Call& c = tel.now[ci];
+        if (c.active) {
+            if ((src < 0 || c.src == src) && (dst < 0 || c.dst == dst)) return;   // the same call
+            if (late) return;
+            endCall(ci, true);
+        }
+        c = P25p2Call();
+        c.slot = ci + 1; c.active = true; c.wallTime = (int64_t)time(nullptr); c.startSec = sigSec();
+        c.src = src; c.dst = dst; c.group = group; c.lateEntry = late;
+        c.cryptoKnown = cryptoKnown; c.algId = alg;
+        c.encrypted = cryptoKnown && (alg != p25p2::kAlgClear && alg != 0);
+        if (svc >= 0) { c.emergency = (svc & 0x80) != 0; if (svc & 0x40) { c.encrypted = true; c.cryptoKnown = true; } }
+        lastAct[ci] = sigSec();
+        if (group) touchTg(dst, src, 0, c.encrypted, c.emergency, false, true);
+        char b[160];
+        snprintf(b, sizeof b, "slot %d: %s %s -> %s%s%s%s", ci + 1, late ? "call joined" : "PTT", p25Id(src).c_str(), group ? "TG " : "", p25Id(dst).c_str(),
+                 c.emergency ? ", EMERGENCY" : "", c.encrypted ? ", encrypted" : "");
+        event(b);
+    }
+    void endCall(int ci, bool seen) {
+        P25p2Call& c = tel.now[ci];
+        if (!c.active) return;
+        c.active = false; c.endSeen = seen;
+        c.durSec = sigSec() - c.startSec;
+        pushLog(c);
+        char b[160];
+        snprintf(b, sizeof b, "slot %d: %s, %.1f s, %u voice frames", ci + 1, seen ? "call ended" : "signal lost", c.durSec, (unsigned)c.voiceFrames);
+        event(b);
+        if (tel.audioSlot == ci + 1) tel.audioSlot = 0;
+        flushAudio();
+    }
+    // fills in what a voice channel user message tells about the call on the slot (starting it when it is not known yet)
+    void userMsg(int ci, int svc, int dst, int src, bool group) {
+        lastAct[ci] = sigSec();
+        P25p2Call& c = tel.now[ci];
+        if (!c.active) { startCall(ci, src, dst, group, true, p25p2::kAlgClear, svc, true); tel.now[ci].cryptoKnown = true; return; }
+        if (c.src < 0) c.src = src;
+        if (c.dst < 0) { c.dst = dst; c.group = group; }
+        else if (!group && c.group) { c.dst = dst; c.group = false; }   // the PTT carries a group address; a unit to unit user message corrects it
+        c.emergency = c.emergency || (svc & 0x80) != 0;
+        if (svc & 0x40) c.encrypted = true;
+        c.cryptoKnown = true;
+        if (group) touchTg(dst, src, 0, c.encrypted, c.emergency, false, false);
+    }
+
+    void grant(int tg, int src, int ch, bool group, int opts) {
+        const double now = sigSec();
+        for (auto& g : grants)
+            if (g.tg == tg && g.src == src && g.ch == ch && g.group == group && now - g.last < 4) { g.last = now; return; }
+        grants.erase(std::remove_if(grants.begin(), grants.end(), [&](const Grant& g) { return now - g.last > 10; }), grants.end());
+        grants.push_back({tg, src, ch, group, now});
+        P25p2Call c;
+        c.wallTime = (int64_t)time(nullptr); c.startSec = now; c.kind = 1; c.src = src; c.dst = tg; c.group = group; c.channel = ch; c.freqHz = freqOf(ch);
+        c.emergency = (opts & 0x80) != 0; c.encrypted = (opts & 0x40) != 0; c.cryptoKnown = true; c.endSeen = true;
+        pushLog(c);
+        if (group) touchTg(tg, src, c.freqHz, c.encrypted, c.emergency, true, false);
+        char b[200];
+        snprintf(b, sizeof b, "%s %d -> %s%d on channel %s%s%s%s", group ? "GRP_V_CH_GRANT" : "UU_V_CH_GRANT", src, group ? "TG " : "", tg, p25::channelText(ch).c_str(),
+                 c.freqHz > 0 ? (" (" + std::to_string(c.freqHz / 1e6).substr(0, 10) + " MHz)").c_str() : "", c.emergency ? ", EMERGENCY" : "", c.encrypted ? ", encrypted" : "");
+        event(b);
+    }
+
+    // the TSBK-equivalent MAC messages: the 64 bits after the opcode have the layout of the Phase 1 TSBK arguments
+    void controlMsg(int op, uint64_t a) {
+        char b[200];
+        switch (op) {
+        case p25p2::kMsgGrpVGrant: grant((int)((a >> 24) & 0xFFFF), (int)(a & 0xFFFFFF), (int)((a >> 40) & 0xFFFF), true, (int)(a >> 56)); break;
+        case p25p2::kMsgUuVGrant: grant((int)((a >> 24) & 0xFFFFFF), (int)(a & 0xFFFFFF), (int)((a >> 48) & 0xFFFF), false, 0); break;
+        case p25p2::kMsgGrpVGrantUpd: {
+            const int ch1 = (int)((a >> 48) & 0xFFFF), g1 = (int)((a >> 32) & 0xFFFF), ch2 = (int)((a >> 16) & 0xFFFF), g2 = (int)(a & 0xFFFF);
+            touchTg(g1, -1, freqOf(ch1), false, false, false, false);
+            if (g2 != g1) touchTg(g2, -1, freqOf(ch2), false, false, false, false);
+            break;
+        }
+        case p25p2::kMsgIdenUp: case p25p2::kMsgIdenUpVu: {
+            const int id = (int)(a >> 60) & 15;
+            const bool vu = op == p25p2::kMsgIdenUpVu;
+            P25IdenRow r;
+            r.valid = true; r.vu = vu;
+            r.baseHz = (double)(a & 0xFFFFFFFFULL) * 5;
+            r.spacingHz = (double)((a >> 32) & 0x3FF) * 125;
+            if (vu) {
+                const int bw = (int)(a >> 56) & 15, toff = (int)((a >> 42) & 0x3FFF);
+                r.bwHz = bw == 4 ? 6250 : bw == 5 ? 12500 : 0;
+                r.txOffsetHz = ((toff >> 13) & 1 ? 1 : -1) * (double)(toff & 0x1FFF) * r.spacingHz;
+            } else {
+                const int bw = (int)(a >> 51) & 0x1FF, toff = (int)((a >> 42) & 0x1FF);
+                r.bwHz = bw * 125.0;
+                r.txOffsetHz = ((toff >> 8) & 1 ? 1 : -1) * (double)(toff & 0xFF) * 250000;
+            }
+            P25IdenRow& o = tel.idens[id];
+            const bool news = !o.valid || o.baseHz != r.baseHz || o.spacingHz != r.spacingHz;
+            o = r;
+            if (news) { snprintf(b, sizeof b, "%s %d: base %.5f MHz, spacing %.2f kHz, transmit offset %+.3f MHz", p25p2::macMsgName(op), id, r.baseHz / 1e6, r.spacingHz / 1e3, r.txOffsetHz / 1e6); event(b); }
+            break;
+        }
+        case p25p2::kMsgNetSts: {
+            P25Site& s = tel.site;
+            const int wacn = (int)((a >> 36) & 0xFFFFF), sys = (int)((a >> 24) & 0xFFF), ch = (int)((a >> 8) & 0xFFFF);
+            const bool news = s.wacn != wacn || s.sysId != sys;
+            s.valid = true; s.wacn = wacn; s.sysId = sys; s.channel = ch; s.freqHz = freqOf(ch); s.ssc = (int)(a & 0xFF); s.wallTime = (int64_t)time(nullptr);
+            if (news) { snprintf(b, sizeof b, "NET_STS_BCST WACN %05X system %03X, control channel %s", wacn, sys, p25::channelText(ch).c_str()); event(b); }
+            break;
+        }
+        case p25p2::kMsgRfssSts: {
+            P25Site& s = tel.site;
+            const int sys = (int)((a >> 40) & 0xFFF), rf = (int)((a >> 32) & 0xFF), st = (int)((a >> 24) & 0xFF), ch = (int)((a >> 8) & 0xFFFF);
+            const bool news = s.rfss != rf || s.site != st;
+            s.valid = true; s.sysId = sys; s.rfss = rf; s.site = st; s.channel = ch; s.freqHz = freqOf(ch); s.ssc = (int)(a & 0xFF); s.wallTime = (int64_t)time(nullptr);
+            if (news) { snprintf(b, sizeof b, "RFSS_STS_BCST system %03X, RFSS %d, site %d", sys, rf, st); event(b); }
+            break;
+        }
+        case p25p2::kMsgAdjSts: {
+            P25Site s;
+            s.valid = true; s.sysId = (int)((a >> 40) & 0xFFF); s.rfss = (int)((a >> 32) & 0xFF); s.site = (int)((a >> 24) & 0xFF);
+            s.channel = (int)((a >> 8) & 0xFFFF); s.freqHz = freqOf(s.channel); s.ssc = (int)(a & 0xFF); s.wallTime = (int64_t)time(nullptr);
+            s.wacn = tel.site.wacn;
+            auto it = std::find_if(tel.adjacent.begin(), tel.adjacent.end(), [&](const P25Site& o) { return o.sysId == s.sysId && o.rfss == s.rfss && o.site == s.site; });
+            if (it != tel.adjacent.end()) *it = s;
+            else {
+                tel.adjacent.push_back(s);
+                snprintf(b, sizeof b, "ADJ_STS_BCST system %03X, RFSS %d, site %d on channel %s", s.sysId, s.rfss, s.site, p25::channelText(s.channel).c_str());
+                event(b);
+            }
+            break;
+        }
+        default: break;
+        }
+    }
+
+    void macPdu(int ci, const uint8_t* m, int len) {
+        const p25p2::MacHeader hd = p25p2::macHeader(m[0]);
+        lastGood = sigSec();
+        switch (hd.opcode) {
+        case p25p2::kMacPtt:
+            if (len >= p25p2::kPttLen) {
+                const int alg = m[p25p2::kPttAlgOff];   // the message indicator and key ID next to it are never read
+                P25p2Call& c = tel.now[ci];
+                const int src = (int)p25p2::be24(m + p25p2::kPttSrcOff), grp = (int)p25p2::be16(m + p25p2::kPttGrpOff);
+                if (c.active && !c.lateEntry && c.src == src && c.dst == grp) { lastAct[ci] = sigSec(); break; }
+                if (c.active && c.lateEntry) { c.src = src; c.dst = grp; c.group = true; c.lateEntry = false; c.algId = alg; c.cryptoKnown = true; c.encrypted = alg != p25p2::kAlgClear && alg != 0; lastAct[ci] = sigSec(); touchTg(grp, src, 0, c.encrypted, c.emergency, false, true); break; }
+                startCall(ci, src, grp, true, true, alg, -1, false);
+            }
+            break;
+        case p25p2::kMacEndPtt:
+            if (len >= p25p2::kEndLen) {
+                tel.nac = (int)(p25p2::be16(m + p25p2::kEndColorOff) >> 4);
+                if (tel.now[ci].active) endCall(ci, true);
+            }
+            break;
+        case p25p2::kMacIdle:
+            if (tel.now[ci].active) endCall(ci, true);
+            break;
+        case p25p2::kMacSignal: case p25p2::kMacActive: case p25p2::kMacHangtime: {
+            int pos = 1;
+            while (pos < len) {
+                const int op = m[pos], ml = p25p2::macMsgLen(op);
+                if (op == p25p2::kMsgNull || ml == 0 || pos + ml > len) break;
+                if (op == p25p2::kMsgGrpVUser) userMsg(ci, m[pos + 1], (int)p25p2::be16(m + pos + 2), (int)p25p2::be24(m + pos + 4), true);
+                else if (op == p25p2::kMsgUuVUser) userMsg(ci, m[pos + 1], (int)p25p2::be24(m + pos + 2), (int)p25p2::be24(m + pos + 5), false);
+                else controlMsg(op, p25p2::be64(m + pos + 1));
+                pos += ml;
+            }
+            break;
+        }
+        default: break;
+        }
+    }
+
+    // ------------------------------------------------------------ slots and voice
+    double lastGood = -10;
+    std::unique_ptr<NxdnAmbe> ambe[2];
+    std::vector<float> aud8, pcmOut;
+    float upPrev = 0;
+    std::unique_ptr<AudioOut> audioOut;
+
+    void voiceFrame(int ci, const uint8_t* dib36) {
+        uint8_t bits[72];
+        for (int i = 0; i < 36; i++) { bits[2 * i] = (uint8_t)((dib36[i] >> 1) & 1); bits[2 * i + 1] = (uint8_t)(dib36[i] & 1); }
+        lastAct[ci] = sigSec();
+        if (!tel.now[ci].active) startCall(ci, -1, -1, true, false, p25p2::kAlgClear, -1, true);
+        P25p2Call& c = tel.now[ci];
+        c.voiceFrames++;
+        tel.voiceFrames++;
+        const bool clear = c.cryptoKnown && !c.encrypted;
+        if (vtap) vtap(ci + 1, bits, clear);
+        if (!clear) { if (c.encrypted) tel.encryptedSkipped++; return; }   // encrypted (or not yet known): reported, never decoded
+        c.clearFrames++;
+        const int l = listen.load();
+        bool want;
+        if (l) want = l == ci + 1;
+        else {
+            if (tel.audioSlot == 0 || !tel.now[tel.audioSlot - 1].active) tel.audioSlot = ci + 1;
+            want = tel.audioSlot == ci + 1;
+        }
+        if (l) tel.audioSlot = l;
+        if (!want) return;
+        if (!ambe[ci] && tel.codec) ambe[ci] = std::make_unique<NxdnAmbe>();
+        if (!ambe[ci] || !ambe[ci]->ok()) return;
+        int16_t pcm[160];
+        ambe[ci]->decode(bits, pcm);
+        for (int16_t s : pcm) aud8.push_back(s / 32768.f);
+        tel.voiceDecoded++;
+        c.voice = true;
+        if (aud8.size() >= 1600) flushAudio();
+    }
+
+    void flushAudio() {
+        if (aud8.empty()) return;
+        if (tap) tap(aud8.data(), aud8.size());
+        if (!silent.load()) {
+            pcmOut.clear();
+            for (float s : aud8) {
+                for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
+                upPrev = s;
+            }
+            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
+            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
+            audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
+        }
+        aud8.clear();
+    }
+
+    void processSlot() {
+        tel.slots++;
+        tel.slotNow = slotIdx;
+        const int ci = slotIdx & 1;
+        const uint8_t* body = buf + p25p2::kIschDibits;
+        const int duid = p25p2::duidDecode(body);
+        const uint8_t* pay = body + p25p2::kDuidDibits;
+        switch (duid) {
+        case p25p2::kDuid4V: tel.v4++; for (int k = 0; k < 4; k++) voiceFrame(ci, pay + k * p25p2::kVoiceDibits); break;
+        case p25p2::kDuid2V: tel.v2++; for (int k = 0; k < 2; k++) voiceFrame(ci, pay + k * p25p2::kVoiceDibits); break;
+        case p25p2::kDuidSacch: case p25p2::kDuidFacch: {
+            const bool facch = duid == p25p2::kDuidFacch;
+            (facch ? tel.facch : tel.sacch)++;
+            uint8_t mac[p25p2::kFacchMacBytes];
+            int fixed = 0;
+            if (p25p2::macDecode(facch, pay, mac, &fixed)) {
+                tel.blocksOk++; tel.rsCorrected += (uint64_t)fixed;
+                macPdu(ci, mac, facch ? p25p2::kFacchMacBytes : p25p2::kSacchMacBytes);
+            } else tel.blocksBad++;
+            break;
+        }
+        default: tel.slotsBad++; break;
+        }
+    }
+
+    // ------------------------------------------------------------ requests, report
+    bool clearReq = false;
+    static void moveLists(P25p2Telemetry& to, P25p2Telemetry& from) {
+        to.adjacent = std::move(from.adjacent); to.talkgroups = std::move(from.talkgroups); to.log = std::move(from.log); to.events = std::move(from.events); to.site = from.site;
+        for (int i = 0; i < 16; i++) to.idens[i] = from.idens[i];
+        from.adjacent.clear(); from.talkgroups.clear(); from.log.clear(); from.events.clear(); from.site = P25Site();
+    }
+    void takeRequests() {
+        std::lock_guard<std::mutex> lk(mu);
+        if (clearReq) { P25p2Telemetry e; moveLists(tel, e); clearReq = false; }
+    }
+    void resetState() {
+        { std::lock_guard<std::mutex> lk(mu); rate = rateSet; offset = offsetSet; }
+        for (int i = 0; i < 2; i++) if (tel.now[i].active) endCall(i, false);
+        initFront();
+        initFilter();
+        power = 0; nPower = 0; nIn = 0; nextReport = 0.25 * rate;
+        lastSync = lastGood = -10; snrAvg = 0; lastAct[0] = lastAct[1] = -10;
+        grants.clear();
+        const uint64_t seq = tel.seq;
+        P25p2Telemetry keep;
+        moveLists(keep, tel);
+        for (auto& c : keep.log) c.startSec -= tel.timeSec;
+        tel = P25p2Telemetry(); tel.seq = seq;
+        moveLists(tel, keep);
+        tel.inputRate = rate;
+        tel.codec = nxdnAmbeAvailable(&tel.codecPath);
+    }
+
+    void report() {
+        if (tapReq.exchange(false)) { std::lock_guard<std::mutex> lk(mu); tap = tapSet; vtap = vtapSet; }
+        tel.seq++;
+        tel.timeSec = sigSec();
+        tel.levelDb = nPower ? (float)(10 * std::log10(power / (double)nPower + 1e-20)) : -200.f;
+        power = 0; nPower = 0;
+        if (!tel.codec && tel.seq % 40 == 0) tel.codec = nxdnAmbeAvailable(&tel.codecPath);
+        for (int i = 0; i < 2; i++) {
+            if (tel.now[i].active && sigSec() - lastAct[i] > 2.0) endCall(i, false);
+            if (tel.now[i].active) tel.now[i].durSec = sigSec() - tel.now[i].startSec;
+        }
+        tel.locked = locked;
+        tel.cfoHz = cfoStep * kSymRate() / (2 * kPi);
+        tel.snrDb = (float)snrAvg;
+        tel.listenSlot = listen.load();
+        const int64_t wall = (int64_t)time(nullptr);
+        for (auto& t : tel.talkgroups) t.active = wall - t.lastWall < 3;
+        tel.state = (tel.now[0].active || tel.now[1].active) ? 2 : locked ? 1 : 0;
+        tel.dataValid = locked;
+        std::lock_guard<std::mutex> lk(mu);
+        pub = tel;
+    }
+    static double kSymRate() { return p25p2::kSymbolRate; }
+};
+
+P25p2Receiver::P25p2Receiver() : p_(std::make_unique<Impl>()) {}
+P25p2Receiver::~P25p2Receiver() = default;
+
+void P25p2Receiver::configure(double r) { std::lock_guard<std::mutex> lk(p_->mu); p_->rateSet = r; p_->resetReq = true; }
+void P25p2Receiver::setSignalOffset(double hz) { std::lock_guard<std::mutex> lk(p_->mu); if (hz != p_->offsetSet) { p_->offsetSet = hz; p_->resetReq = true; } }
+bool P25p2Receiver::ready() const { std::lock_guard<std::mutex> lk(p_->mu); return p_->rateSet >= p25p2Tuning().minSampleRate - 1; }
+void P25p2Receiver::reset() { p_->resetReq = true; }
+
+void P25p2Receiver::feed(const cf32* x, size_t n) {
+    Impl& m = *p_;
+    if (m.resetReq.exchange(false)) m.resetState();
+    m.takeRequests();
+    if (m.tapReq.load()) { std::lock_guard<std::mutex> lk(m.mu); m.tap = m.tapSet; m.vtap = m.vtapSet; m.tapReq = false; }
+    if (m.rate <= 0 || n == 0) return;
+    for (size_t i = 0; i < n; i++) {
+        float re = x[i].real(), im = x[i].imag();
+        if (!std::isfinite(re) || !std::isfinite(im)) re = im = 0;
+        m.power += (double)re * re + (double)im * im;
+        m.input(std::complex<double>(re, im));
+        m.nIn++;
+        if ((double)m.nIn >= m.nextReport) { m.nextReport += 0.25 * m.rate; m.report(); }
+    }
+    m.nPower += (int64_t)n;
+}
+
+void P25p2Receiver::clearResults() {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    P25p2Telemetry e;
+    Impl::moveLists(p_->pub, e);
+    p_->clearReq = true;
+    p_->pub.seq++;
+}
+bool P25p2Receiver::telemetry(P25p2Telemetry& out, uint64_t lastSeq) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (p_->pub.seq <= lastSeq) return false;
+    out = p_->pub;
+    return true;
+}
+void P25p2Receiver::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }
+void P25p2Receiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
+void P25p2Receiver::setMuted(bool m) { p_->muted = m; }
+void P25p2Receiver::setSilent(bool s) { p_->silent = s; }
+void P25p2Receiver::setListenSlot(int s) { p_->listen = s < 0 || s > 2 ? 0 : s; }
+void P25p2Receiver::setAudioTap(std::function<void(const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tapSet = std::move(cb); p_->tapReq = true; }
+void P25p2Receiver::setVoiceTap(std::function<void(int, const uint8_t*, bool)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->vtapSet = std::move(cb); p_->tapReq = true; }
+
+ModeTuning p25p2Tuning() {
+    ModeTuning t;
+    t.stdMode = 182; t.id = "p25p2"; t.name = "P25 Phase 2";
+    t.minMhz = 30; t.maxMhz = 1000; t.defMhz = 851.0125;   // the same bands as Phase 1 (VHF, UHF, 700 and 800 MHz)
+    t.sampleRate = 2000000;
+    t.basebandHz = 1750000;
+    t.bandwidthMhz = 0.0125;
+    t.minSampleRate = 250000;
+    t.tuneOffsetHz = 50000;                  // the radio sits 50 kHz above the channel, away from its DC spike
+    return t;
+}
+
+} // namespace dect2

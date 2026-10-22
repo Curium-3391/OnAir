@@ -54,6 +54,7 @@
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_tel.h"
 #include "dect2/edacs/edacs_tel.h"
+#include "dect2/p25p2/p25p2_tel.h"
 #include "dect2/milhf/milhf_engine.h"
 #include "dect2/dvbc/dvbc_tel.h"
 #include "dect2/orbcomm/orbcomm_tel.h"
@@ -259,6 +260,7 @@ struct RxTelemetry {
     FusionTelemetry fusion;     // valid when standard == 129 (Yaesu Fusion, family 128, stdMode 130)
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)
     EdacsTelemetry edacs;       // valid when standard == 131 (EDACS control channel, engine standard 132)
+    P25p2Telemetry p25p2;       // valid when standard == 181 (P25 Phase 2, family 180, engine standard 182)
     MilhfTelemetry milhf;       // valid when standard == 146 (HF waveform ID, engine standard 147)
     DgpsTelemetry dgps;         // valid when standard == 122 (DGPS beacon, engine standard 122)
     struct Dvbt {                // DVB-T only: TPS parameters and the channel decoder's statistics

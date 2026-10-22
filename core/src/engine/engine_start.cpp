@@ -286,6 +286,7 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxLtr_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxEdacs_.setSignalOffset(o);
         rxEdacs_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
+        rxP25p2_.setSignalOffset(o);
         rxMt_.setSignalOffset(o);
         rxCd_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);   // which part of the HF radar bands the radio is on
         rxTime_.setDialHz(dev.kind != DeviceInfo::File ? tune.centerHz : 0.0);   // the station when none is chosen
@@ -479,6 +480,8 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxLtr_.setLogCallback([this](const std::string& s) { log(s); });
     rxEdacs_.configure(rate_);
     rxEdacs_.setLogCallback([this](const std::string& s) { log(s); });
+    rxP25p2_.configure(rate_);
+    rxP25p2_.setLogCallback([this](const std::string& s) { log(s); });
     rxMt_.configure(rate_);
     rxMt_.setLogCallback([this](const std::string& s) { log(s); });
     rxZb_.setLogCallback([this](const std::string& s) { log(s); });
