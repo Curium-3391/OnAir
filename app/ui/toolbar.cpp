@@ -317,6 +317,7 @@ static void toolbarStartStop(App& a, bool running) {
     }
     flowNext(8 * gUi);
     memoryToolbarButton(a);   // the quick list of the memories (app/memory)
+    memoryQuickBar(a);        // the starred memories in one row
 }
 
 // the LDPC decoder backend: CPU, GPU or Auto (DVB-T2 and ATSC 3.0)

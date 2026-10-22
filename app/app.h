@@ -741,6 +741,7 @@ void freqdbKnownCombo(App& a, float width);         // freqdb_ui.cpp: the Tuner 
 void memoryTabItem(App& a);                        // memory_ui.cpp: the "Memory" tab when View > Memory as a tab is on (inside the main tab bar)
 int memorySelfTest(App& a);                        // memory_selftest.cpp: --memory-selftest, the recall checked on a hidden run (exit code = failures)
 void memoryDev(int what);                          // memory_ui.cpp: --memdev (screenshots)
+void memoryQuickBar(App& a);                       // memory_lists_ui.cpp: the starred memories of the switched-on lists as one row of buttons (every mode)
 void memoryToolbarButton(App& a);                  // memory_ui.cpp: the same quick list as a small "M" button with a pop-up (the classic toolbar)
 void memoryMenu(App& a);                           // memory_ui.cpp: the "M" menu of the menu bar: open, store, the favourites and the ten most recent
 double generalListenHz(const App& a);
