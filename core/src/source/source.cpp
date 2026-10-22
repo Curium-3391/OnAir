@@ -581,6 +581,20 @@ bool soapySupported() { return false; }
 std::vector<DeviceInfo> listSoapyDevices(std::string&) { return {}; }
 #endif
 
+static std::atomic<bool> gNetDiscovery{false};
+void setNetworkDiscovery(bool on) { gNetDiscovery = on; }
+bool networkDiscovery() { return gNetDiscovery.load(); }
+
+std::string soapyLocalEnumerateArgs(const std::string& module) {
+    // modules whose find() contacts the network: SoapyRemote (SSDP / mDNS server search, then every server's radios), SoapyPlutoSDR (libiio's
+    // "ip" scan and ip:pluto.local; the native PlutoSDR driver lists the USB boards), SoapyRedPitaya (connects to its default address),
+    // SoapyHPSDR and SoapyNetSDR (UDP discovery broadcasts), SoapyIris (network discovery)
+    static const char* const kNet[] = {"remote", "plutosdr", "redpitaya", "hpsdr", "netsdr", "iris"};
+    for (const char* n : kNet) if (module == n) return "";
+    if (module == "uhd") return "driver=uhd,type=b200";   // UHD broadcasts for network USRPs unless the hint names the USB family
+    return "driver=" + module;
+}
+
 static std::mutex gHiddenMu;
 static std::vector<std::string> gHidden;
 void setHiddenRadios(const std::vector<std::string>& names) { std::lock_guard<std::mutex> lk(gHiddenMu); gHidden = names; }

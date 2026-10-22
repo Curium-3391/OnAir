@@ -564,6 +564,17 @@ static void radiosChecks(const char* dir, const char* ext) {
             }
         }
         set("usrp.b210", 0);
+        // #215: listing does not broadcast for network USRPs unless "Search the network for radios" is on (off by default)
+        {
+            std::string le;
+            CHECK(!networkDiscovery(), "network discovery is on by default");
+            listNativeDevices(le);
+            CHECK(st("usrp.findHintB200") == 1, "USRP listing without network discovery: the hint is not type=b200");
+            setNetworkDiscovery(true);
+            listNativeDevices(le);
+            CHECK(st("usrp.findHintB200") == 0, "USRP listing with network discovery: the hint still keeps it to USB");
+            setNetworkDiscovery(false);
+        }
     }
     fakeState = nullptr;
 }

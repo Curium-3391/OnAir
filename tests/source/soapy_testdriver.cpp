@@ -233,4 +233,19 @@ SoapySDR::KwargsList findTestGr(const SoapySDR::Kwargs& args) {
 }
 SoapySDR::Device* makeTestGr(const SoapySDR::Kwargs&) { return new OnAirTestGrDevice; }
 SoapySDR::Registry gRegistrationGr("onairtestgr", &findTestGr, &makeTestGr, SOAPY_SDR_ABI_VERSION);
+
+// A module under a name that searches the network ("iris", as SoapyIris does): its find() notes that it was called (#215: listing must not
+// call it while network discovery is off). It lists one radio when it is asked.
+SoapySDR::KwargsList findNet(const SoapySDR::Kwargs& args) {
+    setenv("ONAIR_TEST_NETFIND", "1", 1);
+    SoapySDR::KwargsList out;
+    if (args.count("driver") && args.at("driver") != "iris") return out;
+    SoapySDR::Kwargs k;
+    k["driver"] = "iris";
+    k["label"] = "OnAir network test radio";
+    k["serial"] = "0003";
+    out.push_back(k);
+    return out;
+}
+SoapySDR::Registry gRegistrationNet("iris", &findNet, &makeTest, SOAPY_SDR_ABI_VERSION);
 }

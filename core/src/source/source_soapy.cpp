@@ -8,6 +8,8 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Errors.h>
 #include <SoapySDR/Formats.h>
+#include <SoapySDR/Registry.hpp>
+#include <set>
 #include <SoapySDR/Types.h>
 #include <SoapySDR/Version.hpp>
 #include <algorithm>
@@ -696,7 +698,24 @@ std::vector<DeviceInfo> listSoapyDevices(std::string& err) {
     soapyLocateModules();
     std::vector<DeviceInfo> out;
     try {
-        for (const auto& kw : SoapySDR::Device::enumerate()) {
+        // Without network discovery (the default, #215) each module is asked on its own (enumerate() with a driver calls only that module's
+        // find), and the ones that search the network are left out: no device on the LAN is contacted just by listing
+        SoapySDR::KwargsList found;
+        if (networkDiscovery()) found = SoapySDR::Device::enumerate();
+        else {
+            // enumerate() loads the modules on its first call; a driver name no module has loads them without calling any find()
+            SoapySDR::Device::enumerate("driver=onair-load-modules-only");
+            for (const auto& fn : SoapySDR::Registry::listFindFunctions()) {
+                const std::string a = soapyLocalEnumerateArgs(fn.first);
+                if (a.empty()) {
+                    static std::set<std::string> told;   // once per module, not at every refresh of the list
+                    if (told.insert(fn.first).second) fprintf(stderr, "SoapySDR: module %s not asked (it searches the network; \"Search the network for radios\" is off)\n", fn.first.c_str());
+                    continue;
+                }
+                for (auto& kw : SoapySDR::Device::enumerate(a)) found.push_back(kw);
+            }
+        }
+        for (const auto& kw : found) {
             auto get = [&](const char* k) { auto it = kw.find(k); return it == kw.end() ? std::string() : it->second; };
             const std::string driver = get("driver");
             if (driver == "hackrf") continue;   // native source

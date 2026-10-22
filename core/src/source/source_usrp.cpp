@@ -378,7 +378,8 @@ void listUsrp(std::vector<DeviceInfo>& out) {
     if (!uhd().ok) return;
     UhdApi::strvec_t* v = nullptr;
     if (uhd().strvec_make(&v) != 0 || !v) return;
-    if (uhd().find("", &v) == 0) {
+    // without network discovery (#215) the hint keeps UHD to the USB B2xx family: an empty hint broadcasts for N/X-series USRPs on every network
+    if (uhd().find(networkDiscovery() ? "" : "type=b200", &v) == 0) {
         size_t n = 0;
         uhd().strvec_size(v, &n);
         for (size_t i = 0; i < n && i < 16; i++) {

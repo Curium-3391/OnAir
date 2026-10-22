@@ -283,7 +283,7 @@ void listRfnm(std::vector<DeviceInfo>& out) {
     if (gOpen > 0 && !gKnown.empty()) { for (const auto& d : gKnown) out.push_back(d); return; }
     std::vector<rfnm::dev_info> found;
     try {
-        found = rfnm::device::find(rfnm::TRANSPORT_FIND);
+        found = rfnm::device::find(networkDiscovery() ? rfnm::TRANSPORT_FIND : rfnm::TRANSPORT_USB);   // no network search unless allowed (#215)
     } catch (const std::exception& e) {
         static std::string logged;
         if (logged != e.what()) { logged = e.what(); fprintf(stderr, "RFNM: the radio search failed (%s)\n", e.what()); fflush(stderr); }
