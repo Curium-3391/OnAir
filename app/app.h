@@ -293,6 +293,8 @@ struct App {
     bool stationHealthOpen = false;     // the station health report window (View > Station health; app/panels/station_health_ui.cpp)
     bool sweepOpen = false;             // the sweep scanner window (View > Sweep scanner)
     bool scannerOpen = false;           // the scanner window (View > Scanner, highly experimental)
+    bool schedulerOpen = false;         // Tools > Scheduler: timed and satellite-pass jobs that tune, record and restore (app/panels/scheduler_ui.cpp)
+    bool recmgrOpen = false;            // Tools > Recordings: the recordings manager (app/panels/recmgr_ui.cpp)
     bool memoryOpen = false;            // the Memory window (View > Memory, Ctrl+M; app/memory)
     bool packsOpen = false;             // the Data packs window (View > Data packs; app/packs): offline map tiles, satellite elements, airports
     bool freqOpen = false;              // the Frequencies window (View > Frequencies, Ctrl+Shift+F; app/freqdb)
@@ -1123,6 +1125,11 @@ void tvRecordingsTab(App& a);       // scheduled and finished recordings, record
 void tvPlaybackBar(App& a);         // timeshift pause / rewind / live and the controls of a recording being played
 void timeMachineLoad(App& a);       // timemachine_ui.cpp: the "Rewind" memory's settings from the preferences (before the first start)
 void timeMachineUi(App& a);         // the button in the diagnostics row and its window
+void schedulerWindow(App& a);          // scheduler_ui.cpp: the Scheduler window (a.schedulerOpen) and, every frame, the clock check that starts and ends the jobs
+void schedulerTick(App& a);
+void recmgrWindow(App& a);             // recmgr_ui.cpp: the Recordings manager (a.recmgrOpen); its automatic cleanup runs every frame check
+void recmgrTick(App& a);
+bool recordingOpenPath(App& a, const std::string& path, uint64_t firstSample, uint64_t endSample);   // recording_library_ui.cpp: a recording as the IQ file source, optionally only the sample range
 void recordingLibraryUi(App& a);    // recording_library_ui.cpp: the "Library" button in the diagnostics row and its window (the recordings folder)
 void timeMachineTick(App& a);       // every frame: the squelch trigger, the end of a save
 bool timeMachineSaveNow(App& a, double postSeconds, std::string& note);   // an automation rule's "Save the rewind"
