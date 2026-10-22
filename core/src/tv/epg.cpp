@@ -7,6 +7,8 @@
 #include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <map>
+#include <mutex>
 
 namespace dect2 {
 
@@ -118,6 +120,72 @@ void eventDescriptors(const uint8_t* d, int n, EpgItem& ev) {
 }
 }
 
+
+// ---- guide language ---------------------------------------------------------------------------------------------------------------------------
+namespace {
+std::mutex gLangMu;
+std::string gLang;
+std::string lang3(const std::string& l) { std::string o = lower(l); if (o.size() > 3) o.resize(3); return o; }
+}
+
+// ISO 639-2 has a bibliographic and a terminology code for some languages (ger / deu); broadcasters use both
+std::string epgLanguageKey(const std::string& l) {
+    static const char* const kAlias[][2] = {{"ger", "deu"}, {"fre", "fra"}, {"dut", "nld"}, {"cze", "ces"}, {"gre", "ell"}, {"rum", "ron"}, {"slo", "slk"}, {"chi", "zho"},
+                                            {"ice", "isl"}, {"arm", "hye"}, {"baq", "eus"}, {"mac", "mkd"}, {"alb", "sqi"}, {"bur", "mya"}, {"geo", "kat"}, {"per", "fas"},
+                                            {"tib", "bod"}, {"wel", "cym"}, {"may", "msa"}, {"mao", "mri"}, {"nob", "nor"}, {"nno", "nor"}};
+    const std::string o = lang3(l);
+    for (auto& a : kAlias) if (o == a[0]) return a[1];
+    return o;
+}
+
+void epgSetPreferredLanguage(const std::string& iso639) { std::lock_guard<std::mutex> lk(gLangMu); gLang = epgLanguageKey(iso639); }
+std::string epgPreferredLanguage() { std::lock_guard<std::mutex> lk(gLangMu); return gLang; }
+
+bool epgPickLanguage(const uint8_t* s, int len, const std::string& wantIn, std::map<int, EpgLangPick>& out) {
+    out.clear();
+    const std::string want = epgLanguageKey(wantIn);
+    if (want.size() != 3 || len < 18) return false;
+    const int total = std::min(len, 3 + (((s[1] & 0x0F) << 8) | s[2]));
+    const int end = total - 4;
+    int p = 14;
+    while (p + 12 <= end) {
+        const int id = (s[p] << 8) | s[p + 1];
+        const int dl = ((s[p + 10] & 0x0F) << 8) | s[p + 11];
+        if (p + 12 + dl > end) break;
+        EpgLangPick pk;
+        int q = p + 12;
+        const int dend = q + dl;
+        bool seen = false;
+        while (q + 2 <= dend) {
+            const int tag = s[q], l = s[q + 1];
+            if (q + 2 + l > dend) break;
+            const uint8_t* b = s + q + 2;
+            const int off = q + 2;
+            if (tag == 0x4D && l >= 5 && epgLanguageKey(std::string((const char*)b, 3)) == want) {
+                const int nl = b[3];
+                if (4 + nl < l) {
+                    const int tl = b[4 + nl];
+                    if (5 + nl + tl <= l && !pk.hasShort) {
+                        pk.hasShort = true; seen = true; pk.lang.assign((const char*)b, 3);
+                        pk.titleOff = off + 4; pk.titleLen = nl;
+                        pk.textOff = off + 5 + nl; pk.textLen = tl;
+                    }
+                }
+            } else if (tag == 0x4E && l >= 6 && epgLanguageKey(std::string((const char*)b + 1, 3)) == want) {
+                const int li = b[4];
+                if (5 + li < l) {
+                    const int tl = b[5 + li];
+                    if (6 + li + tl <= l) { pk.ext.push_back({off + 6 + li, tl}); seen = true; if (pk.lang.empty()) pk.lang.assign((const char*)b + 1, 3); }
+                }
+            }
+            q += 2 + l;
+        }
+        if (seen) out[id] = std::move(pk);
+        p += 12 + dl;
+    }
+    return !out.empty();
+}
+
 bool parseEitSection(const uint8_t* s, int len, EitSection& out) {
     out = EitSection();
     if (len < 18 || s[0] < 0x4E || s[0] > 0x6F) return false;
@@ -154,6 +222,22 @@ bool parseEitSection(const uint8_t* s, int len, EitSection& out) {
             out.events.push_back(std::move(ev));
         }
         p += 12 + dl;
+    }
+    const std::string want = epgPreferredLanguage();
+    std::map<int, EpgLangPick> picks;
+    if (!want.empty() && epgPickLanguage(s, total, want, picks)) {
+        for (EpgItem& ev : out.events) {
+            auto it = picks.find(ev.eventId);
+            if (it == picks.end()) continue;
+            const EpgLangPick& pk = it->second;
+            ev.lang = pk.lang;
+            if (pk.hasShort) { ev.title = dvbsi::dvbText(s + pk.titleOff, pk.titleLen); ev.text = dvbsi::dvbText(s + pk.textOff, pk.textLen); }
+            if (!pk.ext.empty()) {
+                std::string all;
+                for (auto& e : pk.ext) all.append((const char*)s + e.first, (size_t)e.second);
+                ev.extended = dvbsi::dvbText((const uint8_t*)all.data(), (int)all.size());
+            }
+        }
     }
     return true;
 }

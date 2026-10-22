@@ -2,6 +2,7 @@
 #include "../app.h"
 #include "../transcribe/transcribe_app.h"
 #include "dect2/audio/ac4_dec.h"
+#include "dect2/tv/epg.h"
 
 #include <cctype>
 #include <ctime>
@@ -412,10 +413,36 @@ void playerTab(App& a) {
     flowNext();
     ImGui::Checkbox("deinterlace", &a.video.deint);
     flowNext();
+    {   // the preferred language of the guide, the audio and the subtitles (#268)
+        static const struct { const char* code; const char* name; } kLangs[] = {
+            {"", "Broadcaster's order"}, {"fin", "Finnish"}, {"swe", "Swedish"}, {"eng", "English"}, {"deu", "German"}, {"fra", "French"}, {"spa", "Spanish"}, {"ita", "Italian"},
+            {"nld", "Dutch"}, {"por", "Portuguese"}, {"nor", "Norwegian"}, {"dan", "Danish"}, {"isl", "Icelandic"}, {"est", "Estonian"}, {"lav", "Latvian"}, {"lit", "Lithuanian"},
+            {"pol", "Polish"}, {"ces", "Czech"}, {"slk", "Slovak"}, {"hun", "Hungarian"}, {"ron", "Romanian"}, {"bul", "Bulgarian"}, {"ell", "Greek"}, {"tur", "Turkish"},
+            {"hrv", "Croatian"}, {"srp", "Serbian"}, {"slv", "Slovenian"}, {"rus", "Russian"}, {"ukr", "Ukrainian"}, {"ara", "Arabic"}, {"zho", "Chinese"}};
+        const char* cur = "Broadcaster's order";
+        for (auto& l : kLangs) if (epgLanguageKey(l.code) == epgLanguageKey(a.tvLang)) cur = l.name;
+        ImGui::SetNextItemWidth(150 * gUi);
+        if (ImGui::BeginCombo("language", cur)) {
+            for (auto& l : kLangs) if (ImGui::Selectable(l.name, epgLanguageKey(l.code) == epgLanguageKey(a.tvLang))) { a.tvLang = l.code; savePrefs(a); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The language to use where a channel offers several:\nprogramme names and descriptions in the guide, the audio track and the subtitles.\nWhere a channel does not have it, what it sends first is used.");
+        flowNext();
+        if (epgPreferredLanguage() != epgLanguageKey(a.tvLang)) epgSetPreferredLanguage(a.tvLang);
+    }
     auto tracks = pl.audioTracks();
     if (!tracks.empty()) {
         static int cur = 0;
         cur = std::min(cur, (int)tracks.size() - 1);
+        {   // a new service or a new choice of language: the audio track in the preferred language (the user can still pick another)
+            static int keySid = -2; static size_t keyN = 0; static std::string keyLang;
+            if (keySid != pl.selected() || keyN != tracks.size() || keyLang != a.tvLang) {
+                keySid = pl.selected(); keyN = tracks.size(); keyLang = a.tvLang;
+                if (!a.tvLang.empty())
+                    for (int i = 0; i < (int)tracks.size(); i++)
+                        if (epgLanguageKey(tracks[i].lang) == epgLanguageKey(a.tvLang)) { if (i != cur) { cur = i; pl.setAudioTrack(i); } break; }
+            }
+        }
         std::string lab = tracks[cur].codec + " " + tracks[cur].lang;
         ImGui::SetNextItemWidth(170 * gUi);
         if (ImGui::BeginCombo("audio", lab.c_str())) {

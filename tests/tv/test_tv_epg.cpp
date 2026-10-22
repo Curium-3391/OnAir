@@ -264,5 +264,35 @@ int main() {
         }
         CHECK(accepted > 100, "the fuzz run also reached the parser with valid CRCs (%d)", accepted);
     }
+    {   // a guide in two languages (Finland: Finnish and Swedish): the preferred language is used where the event has it (#268)
+        Bytes desc = shortEv("swe", str("Kvallsnyheter"), str("Dagens nyheter"));
+        { Bytes f = shortEv("fin", str("Iltauutiset"), str("Paivan uutiset")); desc.insert(desc.end(), f.begin(), f.end()); }   // Finnish sent last
+        { Bytes e1 = extEv(0, 1, str("Svensk text. ")); e1[3] = 's'; e1[4] = 'w'; e1[5] = 'e'; Bytes e2 = extEv(1, 1, str("Suomalainen teksti.")); e2[3] = 'f'; e2[4] = 'i'; e2[5] = 'n';
+          desc.insert(desc.end(), e1.begin(), e1.end()); desc.insert(desc.end(), e2.begin(), e2.end()); }
+        Bytes other = shortEv("swe", str("Bara svenska"), str("text"));   // an event with no Finnish at all
+        const Bytes sec = eit(0x4E, 0x1001, 2, 0x20FA, 0, {event(0x200, mjd, 21, 0, 0, 30, 4, false, desc), event(0x201, mjd, 21, 30, 0, 30, 1, false, other)});
+        EitSection x;
+        epgSetPreferredLanguage("");
+        CHECK(parseEitSection(sec.data(), (int)sec.size(), x) && x.events.size() == 2 && x.events[0].title == "Iltauutiset", "no preference: the last language broadcast (%s)", x.events[0].title.c_str());
+        epgSetPreferredLanguage("FIN");
+        CHECK(parseEitSection(sec.data(), (int)sec.size(), x) && x.events[0].title == "Iltauutiset" && x.events[0].text == "Paivan uutiset" && x.events[0].lang == "fin", "Finnish wanted: Finnish");
+        CHECK(x.events[0].extended == "Suomalainen teksti.", "the extended text is of that language only (%s)", x.events[0].extended.c_str());
+        CHECK(x.events[1].title == "Bara svenska", "an event without the language keeps what it has");
+        epgSetPreferredLanguage("swe");
+        CHECK(parseEitSection(sec.data(), (int)sec.size(), x) && x.events[0].title == "Kvallsnyheter" && x.events[0].text == "Dagens nyheter" && x.events[0].lang == "swe", "Swedish wanted: Swedish");
+        CHECK(x.events[0].extended == "Svensk text.", "Swedish extended text (%s)", x.events[0].extended.c_str());
+        // the service list parser (TsDemux) follows the same preference
+        for (int pass = 0; pass < 2; pass++) {
+            epgSetPreferredLanguage(pass ? "fin" : "swe");
+            TsDemux dm; int cc = 0;
+            const auto pk = packetize(sec, 0x12, cc);
+            for (size_t o = 0; o + 188 <= pk.size(); o += 188) dm.feed(pk.data() + o);
+            auto g = dm.epg();
+            CHECK(g.count(0x1001) && g[0x1001].size() == 2, "TsDemux got the events");
+            if (g.count(0x1001) && g[0x1001].size() == 2) CHECK(g[0x1001][0].title == (pass ? "Iltauutiset" : "Kvallsnyheter"), "TsDemux title for pass %d: %s", pass, g[0x1001][0].title.c_str());
+        }
+        epgSetPreferredLanguage("");
+        CHECK(epgLanguageKey("GER") == "deu" && epgLanguageKey("deu") == "deu" && epgLanguageKey("fi") == "fi", "the two ISO 639-2 codes of a language are one language");
+    }
     return testSummary("tv_epg");
 }
