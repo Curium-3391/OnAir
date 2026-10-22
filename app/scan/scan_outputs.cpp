@@ -138,12 +138,12 @@ void scanTabCommon(App& a) {
     ImGui::Separator();
     if (ImGui::BeginTable("scan", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 70);
-        ImGui::TableSetupColumn("level", ImGuiTableColumnFlags_WidthFixed, 90);
-        ImGui::TableSetupColumn("result", ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("mode", ImGuiTableColumnFlags_WidthFixed, 240);
-        ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 60);
-        ImGui::TableSetupColumn("PLP", ImGuiTableColumnFlags_WidthFixed, 180);
+        ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
+        ImGui::TableSetupColumn("level", ImGuiTableColumnFlags_WidthFixed, 90 * gUi);
+        ImGui::TableSetupColumn("result", ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+        ImGui::TableSetupColumn("mode", ImGuiTableColumnFlags_WidthFixed, 240 * gUi);
+        ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 60 * gUi);
+        ImGui::TableSetupColumn("PLP", ImGuiTableColumnFlags_WidthFixed, 180 * gUi);
         ImGui::TableSetupColumn("services");
         ImGui::TableHeadersRow();
         for (size_t i = 0; i < res.size(); i++) {

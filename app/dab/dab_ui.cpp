@@ -825,8 +825,8 @@ void dabScanTab(App& a) {
         if (!note.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", note.c_str()); }
     }
     if (ImGui::BeginTable("dscan", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 90); ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("Ensemble"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70); ImGui::TableSetupColumn("Stations");
+        ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 90 * gUi); ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+        ImGui::TableSetupColumn("Ensemble"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70 * gUi); ImGui::TableSetupColumn("Stations");
         ImGui::TableHeadersRow();
         for (size_t i = 0; i < s.results.size(); i++) {
             const auto& r = s.results[i];

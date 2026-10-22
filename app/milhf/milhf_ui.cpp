@@ -82,7 +82,7 @@ void tab(App& a) {
     ImGui::TextUnformatted("Candidates (best estimate first)");
     if (ImGui::BeginTable("##milhfc", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupColumn("Waveform", ImGuiTableColumnFlags_WidthStretch, 2.f);
-        ImGui::TableSetupColumn("Confidence", ImGuiTableColumnFlags_WidthFixed, 90.f);
+        ImGui::TableSetupColumn("Confidence", ImGuiTableColumnFlags_WidthFixed, 90.f * gUi);
         ImGui::TableSetupColumn("Measured basis", ImGuiTableColumnFlags_WidthStretch, 3.f);
         ImGui::TableHeadersRow();
         for (const auto& c : t.res.cands) {

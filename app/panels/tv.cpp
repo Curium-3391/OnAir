@@ -629,7 +629,7 @@ void rightPanel(App& a) {
         sectionHeader(Ic::Play, "Player");
         if (pl.selected() < 0) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("click a service to play it"); ImGui::PopTextWrapPos(); }
         else if (ImGui::BeginTable("pkv", 2, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 88);
+            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 88 * gUi);
             auto row = [&](Ic ic, const char* k, const char* fmt, auto... args) {
                 ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(ic, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("%s", k); ImGui::TableNextColumn();
                 char b[120]; snprintf(b, sizeof b, fmt, args...); ImGui::TextUnformatted(b);

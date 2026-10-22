@@ -12,11 +12,11 @@ bool live(const App& a) { return a.rx.standard == 128; }   // family 127, stdMod
 void messageTable(const dect2::MptTelemetry& t, float height) {
     if (!ImGui::BeginTable("mpt_msgs", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV, ImVec2(0, height))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 56);
-    ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 56);
-    ImGui::TableSetupColumn("Caller", ImGuiTableColumnFlags_WidthFixed, 80);
-    ImGui::TableSetupColumn("Called", ImGuiTableColumnFlags_WidthFixed, 80);
-    ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 56);
+    ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 56 * gUi);
+    ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 56 * gUi);
+    ImGui::TableSetupColumn("Caller", ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+    ImGui::TableSetupColumn("Called", ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+    ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 56 * gUi);
     ImGui::TableSetupColumn("Detail");
     ImGui::TableHeadersRow();
     for (size_t i = t.rows.size(); i-- > 0;) {   // newest first
@@ -35,9 +35,9 @@ void messageTable(const dect2::MptTelemetry& t, float height) {
 
 void channelTable(const dect2::MptTelemetry& t) {
     if (!ImGui::BeginTable("mpt_chans", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) return;
-    ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 60);
-    ImGui::TableSetupColumn("Use", ImGuiTableColumnFlags_WidthFixed, 110);
-    ImGui::TableSetupColumn("Seen", ImGuiTableColumnFlags_WidthFixed, 50);
+    ImGui::TableSetupColumn("Channel", ImGuiTableColumnFlags_WidthFixed, 60 * gUi);
+    ImGui::TableSetupColumn("Use", ImGuiTableColumnFlags_WidthFixed, 110 * gUi);
+    ImGui::TableSetupColumn("Seen", ImGuiTableColumnFlags_WidthFixed, 50 * gUi);
     ImGui::TableSetupColumn("Last called");
     ImGui::TableSetupColumn("Last caller");
     ImGui::TableHeadersRow();

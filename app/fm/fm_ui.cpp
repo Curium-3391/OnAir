@@ -506,9 +506,9 @@ void fmRadioTab(App& a) {
     for (const auto& r : a.fmScan.results) if (r.found) found++;
     if (!found) { { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("No stations listed yet. Start the receiver and run the band scan in the Scan tab."); ImGui::PopTextWrapPos(); } return; }
     if (ImGui::BeginTable("fmsta", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 34); ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("Station"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70);
-        ImGui::TableSetupColumn("Sound", ImGuiTableColumnFlags_WidthFixed, 70);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 34 * gUi); ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+        ImGui::TableSetupColumn("Station"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
+        ImGui::TableSetupColumn("Sound", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
         ImGui::TableHeadersRow();
         for (size_t i = 0; i < a.fmScan.results.size(); i++) {
             const auto& r = a.fmScan.results[i];
@@ -678,9 +678,9 @@ void fmScanTab(App& a) {
         if (!note.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", note.c_str()); }
     }
     if (ImGui::BeginTable("fmscan", 8, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80); ImGui::TableSetupColumn("Station"); ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70); ImGui::TableSetupColumn("Sound", ImGuiTableColumnFlags_WidthFixed, 70);
-        ImGui::TableSetupColumn("RDS", ImGuiTableColumnFlags_WidthFixed, 50); ImGui::TableSetupColumn("PI", ImGuiTableColumnFlags_WidthFixed, 50);
+        ImGui::TableSetupColumn("MHz", ImGuiTableColumnFlags_WidthFixed, 80 * gUi); ImGui::TableSetupColumn("Station"); ImGui::TableSetupColumn("Type");
+        ImGui::TableSetupColumn("SNR", ImGuiTableColumnFlags_WidthFixed, 70 * gUi); ImGui::TableSetupColumn("Sound", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
+        ImGui::TableSetupColumn("RDS", ImGuiTableColumnFlags_WidthFixed, 50 * gUi); ImGui::TableSetupColumn("PI", ImGuiTableColumnFlags_WidthFixed, 50 * gUi);
         ImGui::TableSetupColumn("Radio text");
         ImGui::TableHeadersRow();
         for (size_t i = 0; i < s.results.size(); i++) {
