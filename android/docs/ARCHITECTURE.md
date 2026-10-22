@@ -8,8 +8,8 @@ in [../README.md](../README.md).
 ```
                        +-----------------------------------------------------------+
                        |  UI (Compose, main thread)                                |
-                       |  MainActivity -> OnAirApp -> ReceiverTab / ModeTab /      |
-                       |  ResultsTab / LogTab / SpectrumWaterfall / PositionMap    |
+                       |  MainActivity -> ui/OnAirApp (shell, nav) -> Receiver /   |
+                       |  Panels (ModePanels) / Modes / Radio / Settings / Log ... |
                        +------------------------+----------------------------------+
                           collectAsStateWithLifecycle |   ^ intents (vm.tune(), vm.toggle() ...)
                                                   v   |
@@ -139,16 +139,48 @@ Today every mode runs inside the desktop engine; the app selects it and shows it
      `jni_onair.cpp`.
    - Kotlin: the `external fun` in `OnAirNative.kt` (run `tools/check_jni.py`), a typed method in `OnAirCore`, a data class in
      `model/` parsed in `Telemetry.parse`, an intent in the repository that posts the call (and stores its setting in `Settings` if it
-     persists), the function in the view model, then the panel in `ResultsTab` (`when (t.standard)`).
+     persists), the function in the view model, then a panel: a class implementing `ui/panels/ModePanel` in a file of its own,
+     registered with a `ModePanelProvider` listed in
+     `app/src/main/resources/META-INF/services/io.github.adswill.onair.ui.panels.ModePanelProvider` (or `ModePanels.register(...)` at
+     start-up). The panel host shows it as a tab next to the generic Results panel for the modes its `appliesTo` accepts; no UI file
+     changes. Small additions to the generic view can still go into `ResultsTab` (`when (t.standard)`).
    - Never call the new native function outside an engine block; never parse JSON outside `model/`.
 5. **Sources** (the USB agent): `SourceKind` + the bridge's `enum Source` + `makeDevice` in `jni_onair.cpp`. A USB radio needs the
    `UsbManager` permission flow in Kotlin, the opened file descriptor handed to native code (libusb `libusb_wrap_sys_device`), the
    real libusb in place of the stand-ins in `native/src/stubs_ext.c`, a `usb_device_filter.xml`, and the `connectedDevice`
    foreground-service type next to `mediaPlayback` (manifest + `ReceiverService`).
 
+## UI layer (0.3.0 rework, `ui/`)
+
+- **Theme** (`Theme.kt`, `OnAirIcons.kt`, `Widgets.kt`): the desktop's palette, type scale, fonts (Inter, JetBrains Mono from
+  `third_party/fonts`), corners and spacing as a Material3 theme; `docs/STYLE.md` maps every desktop name to its token.
+- **Shell** (`ui/AppShell.kt`): `AppLayout.of(width, height)` picks the layout: phone portrait = bottom bar, spectrum on top and the
+  panels under a draggable split; landscape and tablets = navigation rail and two panes (spectrum left, panels right). Edge to edge
+  (`enableEdgeToEdge`, `WindowInsets.safeDrawing`). The back stack is `ui/nav/Navigator` (pure rules in `BackStack`, unit tested):
+  top-level destinations replace everything above the receiver, others are pushed, Back pops then leaves. Deep links
+  `onair://tune?freq=...&mode=...` (`ui/nav/DeepLink`, manifest intent filter) arrive in `MainActivity` and are handed to the shell once.
+- **Screens**: `ui/receiver` (frequency readout with tap-to-type and step buttons, mode chip, lock lamp, meters, run button, spectrum
+  and waterfall, sound strip with volume, mute, squelch and record), `ui/panels` (the extension point above), `ui/modes` (grouped,
+  searchable picker with favourites and the two filters; pure filtering in `ModeFilter`), `ui/radio` (sources, saved network radios,
+  add dialog with opt-in mDNS discovery, tuner), `ui/settings` (grouped, searchable), `ui/log`, `ui/about` (credits from the
+  repository's credit files), `ui/onboarding` (first-run guide like the desktop wizard; lessons from `data/lessons/*.json`).
+  Each screen has a stateless `...Content` composable; `ui/Previews.kt` previews them.
+- **Interface preferences** (`ui/UiPrefs.kt`, DataStore file `ui`): favourites, hidden modes, filters, centre tuning, step, first-run
+  state, font look, reduced motion, saved network radios. Kept apart from `Settings` (the receiver's), same rules (memory first,
+  conflated writes). `UiGraph` holds it; `UiHooks` is where the USB and recorder sides plug their objects in (`UsbRadios`, `Recorder`).
+- **Spectrum performance**: the waterfall is one bitmap ring written row by row (`Waterfall.push`, no allocation per frame); a frame
+  is published with `specVersion` and `Waterfall.commit()` (`version`), and both canvases read those in the draw phase, so a new line
+  redraws two canvases and recomposes nothing. Paths are reused; meters are refreshed 4 times a second; on battery or power saving
+  redraws are capped at 30 fps; the engine already stops spectrum lines when no activity is visible.
+- **Assets from the repository** (`syncOnAirAssets` in `app/build.gradle.kts`): `data/lessons/*.json`, `tools/credits_data.tsv`,
+  `tools/contributors.tsv`, `app/panels/supporters_data.h`, `LICENSES/OFL-1.1.txt`, copied into the APK so desktop and phone show the
+  same lessons and credits.
+
 ## Not verified here
 
 Written and checked by reading only (no device, no full Gradle/NDK build in this step): the Kotlin compiles (the `android-*` branch CI
 job checks this), the DataStore migration of an existing 0.2.x install, the foreground service on Android 14/15 (type
 `mediaPlayback` start rules, notification permission denied), audio with the screen off over hours, R8 release build with JNI, the
-macOS CI native build (`brew` headers + NDK 27 + Rust Android target), and signing from secrets.
+macOS CI native build (`brew` headers + NDK 27 + Rust Android target), and signing from secrets. The UI rework (android-ui-030) was also
+written without a local Gradle build: layouts on real phones, tablets and foldables, TalkBack, 200 % text, mDNS discovery and the
+30 fps cap on battery are unchecked on a device.

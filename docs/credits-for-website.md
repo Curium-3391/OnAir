@@ -14,8 +14,8 @@ The full notices and the open licence points are in [THIRD_PARTY.md](https://git
 |---|---|---|---|---|
 | Dear ImGui | Omar Cornut and contributors | MIT | app/ and third_party/imgui (user interface) | vendored, compiled in |
 | stb_truetype, stb_rect_pack, stb_textedit | Sean Barrett and contributors | MIT or public domain | third_party/imgui/imstb_*.h (fonts and text input) | vendored, compiled in |
-| Inter (fonts) | The Inter Project Authors (Rasmus Andersson) | SIL OFL 1.1 | third_party/fonts, app/ui/typography.cpp (interface text; Regular, Medium and SemiBold, subset) | bundled, embedded (compressed) in the program |
-| JetBrains Mono (fonts) | The JetBrains Mono Project Authors | SIL OFL 1.1 | third_party/fonts, app/ui/typography.cpp (numbers and the frequency readout; Regular and Bold, subset) | bundled, embedded (compressed) in the program |
+| Inter (fonts) | The Inter Project Authors (Rasmus Andersson) | SIL OFL 1.1 | third_party/fonts, app/ui/typography.cpp (interface text; Regular, Medium and SemiBold, subset); Android app: android/app/src/main/res/font (Clean and Compact looks) | bundled, embedded (compressed) in the program |
+| JetBrains Mono (fonts) | The JetBrains Mono Project Authors | SIL OFL 1.1 | third_party/fonts, app/ui/typography.cpp (numbers and the frequency readout; Regular and Bold, subset); Android app: android/app/src/main/res/font (all text in the default look) | bundled, embedded (compressed) in the program |
 | miniaudio | David Reid | Public domain or MIT-0 | third_party/miniaudio (sound output and input) | vendored, compiled in |
 | codec2 | David Rowe and contributors | LGPL-2.1 | third_party/codec2 (FreeDV and M17 speech) | vendored, built as a separate shared library, loaded at run time |
 | DRA decoder (dradec) | maliwen2015, from ffmpeg_cavs_dra | MIT (as published there) | CDR digital radio audio (optional add-on, tools/addons/dra) | loaded at run time, user installs it |

@@ -24,10 +24,12 @@ android/
       settings/             Settings + SettingsStore (DataStore, migrates the 0.2.x SharedPreferences)
       service/              ReceiverService (foreground service of a receive session)
       diag/                 AppLog (structured log), CrashLog (crash guard, crash log, share)
-      ui/                   ReceiverViewModel, Waterfall, Permissions
-      *.kt                  Compose screens (OnAirApp, ReceiverTab, ModeTab, ResultsTab, LogTab, SpectrumView, AircraftMap,
-                            Widgets, Theme) and the generated mode list (Modes.kt)
-    src/main/res/           strings, generated modes.xml, theme, icons, FileProvider paths
+      ui/                   ReceiverViewModel, Waterfall, Permissions, the shell (AppShell, AppLayout, nav/), the screens
+                            (receiver/, panels/, modes/, radio/, settings/, log/, about/, onboarding/), UiPrefs, Previews
+      *.kt                  Theme (OnAir palette, fonts, shapes), OnAirIcons, Widgets, ResultsTab, AircraftMap and the generated
+                            mode list (Modes.kt)
+    src/main/res/           strings, generated modes.xml, theme, icons, fonts (Inter, JetBrains Mono: OFL), FileProvider paths
+    src/test/               JVM unit tests of the UI logic (./gradlew testDebugUnitTest)
     src/main/jniLibs/       libonair.so is placed here by tools/build_native.sh (gitignored)
   native/                   the JNI library: CMakeLists.txt (adds the repository root as the core) + src/ (bridge, results JSON,
                             stand-ins for libusb/libhackrf/FFmpeg entry points)
@@ -35,7 +37,7 @@ android/
     build_native.sh         builds and strips libonair.so for arm64-v8a
     gen_modes.py            regenerates Modes.kt and res/values/modes.xml from the desktop mode table (app/toolbar.cpp)
     check_jni.py            compares OnAirNative.kt with jni_onair.cpp
-  docs/                     ARCHITECTURE.md, the 0.2.x plan and mode audit, screenshots
+  docs/                     ARCHITECTURE.md, STYLE.md (desktop look -> Compose tokens), the 0.2.x plan and mode audit
 ```
 
 ## Build
@@ -107,10 +109,12 @@ touches `android/` runs a quick Kotlin-only check (no native library).
 ## Using the app
 
 Sources: the built-in **test signal**, **rtl_tcp** (a USB RTL-SDR served by a driver app on the phone or over the network),
-**SpyServer**, and **IQ files** picked with the system file picker (cs8, cu8, cf32, ci16, cu16). Pick a source on the Receiver tab,
-a mode on the Mode tab, press play. Tap the spectrum to tune, drag to move, pinch to zoom (double tap resets). Receiving goes on with
-the screen off; the notification has a Stop button. The Log tab shows the app and core log and shares it (with the crash log, if
-any) through the share sheet.
+**SpyServer**, and **IQ files** picked with the system file picker (cs8, cu8, cf32, ci16, cu16). The first start runs a short setup
+(radio, permissions, interests, lessons). Pick a source on the Radio tab, a mode on the Modes tab (search, favourites, filters), press
+play. Tap the spectrum to tune, pinch to zoom, double tap to see the whole capture; drag tunes in centre tuning and moves the view in
+normal tuning (the chip on the spectrum switches). Tap the frequency digits to type one; − and + step. Receiving goes on with the
+screen off; the notification has a Stop button. Settings > Log shows the app and core log and shares it (with the crash log, if any).
+Links `onair://tune?freq=100.5M&mode=FM%20broadcast` open the receiver there.
 
 Limits today: arm64-v8a only, minimum Android 9 (API 28), no direct USB radios yet (next: `android-usb-030`), patented voice
 codecs are not included (user-installed, see the desktop docs).

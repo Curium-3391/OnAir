@@ -33,6 +33,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- onair://tune?freq=100.5M&mode=FM%20broadcast (ui/nav/DeepLink.kt): open the receiver on a frequency and mode -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="onair" android:host="tune" />
+            </intent-filter>
         </activity>
 
         <service
