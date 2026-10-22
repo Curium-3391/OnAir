@@ -51,6 +51,15 @@ public:
     void setLogCallback(std::function<void(const std::string&)> cb);
     // Where unencrypted traffic bursts go (tetra_voice_codec.h). The sink must outlive the receiver; null: voice frames are dropped.
     void setVoiceSink(SpeechFrameSink* s);
+    // What is listened to (issue #267). Timeslot 1..4 (0: the first one with clear voice); a carrier in Hz (0: the strongest with clear voice,
+    // followed as before); single carrier: only the 25 kHz channel at the dial frequency is decoded, the rest of the span is not.
+    void setVoiceTimeslot(int tn);
+    void setVoiceCarrier(double hz);
+    void setSingleCarrier(bool on);
+    bool singleCarrier() const;
+    // The stream whose clear voice reached the sink in the last capture: its carrier (Hz, 0 none) and timeslot (0 none). Any thread.
+    double voiceCarrierHz() const;
+    int voiceTimeslot() const;
     bool busy() const;                 // a block is captured or being searched (tools: feed a file only as fast as it is searched)
 
 private:
