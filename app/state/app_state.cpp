@@ -326,6 +326,8 @@ void applyBandwidth(App& a) {
             a.tune.sampleRate = hdrSampleRate(a.freqMhz); a.tune.basebandFilterHz = 0;
         } else if (mt->stdMode == 72) {   // Wi-Fi HaLow: the rate of the receive width (4 Msps Auto 1 - 4 MHz, 20 Msps Auto all, else the width's own); the marker shows the channel width
             a.tune.sampleRate = halowWantedRateHz(); a.tune.bandwidthMhz = halowWantedWidthMhz(); a.tune.basebandFilterHz = 0;
+        } else if (mt->stdMode == 16 && a.freqMhz > 156.9 && a.freqMhz < 161.9) {   // AIS between the pairs: one capture for AIS 1 + 2 and 75 + 76 (message 27)
+            a.tune.bandwidthMhz = 5.4; a.tune.sampleRate = 8e6; a.tune.basebandFilterHz = 7e6;
         } else if (mt->stdMode == 15 && dect2::sondeIsLbandMhz(a.freqMhz)) {   // LMS6-1680: wide FSK (~170 kHz)
             a.tune.bandwidthMhz = 0.4; a.tune.sampleRate = 2e6; a.tune.basebandFilterHz = 0.4e6;
         }
