@@ -431,7 +431,7 @@ void tab(App& a) {
     {   // the voice monitor's strip, the same in every voice mode
         const dect2::P25Telemetry& t = a.rx.p25;
         voiceui::Link l;
-        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "IMBE";
+        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "IMBE"; l.codecId = "imbe";
         l.codecReady = t.imbe || dect2::codec::pluginLoaded("imbe");
         l.errorRate = l.locked ? t.berPct / 100.f : -1.f;
         voiceui::strip(a, "p25", "P25", l);

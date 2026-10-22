@@ -67,7 +67,7 @@ void tab(App& a) {
     {   // the voice monitor's strip, the same in every voice mode
         const dect2::FusionTelemetry& t = a.rx.fusion;
         voiceui::Link l;
-        l.live = live(a); l.locked = l.live && t.dataValid; l.codecName = "AMBE+2 (Yaesu)";
+        l.live = live(a); l.locked = l.live && t.dataValid; l.codecName = "AMBE+2 (Yaesu)"; l.codecId = "ysf";
         l.codecReady = S.codecGiven;
         const double tot = (double)t.dchOk + (double)t.dchBad;
         l.errorRate = l.locked && tot > 20 ? (float)(t.dchBad / tot) : -1.f;   // the frames whose data channel failed its check

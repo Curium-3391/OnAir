@@ -131,7 +131,8 @@ void voiceStrip(App& a) {
     }
     {   // the voice monitor's strip, the same in every voice mode
         voiceui::Link l;
-        l.live = a.rx.standard == 47; l.locked = l.live && t.dataValid; l.codecName = "TETRA ACELP";   // 47: TETRA (live() below) l.codecReady = gVoice.hasCodec();
+        l.live = a.rx.standard == 47; l.locked = l.live && t.dataValid; l.codecName = "TETRA ACELP"; l.codecId = "tetra";
+        l.codecReady = gVoice.hasCodec();   // standard 47: TETRA (live() is below)
         const double tot = (double)t.blocksOk + (double)t.blocksBad;
         l.errorRate = l.locked && tot > 20 ? (float)(t.blocksBad / tot) : -1.f;   // signalling blocks that failed their CRC
         voiceui::strip(a, "tetra", "TETRA", l);

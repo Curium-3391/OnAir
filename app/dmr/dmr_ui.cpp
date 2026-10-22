@@ -241,7 +241,7 @@ void tab(App& a) {
     const float cw = (W - gap) * 0.5f;
     {   // the voice monitor's strip, the same in every voice mode
         voiceui::Link l;
-        l.live = on; l.locked = on && t.state == 2; l.codecName = "AMBE+2";
+        l.live = on; l.locked = on && t.state == 2; l.codecName = "AMBE+2"; l.codecId = "ambe2";
         l.codecReady = dect2::codec::pluginLoaded("ambe2") || dect2::dmrAmbeAvailable(nullptr);
         l.errorRate = on && t.dataValid ? t.ber : -1.f;
         voiceui::strip(a, "dmr", "DMR", l);

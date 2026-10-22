@@ -2,6 +2,7 @@
 #include "voice_monitor_ui.h"
 #include "../app.h"
 #include "../platform/platform.h"
+#include "../codec/speech_codec_ui.h"
 #include "dect2/audio/audioout.h"
 #include "dect2/engine/updater.h"
 #include "dect2/voice/voice_monitor.h"
@@ -164,6 +165,16 @@ void strip(App& a, const char* mode, const char* title, const Link& l) {
     {
         char b[64]; snprintf(b, sizeof b, "%s %s", l.codecName, l.codecReady ? "ready" : "missing");
         tag(b, l.codecReady ? pal::okGreen() : pal::warnAmber());
+        if (!l.codecReady && l.codecId) {   // one click to the install helper: the exact file name, the folder, the build steps, Rescan
+            ImGui::SameLine(0, 4 * gUi);
+            if (ImGui::SmallButton("Install codec...")) ImGui::OpenPopup("vmcodec");
+            if (ImGui::BeginPopup("vmcodec")) {
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32);
+                appcodec::codecInstallHelper(l.codecId);
+                ImGui::PopTextWrapPos();
+                ImGui::EndPopup();
+            }
+        }
     }
     if (talking || haveOther) {
         const vm::CallEntry& e = talking ? now : other;

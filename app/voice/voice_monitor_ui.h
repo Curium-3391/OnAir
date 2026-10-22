@@ -13,6 +13,7 @@ struct Link {
     bool locked = false;         // a signal of the mode is being decoded
     bool codecReady = false;     // the voice codec is loaded (for codec2 modes: always)
     const char* codecName = "";  // "AMBE+2", "IMBE", "TETRA ACELP", "Codec 2"
+    const char* codecId = nullptr;   // the plug-in id ("ambe2", "ambe", "imbe", "ysf", "tetra"): an Install codec button while missing (null: bundled)
     float errorRate = -1.f;      // the channel's bit error rate 0..1 (-1: not known)
 };
 
