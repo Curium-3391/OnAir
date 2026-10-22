@@ -167,8 +167,9 @@ public:
         c.rate = rate;
         c.dialOffsetHz = -aleTuning().tuneOffsetHz;
         c.cfoHz = s.cfoHz;
-        c.noiseSigma = 0.05;
-        c.snrDb = s.snrDb - 10;   // the default 30 gives 20 dB in 3 kHz
+        const bool clean = s.snrDb >= 99;   // the transmitter's clean signal (TxSession): no noise, and the tones at the 20 dB level, not 190 dB above it
+        c.noiseSigma = clean ? 0 : 0.05;
+        c.snrDb = clean ? 20 : s.snrDb - 10;   // the default 30 gives 20 dB in 3 kHz
         c.repeat = true;
         c.calls = aleTestCalls();
         if (s.modeOpt[0] == 1) c.calls.resize(1);

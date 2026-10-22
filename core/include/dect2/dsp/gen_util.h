@@ -50,6 +50,25 @@ private:
     bool have_ = false;
 };
 
+// e^(j phase) from a 4096-entry table with linear interpolation, for generators that need a sine and a cosine of a varying phase every
+// sample (FM, FSK): the error is below 3e-7 (spurs under -130 dBc), at a fraction of the cost of std::sin + std::cos in double.
+// The phase is in radians, any value (wrapped here).
+inline std::complex<float> fastPolar(double phase) {
+    constexpr int kN = 4096;
+    static const std::vector<std::complex<float>> t = [] {
+        std::vector<std::complex<float>> v(kN + 1);
+        for (int i = 0; i <= kN; i++) v[(size_t)i] = std::polar(1.f, (float)(2 * dect2::math::kPi * i / kN));
+        return v;
+    }();
+    float u = (float)(phase * (kN / (2 * dect2::math::kPi)));
+    if (u < 0.f || u >= (float)kN) u -= std::floor(u * (1.f / kN)) * kN;   // most callers keep the phase within one turn: no floor then
+    int i = (int)u;
+    if (i >= kN) i = kN - 1;
+    const float f = u - (float)i;
+    const std::complex<float> a = t[(size_t)i], b = t[(size_t)i + 1];
+    return a + (b - a) * f;
+}
+
 // white Gaussian noise, unit variance per real component, one table shared by every generator
 inline const std::vector<std::complex<float>>& noiseTable() {
     static const std::vector<std::complex<float>> t = [] {

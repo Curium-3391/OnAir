@@ -19,6 +19,7 @@ private:
     double fc_;
     int H_;
     std::vector<float> tab_;   // the filter at 1/kOver input-sample steps over [-H, H]
+    std::vector<float> bank_;  // the same taps phase by phase: row q (0..kOver) holds the 2H taps of fraction q / kOver, oldest input first
     static constexpr int kOver = 128;
 };
 

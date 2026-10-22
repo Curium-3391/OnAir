@@ -138,10 +138,11 @@ public:
         c.rate = rate;
         c.dialOffsetHz = -cwTuning().tuneOffsetHz;
         c.cfoHz = s.cfoHz;
-        c.noiseSigma = 0.05;
+        const bool clean = s.snrDb >= 99;   // the transmitter's clean signal (TxSession): no noise, the keyed tones at the level of a typed message (40 dB)
+        c.noiseSigma = clean ? 0 : 0.05;
         c.signals = cwTestSignals();
         if (s.modeOpt[0] == 1) c.signals.resize(1);
-        for (auto& g : c.signals) g.snrDb += s.snrDb;
+        for (auto& g : c.signals) g.snrDb += clean ? 40 : s.snrDb;
         gen_ = std::make_unique<CwGenerator>(c);
     }
     double sampleRate() const override { return rate_; }

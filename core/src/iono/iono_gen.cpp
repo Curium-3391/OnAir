@@ -16,6 +16,7 @@ public:
     IonoSynth(const SynthConfig& c, double fs) : fs_(fs), dt_(1.0 / fs) {
         fc_ = (c.modeVal[0] > 0 ? c.modeVal[0] : kIonoSynthDefMhz) * 1e6;
         noiseOnly_ = c.modeOpt[0] == 1;
+        clean_ = c.snrDb >= 99 && !noiseOnly_;   // the transmitter's clean signal (TxSession): the sounder sweeps without the band's noise floor
         // a table of Gaussian noise, played from random places
         noise_.resize(kTab);
         const double sig = 0.2 / std::sqrt(2.0);
@@ -42,7 +43,8 @@ public:
     }
     double sampleRate() const override { return fs_; }
     void generate(cf32* out, size_t n) override {
-        for (size_t i = 0; i < n; i++) {
+        if (clean_) { std::fill(out, out + n, cf32(0.f, 0.f)); g_ += n; }
+        else for (size_t i = 0; i < n; i++) {
             if (pos_ == kTab || (g_ & 4095) == 0) pos_ = (size_t)(next() % (kTab - 4096));
             out[i] = noise_[pos_++];
             g_++;
@@ -73,7 +75,7 @@ private:
     double uni() { return (double)(next() >> 11) * (1.0 / 9007199254740992.0); }
     uint64_t next() { s_ ^= s_ << 13; s_ ^= s_ >> 7; s_ ^= s_ << 17; return s_; }
     double fs_, dt_, fc_ = 0;
-    bool noiseOnly_ = false;
+    bool noiseOnly_ = false, clean_ = false;
     std::vector<cf32> noise_;
     std::vector<Path> paths_;
     size_t pos_ = kTab;

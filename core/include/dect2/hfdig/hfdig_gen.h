@@ -42,6 +42,7 @@ std::unique_ptr<HfdigTestAudio> makeKbdTestAudio(const SynthConfig& cfg);       
 std::unique_ptr<HfdigTestAudio> makeHfdigTestAudio(int which, const SynthConfig& cfg);
 
 // The same USB (or LSB) mixer as makeHfdigSynth, with audio the caller built. nullptr audio: noise only.
-std::unique_ptr<ModeSynth> makeHfdigSynthFromAudio(std::unique_ptr<HfdigTestAudio> audio, const SynthConfig& cfg, double sampleRate, bool lsb = false);
+// maxAmp > 0: the upper-sideband amplitude is at most this (multi-carrier audio such as HamDRM keeps its peaks below the transmit limiter's knee)
+std::unique_ptr<ModeSynth> makeHfdigSynthFromAudio(std::unique_ptr<HfdigTestAudio> audio, const SynthConfig& cfg, double sampleRate, bool lsb = false, float maxAmp = 0);
 
 } // namespace dect2

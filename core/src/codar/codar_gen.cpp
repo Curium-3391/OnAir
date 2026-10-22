@@ -23,7 +23,8 @@ struct CodarGenerator::Impl {
     uint64_t rng = 1;
     struct R { CodarGenRadar r; double amp = 0, phase = 0; std::vector<uint8_t> key; };   // key: the ID slot at 1 ms
     std::vector<R> rs;
-    double junkPhase = 0, carrierPhase = 0;
+    double junkPhase = 0, carrierPhase = 0, cleanAmp = 0;
+    bool clean = false;
     bool haveSpare = false;
     double spare = 0;
 
@@ -48,10 +49,12 @@ CodarGenerator::CodarGenerator(const CodarGenConfig& c) : p_(new Impl) {
     int N = 512;
     while (N < c.rate / 1000.0 * 0.75 && N < 8192) N *= 2;
     const double gain = 2.0 * N / 3.0;
+    m.clean = c.snrDb >= 99;   // the transmitter's clean signal (TxSession): no noise, and fixed levels instead of snrDb over the noise
+    m.cleanAmp = 0.25 / std::max<size_t>(1, c.radars.size());   // the sweeps add up to at most 0.25 (the sum of their amplitudes)
     for (const auto& r : c.radars) {
         Impl::R x;
         x.r = r;
-        x.amp = kNoise * std::sqrt(std::pow(10.0, (c.snrDb + r.relDb) / 10.0) / gain);
+        x.amp = m.clean ? m.cleanAmp * std::pow(10.0, std::min(0.0, r.relDb) / 20.0) : kNoise * std::sqrt(std::pow(10.0, (c.snrDb + r.relDb) / 10.0) / gain);
         if (!r.callsign.empty()) {
             const double dit = 1.2 / std::max(5.0, r.wpm);
             std::vector<std::pair<bool, double>> el;
@@ -80,7 +83,7 @@ void CodarGenerator::generate(cf32* out, size_t n) {
     const double fs = m.c.rate;
     for (size_t i = 0; i < n; i++) {
         const double t = (double)m.g * m.dt;
-        std::complex<double> z(m.gauss() * kNoise / std::sqrt(2.0), m.gauss() * kNoise / std::sqrt(2.0));
+        std::complex<double> z = m.clean ? std::complex<double>(0, 0) : std::complex<double>(m.gauss() * kNoise / std::sqrt(2.0), m.gauss() * kNoise / std::sqrt(2.0));
         if (!m.c.noiseOnly) {
             for (auto& x : m.rs) {
                 const CodarGenRadar& r = x.r;
@@ -108,7 +111,7 @@ void CodarGenerator::generate(cf32* out, size_t n) {
                 }
             }
             if (m.c.junk) {
-                const double a = kNoise * std::sqrt(std::pow(10.0, m.c.snrDb / 10.0) / (2.0 * 2048 / 3.0));
+                const double a = m.clean ? 0.1 : kNoise * std::sqrt(std::pow(10.0, m.c.snrDb / 10.0) / (2.0 * 2048 / 3.0));
                 m.carrierPhase += 2 * kPi * 500e3 / fs;
                 if (m.carrierPhase > kPi) m.carrierPhase -= 2 * kPi;
                 z += std::polar(a, m.carrierPhase);

@@ -65,8 +65,8 @@ public:
         const size_t M = base_.size();
         size_t done = 0;
         while (done < n) {
-            const size_t m = std::min<size_t>(n - done, 4096);
-            const double sec = ((double)idx_ + 0.5 * (double)m) / rate_ * timeScale_;
+            const size_t m = std::min<size_t>(n - done, 4096 - (size_t)(idx_ % 4096));   // chunks on a fixed 4096-sample grid: the same signal whatever the block size
+            const double sec = ((double)(idx_ / 4096 * 4096) + 2048.0) / rate_ * timeScale_;   // the middle of the grid chunk
             addChannel(out + done, m, chA_, 0, scenario_ == 2 ? false : true, dopplerAt(sec));
             if (scenario_ == 0 && chB_ >= 0) addChannel(out + done, m, chB_, 1, std::fmod(sec, 0.8) < 0.3, dopplerAt(sec) * 0.4 - 4000.0);
             idx_ += m; done += m;
@@ -85,10 +85,12 @@ private:
         const double w = 2 * kPi * f / rate_;
         const cf32 step((float)std::cos(w), (float)std::sin(w));
         const size_t M = base_.size();
-        if (on) {
+        const float target = on ? 1.f : 0.f;
+        if (on || P.gain > 0.f) {   // a burst keys up and down over one chunk (a linear ramp), not in a step that splatters
             size_t pos = (size_t)((idx_ + (size_t)slot * 77777u + (size_t)c * 20011u) % M);
             for (size_t i = 0; i < m; i++) {
-                out[i] += base_[pos] * P.rot * amp_;
+                out[i] += base_[pos] * P.rot * (amp_ * P.gain);
+                P.gain = target > P.gain ? std::min(target, P.gain + 1.f / 4096) : std::max(target, P.gain - 1.f / 4096);
                 P.rot *= step;
                 if (++pos == M) pos = 0;
             }
@@ -97,7 +99,7 @@ private:
         }
         P.rot /= std::abs(P.rot);
     }
-    struct Phase { cf32 rot = cf32(1.f, 0.f); };
+    struct Phase { cf32 rot = cf32(1.f, 0.f); float gain = 0.f; };
     double rate_;
     SynthConfig cfg_;
     genutil::NoiseSource noise_;

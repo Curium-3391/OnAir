@@ -5,6 +5,7 @@
 #include "dect2/fpv/fpv_chan.h"
 #include "dect2/atv/atv_gen.h"
 #include "dect2/dsp/exact_resampler.h"
+#include "dect2/dsp/gen_util.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -19,12 +20,13 @@ struct FpvGenerator::Impl {
     ExactResampler rs;
     std::vector<cf32> pend;            // composite at the output rate, waiting to be modulated
     size_t pendPos = 0;
-    double ph = 0, subPh = 0, tonePh = 0, hpY = 0, hpX = 0;
+    double ph = 0, subPh = 0, hpY = 0, hpX = 0;
+    std::complex<double> tone{1.0, 0.0};
     bool hpInit = false;
     std::mt19937_64 rng;
     dect2::normal_distribution<float> nd{0.f, 1.f};
     double noiseSigma = 0;
-    uint64_t nOut = 0;
+    uint64_t nOut = 0, gapPos = 0;   // gapPos: nOut modulo the 2 s of the sound tone's cycle (counted, not divided, per sample)
 
     explicit Impl(const FpvGenConfig& cfg) : c(cfg), rng(cfg.seed) {
         AtvGenConfig a;
@@ -64,25 +66,32 @@ struct FpvGenerator::Impl {
         const double sgn = c.syncLow ? 1.0 : -1.0;
         const double fsub = c.sound == 2 ? 6.0e6 : 6.5e6;
         const double fcar = c.offsetHz + c.cfoHz;
+        // per-sample constants out of the loop, and the three oscillators from one sine table (genutil::fastPolar): the double-precision
+        // sin / cos calls were two thirds of the time, and 20 Msps ran slower than real time
+        const double k = 2 * M_PI / c.rate, devK = k * sgn * c.devHz / 0.715, carK = k * fcar - devK * 0.285;
+        const uint64_t period = (uint64_t)std::llround(2.0 * c.rate), gapFrom = (uint64_t)std::llround(1.8 * c.rate);
+        const float a = c.off ? 0.f : (float)c.amp, subLevel = (float)(c.soundLevel * 0.715);
+        const std::complex<double> toneRot = std::polar(1.0, k * 1000.0);
         for (size_t i = 0; i < n; i++) {
             float v = pend[pendPos++].real();
             if (c.sound) {
                 // a 1 kHz tone with a short break every 2 s
-                const bool gap = std::fmod((double)nOut / c.rate, 2.0) > 1.8;
-                tonePh += 2 * M_PI * 1000.0 / c.rate; if (tonePh > 2 * M_PI) tonePh -= 2 * M_PI;
-                const double fi = fsub + (gap ? 0.0 : c.soundDevHz * std::sin(tonePh));
-                subPh += 2 * M_PI * fi / c.rate; if (subPh > 2 * M_PI) subPh -= 2 * M_PI;
-                v += (float)(c.soundLevel * 0.715 * std::cos(subPh));
+                if (++gapPos >= period) gapPos = 0;
+                const bool gap = gapPos > gapFrom;
+                tone *= toneRot;   // the 1 kHz tone: a rotating phasor (renormalised once a block)
+                const double fi = fsub + (gap ? 0.0 : c.soundDevHz * tone.imag());
+                subPh += k * fi; if (subPh > 2 * M_PI) subPh -= 2 * M_PI;
+                v += subLevel * genutil::fastPolar(subPh).real();
             }
-            const double f = fcar + sgn * c.devHz * (v - 0.285) / 0.715;
-            ph += 2 * M_PI * f / c.rate;
+            ph += carK + devK * v;
             if (ph > M_PI) ph -= 2 * M_PI; else if (ph < -M_PI) ph += 2 * M_PI;
-            const float a = c.off ? 0.f : (float)c.amp;
-            float re = a * (float)std::cos(ph), im = a * (float)std::sin(ph);
+            const cf32 e = genutil::fastPolar(ph);
+            float re = a * e.real(), im = a * e.imag();
             if (noiseSigma > 0) { re += (float)noiseSigma * nd(rng); im += (float)noiseSigma * nd(rng); }
             out[i] = cf32(re, im);
             nOut++;
         }
+        tone /= std::abs(tone);
         if (pendPos > 65536) { pend.erase(pend.begin(), pend.begin() + (long)pendPos); pendPos = 0; }
     }
 };

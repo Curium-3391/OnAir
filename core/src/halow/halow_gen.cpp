@@ -98,9 +98,17 @@ struct HalowGenerator::Impl {
                 y.push_back(step == 1.0 && frac == 0.0 ? x[(size_t)u] : interp(x, u, cutoff));
             }
         }
-        for (const cf32& s : y) {
-            ph = std::remainder(ph + 2 * kPi * off / cfg.rate, 2 * kPi);
-            q.push_back((float)amp * s * cf32((float)std::cos(ph), (float)std::sin(ph)));
+        {   // the frame's offset by a rotating phasor (renormalised every 1024 samples), not a sine and a cosine per sample
+            const double w = 2 * kPi * off / cfg.rate;
+            cf32 z((float)std::cos(ph), (float)std::sin(ph));
+            const cf32 st((float)std::cos(w), (float)std::sin(w));
+            size_t k = 0;
+            for (const cf32& s : y) {
+                z *= st;
+                if ((++k & 1023) == 0) z /= std::abs(z);
+                q.push_back((float)amp * s * z);
+            }
+            ph = std::remainder(ph + w * (double)y.size(), 2 * kPi);
         }
         silence(f.gapSec);
         if (++idx >= cfg.frames.size()) { idx = 0; if (!cfg.loop) done = true; }
