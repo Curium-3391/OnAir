@@ -5,6 +5,7 @@
 #include "dect2/dstar/dstar_proto.h"
 #include "dect2/dstar/dstar_ambe.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -70,6 +71,9 @@ struct DstarReceiver::Impl {
     std::atomic<bool> tapReq{false};
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false}, silent{false};
+    voice::Monitor* monSet = nullptr;   // setVoiceMonitor; else voice::monitor("dstar") while not silent
+    voice::CallInfo playing;            // the call whose voice is in aud8
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("dstar"); }
     DstarTelemetry pub;
 
     double rate = 0, offset = 0;
@@ -539,6 +543,17 @@ struct DstarReceiver::Impl {
 
     void voice(const uint8_t* bits) {
         if (vtap) vtap(bits);
+        voice::Monitor* mon = activeMonitor();
+        if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
+            voice::CallInfo ci;
+            ci.srcText = tel.now.my; if (!tel.now.sfx.empty() && tel.now.sfx != "    ") ci.srcText += "/" + tel.now.sfx;
+            ci.dstText = tel.now.ur; ci.group = true;
+            ci.codecMissing = !tel.ambe;
+            ci.errorRate = tel.now.berPct > 0 ? tel.now.berPct / 100.f : -1.f;
+            if (!tel.now.rpt1.empty()) ci.access = "RPT " + tel.now.rpt1 + (tel.now.rpt2.empty() ? "" : " / " + tel.now.rpt2);
+            if (mon->offer(ci) != voice::Verdict::Play) return;
+            playing = ci;
+        }
         if (!tel.ambe || (silent.load() && !tap)) return;
         if (!ambe) ambe = std::make_unique<DstarAmbe>();
         if (!ambe->ok()) return;
@@ -553,14 +568,16 @@ struct DstarReceiver::Impl {
     void flushAudio() {
         if (aud8.empty()) return;
         if (tap) tap(aud8.data(), aud8.size());
-        if (!silent.load()) {
+        voice::Monitor* mon = activeMonitor();
+        if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on)
+        if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
                 for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
                 upPrev = s;
             }
-            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+            audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
             if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
             audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
         }
@@ -677,6 +694,7 @@ void DstarReceiver::setLogCallback(std::function<void(const std::string&)> cb) {
 void DstarReceiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void DstarReceiver::setMuted(bool m) { p_->muted = m; }
 void DstarReceiver::setSilent(bool s) { p_->silent = s; }
+void DstarReceiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void DstarReceiver::setAudioTap(std::function<void(const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tapSet = std::move(cb); p_->tapReq = true; }
 void DstarReceiver::setVoiceTap(std::function<void(const uint8_t bits[72])> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->vtapSet = std::move(cb); p_->tapReq = true; }
 

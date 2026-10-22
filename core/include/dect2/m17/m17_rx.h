@@ -25,6 +25,7 @@
 #include <string>
 
 namespace dect2 {
+namespace voice { class Monitor; }
 
 struct M17Telemetry;   // m17_tel.h
 
@@ -49,6 +50,7 @@ public:
     void setVolume(float v);
     void setMuted(bool m);
     void setSilent(bool s);              // decode but do not open the sound device
+    void setVoiceMonitor(voice::Monitor* m);   // the monitor that picks and records the call (voice_monitor.h); default voice::monitor("m17") while not silent
     void setAudioTap(std::function<void(const float* x, size_t n)> cb);   // tests: the 8 kHz voice
 
 private:

@@ -5,6 +5,7 @@
 #include "dect2/p25/p25_proto.h"
 #include "dect2/p25/p25_imbe.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -59,6 +60,9 @@ struct P25Receiver::Impl {
     std::atomic<bool> tapReq{false};
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false}, silent{false};
+    voice::Monitor* monSet = nullptr;   // setVoiceMonitor; else voice::monitor("p25") while not silent
+    voice::CallInfo playing;            // the call whose voice is in aud8
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("p25"); }
     P25Telemetry pub, tel;
 
     double rate = 0, offset = 0;
@@ -619,6 +623,17 @@ struct P25Receiver::Impl {
         tel.voiceFrames++;
         const bool clear = !tel.now.encrypted;
         if (vtap) { uint8_t bits[144]; p25::imbeFlatten(fr, bits); vtap(bits, clear); }
+        voice::Monitor* mon = activeMonitor();
+        if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
+            voice::CallInfo ci;
+            ci.src = tel.now.src > 0 ? (uint32_t)tel.now.src : 0; ci.dst = tel.now.dst > 0 ? (uint32_t)tel.now.dst : 0;
+            ci.group = tel.now.group; ci.emergency = tel.now.emergency; ci.encrypted = !clear; ci.codecMissing = !imbe || !imbe->ok();
+            ci.errorRate = berBits > 1000 ? (float)berErr / (float)berBits : -1.f;
+            const int nac = tel.now.nac >= 0 ? tel.now.nac : tel.nac;
+            if (nac >= 0) { char b[16]; snprintf(b, sizeof b, "NAC %03X", nac); ci.access = b; }
+            if (mon->offer(ci) != voice::Verdict::Play) return;
+            playing = ci;
+        }
         if (!clear) return;   // encrypted: reported, never decoded
         tel.now.clearFrames++;
         if (!imbe || !imbe->ok()) return;
@@ -633,14 +648,16 @@ struct P25Receiver::Impl {
     void flushAudio() {
         if (aud8.empty()) return;
         if (tap) tap(aud8.data(), aud8.size());
-        if (!silent.load()) {
+        voice::Monitor* mon = activeMonitor();
+        if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on)
+        if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
                 for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
                 upPrev = s;
             }
-            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+            audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
             if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
             audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
         }
@@ -763,6 +780,7 @@ void P25Receiver::setLogCallback(std::function<void(const std::string&)> cb) { s
 void P25Receiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void P25Receiver::setMuted(bool m) { p_->muted = m; }
 void P25Receiver::setSilent(bool s) { p_->silent = s; }
+void P25Receiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void P25Receiver::setAudioTap(std::function<void(const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tapSet = std::move(cb); p_->tapReq = true; }
 void P25Receiver::setVoiceTap(std::function<void(const uint8_t bits[144], bool clear)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->vtapSet = std::move(cb); p_->tapReq = true; }
 

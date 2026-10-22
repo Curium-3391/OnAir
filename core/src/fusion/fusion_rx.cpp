@@ -2,6 +2,7 @@
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/fusion/fusion_proto.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include "dect2/common/mathconst.h"
 #include <algorithm>
 #include <atomic>
@@ -53,6 +54,9 @@ struct FusionReceiver::Impl {
     bool codecChanged = true;
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false}, silent{false};
+    voice::Monitor* monSet = nullptr;   // setVoiceMonitor; else voice::monitor("ysf") while not silent
+    voice::CallInfo playing;            // the call being played
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("ysf"); }
     std::function<void(const float*, size_t, int)> tap;
     std::unique_ptr<AudioOut> audioOut;
     float upPrev = 0;
@@ -358,6 +362,16 @@ struct FusionReceiver::Impl {
 
     void voice(const fusion::VoiceUnit& v) {
         tel.voiceSubFrames++;
+        voice::Monitor* mon = activeMonitor();
+        if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
+            voice::CallInfo ci;
+            ci.srcText = tel.src; ci.dstText = tel.dest; ci.group = tel.callMode != 3;
+            { std::lock_guard<std::mutex> lk(codecMu); ci.codecMissing = !codec; }
+            if (tel.squelch >= 0 && tel.squelch < 127) ci.access = tel.squelch ? "SQL " + std::to_string(tel.squelch) : std::string("SQL off");
+            if (!tel.down.empty()) ci.access += (ci.access.empty() ? "" : ", ") + std::string("via ") + tel.down;
+            if (mon->offer(ci) != voice::Verdict::Play) return;
+            playing = ci;
+        }
         std::vector<int16_t> pcm;
         int sr = 8000;
         {
@@ -371,15 +385,16 @@ struct FusionReceiver::Impl {
         std::vector<float> f(pcm.size());
         for (size_t i = 0; i < pcm.size(); i++) f[i] = pcm[i] / 32768.f;
         if (tap) tap(f.data(), f.size(), sr);
-        if (silent.load() || sr <= 0) return;
+        if (mon) mon->audio(playing, f.data(), f.size(), 1, sr);   // the call's recording (when on)
+        if (silent.load() || sr <= 0 || !mon) return;
         const int k = std::max(1, (int)std::lround(48000.0 / sr));
         pcmOut.clear();
         for (float s : f) {
             for (int j = 1; j <= k; j++) { const float x = upPrev + (s - upPrev) * j / (float)k; pcmOut.push_back(x); pcmOut.push_back(x); }
             upPrev = s;
         }
-        if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-        audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+        voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+        audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
         if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
         audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
     }
@@ -442,6 +457,7 @@ void FusionReceiver::setSpeechCodec(std::unique_ptr<codec::SpeechCodec> c, const
 void FusionReceiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void FusionReceiver::setMuted(bool m) { p_->muted = m; }
 void FusionReceiver::setSilent(bool s) { p_->silent = s; }
+void FusionReceiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void FusionReceiver::setAudioTap(std::function<void(const float*, size_t, int)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tap = std::move(cb); }
 
 ModeTuning fusionTuning() {

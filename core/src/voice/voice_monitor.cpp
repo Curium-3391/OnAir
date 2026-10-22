@@ -307,7 +307,9 @@ void Monitor::housekeepLocked(double t) {
 
 void Monitor::housekeep() { std::lock_guard<std::mutex> lk(mu_); housekeepLocked(now()); }
 
-Verdict Monitor::offer(const CallInfo& c) {
+Verdict Monitor::offer(const CallInfo& c0) {
+    CallInfo c = c0;   // callsigns come padded with spaces (D-STAR, Yaesu)
+    c.srcText = trim(c.srcText); c.dstText = trim(c.dstText); c.alias = trim(c.alias);
     std::lock_guard<std::mutex> lk(mu_);
     const double t = now();
     housekeepLocked(t);
