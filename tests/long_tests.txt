@@ -13,6 +13,7 @@ atv_sound
 atv_systems
 cw_wide
 dab_audit
+dab_sens
 datawell_engine
 dmr_engine
 drm_engine

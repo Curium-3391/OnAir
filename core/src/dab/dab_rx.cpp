@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <set>
@@ -34,6 +35,17 @@ constexpr int kQuickShift = 2;      // a re-acquisition searches this many carri
 std::string labelText(int charset, const uint8_t* d, int n) {
     return text::clean(text::dabCharset(charset, d, (size_t)n));
 }
+
+// max*(a, b) = log(e^a + e^b): the larger plus a correction from a table (1/8 steps up to 8, then nothing). DECT2_DAB_MAXLOG=1: the larger only
+float maxStar(float a, float b) {
+    static const struct T { float v[65]; T() { for (int i = 0; i <= 64; i++) v[i] = (float)std::log1p(std::exp(-(i + 0.5) / 8.0)); v[64] = 0; } } t;
+    static const bool maxLog = std::getenv("DECT2_DAB_MAXLOG") != nullptr;
+    const float m = a > b ? a : b, d = std::fabs(a - b);
+    if (maxLog || !(d < 8.f)) return m;
+    return m + t.v[(int)(d * 8.f)];
+}
+
+bool baselineMode() { static const bool b = std::getenv("DECT2_DAB_BASELINE") != nullptr; return b; }
 
 uint32_t getBits(const uint8_t* d, int pos, int n) { return (uint32_t)bits::getPackedMsb(d, (size_t)pos, n); }
 } // namespace
@@ -119,6 +131,7 @@ struct DabReceiver::Impl {
     struct SubDec {
         std::vector<std::vector<int8_t>> hist = std::vector<std::vector<int8_t>>(16);
         uint64_t count = 0;
+        int early = 16;           // CIFs in before the first logical frame is decoded (12 for DAB+ audio: Reed-Solomon and CRCs catch a failed one)
         std::vector<int8_t> mother, one;
         std::vector<uint8_t> dec, bytes;
         void reset() { hist.assign(16, {}); count = 0; }
@@ -131,17 +144,23 @@ struct DabReceiver::Impl {
             if (src) h.assign(src, src + bits);
             else h.assign((size_t)bits, 0);
             count++;
-            if (count < 16) return true;
+            // The first logical frames are decoded before all of their 16 CIFs are in: the ones from before the start are erased (a quarter of
+            // them at 12 CIFs, which the code still copes with at a fair SNR; a frame that fails is caught by the CRCs). That starts the audio a frame
+            // (96 ms) sooner after a lock or a service switch.
+            if (count < (uint64_t)early) return true;
             static const int kMap[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
             mother.resize((size_t)(4 * (info + 6))); one.resize((size_t)bits); dec.resize((size_t)info); bytes.resize((size_t)info / 8);
             int zeros = 0;
             for (int i = 0; i < bits; i++) {
-                const uint64_t t = count - 1 - (uint64_t)(15 - kMap[i & 15]);
+                const uint64_t back = (uint64_t)(15 - kMap[i & 15]);
+                if (back >= count) { one[(size_t)i] = 0; zeros++; continue; }   // a CIF from before the start
+                const uint64_t t = count - 1 - back;
                 const std::vector<int8_t>& c = hist[t % 16];
                 const int8_t v = (size_t)i < c.size() ? c[(size_t)i] : (int8_t)0;
                 one[(size_t)i] = v;
                 zeros += v == 0;
             }
+            if (count < 16 && zeros * 4 > bits) return true;   // more than a quarter missing at the start: not worth trying
             if (sub.eep ? !eepDepuncture(one.data(), sub.size, sub.option, sub.level, mother.data()) : !uepDepuncture(one.data(), sub.uepIndex, mother.data())) return false;
             viterbiDecode(mother.data(), info, dec.data());
             descramble(dec.data(), info);
@@ -361,6 +380,112 @@ struct DabReceiver::Impl {
         return true;
     }
 
+    // ------------------------------------------------------------ soft bits with a channel estimate
+    // Plain differential detection (the product of two noisy symbols) loses about 3 dB against coherent detection. The channel is known at the
+    // phase reference symbol and changes slowly from symbol to symbol, so it is estimated: from the phase reference first, then from each symbol
+    // with the decided symbols taken out. The estimate is cleaned in the delay domain: only the taps of the impulse response that stand out of
+    // the noise in the phase reference symbol are kept (a few dozen of 2048), which takes the noise and most decision errors out of it. The soft
+    // bits of each DQPSK symbol d_l then come from both received symbols (max-log over the unknown absolute phase s_{l-1}):
+    //   M(d) = max_s Re(conj(s) (conj(H_{l-1}) y_{l-1} + conj(H_l) y_l conj(d)))
+    // which turns into differential detection when the estimate is poor and into coherent detection when it is good. It does not depend on
+    // the absolute phase of the estimate in steps of 90 degrees, so a slipped estimate costs nothing. DECT2_DAB_BASELINE=1 turns it and the other decoding changes of 0.3.0 off (for the before/after measurement in test_dab_sens).
+    bool diffOnly = baselineMode();
+    std::vector<cf32> ys;                     // the spectra of the frame's symbols, carrier n of symbol l at ys[l * kCarriers + n]
+    std::vector<cf32> hA, hB, hP, hTmp;
+    bool coherent = false;                    // the last frame's soft bits came from the channel estimate (shown in the telemetry)
+    std::vector<float> tapMask;
+    double llrRef = 0;                        // slow average of |LLR| over good frames (the scale of the soft bits, as magRef)
+
+    // The channel at the carriers from the raw estimates e (one per carrier): through the delay domain, only the masked taps kept
+    void cleanEstimate(const cf32* e, cf32* out) {
+        hTmp.assign(kTu, cf32(0, 0));
+        for (int n = 0; n < kCarriers; n++) hTmp[(size_t)bin[(size_t)n]] = e[n];
+        fft.inverse(hTmp.data());
+        for (int i = 0; i < kTu; i++) hTmp[(size_t)i] *= tapMask[(size_t)i];
+        fft.forward(hTmp.data());
+        for (int n = 0; n < kCarriers; n++) out[n] = hTmp[(size_t)bin[(size_t)n]];
+    }
+
+    bool channelSoft(uint64_t, bool good) {
+        coherent = false;
+        if (ys.size() != (size_t)kSymbols * kCarriers) return false;
+        std::vector<cf32> e(kCarriers);
+        // the phase reference: the raw estimate and the taps that stand out (12 times the median tap power), widened by two samples
+        for (int n = 0; n < kCarriers; n++) e[(size_t)n] = ys[(size_t)n] * prsConj[(size_t)bin[(size_t)n]];
+        hTmp.assign(kTu, cf32(0, 0));
+        for (int n = 0; n < kCarriers; n++) hTmp[(size_t)bin[(size_t)n]] = e[(size_t)n];
+        fft.inverse(hTmp.data());
+        std::vector<float> p(kTu), c;
+        for (int i = 0; i < kTu; i++) p[(size_t)i] = std::norm(hTmp[(size_t)i]);
+        c = p;
+        std::nth_element(c.begin(), c.begin() + kTu / 2, c.end());
+        const float thr = 12.f * c[(size_t)kTu / 2];
+        tapMask.assign(kTu, 0.f);
+        int kept = 0;
+        for (int i = 0; i < kTu; i++)
+            if (p[(size_t)i] > thr) for (int d = -2; d <= 2; d++) tapMask[(size_t)((i + d + kTu) % kTu)] = 1.f / kTu;
+        for (float m : tapMask) kept += m > 0;
+        if (kept == 0 || kept > kTu / 4) return false;   // nothing stands out (no signal) or nothing is sparse (noise-like): plain differential
+        hA.resize(kCarriers); hB.resize(kCarriers);
+        cleanEstimate(e.data(), hA.data());
+        static const float r2 = 0.70710678f;
+        std::vector<float> L((size_t)(kSymbols - 1) * 2 * kCarriers);
+        double sum = 0, dH = 0, pH = 0;
+        hP.assign(hA.begin(), hA.end());   // the estimate two symbols back (a straight line through the last two predicts the next)
+        for (int l = 1; l < kSymbols; l++) {
+            const cf32* y0 = &ys[(size_t)(l - 1) * kCarriers];
+            const cf32* y1 = &ys[(size_t)l * kCarriers];
+            const bool diag = l & 1;   // the phase reference is on the axes, every DQPSK step turns by an odd multiple of 45 degrees
+            // decide s_l with the estimate of the symbol before, then estimate the channel of this one
+            for (int n = 0; n < kCarriers; n++) {
+                const cf32 z = std::conj(2.f * hA[(size_t)n] - hP[(size_t)n]) * y1[n];
+                cf32 s;
+                if (diag) s = cf32(z.real() >= 0 ? r2 : -r2, z.imag() >= 0 ? r2 : -r2);
+                else if (std::fabs(z.real()) >= std::fabs(z.imag())) s = cf32(z.real() >= 0 ? 1.f : -1.f, 0.f);
+                else s = cf32(0.f, z.imag() >= 0 ? 1.f : -1.f);
+                e[(size_t)n] = y1[n] * std::conj(s);
+            }
+            cleanEstimate(e.data(), hB.data());
+            // the noise of this symbol: what is left after the channel times the decided symbol (wrong decisions make it larger, not smaller)
+            double res = 0, pw = 0;
+            for (int n = 0; n < kCarriers; n++) { res += std::norm(e[(size_t)n] - hB[(size_t)n]); pw += std::norm(hB[(size_t)n]); }
+            const float g = (float)(2.0 * kCarriers / std::max(res, 1e-6 * pw + 1e-30));   // 2 / sigma^2
+            float* o = &L[(size_t)(l - 1) * 2 * kCarriers];
+            for (int n = 0; n < kCarriers; n++) {
+                const cf32 A = std::conj(hA[(size_t)n]) * y0[n], B = std::conj(hB[(size_t)n]) * y1[n];
+                // log of the likelihood of d = (dr + j di) / sqrt 2, summed over the four s_{l-1} (log-MAP with the Jacobian correction)
+                auto M = [&](float dr, float di) {
+                    const float wr = g * (A.real() + (B.real() * dr + B.imag() * di) * r2), wi = g * (A.imag() + (B.imag() * dr - B.real() * di) * r2);
+                    if (diag) return maxStar(maxStar(wr, -wr), maxStar(wi, -wi));   // s_{l-1} on the axes
+                    const float a = (wr + wi) * r2, b = (wr - wi) * r2;
+                    return maxStar(maxStar(a, -a), maxStar(b, -b));
+                };
+                const float mpp = M(1, 1), mpm = M(1, -1), mmp = M(-1, 1), mmm = M(-1, -1);
+                const float l0 = maxStar(mmp, mmm) - maxStar(mpp, mpm);   // > 0: the real part negative, bit 1
+                const float l1 = maxStar(mpm, mmm) - maxStar(mpp, mmp);
+                o[n] = l0; o[kCarriers + n] = l1;
+                sum += std::fabs(l0) + std::fabs(l1);
+            }
+            for (int n = 0; n < kCarriers; n++) { dH += std::norm(hB[(size_t)n] - hA[(size_t)n]); pH += std::norm(hA[(size_t)n]); }
+            hP.swap(hA);
+            hA.swap(hB);
+        }
+        // A channel that changes fast (Doppler of some 40 Hz and more, a car on a motorway in Band III) makes the decided symbols, and with them
+        // the estimate, unreliable: that frame goes back to plain differential detection, which follows the channel without decisions.
+        coherent = dH < 0.05 * pH;
+        if (!coherent) return false;
+        const double mean = sum / ((double)L.size()) + 1e-12;
+        if (good) llrRef = llrRef > 0 ? 0.8 * llrRef + 0.2 * mean : mean;
+        const float sc = (float)(40.0 / std::max(mean, llrRef));
+        auto q8 = [&](float v) { return (int8_t)std::max(-127.f, std::min(127.f, std::round(v * sc))); };
+        for (int l = 1; l < kSymbols; l++) {
+            const float* o = &L[(size_t)(l - 1) * 2 * kCarriers];
+            int8_t* dst = l <= kFicSymbols ? &ficSoft[(size_t)(l - 1) * 2 * kCarriers] : &mscSoft[(size_t)(l - kFicSymbols - 1) * 2 * kCarriers];
+            for (int i = 0; i < 2 * kCarriers; i++) dst[i] = q8(o[i]);
+        }
+        return true;
+    }
+
     // ------------------------------------------------------------ one frame
     bool processFrame() {
         const uint64_t needEnd = nextU + (uint64_t)kSymbols * kTs + kTu + 256;
@@ -453,9 +578,20 @@ struct DabReceiver::Impl {
         rot.resize((size_t)kCarriers + 1);
         const auto& carrier = freqInterleaver();
         double magSum = 0, restPrev = 0;
+        ys.resize((size_t)kSymbols * kCarriers);
+        for (int n = 0; n < kCarriers; n++) ys[(size_t)n] = prev[(size_t)bin[(size_t)n]];
         for (int l = 1; l < kSymbols; l++) {
             double rest = 0;
             windowFft(symStart(U, l, &rest) - kBackoff, cfo, cur);
+            {   // the spectrum kept for the channel estimation, the fraction of a sample turned out (the same slope as below, absolute)
+                cf32* y = &ys[(size_t)l * kCarriers];
+                if (std::fabs(rest) > 1e-4) {
+                    const cd step = std::polar(1.0, 2.0 * kPi * rest / kTu);
+                    cd z = std::polar(1.0, -2.0 * kPi * rest * (kCarriers / 2) / kTu);
+                    for (int i = 0; i <= kCarriers; i++) { rot[(size_t)i] = cf32((float)z.real(), (float)z.imag()); z *= step; }
+                    for (int n = 0; n < kCarriers; n++) y[n] = cur[(size_t)bin[(size_t)n]] * rot[(size_t)(carrier[(size_t)n] + kCarriers / 2)];
+                } else for (int n = 0; n < kCarriers; n++) y[n] = cur[(size_t)bin[(size_t)n]];
+            }
             const double dr = rest - restPrev;
             restPrev = rest;
             const bool turn = std::fabs(dr) > 1e-4;
@@ -489,8 +625,11 @@ struct DabReceiver::Impl {
                 dst[kCarriers + n] = (int8_t)std::max(-127.f, std::min(127.f, std::round(-o[n].imag() * sc)));
             }
         };
-        for (int l = 1; l <= kFicSymbols; l++) soft(l, &ficSoft[(size_t)(l - 1) * 2 * kCarriers]);
-        for (int l = kFicSymbols + 1; l < kSymbols; l++) soft(l, &mscSoft[(size_t)(l - kFicSymbols - 1) * 2 * kCarriers]);
+        if (!diffOnly && channelSoft(U, !missed)) {}
+        else {
+            for (int l = 1; l <= kFicSymbols; l++) soft(l, &ficSoft[(size_t)(l - 1) * 2 * kCarriers]);
+            for (int l = kFicSymbols + 1; l < kSymbols; l++) soft(l, &mscSoft[(size_t)(l - kFicSymbols - 1) * 2 * kCarriers]);
+        }
         // quality: phase scatter of the differential cells around the nearest odd multiple of 45 degrees
         {
             double err2 = 0; size_t cnt = 0;
@@ -788,6 +927,7 @@ struct DabReceiver::Impl {
         mainDec.reset();
         dmb.reset();
         demux.setAddress(selPktAddr);
+        mainDec.early = !isDmb && selPktAddr < 0 && plus && !baselineMode() ? 12 : 16;   // MP2 has no check on its audio bits: it waits for all 16
         if (isDmb || selPktAddr >= 0) audio.select(-1, false, 0);
         else audio.select(sel, plus, selSub.bitrate);
     }
@@ -881,6 +1021,7 @@ struct DabReceiver::Impl {
         for (const auto& f : tii.found()) t.tii.push_back({f.mainId, f.subId, f.levelDb, f.marginDb});
         t.tiiFrames = tii.framesSeen();
         t.sroPpm = sro * 1e6;
+        t.coherent = coherent;
         t.syncLosses = syncLosses; t.relocks = relocks; t.erasedCifs = erasedCifs; t.impulses = impulses;
         t.seq = ++telSeq;
         tel = std::move(t);
