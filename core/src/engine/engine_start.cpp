@@ -637,6 +637,7 @@ void Engine::announceAndRun(const DeviceInfo& dev, const TuneSettings& tune) {
     stopReq_ = false;
     startEpoch_++;
     running_ = true;
+    if (!nap_) nap_ = std::make_unique<power::ReceivingActivity>();
     specStop_ = false;
     specQ_.clear();
     specTh_ = std::thread([this] { spectrumLoop(); });

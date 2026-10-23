@@ -105,6 +105,29 @@ inline void applyThreadNameClass(const char* name) {
 #endif
 }
 
+// Scheduling class by name pattern (perf-power-030, docs/PERFORMANCE-POWER.md), used by dect2::power::setThreadQos() on request only.
+// namedThread() below applies threadNameClass() instead (perf-ui-030): DSP threads keep what the system gives them, so the sample
+// path is never moved to the efficiency cores by its name.
+enum class ThreadQos { Normal, Utility, Background };
+inline ThreadQos threadQosForName(const std::string& n) {
+    auto has = [&](const char* k) { return n.find(k) != std::string::npos; };
+    if (has("log") || has("scan") || has("msgdb") || has("hist") || has("update") || has("feed") || has("wspr") || has("psk") || has("discord") ||
+        has("upload") || has("tile") || has("sweep") || has("survey"))
+        return ThreadQos::Background;
+    if (has("-rx") || has("-dec") || has("-dsp") || has("demod") || has("-fft") || has("-spec") || has("-pool") || has("-work")) return ThreadQos::Utility;
+    return ThreadQos::Normal;
+}
+inline void setThreadQos(ThreadQos q) {
+#if defined(__APPLE__)
+    if (q == ThreadQos::Utility) pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    else if (q == ThreadQos::Background) pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND, 0);
+#elif defined(_WIN32)
+    if (q == ThreadQos::Background) SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#else
+    (void)q;
+#endif
+}
+
 // std::thread that names itself first (and takes the scheduling class of its name, see threadNameClass). Arguments are copied like std::thread does.
 template <class F, class... A>
 std::thread namedThread(const char* name, F&& fn, A&&... args) {

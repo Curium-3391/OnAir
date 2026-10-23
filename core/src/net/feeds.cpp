@@ -287,13 +287,14 @@ struct Feeds::Impl {
         }
     }
 
+    int waitMs = 40;   // 40 ms while a client is connected or data is waiting, 250 ms when only listening (queued items and config wake the thread at once)
     void loop() {
         for (;;) {
             std::deque<Item> batch;
             bool dirty = false;
             {
                 std::unique_lock<std::mutex> lk(mu);
-                cv.wait_for(lk, std::chrono::milliseconds(40), [&] { return quit || !q.empty() || cfgDirty; });
+                cv.wait_for(lk, std::chrono::milliseconds(waitMs), [&] { return quit || !q.empty() || cfgDirty; });
                 if (quit) break;
                 batch.swap(q);
                 if (cfgDirty) { live = cfg; cfgDirty = false; dirty = true; }
@@ -321,6 +322,11 @@ struct Feeds::Impl {
                     S.active = is != kBadSock && isVerified;
                     S.clients = is != kBadSock ? 1 : 0;
                 }
+            }
+            {
+                bool busy = !isPending.empty() || (is != kBadSock && !isVerified);
+                for (int id = 0; id < kNumFeeds && !busy; id++) if (isServer(id) && !srv[id].clients.empty()) busy = true;
+                waitMs = busy ? 40 : 250;
             }
             std::lock_guard<std::mutex> lk(mu);
             for (int id = 0; id < kNumFeeds; id++) pub[id] = st[id];

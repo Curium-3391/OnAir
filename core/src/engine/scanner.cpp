@@ -1,6 +1,7 @@
 #include "dect2/common/thread_name.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/engine/scanner.h"
+#include "dect2/power/power.h"
 #include "dect2/isdbt/isdbt.h"
 #include "dect2/dsp/bandwidth.h"
 #include "dect2/dvbt/dvbt.h"
@@ -94,10 +95,12 @@ void Scanner::stop() {
 }
 
 bool Scanner::sleepOrCancel(double s) {
+    // Save power when hidden: the scan waits (the dwell restarts) until the window is shown again or the scan is cancelled
+    while (power::pauseWhenHidden() && !cancel_) std::this_thread::sleep_for(std::chrono::milliseconds(250));
     auto end = Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(s));
     while (Clock::now() < end) {
         if (cancel_) return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(power::lowPower() ? 25 : 10));
     }
     return !cancel_;
 }

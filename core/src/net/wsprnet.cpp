@@ -165,7 +165,8 @@ struct WsprNet::Impl {
     void run() {
         std::unique_lock<std::mutex> lk(mu);
         while (!quit) {
-            cv.wait_for(lk, std::chrono::milliseconds(250));
+            if (queue.empty()) cv.wait_for(lk, std::chrono::seconds(30));   // nothing to send: sleep until a spot or stop (both notify)
+            else cv.wait_for(lk, std::chrono::milliseconds(250));
             if (quit) break;
             if (!cfg.on || queue.empty()) continue;
             const int64_t now = nowSec();

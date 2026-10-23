@@ -392,6 +392,15 @@ static void viewMenu(App& a) {
         if (ImGui::MenuItem(tr("Reduce CPU when hidden"), nullptr, &a.reduceCpuHidden)) savePrefs(a);
         if (ImGui::MenuItem(tr("Save power on battery"), nullptr, &a.batterySaver)) savePrefs(a);
         if (ImGui::MenuItem(tr("Performance overlay"), nullptr, &a.perfOverlay)) savePrefs(a);
+        if (ImGui::BeginMenu(tr("Power"))) {   // dect2/power/power.h: battery life
+            static const char* lp[3] = {N_("Low power mode: off"), N_("Low power mode: automatic (on battery or hot)"), N_("Low power mode: always")};
+            for (int i = 0; i < 3; i++) if (ImGui::MenuItem(tr(lp[i]), nullptr, a.powerLowMode == i)) { a.powerLowMode = i; savePrefs(a); }
+            ImGui::Separator();
+            static const char* sh[3] = {N_("Save power when hidden: off"), N_("Save power when hidden: on battery"), N_("Save power when hidden: always")};
+            for (int i = 0; i < 3; i++) if (ImGui::MenuItem(tr(sh[i]), nullptr, a.powerHidden == i)) { a.powerHidden = i; savePrefs(a); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("While the window is minimised or hidden: the spectrum and telemetry update a few times a second and scans wait. Decoding and audio go on."));
+            ImGui::EndMenu();
+        }
         {   // opt-in Discord Rich Presence
             const bool have = *discord::appId() != 0;
             ImGui::BeginDisabled(!have);

@@ -151,6 +151,8 @@
 #include <vector>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include "dect2/power/power.h"
 #include <map>
 #include <utility>
 
@@ -843,6 +845,7 @@ private:
     uint64_t rxPub_ = 0;
     void publishRx(RxTelemetry&& t) { t.seq = ++rxPub_; rxTel_ = std::move(t); }
     std::thread th_;
+    std::unique_ptr<power::ReceivingActivity> nap_;   // held while this engine receives: keeps macOS App Nap off only then (power/power.h)
     std::atomic<bool> running_{false}, stopReq_{false};
     std::atomic<uint64_t> startEpoch_{0};
     void watchRadio();

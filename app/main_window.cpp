@@ -5,6 +5,7 @@
 #include <unistd.h>
 #endif
 #include "app.h"
+#include "dect2/power/power.h"
 #include "ui/typography.h"
 #include "ui/contrast.h"
 #include "dect2/source/iq_file.h"
@@ -105,6 +106,8 @@ GLFWwindow* createMainWindow(int argc, char** argv) {
 #endif
     if (const char* e = getenv("DECT2_WINSIZE")) { int w = 0, h = 0; if (sscanf(e, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) glfwSetWindowSize(window, w, h); }   // dev: try a small screen
     gWindow = window;
+    // minimised / restored: the power policy (View > Power > Save power when hidden) slows the background work while the window is away
+    glfwSetWindowIconifyCallback(window, [](GLFWwindow*, int iconified) { dect2::power::setAppHidden(iconified != 0); });
     return window;
 }
 

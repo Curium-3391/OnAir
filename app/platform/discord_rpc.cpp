@@ -209,7 +209,7 @@ void Rpc::loop() {
         Presence w; double minSend, retry; std::string id; bool quit;
         {
             std::unique_lock<std::mutex> l(mu_);
-            cv_.wait_for(l, std::chrono::milliseconds(200));
+            cv_.wait_for(l, std::chrono::milliseconds(1000));   // changes notify; the timer only drives reconnects and the minimum send interval
             w = want_; minSend = minSend_; retry = retry_; id = id_; quit = quit_;
         }
         if (quit) w.enabled = false;

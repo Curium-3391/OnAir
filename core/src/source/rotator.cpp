@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <condition_variable>
 #include <thread>
 #ifndef _WIN32
 #include <fcntl.h>
@@ -337,8 +338,10 @@ struct Rotator::Impl {
     std::deque<std::string> cmds;
     double pollAt = 0;
 
+    std::condition_variable wakeCv;   // wakes run() when a command is queued or the thread must stop (no 50 ms polling)
     void stopThread() {
         quit = true;
+        wakeCv.notify_all();
         if (th.joinable()) th.join();
         quit = false;
         std::lock_guard<std::mutex> lk(mu);
@@ -371,6 +374,7 @@ struct Rotator::Impl {
     void enqueue(const std::string& cmd) {
         std::lock_guard<std::mutex> lk(mu);
         cmds.push_back(cmd);
+        wakeCv.notify_all();
     }
 
     void updateMoving() {
@@ -428,7 +432,8 @@ struct Rotator::Impl {
                 linked = st.connected;
             }
             if (c.link == RotatorLink::None) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::unique_lock<std::mutex> lk(mu);   // no link configured: sleep until a command or stop arrives
+                wakeCv.wait_for(lk, std::chrono::seconds(2), [&] { return quit.load() || !cmds.empty(); });
                 continue;
             }
             if (!linked) {
@@ -516,7 +521,10 @@ struct Rotator::Impl {
                 pollPosition();
                 nextPoll = clock::now() + std::chrono::milliseconds(500);
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            {   // until the next position poll, a queued command or stop
+                std::unique_lock<std::mutex> lk(mu);
+                wakeCv.wait_until(lk, nextPoll, [&] { return quit.load() || !cmds.empty(); });
+            }
         }
     }
 };

@@ -14,6 +14,8 @@
 #include "panels/gallery.h"
 #include "dect2/engine/crash_report.h"
 #include "platform/discord_rpc.h"
+#include "dect2/power/power.h"
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #if defined(__linux__)
@@ -257,6 +259,12 @@ static void hiddenPopOut(App& a) {
 }
 
 void drawUI(App& a, ImVec2 disp, bool draw) {
+    {   // the user's power choices (View > Power) to the policy the engine and the background threads read
+        dect2::power::Settings ps;
+        ps.lowPower = (dect2::power::LowPowerMode)std::clamp(a.powerLowMode, 0, 2);
+        ps.saveWhenHidden = (dect2::power::HiddenPolicy)std::clamp(a.powerHidden, 0, 2);
+        dect2::power::setSettings(ps);
+    }
     tickReceiver(a);
     if (!draw) return;   // a receiver whose tab is not shown: ticked above, not drawn
     videoOnlyKeys(a);

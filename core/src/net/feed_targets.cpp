@@ -172,12 +172,13 @@ struct FeedTargets::Impl {
             }
         }
     }
+    int waitMs = 40;   // 40 ms while data is queued for a socket, 250 ms otherwise (new items and config wake the thread at once)
     void loop() {
         for (;;) {
             std::deque<Item> batch;
             {
                 std::unique_lock<std::mutex> lk(mu);
-                cv.wait_for(lk, std::chrono::milliseconds(40), [&] { return quit || !q.empty() || dirty; });
+                cv.wait_for(lk, std::chrono::milliseconds(waitMs), [&] { return quit || !q.empty() || dirty; });
                 if (quit) break;
                 batch.swap(q);
                 if (dirty) { applyConfig(cfg); dirty = false; }
@@ -186,6 +187,11 @@ struct FeedTargets::Impl {
             for (size_t i = 0; i < live.size(); i++) service(i, t);
             for (const Item& it : batch) deliver(it);
             for (size_t i = 0; i < live.size(); i++) flush(i, t);
+            {
+                bool busy = false;
+                for (const Live& l : L) if (!l.pending.empty()) { busy = true; break; }
+                waitMs = busy ? 40 : 250;
+            }
             std::lock_guard<std::mutex> lk(mu);
             pub = st;
         }

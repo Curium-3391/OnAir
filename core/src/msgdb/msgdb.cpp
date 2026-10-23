@@ -277,7 +277,7 @@ struct Db::Impl {
             std::deque<Event> batch;
             {
                 std::unique_lock<std::mutex> lk(qmu);
-                qcv.wait_for(lk, std::chrono::milliseconds(500), [&] { return stopReq || !q.empty(); });
+                qcv.wait(lk, [&] { return stopReq || !q.empty(); });   // asleep until an event or stop arrives (both notify)
                 batch.swap(q);
                 if (batch.empty() && stopReq) return;
             }

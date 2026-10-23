@@ -445,6 +445,8 @@ struct App {
     int mtvGrid = 0;          // 0 find out, 1 the capture is centred on a channel, 2 between two channels
     std::vector<MultiService> mtvSvc;   // every service of every channel (refreshed with ts)
     bool atvWide = false;     // analog TV: system E chosen (14 MHz channel, 10 MHz of video): the radio runs at 20 Msps
+    int powerLowMode = 1;     // View > Power > Low power mode: 0 off, 1 automatic (on battery or when the machine is hot), 2 always (dect2/power/power.h)
+    int powerHidden = 1;      // View > Power > Save power when hidden: 0 off, 1 on battery, 2 always (slower spectrum updates, scanners wait)
     bool reduceCpuHidden = true;   // View > Reduce CPU when hidden: no drawing while the window is minimised or hidden (decoding goes on)
     bool batterySaver = true;      // View > Save power on battery: input redraws at 30 fps, a receiver in the background at 10 (video keeps its rate)
     bool perfOverlay = false;      // View > Performance overlay: frame rate, CPU per thread, wake-ups (ui/perf_overlay.cpp)

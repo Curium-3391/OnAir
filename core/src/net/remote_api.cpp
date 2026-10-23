@@ -468,7 +468,7 @@ struct RemoteApiServer::Impl {
         sockSetNonBlocking(ls, true);
         { std::lock_guard<std::mutex> lk(mu); st.listening = true; st.tls = tctx != nullptr; st.lastError.clear(); }
         while (!quit) {
-            if (waitReadable(ls, 50)) {
+            if (waitReadable(ls, conns.empty() ? 250 : 50)) {   // idle: 4 wakeups a second (a new connection wakes select at once)
                 sockaddr_in pa{}; socklen_t pl = sizeof pa;
                 const sock_t k = accept(ls, (sockaddr*)&pa, &pl);
                 if (k != kBadSock) {

@@ -187,3 +187,6 @@ Colours: new maps Magma, SDR++ classic, Ice, Fire, Night red, High contrast, Cus
 ## 2026-10-22 Interface and idle power (perf-ui-030)
 Frame pace as a pure, tested policy (app/ui/frame_pace.h): a covered window (macOS occlusion) at most 10 fps with no GPU work on Metal, on battery input at 30 fps and a background receiver at 10 (View > Save power on battery; video keeps 60). Metal takes the drawable at draw time. App Nap held off only while a receiver runs. Analysis thread waits on IqRing::waitData() instead of 2 ms polling (400 -> 30..210 wake-ups/s). tr() "Label##id" without allocations, RF camera blends only on change (70 -> 9 MB/s uploads), message-db table clipped, background/utility QoS by thread name. View > Performance overlay and DECT2_PERF=1 (fps, build time, CPU per thread, wake-ups); bench_ui_power; docs/PERFORMANCE.md.
 
+## 2026-10-22 Idle and background power (perf-power-030)
+Power policy (core/include/dect2/power): Low power mode and Save power when hidden (View > Power), battery/thermal probes, macOS QoS by thread name, App Nap held only while an engine runs. Idle polling cut: share/feeds/remote API/rotator/msgdb/WSPRnet/Discord threads (share+feeds idle wakeups 49.7/s to 7.0/s, tests/power/test_power_idle.cpp). Details and open items in docs/PERFORMANCE-POWER.md.
+
