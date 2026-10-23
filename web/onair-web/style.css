@@ -99,3 +99,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); min-height: 28px; 
   #viewText { margin-left: 0; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* the host's frequency ranges (OnAir Web "ranges") */
+.rangeinfo { margin: 6px 0; padding: 6px 10px; border: 1px solid var(--edge); border-left: 3px solid #60be8c; border-radius: var(--r); font-size: 12px; }
+.rangeinfo p { margin: 2px 0; }
+.rangeinfo p.bad b { color: #d6675c; }
+.rangeinfo p.ok b { color: #60be8c; }
+.modes button:disabled { opacity: .35; }

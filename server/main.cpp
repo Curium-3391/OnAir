@@ -162,6 +162,7 @@ int main(int argc, char** argv) {
         hub.reset(new onair_web::WebHub);
         hub->setLimits(webCfg.limits);
         hub->policy().load(cfg);
+        { std::vector<std::string> rw; hub->ranges().load(cfg, &rw); webCfg.warnings.insert(webCfg.warnings.end(), rw.begin(), rw.end()); }
         hub->setLogIp(webCfg.logIp);
         hub->setServerInfo(webCfg.name, webCfg.location, webCfg.antenna);
         hub->setLog([](const std::string& l) { printf("onair-server: %s\n", l.c_str()); });
@@ -170,8 +171,8 @@ int main(int argc, char** argv) {
         hub->start();
         host.setWebHub(hub.get());
         web.reset(new onair_web::WebServer(*hub));
-        web->setOnChange([&host](const onair_web::WebPolicy& p, const std::vector<onair_web::InviteToken>& inv) {
-            host.editConfig([&](ConfigFile& c) { onair_web::saveWebState(c, p, inv); });
+        web->setOnChange([&host, &hub](const onair_web::WebPolicy& p, const std::vector<onair_web::InviteToken>& inv) {
+            host.editConfig([&](ConfigFile& c) { onair_web::saveWebState(c, p, inv); hub->ranges().save(c); });   // called with the policy mutex held: the ranges are safe to read
         });
         for (const auto& w : webCfg.warnings) fprintf(stderr, "onair-server: %s\n", w.c_str());
         if (!web->start(webCfg.server)) {

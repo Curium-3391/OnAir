@@ -296,6 +296,106 @@
     return { kind: "text", text: cell(data) };
   }
 
+  // ---- the host's frequency ranges (welcome.ranges / "ranges" message; docs/ONAIR-WEB.md, "Frequency ranges") ----
+  // An advisory copy of the server's rules, so the page can grey out, highlight and snap. The SERVER decides (error "forbidden_range").
+  // r = { restricted, action, allow: [{lo, hi, modes?, note?}], block: [...], notes: [...] }; modes missing: all modes. Edges are inclusive.
+  const RANGE_EPS = 0.001;
+  function guardMargin(bw) { bw = isFinite(bw) && bw > 0 ? bw : 0; return Math.min(5000, Math.max(200, 0.05 * bw)); }
+  function rangeActive(r) { return !!(r && (r.restricted || (r.block && r.block.length))); }
+  function mergeRanges(list) {
+    const v = (list || []).filter((x) => x && x.hi >= x.lo).map((x) => ({ lo: x.lo, hi: x.hi })).sort((a, b) => a.lo - b.lo), o = [];
+    for (const x of v) { if (o.length && x.lo <= o[o.length - 1].hi + RANGE_EPS) o[o.length - 1].hi = Math.max(o[o.length - 1].hi, x.hi); else o.push(x); }
+    return o;
+  }
+  function hasMode(x, mode) { return !x.modes || x.modes.includes(mode); }
+  function modeRanges(r, mode) { return mergeRanges((r.allow || []).filter((a) => hasMode(a, mode))); }
+  function containsSpan(merged, lo, hi) { return merged.some((e) => e.lo - RANGE_EPS <= lo && hi <= e.hi + RANGE_EPS); }
+  /** "ok", "not_allowed", "mode", "blocked", "capture" (runs over the capture edge) or "invalid". cap = {centre_hz, rate_hz} or null. */
+  function rangeCheck(r, mode, f, low, high, cap) {
+    if (!isFinite(f) || !isFinite(low) || !isFinite(high) || !(low < high) || f < 0 || f > 1e12) return "invalid";
+    if (!rangeActive(r)) return "ok";
+    const g = guardMargin(high - low), lo = f + low - g, hi = f + high + g;
+    if (cap && cap.rate_hz > 0) { const u = cap.rate_hz * 0.48; if (lo < cap.centre_hz - u || hi > cap.centre_hz + u) return "capture"; }
+    for (const b of r.block || []) if (hasMode(b, mode) && b.lo <= hi && b.hi >= lo) return "blocked";
+    if (!r.restricted) return "ok";
+    if (containsSpan(modeRanges(r, mode), lo, hi)) return "ok";
+    return containsSpan(mergeRanges(r.allow), lo, hi) ? "mode" : "not_allowed";
+  }
+  /** The nearest tuned frequency (Hz) for which rangeCheck is "ok", or null. */
+  function rangeSnap(r, mode, f, low, high, cap) {
+    if (!isFinite(f) || !(low < high)) return null;
+    if (rangeCheck(r, mode, f, low, high, cap) === "ok") return f;
+    const g = guardMargin(high - low);
+    let areas = r.restricted ? modeRanges(r, mode) : [{ lo: 0, hi: 1e12 }];
+    if (cap && cap.rate_hz > 0) { const u = cap.rate_hz * 0.48; areas = areas.map((a) => ({ lo: Math.max(a.lo, cap.centre_hz - u + 0.01), hi: Math.min(a.hi, cap.centre_hz + u - 0.01) })); }
+    let best = null;
+    const consider = (c) => { if (rangeCheck(r, mode, c, low, high, cap) === "ok" && (best === null || Math.abs(c - f) < Math.abs(best - f))) best = c; };
+    for (const a of areas) {
+      const fmin = a.lo - low + g, fmax = a.hi - high - g;
+      if (!(a.hi > a.lo) || fmin > fmax) continue;
+      consider(clamp(f, fmin, fmax));
+      for (const b of r.block || []) { if (!hasMode(b, mode)) continue; consider(clamp(b.hi + 0.01 - low + g, fmin, fmax)); consider(clamp(b.lo - 0.01 - high - g, fmin, fmax)); }
+      consider(fmin); consider(fmax);
+    }
+    return best;
+  }
+  /** The modes that are allowed somewhere (null: all of them). */
+  function rangeModes(r) {
+    if (!r || !r.restricted) return null;
+    return MODES.filter((m) => (r.allow || []).some((a) => hasMode(a, m)));
+  }
+  /** What the listener can see: the allowed ranges minus the blocks that name no mode (the same rule the server uses to mask the spectrum). */
+  function visibleRanges(r) {
+    let vis = r && r.restricted ? mergeRanges(r.allow) : [{ lo: 0, hi: 1e12 }];
+    const hide = mergeRanges((r && r.block || []).filter((b) => !b.modes));
+    for (const h of hide) {
+      const next = [];
+      for (const v of vis) {
+        if (h.hi < v.lo || h.lo > v.hi) { next.push(v); continue; }
+        if (h.lo > v.lo) next.push({ lo: v.lo, hi: h.lo });
+        if (h.hi < v.hi) next.push({ lo: h.hi, hi: v.hi });
+      }
+      vis = next;
+    }
+    return vis;
+  }
+  /** The parts of [start, stop] that are NOT visible (to be darkened on the spectrum). */
+  function hiddenRanges(r, start, stop) {
+    const out = [];
+    let at = start;
+    for (const v of visibleRanges(r)) {
+      if (v.hi <= at) continue;
+      if (v.lo > at) out.push({ lo: at, hi: Math.min(v.lo, stop) });
+      at = Math.max(at, v.hi);
+      if (at >= stop) break;
+    }
+    if (at < stop) out.push({ lo: at, hi: stop });
+    return out.filter((x) => x.hi > x.lo);
+  }
+  /** Does the range [lo, hi] share at least minWidth Hz with the visible part? (for greying out band buttons) */
+  function rangeOverlaps(r, lo, hi, minWidth) {
+    if (!rangeActive(r)) return true;
+    return visibleRanges(r).some((v) => Math.min(v.hi, hi) - Math.max(v.lo, lo) >= (minWidth || 1000));
+  }
+  /** Short lines for the page: the allowed ranges (with modes and notes), the blocked ones, the host's notes. */
+  function describeRanges(r, fmt) {
+    const f = fmt || ((hz) => (hz / 1e6).toFixed(hz % 1e6 ? 4 : 0).replace(/0+$/, "").replace(/\.$/, "") + " MHz");
+    const line = (x) => f(x.lo) + " - " + f(x.hi) + (x.modes ? " (" + x.modes.join(", ").toUpperCase() + ")" : "") + (x.note ? ": " + sanitizeText(x.note, 100) : "");
+    return {
+      allow: r && r.restricted ? (r.allow || []).map(line) : [],
+      block: (r && r.block || []).map(line),
+      notes: (r && r.notes || []).map((n) => sanitizeText(n, 200)),
+    };
+  }
+  /** Reads a ranges object from the server (welcome.ranges or the "ranges" message) defensively; null when there is nothing to enforce. */
+  function readRanges(x) {
+    if (!x || typeof x !== "object") return null;
+    const list = (a) => (Array.isArray(a) ? a : []).filter((e) => e && isFinite(e.lo) && isFinite(e.hi) && e.hi >= e.lo)
+      .map((e) => ({ lo: +e.lo, hi: +e.hi, modes: Array.isArray(e.modes) ? e.modes.filter((m) => MODES.includes(m)) : undefined, note: typeof e.note === "string" ? e.note : "" }));
+    const r = { restricted: !!x.restricted, action: x.action === "clamp" ? "clamp" : "refuse", allow: list(x.allow), block: list(x.block), notes: Array.isArray(x.notes) ? x.notes.filter((n) => typeof n === "string") : [] };
+    return rangeActive(r) ? r : null;
+  }
+
   /** The record structure under a decoder's data that holds the tables: arrays of objects found at the top level or one level down. */
   function findTables(data) {
     const out = [];
@@ -318,5 +418,6 @@
     formatFreq, parseFreq, stepLabel, snap, passband, bandwidthOf, captureBounds, fullBounds,
     hzToX, xToHz, normView, zoomView, panView, viewIsFull, bandSlice, freqToBin, binToFreq, rowToPixels,
     makePalette, sMeter, toTable, findTables, clamp,
+    guardMargin, rangeActive, mergeRanges, rangeCheck, rangeSnap, rangeModes, visibleRanges, hiddenRanges, rangeOverlaps, describeRanges, readRanges,
   };
 });

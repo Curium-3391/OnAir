@@ -294,7 +294,7 @@ target_link_libraries(onair-plugin-host PRIVATE dect2_plugin)
 # onair-server: OnAir with no window (a Raspberry Pi, a Linux box, a Windows PC without a screen), controlled from a browser; docs/headless-server.md
 # OnAir Web: many listeners, each with an own receiver inside the host's capture (server/web, docs/ONAIR-WEB.md). Every web source is built with
 # ONAIR_WEB_SESSION, which makes the transmit headers (dect2/tx/*.h, TxSink in source.h) a compile error there: web listeners can never transmit.
-set(ONAIR_WEB_SOURCES server/web/web_json.cpp server/web/web_proto.cpp server/web/web_dsp.cpp server/web/web_policy.cpp server/web/web_hub.cpp
+set(ONAIR_WEB_SOURCES server/web/web_json.cpp server/web/web_proto.cpp server/web/web_dsp.cpp server/web/web_policy.cpp server/web/web_ranges.cpp server/web/web_hub.cpp
     server/web/web_server.cpp server/web/web_config.cpp)
 add_library(onair_web STATIC ${ONAIR_WEB_SOURCES})
 set_source_files_properties(${ONAIR_WEB_SOURCES} PROPERTIES COMPILE_DEFINITIONS ONAIR_WEB_SESSION=1)
@@ -1323,7 +1323,7 @@ if(DECT2_BUILD_TESTS)
   target_link_libraries(test_server_host PRIVATE onair_web dect2core)
   target_compile_definitions(test_server_host PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")
   add_test(NAME server_host COMMAND test_server_host)
-  foreach(t web_proto web_dsp web_hub web_server web_safety)
+  foreach(t web_proto web_dsp web_hub web_server web_safety web_ranges)
     add_executable(test_${t} tests/server/test_${t}.cpp server/server_config.cpp)
     target_link_libraries(test_${t} PRIVATE onair_web)
     add_test(NAME ${t} COMMAND test_${t})

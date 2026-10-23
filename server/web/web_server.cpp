@@ -410,6 +410,40 @@ struct WebServer::Impl {
         if (r.method == "GET" && sub == "users") { reply(io, 200, hub.usersJson(), "application/json"); return; }
         if (r.method == "GET" && sub == "stats") { reply(io, 200, hub.statsJson(), "application/json"); return; }
         if (r.method == "GET" && sub == "policy") { std::lock_guard<std::mutex> g(hub.policyMutex()); reply(io, 200, hub.policy().json(), "application/json"); return; }
+        if (r.method == "GET" && sub == "ranges") { std::lock_guard<std::mutex> g(hub.policyMutex()); reply(io, 200, hub.ranges().json(), "application/json"); return; }
+        if (r.method == "POST" && sub == "ranges") {
+            // {"allow":["144-146MHz,nfm"],"block":["..."],"presets":["ham_hf@open"],"action":"refuse"|"clamp"} (a missing key stays as it is),
+            // or {"clear":true}. Nothing changes when any line is bad.
+            bool clr = false;
+            flag("clear", clr);
+            auto list = [&](const char* k, std::vector<std::string>& out) {
+                const Json* j = body.get(k);
+                if (!j) return true;
+                if (j->kind != Json::Arr) return false;
+                for (const auto& x : j->arr) { if (x.kind != Json::Str) return false; out.push_back(x.str); }
+                return true;
+            };
+            std::vector<std::string> a, b, p;
+            std::string e, action = str("action");
+            bool ok = true;
+            {
+                std::lock_guard<std::mutex> g(hub.policyMutex());
+                if (clr) hub.ranges().clear();
+                else {
+                    if (!body.get("allow")) a = hub.ranges().allowSpecs(); else ok = ok && list("allow", a);
+                    if (!body.get("block")) b = hub.ranges().blockSpecs(); else ok = ok && list("block", b);
+                    if (!body.get("presets")) p = hub.ranges().presetSpecs(); else ok = ok && list("presets", p);
+                    if (!ok) e = "allow, block and presets are lists of strings";
+                    else ok = hub.ranges().replace(a, b, p, action, e);
+                }
+            }
+            if (!ok) { replyErr(io, 400, e); return; }
+            hub.rangesChanged();   // the listeners are told, tunings are re-checked (policy mutex not held)
+            changed();
+            std::lock_guard<std::mutex> g(hub.policyMutex());
+            reply(io, 200, hub.ranges().json(), "application/json");
+            return;
+        }
         if (r.method == "GET" && sub == "legal") {
             reply(io, 200, std::string("{\"version\":\"") + kLegalNoticeVersion + "\",\"text\":\"" + jsonEsc(legalNoticeText()) + "\"}", "application/json");
             return;
