@@ -434,7 +434,7 @@ void fmRadioPanel(App& a) {
     ImGui::Spacing();
     if (live && fm.rdsSync && (!fm.rds.afMhz.empty() || !fm.rds.ptyn.empty() || fm.rds.clockUtc || fm.rds.ecc >= 0 || !fm.rds.eon.empty() || !fm.rds.oda.empty())) {
         // the rest of RDS: what the station sends beyond the name and the text
-        if (typo::collapsingHeader(tr("RDS details"), 0)) {
+        if (typo::collapsingHeader(trw("RDS details"), 0)) {
             ImGui::PushTextWrapPos(0);
             if (!fm.rds.ptyn.empty()) ImGui::Text("%s: %s", tr("Programme type name"), fmTrim(fm.rds.ptyn).c_str());
             if (fm.rds.clockUtc) {
