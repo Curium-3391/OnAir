@@ -29,6 +29,12 @@ struct GeneralTelemetry {
     double recordSec = 0;
     std::string recordPath;            // the WAV being written (or the last one)
     std::string recordError;           // why recording could not start
+    // AM through the Auto quality processor (am_proc.h)
+    bool amActive = false, amLocked = false;
+    float amCarrierHz = 0;             // the carrier's offset from the channel frequency
+    float amBandwidthHz = 0, amSnrDb = 0, amNrDb = 0;
+    int amDetector = 0;                // 0 envelope, 1 synchronous, 2 upper sideband, 3 lower
+    std::string amStatus;              // plain words
 };
 
 } // namespace dect2

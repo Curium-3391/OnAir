@@ -9,6 +9,8 @@
 #include "dect2/atsc/atsc_gen.h"
 #include "dect2/dvbt/dvbt_gen.h"
 #include "dect2/fm/fm_gen.h"
+#include "dect2/general/general_rx.h"
+#include "dect2/hdr/hdr_rx.h"
 #include "dect2/t2/t2.h"
 #include "dect2/t2/t2gen.h"
 #include "sens_impair.h"
@@ -150,6 +152,40 @@ struct FmAudio : Session {
         };
         const double p1 = tone(1000), p3 = tone(3000);
         const double snr = 10 * std::log10(std::max(1e-15, p1) / std::max(1e-15, tot - p1 - p3));
+        return {snr >= 20 ? 1.0 : 0.0, snr >= 20 ? 0.0 : 1.0};
+    }
+};
+
+// AM / SSB through the general receiver: the 1 kHz tone of the synthetic station against everything else over the last half second
+// ("valid" = at least 20 dB). det: the AM detector (GeneralReceiver::setAmDetector).
+struct GeneralAudio : Session {
+    GeneralReceiver rx;
+    std::vector<float> a;
+    GeneralAudio(double rate, int demod, int det) {
+        rx.setSilent(true);
+        rx.configure(rate);
+        const ModeTuning* mt = modeTuning(57);
+        rx.setSignalOffset(mt ? -mt->tuneOffsetHz : 0.0);
+        rx.setDemod(demod);
+        rx.setWidthHz(generalDefaultWidth(demod));
+        rx.setSquelch(false, false, -100);
+        rx.setAmDetector(det);
+        rx.setAudioTap([this](const float* x, size_t n) { a.insert(a.end(), x, x + n); });
+    }
+    void feed(const cf32* x, size_t n) override { rx.feed(x, n); }
+    Metric poll() override {
+        const size_t n = 24000;
+        if (a.size() < n) return {0, 0};
+        const float* x = a.data() + a.size() - n;
+        double mean = 0, tot = 0;
+        for (size_t i = 0; i < n; i++) mean += x[i];
+        mean /= (double)n;
+        for (size_t i = 0; i < n; i++) tot += (x[i] - mean) * (x[i] - mean);
+        tot /= (double)n;
+        std::complex<double> c = 0;
+        for (size_t i = 0; i < n; i++) c += (x[i] - mean) * std::polar(1.0, -2 * M_PI * 1000.0 * (double)i / 48000.0);
+        const double p1 = 2 * std::norm(c / (double)n);
+        const double snr = 10 * std::log10(std::max(1e-15, p1) / std::max(1e-15, tot - p1));
         return {snr >= 20 ? 1.0 : 0.0, snr >= 20 ? 0.0 : 1.0};
     }
 };
@@ -342,6 +378,26 @@ inline std::vector<Mode> allModes() {
         m.make = factory<Rx, Tel>([std_](Rx& rx, double r) { prepGeneric(rx, r, std_); }, blocks<Tel>);
         add(m);
     };
+    {   // AM broadcast (general receiver), envelope and synchronous detector; USB voice
+        struct G { const char* id; const char* name; int demod, det; double bw; };
+        for (const G g : {G{"am", "AM (envelope)", GenAm, 0, 9e3}, G{"am-sync", "AM (synchronous)", GenAm, 1, 9e3}, G{"ssb", "SSB (USB)", GenUsb, 0, 2.7e3}}) {
+            Mode m = base(g.id, g.name, "analog-radio", 57, 1e6, 3.0, g.bw, 7.2);
+            m.echoUs = 300; m.fdHz = 1; m.snrHi = 40;
+            const int dm = g.demod, dt = g.det;
+            m.gen = [dm](size_t n) { SynthConfig c; c.modeOpt[0] = dm; return clean(57, c, 1e6, n); };
+            m.make = [dm, dt](double rate) -> std::unique_ptr<Session> { return std::make_unique<GeneralAudio>(rate, dm, dt); };
+            add(m);
+        }
+    }
+    {   // HD Radio: FM hybrid MP1 and AM hybrid MA1 (P1 transfer frames with a valid header)
+        for (int am = 0; am < 2; am++) {
+            Mode m = base(am ? "hdr-am" : "hdr-fm", am ? "HD Radio AM (MA1)" : "HD Radio FM (MP1)", "ofdm-radio", 23, 2e6, 6.0, am ? 30e3 : 400e3, am ? 1.0 : 98.1);
+            m.echoUs = am ? 100 : 3; m.snrHi = am ? 40 : 30; m.maxJobs = 4;
+            m.gen = [am](size_t n) { SynthConfig c; c.modeOpt[0] = am; return clean(23, c, 2e6, n); };
+            m.make = factory<HdrReceiver, HdrTelemetry>([](HdrReceiver& rx, double r) { rx.setSilent(true); rx.configure(r); }, blocks<HdrTelemetry>);
+            add(m);
+        }
+    }
     narrow.template operator()<PagerReceiver, PagerTelemetry>("pager", "POCSAG / FLEX pagers", "narrowband-data", 25, 1.2e6, 8.0, 25e3, 466, nullptr, 25);
     narrow.template operator()<PacketReceiver, PacketTelemetry>("packet", "APRS / AX.25 packet", "narrowband-data", 26, 1.2e6, 6.0, 25e3, 144.8, [](SynthConfig& c) { c.modeOpt[0] = 0; }, 25);
     narrow.template operator()<Vdl2Receiver, Vdl2Telemetry>("vdl2", "VDL Mode 2", "narrowband-data", 29, 2e6, 8.0, 25e3, 136.9, [](SynthConfig& c) { c.modeVal[0] = 3; }, 28);

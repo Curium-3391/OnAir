@@ -22,7 +22,7 @@ uint32_t rdsBlock(uint16_t info, uint32_t offset) {
     return ((uint32_t)info << 10) | ((rdsRem((uint32_t)info << 10, 26) ^ offset) & 0x3FF);
 }
 
-constexpr uint32_t kOffA = 0x0FC, kOffB = 0x198, kOffC = 0x168, kOffD = 0x1B4;
+constexpr uint32_t kOffA = 0x0FC, kOffB = 0x198, kOffC = 0x168, kOffD = 0x1B4, kOffC2 = 0x350;
 }
 
 FmGenerator::FmGenerator(const FmGenConfig& c) : c_(c), rng_(c.seed) {
@@ -74,7 +74,7 @@ void FmGenerator::nextGroup() {
         b[2] = (uint16_t)((uint8_t)rt[seg * 4] << 8 | (uint8_t)rt[seg * 4 + 1]);
         b[3] = (uint16_t)((uint8_t)rt[seg * 4 + 2] << 8 | (uint8_t)rt[seg * 4 + 3]);
     }
-    const uint32_t off[4] = {kOffA, kOffB, kOffC, kOffD};
+    const uint32_t off[4] = {kOffA, kOffB, ((b[1] >> 11) & 1) ? kOffC2 : kOffC, kOffD};   // a version B group has C' (and the PI in it)
     for (int i = 0; i < 4; i++) {
         const uint32_t blk = rdsBlock(b[i], off[i]);
         for (int j = 25; j >= 0; j--) {

@@ -66,6 +66,17 @@ std::string rxTelemetryJson(const RxTelemetry& rx, const QualityReport* q) {
     case 6:
         d.b("carrier", rx.fm.carrier); d.num("snrDb", rx.fm.snrDb); d.num("levelDbfs", rx.fm.levelDbfs); d.num("deviationKhz", rx.fm.devKhz);
         d.b("stereo", rx.fm.stereo); d.b("rdsSync", rx.fm.rdsSync); d.str("psName", rx.fm.psName); d.str("radioText", rx.fm.radioText);
+        d.num("stereoPct", rx.fm.stereoPct); d.num("multipathPct", rx.fm.multipathPct); d.b("equaliser", rx.fm.equaliser);
+        d.num("pi", rx.fm.piCode); d.str("pty", rx.fm.ptyText); d.num("rdsBlockOkPct", rx.fm.rdsBlockOkPct); d.u64("rdsGroups", rx.fm.rdsGroups);
+        d.u64("rdsBlocksCorrected", rx.fm.rds.blocksCorrected); d.str("ptyn", rx.fm.rds.ptyn); d.str("ert", rx.fm.rds.ert);
+        if (rx.fm.rds.ecc >= 0) d.num("ecc", rx.fm.rds.ecc);
+        if (rx.fm.rds.clockUtc) { d.num("clockUtc", (double)rx.fm.rds.clockUtc); d.num("clockOffsetMin", rx.fm.rds.clockOffsetMin); }
+        {
+            std::string af;
+            for (double f : rx.fm.rds.afMhz) { char b[16]; snprintf(b, sizeof b, "%s%.1f", af.empty() ? "" : ",", f); af += b; }
+            d.str("afMhz", af);
+            for (const auto& t : rx.fm.rds.rtPlus) { if (t.type == 1) d.str("rtPlusTitle", t.text); else if (t.type == 4) d.str("rtPlusArtist", t.text); }
+        }
         break;
     case 7:
         d.num("symbolRate", rx.dvbs.symbolRate); d.num("snrDb", rx.dvbs.snrDb); d.num("merDb", rx.dvbs.merDb); d.b("dataValid", rx.dvbs.dataValid);

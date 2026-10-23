@@ -66,7 +66,17 @@ public:
     void setSquelch(bool on, bool autoMode, float levelDb);   // levelDb: the "level" threshold in dBFS
     void setAgc(bool on, float manualGainDb);        // AM / SSB / CW: AGC, or a fixed gain (dB) when off
     void setDeemphUs(double us);                     // NFM / WFM: 0 off, 50, 75, 750
-    void setCwPitchHz(double hz);                    // CW: the tone a carrier on the channel frequency gives (BFO)
+    void setCwPitchHz(double hz);
+    // AM detector: 0 envelope (default), 1 synchronous (a PLL on the carrier: no distortion when the carrier fades, a little less noise
+    // near the threshold), 2 synchronous upper sideband only, 3 lower only (an interfering station on the other side is left out)
+    void setAmDetector(int det);
+    // Noise blanker (NFM, AM, SSB, CW; off by default): impulses more than thresholdDb (6 .. 30) above the mean power are cut out before the
+    // channel filter, so they cannot ring through it
+    void setNoiseBlanker(bool on, float thresholdDb = 12);
+    // AM Auto quality (am_proc.h): synchronous detection with the cleaner sideband, adaptive bandwidth, blanker, whistle and hum notches,
+    // noise reduction, leveler. nr: -1 auto, 0 off, 1 .. 100; bandwidthHz: 0 auto; enhance: synthetic treble above the received edge.
+    // Off (the default here; the panel turns it on) keeps the envelope detector exactly as before.
+    void setAmAuto(bool on, int nr = -1, int bandwidthHz = 0, bool enhance = false);                    // CW: the tone a carrier on the channel frequency gives (BFO)
 
     void setVolume(float v);                         // 0 .. 1
     void setMuted(bool m);

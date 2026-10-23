@@ -1,6 +1,7 @@
 // General receiver (see general_rx.h): one channel of the band mixed down, filtered, demodulated (NFM, WFM, AM, USB, LSB, CW),
 // squelched and played; optionally recorded to WAV, one file per transmission.
 #include "dect2/general/general_rx.h"
+#include "dect2/general/am_proc.h"
 #include "dect2/dsp/baseband_filter.h"
 #include "dect2/audio/flac_enc.h"
 #include "dect2/audio/mp3_enc.h"
@@ -82,6 +83,12 @@ struct Cfg {
     float gainDb = 20;
     double deemphUs = 0;
     double pitch = 700;
+    int amDet = 0;              // AM: 0 envelope, 1 synchronous (both sidebands), 2 synchronous upper sideband, 3 lower
+    bool nbOn = false;          // noise blanker
+    float nbDb = 12;            // a sample this far above the mean power is an impulse
+    bool amAuto = false;        // AM: the Auto quality processor (am_proc.h)
+    int amNr = -1, amBw = 0;    // its noise reduction (-1 auto, 0 off, 1 .. 100) and audio bandwidth (0 auto)
+    bool amEnhance = false;
 };
 
 void put16(FILE* f, uint16_t v) { uint8_t b[2] = {(uint8_t)v, (uint8_t)(v >> 8)}; fwrite(b, 1, 2, f); }
@@ -245,6 +252,94 @@ struct GeneralReceiver::Impl {
     bool carInit = false;
     float dcX = 0, dcY = 0, deY = 0;
     RealFir audLp;
+    // Synchronous AM: a PLL on the carrier (wide for the first half second, then 25 Hz; it holds its frequency while the carrier fades
+    // below a quarter of its level, so selective fading does not throw it off), the carrier taken out as the mean of the in-phase part,
+    // the gain from the carrier's level over a second (not the fast one: a fading carrier does not pump the sound). One sideband: the
+    // positive (upper) or negative (lower) frequencies of the derotated signal through a Hilbert filter, which leaves an interferer on the
+    // other side out.
+    static constexpr int kHilN = 127;
+    double samPh = 0, samFr = 0, samCar = 0, samCarLong = 0, samT = 0;
+    cf32 samCarC{0, 0};
+    bool samInit = false;
+    float hil[kHilN] = {};
+    cf32 samHist[2 * kHilN] = {};
+    int samHp = 0;
+    void samReset() {
+        samPh = samFr = samCar = samCarLong = samT = 0; samCarC = cf32(0, 0); samInit = false; samHp = 0;
+        for (auto& v : samHist) v = cf32(0, 0);
+        if (hil[0] == 0.f && hil[1] == 0.f) for (int k = 0; k < kHilN; k++) {
+            const int n = k - kHilN / 2;
+            const double w = 0.42 - 0.5 * std::cos(2 * kPi * k / (kHilN - 1)) + 0.08 * std::cos(4 * kPi * k / (kHilN - 1));
+            hil[k] = n % 2 ? (float)(2.0 / (kPi * n) * w) : 0.f;
+        }
+    }
+    float samDemod(cf32 z) {
+        const cf32 r = z * cf32((float)std::cos(-samPh), (float)std::sin(-samPh));
+        const double m = std::abs(z);
+        if (!samInit) { samCar = m; samCarLong = m; samCarC = cf32((float)m, 0); samInit = true; }
+        samCar += carK * (r.real() - samCar);
+        samCarC += (float)carK * (r - samCarC);
+        samCarLong += (1 - std::exp(-1.0 / demodRate)) * (m - samCarLong);
+        samT += 1 / demodRate;
+        const double bn = samT < 0.5 ? 120.0 : 25.0, wn = 2 * bn / (0.707 + 1 / (4 * 0.707)), wT = wn / demodRate;
+        const double e = std::atan2((double)r.imag(), (double)r.real());
+        if (std::abs(samCarC) >= 0.25 * samCarLong || samT < 0.5) { samFr += wT * wT * e; samPh += samFr + 2 * 0.707 * wT * e; }
+        else samPh += samFr;
+        samFr = std::clamp(samFr, -2 * kPi * 500 / demodRate, 2 * kPi * 500 / demodRate);
+        if (samPh > kPi) samPh -= 2 * kPi; else if (samPh < -kPi) samPh += 2 * kPi;
+        double s = r.real();
+        if (cfg.amDet >= 2) {   // audio of one sideband: Re(r) -+ H{Im r}, Re(r) delayed to the middle of the filter
+            samHp = (samHp + kHilN - 1) % kHilN;
+            samHist[samHp] = samHist[samHp + kHilN] = r;
+            const cf32* h = &samHist[samHp];
+            double hi = 0;
+            for (int k = 0; k < kHilN; k++) hi += hil[k] * h[k].imag();
+            s = cfg.amDet == 2 ? h[kHilN / 2].real() - hi : h[kHilN / 2].real() + hi;
+        }
+        const double c = samCarLong + 1e-9;
+        return (float)(cfg.agc ? (s - samCar) / c * kOutLevel : (s - samCar) * gLin);
+    }
+    // noise blanker on the decimated channel (before the channel filter, where an impulse is still short): a sample whose power is more
+    // than nbDb above the running mean (0.1 s, impulses left out of it) is replaced, with its neighbours, by the last good one
+    double nbMean = -1;
+    int nbHold = 0;
+    cf32 nbG1{0, 0}, nbG2{0, 0}, nbFill{0, 0};   // the last two samples passed, the value an impulse is replaced with
+    uint64_t nbBlanked = 0;
+    void blank(std::vector<cf32>& v, double rate) {
+        const double thr = std::pow(10.0, cfg.nbDb / 10.0), a = 1.0 / (0.1 * rate);
+        for (size_t i = 0; i < v.size(); i++) {
+            const double p = std::norm(v[i]);
+            if (nbMean < 0) nbMean = p;
+            const bool imp = nbMean > 0 && p > thr * nbMean;
+            // the mean is fed with every sample clipped to the threshold: it follows a signal that rises (from the silence at the start)
+            // instead of taking all of it for impulses
+            nbMean += (std::min(p, thr * std::max(nbMean, 1e-30)) - nbMean) * a;
+            if (nbMean <= 0) nbMean = p;
+            if (imp) {
+                if (nbHold == 0) { nbFill = nbG2; if (i > 0) v[i - 1] = nbFill; }   // the edge before it goes too
+                nbHold = 3;
+            }
+            if (nbHold > 0) { v[i] = nbFill; nbHold--; nbBlanked++; }
+            else { nbG2 = nbG1; nbG1 = v[i]; }
+        }
+    }
+    // AM through the processor (Auto quality, or a synchronous detector chosen by hand)
+    AmProcessor amp;
+    std::vector<float> ampOut;
+    bool useAmp() const { return cfg.demod == GenAm && !wide && (cfg.amAuto || cfg.amDet > 0); }
+    void ampConfig() {
+        AmProcConfig c;
+        c.autoQuality = cfg.amAuto;
+        c.detector = cfg.amAuto ? (cfg.amDet > 0 ? cfg.amDet : -1) : cfg.amDet;
+        c.bandwidthHz = cfg.amAuto ? cfg.amBw : (int)std::lround(cfg.width / 2);
+        c.nr = cfg.amAuto ? cfg.amNr : 0;
+        c.nbDb = cfg.nbOn ? (int)std::lround(cfg.nbDb) : (cfg.amAuto ? -1 : 0);
+        c.notch = cfg.amAuto ? -1 : 0;
+        c.eq = cfg.amAuto ? -1 : 0;
+        c.enhance = cfg.amAuto && cfg.amEnhance;
+        c.agc = cfg.agc; c.leveler = cfg.amAuto; c.gainDb = cfg.gainDb;
+        amp.setConfig(c);
+    }
     // squelch
     double blkPow = 0, lvl = -1;
     int blkN = 0, blkLen = 480;
@@ -318,6 +413,7 @@ struct GeneralReceiver::Impl {
         design();
         mixHz = 1e300;
         built = true;
+        amp.configure(demodRate);
         clearState();
     }
 
@@ -342,7 +438,7 @@ struct GeneralReceiver::Impl {
         nco.reset(); dec.reset(); rs.reset();
         std::fill(hist.begin(), hist.end(), cf32(0, 0)); hpos = 0;
         acc.assign(kNoiseN, 0.0); accN = 0; fbuf.clear(); noisePsd = -1; noisePsdIn = -1;
-        prev = cf32(0, 0); car = 0; env = 0; carInit = false; bfoPh = 0;
+        prev = cf32(0, 0); car = 0; env = 0; carInit = false; bfoPh = 0; samReset(); nbMean = -1; nbHold = 0; nbG1 = nbG2 = nbFill = cf32(0, 0);
         dcX = dcY = deY = 0; audLp.reset(); dry.reset();
         blkPow = 0; blkN = 0; lvl = -1; open = false; hang = 0; ramp = 0;
         fmSum = 0; fmN = 0; cfo = 0;
@@ -433,6 +529,7 @@ struct GeneralReceiver::Impl {
             break;
         }
         case GenAm: {
+            if (useAmp()) { have = false; break; }   // the processor makes the sound (feed)
             const double e = std::abs(z);
             if (!carInit) { car = e; carInit = true; }
             car += carK * (e - car);
@@ -453,6 +550,9 @@ struct GeneralReceiver::Impl {
         }
         }
         if (!have) return;
+        emit(a);
+    }
+    void emit(float a) {
         const float dry = std::clamp(a, -1.f, 1.f);
         const float target = open ? 1.f : 0.f;
         ramp += std::clamp(target - ramp, -1.f / 240, 1.f / 240);   // 5 ms
@@ -530,6 +630,11 @@ struct GeneralReceiver::Impl {
         t.dataValid = noisePow > 0 && lvl > 0;
         t.snrDb = t.dataValid ? t.levelDb - t.noiseDb : 0;
         t.squelchOpen = open;
+        if (useAmp()) {
+            const AmProcStatus s = amp.status();
+            t.amActive = true; t.amLocked = s.locked; t.amCarrierHz = (float)s.carrierHz; t.amBandwidthHz = s.bandwidthHz; t.amSnrDb = s.snrDb;
+            t.amDetector = s.detector; t.amNrDb = s.nrDb; t.amStatus = s.text;
+        }
         t.squelchDb = !cfg.sqOn ? -200 : cfg.sqAuto ? (noisePow > 0 ? t.noiseDb + 6 : -200) : cfg.sqDb;
         t.state = !built || lvl < 0 ? 0 : open ? 2 : 1;
         if (fmN) { cfo = fmSum / fmN; fmSum = 0; fmN = 0; }
@@ -695,7 +800,9 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
         m.gLin = std::pow(10.0, c.gainDb / 20.0);
         m.deAl = c.deemphUs > 0 ? (float)(1 - std::exp(-1.0 / (kGeneralAudioRate * c.deemphUs * 1e-6))) : 1.f;
         if (rebuild) m.build();
-        else if (refilter) { m.design(); m.prev = cf32(0, 0); m.carInit = false; m.env = 0; m.deY = 0; }
+        else if (refilter) { m.design(); m.prev = cf32(0, 0); m.carInit = false; m.env = 0; m.deY = 0; m.samReset(); }
+        if (!rebuild && demodCh) m.amp.reset();
+        m.ampConfig();
         if (retuned && !rebuild) { m.acc.assign(kNoiseN, 0.0); m.accN = 0; m.fbuf.clear(); m.noisePsd = -1; m.noisePsdIn = -1; m.lvl = -1; }
     }
     if (m.resetReq.exchange(false) && m.built) m.clearState();
@@ -710,10 +817,13 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
     }
     m.decd.clear();
     m.dec.process(m.clean.data(), n, m.decd);
+    if (m.cfg.nbOn && !m.useAmp()) m.blank(m.decd, m.decRate);   // AM through the processor has its own blanker
     m.noiseFeed(m.decd.data(), m.decd.size());
     m.base.clear();
     m.rs.process(m.decd.data(), m.decd.size(), m.base);
     m.aud.clear(); m.dryAud.clear(); m.iqBlk.clear();
+    m.ampOut.clear();
+    if (m.useAmp()) m.amp.process(m.base.data(), m.base.size(), m.ampOut);
     const int T = (int)m.taps.size();
     for (const cf32 v : m.base) {
         m.hist[(size_t)m.hpos] = v; m.hist[(size_t)(m.hpos + T)] = v;
@@ -731,6 +841,7 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
         if (m.iqThis || m.wantIq.load(std::memory_order_relaxed)) m.iqBlk.push_back(z);
         m.demod(z);
     }
+    for (float v : m.ampOut) m.emit(v);
     m.play();
     m.pubAcc += n / m.curRate;
     if (m.pubAcc >= 0.1) { m.pubAcc = 0; m.publish(); }
@@ -765,6 +876,21 @@ void GeneralReceiver::setAgc(bool on, float g) {
 }
 void GeneralReceiver::setDeemphUs(double us) { std::lock_guard<std::mutex> lk(p_->mu); if (p_->cfgSet.deemphUs != us) { p_->cfgSet.deemphUs = std::max(0.0, us); p_->cfgDirty = true; } }
 void GeneralReceiver::setCwPitchHz(double hz) { std::lock_guard<std::mutex> lk(p_->mu); hz = std::clamp(hz, 200.0, 1500.0); if (p_->cfgSet.pitch != hz) { p_->cfgSet.pitch = hz; p_->cfgDirty = true; } }
+void GeneralReceiver::setAmDetector(int det) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    det = std::clamp(det, 0, 3);
+    if (p_->cfgSet.amDet != det) { p_->cfgSet.amDet = det; p_->cfgDirty = true; }
+}
+void GeneralReceiver::setAmAuto(bool on, int nr, int bandwidthHz, bool enhance) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    Cfg& c = p_->cfgSet;
+    if (c.amAuto != on || c.amNr != nr || c.amBw != bandwidthHz || c.amEnhance != enhance) { c.amAuto = on; c.amNr = nr; c.amBw = bandwidthHz; c.amEnhance = enhance; p_->cfgDirty = true; }
+}
+void GeneralReceiver::setNoiseBlanker(bool on, float thresholdDb) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    thresholdDb = std::clamp(thresholdDb, 6.f, 30.f);
+    if (p_->cfgSet.nbOn != on || p_->cfgSet.nbDb != thresholdDb) { p_->cfgSet.nbOn = on; p_->cfgSet.nbDb = thresholdDb; p_->cfgDirty = true; }
+}
 void GeneralReceiver::setVolume(float v) { p_->volume = std::clamp(v, 0.f, 1.f); }
 void GeneralReceiver::setNoiseRemover(bool on, float strength) { p_->nrSpk.setStrength(strength); p_->nrDry.setStrength(strength); p_->nrSpk.setEnabled(on); p_->nrDry.setEnabled(on); }
 float GeneralReceiver::noiseRemoverVad() const { return p_->nrSpk.enabled() ? p_->nrSpk.vad() : 0.f; }

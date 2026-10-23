@@ -8,8 +8,8 @@
 #include "dect2/dsp/dsp_compat.h"
 #include "dect2/dsp/fftutil.h"
 #include "dect2/fm/fm_rbds.h"
+#include "dect2/fm/fm_rds.h"
 #include "dect2/fm/fm_tone.h"
-#include "dect2/fm/rds_tmc.h"
 #include "dect2/dsp/resampler.h"
 #include <algorithm>
 #include <atomic>
@@ -150,127 +150,6 @@ struct DeEmphasis {
     void reset() { x1 = y1 = 0; }
 };
 
-// ---- RDS
-
-uint32_t rdsRem(uint32_t v, int nbits) {
-    for (int i = nbits - 1; i >= 10; i--) if ((v >> i) & 1) v ^= 0x5B9u << (i - 10);
-    return v;
-}
-constexpr uint32_t kOffsets[5] = {0x0FC, 0x198, 0x168, 0x350, 0x1B4};   // A, B, C, C', D
-constexpr uint32_t offsetOfPos(int pos) { return kOffsets[pos == 3 ? 4 : pos]; }   // block positions 0..3 = A, B, C (or C'), D
-
-char rdsChar(uint8_t c) { return c >= 0x20 && c < 0x7F ? (char)c : (c == 0x0D ? '\r' : '?'); }
-
-struct RdsDecoder {
-    uint32_t reg = 0;
-    bool synced = false, pending = false;
-    int cnt = 0, candPos = 0, expect = 0, badRun = 0;
-    uint16_t info[4] = {};
-    bool ok[4] = {};
-    float okPct = 0;
-    uint64_t groups = 0;
-    int pi = 0;
-    bool tp = false, ta = false, ms = true;
-    int pty = 0;
-    char psBuf[9] = "        ";
-    uint8_t psSeen = 0;
-    std::string ps, rt;
-    char rtBuf[65] = {};
-    int rtAb = -1;
-    uint16_t rtSeen = 0;          // the radio text segments received since the A/B flag last changed
-    bool rtComplete = false;      // every segment up to the end (a carriage return, or the last segment) received
-    int lastSyncBits = 0;
-    TmcDecoder tmc;
-
-    void reset() { *this = RdsDecoder(); }
-    static int posOf(int offIdx) { return offIdx == 3 ? 2 : offIdx == 4 ? 3 : offIdx; }
-    static int match(uint32_t syn) { for (int i = 0; i < 5; i++) if (syn == kOffsets[i]) return i; return -1; }
-
-    void pushBit(int bit) {
-        reg = ((reg << 1) | (uint32_t)bit) & 0x3FFFFFF;
-        if (synced) {
-            if (++cnt < 26) return;
-            cnt = 0;
-            const uint32_t syn = rdsRem(reg, 26);
-            bool good = syn == offsetOfPos(expect) || (expect == 2 && syn == kOffsets[3]);
-            okPct += ((good ? 100.f : 0.f) - okPct) * 0.05f;
-            badRun = good ? 0 : badRun + 1;
-            block(expect, good, (uint16_t)(reg >> 10));
-            expect = (expect + 1) & 3;
-            if (badRun >= 24) { synced = false; pending = false; okPct = 0; }
-            return;
-        }
-        if (pending) {
-            if (++cnt == 26) {
-                const int next = (candPos + 1) & 3;
-                const int m = match(rdsRem(reg, 26));
-                if (m >= 0 && posOf(m) == next) {
-                    synced = true; pending = false; cnt = 0; badRun = 0; okPct = 50;
-                    block(next, true, (uint16_t)(reg >> 10));
-                    expect = (next + 1) & 3;
-                    return;
-                }
-                pending = false;
-            } else return;
-        }
-        const int m = match(rdsRem(reg, 26));
-        if (m >= 0) { pending = true; cnt = 0; candPos = posOf(m); }
-    }
-
-    void block(int pos, bool good, uint16_t word) {
-        if (pos == 0) std::memset(ok, 0, sizeof ok);
-        ok[pos] = good; info[pos] = word;
-        if (good && pos == 0) pi = word;
-        if (pos != 3) return;
-        if (!ok[1] || !ok[3]) return;
-        groups++;
-        const int type = info[1] >> 12, ver = (info[1] >> 11) & 1;
-        tp = (info[1] >> 10) & 1;
-        pty = (info[1] >> 5) & 31;
-        const int low = info[1] & 31;
-        if (ver == 1 && ok[2]) pi = info[2];
-        if (type == 0) {
-            ta = (low >> 4) & 1; ms = (low >> 3) & 1;
-            const int seg = low & 3;
-            // each segment is kept as it comes (a group lost to noise no longer throws the others away, #46); a segment that comes again
-            // with other characters means the name is changing (a scrolling name), and the collection starts over from it, so two
-            // versions of the name are never mixed
-            const char c0 = rdsChar(info[3] >> 8), c1 = rdsChar(info[3] & 0xFF);
-            if ((psSeen >> seg & 1) && (psBuf[seg * 2] != c0 || psBuf[seg * 2 + 1] != c1)) psSeen = 0;
-            psBuf[seg * 2] = c0; psBuf[seg * 2 + 1] = c1;
-            psSeen |= (uint8_t)(1 << seg);
-            if (psSeen == 15) { ps.assign(psBuf, 8); psSeen = 0; }
-        } else if (type == 3 && ver == 0 && ok[2]) {
-            tmc.onGroup3A((uint16_t)low, info[2], info[3]);
-        } else if (type == 8 && ver == 0 && ok[2]) {
-            tmc.onGroup8A((uint16_t)low, info[2], info[3], std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count());
-        } else if (type == 2) {
-            const int ab = (low >> 4) & 1, seg = low & 15;
-            if (ab != rtAb) { std::memset(rtBuf, ' ', 64); rtAb = ab; rt.clear(); rtSeen = 0; }
-            if (ver == 0 && ok[2]) {
-                rtBuf[seg * 4] = rdsChar(info[2] >> 8); rtBuf[seg * 4 + 1] = rdsChar(info[2] & 0xFF);
-                rtBuf[seg * 4 + 2] = rdsChar(info[3] >> 8); rtBuf[seg * 4 + 3] = rdsChar(info[3] & 0xFF);
-                rtSeen |= (uint16_t)(1u << seg);
-            } else if (ver == 1) {
-                rtBuf[seg * 2] = rdsChar(info[3] >> 8); rtBuf[seg * 2 + 1] = rdsChar(info[3] & 0xFF);
-                rtSeen |= (uint16_t)(1u << seg);
-            }
-            {   // complete: the segments up to the one holding the carriage return (2A: 4 characters each, 2B: 2), or all 16
-                const int per = ver == 0 ? 4 : 2;
-                const char* end = (const char*)std::memchr(rtBuf, '\r', (size_t)(16 * per));
-                const int last = end ? (int)(end - rtBuf) / per : 15;
-                const uint16_t need = (uint16_t)((2u << last) - 1);
-                rtComplete = (rtSeen & need) == need;
-            }
-            std::string s(rtBuf, 64);
-            const size_t cr = s.find('\r');
-            if (cr != std::string::npos) s.resize(cr);
-            while (!s.empty() && s.back() == ' ') s.pop_back();
-            rt = s;
-        }
-    }
-};
-
 } // namespace
 
 struct FmReceiver::Impl {
@@ -281,7 +160,7 @@ struct FmReceiver::Impl {
     double chanPass = kChanPass;                 // the pass band of chan, +- Hz
     std::atomic<double> chanWant{kChanPass};     // set from another thread (setChannelWidth); feed() designs the filter again
     DecimFir<float> mpxDecim;
-    cf32 prev = cf32(1, 0);
+    cf32 prev = cf32(1, 0), prevRaw = cf32(1, 0);   // the last sample of the equalised and of the raw channel (the discriminator's reference)
     // The radio's DC spike sits on the carrier when the radio is tuned exactly to the station. Its mean over half a second is taken out of the
     // channel: the carrier itself turns by the tuning error (100 Hz per ppm of the radio at 100 MHz) and averages away, the spike does not.
     cf32 dcCh = cf32(0, 0);
@@ -289,18 +168,51 @@ struct FmReceiver::Impl {
     // equaliser finds the filter that makes the envelope constant again). kCmaTaps taps at the channel rate (about 2 us each), the main one
     // kCmaMain: echoes up to 24 us late and 6 us early.
     static constexpr int kCmaTaps = 16, kCmaMain = 3;
-    cf32 cmaW[kCmaTaps] = {}, cmaX[2 * kCmaTaps] = {};
+    cf32 cmaW[kCmaTaps] = {}, cmaX[2 * kCmaTaps] = {}, cmaRawD = cf32(0, 0);
     int cmaPos = 0;
     float cmaP = 0;
+    // The equaliser is used only when the channel has multipath. Without an echo it does harm: in noise its constant-modulus optimum is a
+    // narrower filter (less noise in the envelope), which cuts the outer FM sidebands: on a quiet passage or a mono station that cost RDS
+    // 2 to 5 dB and the stereo separation fell to the SNR. An echo shows as an envelope that depends on the instantaneous frequency
+    // (|H(f)|^2 swept by the modulation); noise does not. The mean power of the raw channel is collected in 10 kHz bins of the
+    // instantaneous frequency; their spread (over the bins the modulation visits) above 6 % switches the equaliser in, below 3.5 % out.
+    static constexpr int kMpBins = 16;
+    double mpPow[kMpBins] = {}, mpN[kMpBins] = {};
+    double mpSecs = 0;
+    bool cmaUse = true;    // on from the start (as before the detector): the first judgement comes after 0.25 s
+    float mpRipple = 0;
+    float mpHist[8] = {}, mpAvg = 0;
+    int mpHp = 0;
+    void mpReset() { for (int k = 0; k < kMpBins; k++) mpPow[k] = mpN[k] = 0; mpSecs = 0; }
+    void mpJudge() {
+        double sum = 0, n = 0;
+        int used = 0;
+        double m[kMpBins];
+        for (int k = 0; k < kMpBins; k++) if (mpN[k] >= 2000) { m[used++] = mpPow[k] / mpN[k]; sum += mpPow[k]; n += mpN[k]; }
+        if (used >= 3 && sum > 0) {
+            const double mean = sum / n;
+            double v = 0;
+            for (int i = 0; i < used; i++) v += (m[i] - mean) * (m[i] - mean);
+            mpRipple = (float)(std::sqrt(v / used) / mean);
+            // a weak signal's own noise leaves a ripple of a few % (the frequency jitter goes with the envelope's dips): the threshold rises
+            // by 0.6 % per dB of SNR below 30 dB
+            const float extra = 0.006f * std::max(0.f, 30.f - lastSnr);
+            cmaUse = cmaUse ? mpRipple > 0.035f + extra : mpRipple > 0.06f + extra;
+        } else if (used > 0) {
+            mpRipple = 0; cmaUse = false;   // hardly any modulation: an echo cannot distort it
+        }
+        mpReset();
+    }
     void cmaReset() { for (auto& w : cmaW) w = cf32(0, 0); cmaW[kCmaMain] = cf32(1, 0); for (auto& v : cmaX) v = cf32(0, 0); cmaPos = 0; cmaP = 0; }
     cf32 cma(cf32 x) {
         cmaP = cmaP > 0 ? cmaP + (std::norm(x) - cmaP) * 0.002f : std::norm(x);
-        if (cmaP <= 1e-20f) return x;
+        if (cmaP <= 1e-20f) { cmaRawD = x; return x; }
         const float g = 1.f / std::sqrt(cmaP);
         // the input history twice over, so that the taps read a straight run of samples
         cmaPos = (cmaPos + kCmaTaps - 1) % kCmaTaps;
         cmaX[cmaPos] = cmaX[cmaPos + kCmaTaps] = x * g;
         const cf32* h = &cmaX[cmaPos];            // h[k]: the sample k steps back
+        cmaRawD = h[kCmaMain];                    // the input as far back as the main tap: the raw path in step with the equalised one
         // The complex products are written out (std::complex's operator* checks every product for NaN, which kept these two loops scalar and
         // made them most of the FM receiver's own cost): the same products, sums and order, one per statement (nothing fused), the same bits.
         float yr = 0, yi = 0;
@@ -337,7 +249,9 @@ struct FmReceiver::Impl {
     cf32 mixRot = cf32(1, 0), mixStep = cf32(1, 0);
     float dcChA = 0;
     std::vector<cf32> a, b;                      // scratch between the channel stages
-    std::vector<float> freq, mpx;
+    std::vector<float> freq, mpx, freqR, mpxR;   // R: the raw channel for RDS while the sound takes the equaliser (split)
+    DecimFir<float> mpxDecimR;
+    bool audioCma = true, split = false;
 
     // pilot and stereo
     Biquad bp1, bp2, nb1a, nb1b, nb2a, nb2b;   // pilot band, and two bands beside it that hold only noise
@@ -346,6 +260,10 @@ struct FmReceiver::Impl {
     bool pilotLock = false;
     double lockT = 0, unlockT = 0;
     float stereoBlend = 0;
+    // Stereo blend by SNR (Auto only): the difference signal carries about 15 dB more noise than the sum, so a weak station goes
+    // gradually to mono instead of hissing, as car radios do: full stereo above 36 dB of the SNR measure (about 22 dB carrier to noise),
+    // mono below 24 dB (about 10 dB), smoothed over a second. "Stereo" in the stereo choice keeps full stereo whatever the SNR.
+    float snrBlend = 1.f;
     DecimFir<float> lpM, lpD;
     std::vector<float> sIn, dIn, mOut, dOut;
     DeEmphasis deL, deR;
@@ -388,7 +306,6 @@ struct FmReceiver::Impl {
     cf32 sq = cf32(0, 0);
     bool rdsOwn = true;                          // no pilot: RDS on its own 57 kHz oscillator and Costas loop
     double nco57 = 0, costasPh = 0, costasFr = 0;
-    float costasPow = 1e-6f;
     cf32 mfBuf[16] = {};
     int mfPos = 0, sampleIdx = 0, bestPhase = 0, sinceSym = 0;
     float phaseEnergy[16] = {};
@@ -442,6 +359,7 @@ struct FmReceiver::Impl {
         }
         designChan(chanWant.load());
         mpxDecim.design(designLowpass(112e3, 138e3, fo), 2);
+        mpxDecimR.design(designLowpass(112e3, 138e3, fo), 2);
         // pilot
         bp1.bandpass(19000, 30, fm); bp2.bandpass(19000, 30, fm);
         nb1a.bandpass(17000, 30, fm); nb1b.bandpass(17000, 30, fm); nb2a.bandpass(21000, 30, fm); nb2b.bandpass(21000, 30, fm);
@@ -476,15 +394,15 @@ struct FmReceiver::Impl {
 
     void reset() {
         for (auto& c : chan) c.reset();
-        mpxDecim.reset(); lpM.reset(); lpD.reset(); rdsLp.reset(); tone.reset();
+        mpxDecim.reset(); mpxDecimR.reset(); audioCma = true; split = false; lpM.reset(); lpD.reset(); rdsLp.reset(); tone.reset();
         if (audioRsOk) audioRs.reset();
         if (rdsRsOk) rdsRs.reset();
-        prev = cf32(1, 0); dcCh = cf32(0, 0); cmaReset();
+        prev = prevRaw = cf32(1, 0); dcCh = cf32(0, 0); cmaReset(); mpReset(); cmaUse = true; mpRipple = 0; std::memset(mpHist, 0, sizeof mpHist); mpAvg = 0; mpHp = 0;
         bp1.reset(); bp2.reset(); nb1a.reset(); nb1b.reset(); nb2a.reset(); nb2b.reset(); nPow1 = nPow2 = pilotSnrDb = 0;
         phi = pllFreq = pLpf = pI = pQ = pAmp2 = dc = 0;
-        pilotLock = false; lockT = unlockT = 0; stereoBlend = 0;
+        pilotLock = false; lockT = unlockT = 0; stereoBlend = 0; snrBlend = 1.f;
         deL.reset(); deR.reset();
-        sq = cf32(0, 0); rdsOwn = true; nco57 = costasPh = costasFr = 0; costasPow = 1e-6f; std::memset(mfBuf, 0, sizeof mfBuf); mfPos = sampleIdx = bestPhase = sinceSym = 0;
+        sq = cf32(0, 0); rdsOwn = true; nco57 = costasPh = costasFr = 0; std::memset(mfBuf, 0, sizeof mfBuf); mfPos = sampleIdx = bestPhase = sinceSym = 0;
         std::memset(phaseEnergy, 0, sizeof phaseEnergy);
         prevSym = 0; symAvg = 0.01f; constHist.clear();
         rds.reset();
@@ -581,23 +499,47 @@ struct FmReceiver::Impl {
         // only when the carrier is clearly off the centre: on the centre (within 50 Hz) the mean is the carrier itself in quiet passages
         const bool dcOn = std::fabs(cfoEma) > 50;
         freq.resize(cn);
+        // the sound below about 22 dB SNR (a carrier to noise near 9 dB) takes the equaliser's output: there its narrower filter keeps clicks and hiss down (threshold
+        // extension, up to 6 dB better near the FM threshold); RDS keeps the raw channel unless there is multipath (the equaliser's
+        // filter cuts the RDS sidebands). Two discriminator outputs, two multiplex decimators, only while they differ.
+        audioCma = cmaUse || (audioCma ? lastSnr < 24.f : lastSnr < 22.f);
+        const bool wasSplit = split;
+        split = audioCma != cmaUse;
+        if (split && !wasSplit) mpxDecimR.reset();
+        if (split) freqR.resize(cn);
         for (size_t i = 0; i < cn; i++) {
             // a NaN or infinite sample (a broken file) would stay for good in the pilot loop, the DC average and the measurements: count it as silence
             cf32 c = std::isfinite(cur[i].real()) && std::isfinite(cur[i].imag()) ? cur[i] : cf32(0, 0);
             dcCh += (c - dcCh) * dcChA;
             if (dcOn) c -= dcCh;
             c = cma(c);
-            const cf32 p = std::conj(prev) * c;
-            freq[i] = (float)(std::atan2(p.imag(), p.real()) * fo / (2 * kPi) / kDevHz);
-            prev = c;
+            const cf32 raw = cmaRawD;
+            const cf32 pr = std::conj(prevRaw) * raw;
+            const float fr = (float)(std::atan2(pr.imag(), pr.real()) * fo / (2 * kPi));   // the raw instantaneous frequency, Hz
+            {   // binned by the frequency averaged over 8 samples (16 us): the noise's own frequency jitter, which goes with the dips of the
+                // envelope, is a third of what it is per sample
+                mpAvg += fr - mpHist[mpHp]; mpHist[mpHp] = fr; mpHp = (mpHp + 1) & 7;
+                const int bin = (int)std::floor((mpAvg * 0.125f + 80e3f) / 10e3f);
+                if (bin >= 0 && bin < kMpBins) { mpPow[bin] += std::norm(raw); mpN[bin] += 1; }
+            }
+            if (cmaUse || audioCma) {
+                const cf32 p = std::conj(prev) * c;
+                const float fc = (float)(std::atan2(p.imag(), p.real()) * fo / (2 * kPi) / kDevHz);
+                freq[i] = audioCma ? fc : fr / (float)kDevHz;
+                if (split) freqR[i] = cmaUse ? fc : fr / (float)kDevHz;
+            } else freq[i] = (float)(fr / kDevHz);
+            prev = c; prevRaw = raw;
             pwSum += std::norm(c);
             envSum += std::abs(c);
         }
         pwN += cn;
+        mpSecs += cn / fo;
+        if (mpSecs >= 0.25) mpJudge();
         for (size_t i = 0; i < cn; i++) freqSum += freq[i];
         freqN += cn;
         mpx.clear();
         mpxDecim.process(freq.data(), cn, mpx);
+        if (split) { mpxR.clear(); mpxDecimR.process(freqR.data(), cn, mpxR); if (mpxR.size() != mpx.size()) mpxR.resize(mpx.size(), 0.f); }
         runMpx();
         if (sincePub >= inRate / 10) publish();
     }
@@ -633,10 +575,12 @@ struct FmReceiver::Impl {
             dIn[i] = (float)(2.0 * m * 2 * sn * cs);
             // RDS carrier: three times the pilot phase, or without a pilot (a mono station) a 57 kHz oscillator of its own
             const double ph57 = rdsOwn ? nco57 : 3 * ph0;
-            rIn[i] = cf32((float)(m * std::cos(ph57)), (float)(-m * std::sin(ph57)));
+            const float mr = split ? mpxR[i] - (float)dc : m;
+            rIn[i] = cf32((float)(mr * std::cos(ph57)), (float)(-mr * std::sin(ph57)));
             nco57 += 2 * kPi * 57000.0 / fm;
             if (nco57 > 2 * kPi) nco57 -= 2 * kPi;
-            mpxRing[ringPos] = m; ringPos = (ringPos + 1) % kMpxFft;
+            mpxRing[ringPos] = mr;   // the SNR measure and the spectrum: the raw channel while split (the equaliser would hide noise from it)
+            ringPos = (ringPos + 1) % kMpxFft;
         }
         // lock state of the pilot, judged in seconds because the block length varies
         const double blk = n / fm;
@@ -653,7 +597,11 @@ struct FmReceiver::Impl {
         lr.resize(na);
         const int sm = stereoMode.load(std::memory_order_relaxed);
         const bool pilotThere = pilotLock || (sm == 2 && 2 * pI > 0.006);   // forced stereo: a weak pilot is enough
-        const float target = (pilotThere && !forceMono.load(std::memory_order_relaxed)) ? 1.f : 0.f;
+        {
+            const float want = sm == 2 ? 1.f : std::max(0.f, std::min(1.f, (lastSnr - 24.f) / 12.f));
+            snrBlend += (want - snrBlend) * std::min(1.f, (float)(n / fm));   // about a second
+        }
+        const float target = (pilotThere && !forceMono.load(std::memory_order_relaxed)) ? snrBlend : 0.f;
         for (size_t i = 0; i < na; i++) {
             stereoBlend += (target - stereoBlend) * 0.002f;
             const float m = mOut[i], d = dOut[i] * stereoBlend;
@@ -724,15 +672,11 @@ struct FmReceiver::Impl {
             const float th = 0.5f * std::atan2(sq.imag(), sq.real());
             r = z * cf32(std::cos(-th), std::sin(-th));
         } else {
-            // no pilot: the transmitter's 57 kHz (+-6 Hz) and the radio's clock leave a residual of up to about 15 Hz. Second-order Costas loop
-            // on the BPSK, wide (40 Hz) until blocks decode, then 8 Hz.
+            // no pilot: the transmitter's 57 kHz (+-6 Hz) and the radio's clock leave a residual of up to about 15 Hz, followed by a
+            // second-order Costas loop. The loop is updated once per symbol from the matched filter's output (below), where the symbol's
+            // whole energy is, not per sample from the raw samples (16 times the noise): about 2.5 dB better on a weak mono station.
             r = z * cf32((float)std::cos(-costasPh), (float)std::sin(-costasPh));
-            costasPow += (std::norm(z) - costasPow) * (1.f / 2000.f);
-            const double e = std::max(-1.0, std::min(1.0, (double)(r.real() * r.imag()) / std::max(costasPow, 1e-12f)));
-            const double bn = (rds.synced ? 8.0 : 40.0) / 19000.0, wnT = 2 * bn / (0.707 + 1 / (4 * 0.707));
-            costasFr += wnT * wnT * e;
-            costasFr = std::max(-2 * kPi * 25 / 19000.0, std::min(2 * kPi * 25 / 19000.0, costasFr));
-            costasPh += costasFr + 2 * 0.707 * wnT * e;
+            costasPh += costasFr;
             if (costasPh > kPi) costasPh -= 2 * kPi; else if (costasPh < -kPi) costasPh += 2 * kPi;
         }
         mfBuf[mfPos] = r; mfPos = (mfPos + 1) & 15;
@@ -754,7 +698,14 @@ struct FmReceiver::Impl {
         sinceSym = 0;
         symAvg += (std::fabs(y.real()) - symAvg) * 0.02f;
         const int sym = y.real() >= 0 ? 1 : 0;
-        rds.pushBit(sym ^ prevSym);
+        if (rdsOwn) {   // the Costas loop at the symbol rate: wide (20 Hz) until blocks decode, then 5 Hz
+            const double e = std::max(-1.0, std::min(1.0, (double)(sym ? y.imag() : -y.imag()) / std::max(symAvg, 1e-9f)));
+            const double bn = rds.synced ? 5.0 : 20.0, wn = 2 * bn / (0.707 + 1 / (4 * 0.707)), wT = wn / 1187.5;
+            costasPh += 2 * 0.707 * wT * e;
+            costasFr += wT * wT * e / 16;   // the frequency is applied per sample, 16 per symbol
+            costasFr = std::max(-2 * kPi * 25 / 19000.0, std::min(2 * kPi * 25 / 19000.0, costasFr));
+        }
+        rds.pushBit(sym ^ prevSym, std::fabs(y.real()));
         prevSym = sym;
         constHist.push_back(y / std::max(symAvg, 1e-6f));
         if (constHist.size() > 300) constHist.erase(constHist.begin(), constHist.begin() + 100);
@@ -786,7 +737,8 @@ struct FmReceiver::Impl {
         t.cfoHz += tuneHz;
         t.devKhz = (float)(peakMpx * 75.0);
         t.levelDbfs = pwN ? (float)(10 * std::log10(std::max(pwSum / pwN, 1e-12))) : -120.f;
-        t.stereo = (pilotLock || stereoMode.load() == 2) && stereoBlend > 0.5f && !forceMono.load(std::memory_order_relaxed);
+        t.stereo = (pilotLock || stereoMode.load() == 2) && stereoBlend > 0.5f * std::max(snrBlend, 0.1f) && !forceMono.load(std::memory_order_relaxed);
+        t.stereoPct = t.stereo ? 100 * stereoBlend : 0.f;
         t.pilotPct = pilotLock ? (float)(200 * pI) : 0.f;
         t.rdsSync = rds.synced;
         t.rdsBlockOkPct = rds.okPct;
@@ -798,6 +750,8 @@ struct FmReceiver::Impl {
         t.tmc = rds.tmc.system();
         t.tmcMessages = rds.tmc.messages(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count());
         t.trafficAlert = rds.ta; t.trafficProgram = rds.tp; t.music = rds.ms; t.piCode = rds.groups ? rds.pi : 0;
+        t.rds = rds.info;
+        t.multipathPct = 100 * mpRipple; t.equaliser = cmaUse;
         // an FM carrier has a constant envelope (spread about 0.2 at 12 dB), noise alone a Rayleigh envelope (0.52)
         double cv = 1;
         if (pwN && envSum > 0) cv = std::sqrt(std::max(0.0, pwSum / pwN / ((envSum / pwN) * (envSum / pwN)) - 1));
@@ -809,7 +763,7 @@ struct FmReceiver::Impl {
         // nothing receivable for two seconds: look for the station again (a new recording, a retune that did not reset)
         unlockedSecs = t.state == 0 ? unlockedSecs + (double)sincePubN / inRate : 0;
         if (unlockedSecs > 2 && !finding && autoFind.load(std::memory_order_relaxed)) { restartFinder(); }
-        if (!t.carrier) { t.stereo = false; t.pilotPct = 0; }
+        if (!t.carrier) { t.stereo = false; t.pilotPct = 0; t.stereoPct = 0; }
         t.mpxMaxHz = 80000.f;
         const int nb = (int)(80e3 / binHz);
         t.mpxDb.resize(nb);
@@ -860,6 +814,8 @@ void FmReceiver::setChannelWidth(double hz) {
 }
 double FmReceiver::channelWidth() const { return 2 * p_->chanWant.load(); }
 void FmReceiver::setSilent(bool s) { p_->silent = s; }
+void FmReceiver::setRdsCorrection(int level) { p_->rds.setCorrection(level >= 1, level >= 2); }
+void FmReceiver::setRdsGroupTap(std::function<void(const uint16_t blocks[4], const uint8_t err[4])> cb) { p_->rds.setGroupTap(std::move(cb)); }
 void FmReceiver::setAudioTap(std::function<void(const float*, const float*, size_t)> cb) { p_->tap = std::move(cb); }
 
 } // namespace dect2

@@ -39,6 +39,12 @@ struct State {
     float gainDb = 20;
     int deNfm = 0, deWfm = 1;
     float pitch = 700;
+    int amDet = 0;               // AM detector: 0 envelope, 1 synchronous, 2 sync upper sideband, 3 sync lower
+    bool amAuto = true;          // AM Auto quality (on by default)
+    int amNr = -1;               // its noise reduction: -1 auto, 0 off, else the strength
+    bool amEnh = false;          // synthetic treble ("enhanced"), experimental
+    bool nb = false;             // noise blanker
+    float nbDb = 12;
     double chanOff = 0;          // the channel relative to the dial frequency (a.freqMhz)
     double lastDial = -1;        // a new dial frequency typed elsewhere puts the channel back on it
     int drag = -1, dragPlot = -1;   // the filter edge held (0 low, 1 high) and on which plot
@@ -97,6 +103,9 @@ void load() {
     S.agc = p.getB("genAgc", true); S.gainDb = (float)p.getD("genGain", 20);
     S.deNfm = (int)std::clamp(p.getI("genDeNfm", 0), 0L, 3L); S.deWfm = (int)std::clamp(p.getI("genDeWfm", 1), 0L, 3L);
     S.pitch = (float)std::clamp(p.getD("genPitch", 700), 200.0, 1500.0);
+    S.amDet = (int)std::clamp(p.getI("genAmDet", 0), 0L, 3L);
+    S.amAuto = p.getB("genAmAuto", true); S.amNr = (int)std::clamp(p.getI("genAmNr", -1), -1L, 100L); S.amEnh = p.getB("genAmEnh", false);
+    S.nb = p.getB("genNb", false); S.nbDb = (float)std::clamp(p.getD("genNbDb", 12), 6.0, 30.0);
     S.chanOff = p.getD("genOffset", 0);
 }
 void save() {
@@ -110,6 +119,8 @@ void save() {
     p.setB("genSqOn", S.sqOn); p.setB("genSqAuto", S.sqAuto); p.setD("genSqDb", S.sqDb);
     p.setB("genAgc", S.agc); p.setD("genGain", S.gainDb);
     p.setI("genDeNfm", S.deNfm); p.setI("genDeWfm", S.deWfm); p.setD("genPitch", S.pitch); p.setD("genOffset", S.chanOff);
+    p.setI("genAmDet", S.amDet); p.setB("genNb", S.nb); p.setD("genNbDb", S.nbDb);
+    p.setB("genAmAuto", S.amAuto); p.setI("genAmNr", S.amNr); p.setB("genAmEnh", S.amEnh);
 }
 
 double listenHz(const App& a) { return a.freqMhz * 1e6 + S.chanOff; }
@@ -292,6 +303,39 @@ void controls(App& a) {
             ImGui::SliderFloat("##gpitch", &S.pitch, 200, 1500, "pitch %.0f Hz");
             if (ImGui::IsItemDeactivatedAfterEdit()) save();
             tip("BFO: the tone a carrier on the channel frequency gives");
+        }
+        if (S.demod == dect2::GenAm) {
+            flowNext(10 * gUi);
+            if (ImGui::Checkbox(tr("Auto quality"), &S.amAuto)) save();
+            tip("Locks onto the carrier, picks the cleaner sideband when the other one has interference, sets the audio bandwidth from what is received, cuts clicks, removes whistles and hum, reduces noise and keeps the loudness steady.\nAM has no noise immunity like FM: this removes what is not the programme, it cannot bring back sound that the noise covers.");
+            if (S.amAuto) {
+                flowNext(6 * gUi);
+                ImGui::SetNextItemWidth(120 * gUi);
+                int nrSel = S.amNr < 0 ? 0 : S.amNr == 0 ? 1 : S.amNr <= 40 ? 2 : 3;
+                if (comboTr("##gamnr", &nrSel, {N_("Noise: auto"), N_("Noise: off"), N_("Noise: gentle"), N_("Noise: strong")})) { S.amNr = nrSel == 0 ? -1 : nrSel == 1 ? 0 : nrSel == 2 ? 30 : 90; save(); }
+                tip("Noise reduction strength. Auto follows the signal to noise ratio (off on a clean station).");
+                flowNext(6 * gUi);
+                if (ImGui::Checkbox(tr("Enhanced treble"), &S.amEnh)) save();
+                tip("Experimental: adds synthetic treble above what the station sends (made from the audio below it). Not faithful; off by default.");
+                if (live(a) && T(a).amActive && !T(a).amStatus.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", T(a).amStatus.c_str()); ImGui::PopTextWrapPos(); }
+            }
+            flowNext(10 * gUi);
+            ImGui::SetNextItemWidth(130 * gUi);
+            if (S.amAuto ? comboTr("##gamdet", &S.amDet, {N_("Detector: auto"), N_("Synchronous"), N_("Sync upper only"), N_("Sync lower only")})
+                         : comboTr("##gamdet", &S.amDet, {N_("Envelope"), N_("Synchronous"), N_("Sync upper only"), N_("Sync lower only")})) save();
+            tip("Envelope: the classic AM detector, best with two stations on one frequency.\nSynchronous: locks onto the carrier; no distortion when the carrier fades on short wave, a little less noise on a weak station.\nUpper / lower only: one sideband, to leave out a station next to it on the other side.");
+        }
+    }
+    if (S.demod != dect2::GenWfm) {
+        flowNext(10 * gUi);
+        if (ImGui::Checkbox("Blanker", &S.nb)) save();
+        tip("Noise blanker: cuts out clicks and pulses (ignition, electric fences, power line noise) before the channel filter. Off for clean signals.");
+        if (S.nb) {
+            flowNext(4 * gUi);
+            ImGui::SetNextItemWidth(110 * gUi);
+            ImGui::SliderFloat("##gnbdb", &S.nbDb, 6, 30, "above %.0f dB");
+            if (ImGui::IsItemDeactivatedAfterEdit()) save();
+            tip("How far above the average a pulse has to be to be cut out. Lower catches weaker pulses but can clip strong speech.");
         }
     }
     flowNext(14 * gUi);
@@ -480,6 +524,9 @@ void tick(App& a) {
     r.setAgc(S.agc, S.gainDb);
     r.setDeemphUs(S.demod == dect2::GenNfm ? kDeemph[S.deNfm] : S.demod == dect2::GenWfm ? kDeemph[S.deWfm] : 0);
     r.setCwPitchHz(S.pitch);
+    r.setAmDetector(S.amDet);
+    r.setAmAuto(S.amAuto, S.amNr, 0, S.amEnh);
+    r.setNoiseBlanker(S.nb && S.demod != dect2::GenWfm, S.nbDb);
     r.setVolume(a.volume); r.setMuted(a.muted);
     r.setAudioFilters(S.afHp, S.afLp, S.afNotch);
     r.setNoiseRemover(nrOffered(S.demod) && S.nrOn[S.demod], S.nrStr[S.demod] / 100.f);
@@ -496,6 +543,9 @@ void tick(App& a) {
         x.setAgc(S.agc, S.gainDb);
         x.setDeemphUs(S.exDemod[i] == dect2::GenNfm ? kDeemph[S.deNfm] : S.exDemod[i] == dect2::GenWfm ? kDeemph[S.deWfm] : 0);
         x.setCwPitchHz(S.pitch);
+        x.setAmDetector(S.amDet);
+        x.setAmAuto(S.amAuto, S.amNr, 0, S.amEnh);
+        x.setNoiseBlanker(S.nb && S.exDemod[i] != dect2::GenWfm, S.nbDb);
         x.setAudioFilters(S.afHp, S.afLp, S.afNotch);
         x.setNoiseRemover(nrOffered(S.exDemod[i]) && S.nrOn[S.exDemod[i]], S.nrStr[S.exDemod[i]] / 100.f);
         x.setListenHz(a.freqMhz * 1e6 + S.exOff[i]);
