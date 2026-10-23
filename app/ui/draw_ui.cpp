@@ -282,6 +282,7 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     }
     tickReceiver(a);
     if (!draw) return;   // a receiver whose tab is not shown: ticked above, not drawn
+    dockFrameBegin(a);   // View > Docking: the placement hook (ui2_dock.cpp)
     videoOnlyKeys(a);
     if (a.videoOnly) { videoOnlyWindow(a, disp); return; }
     applyUiTheme(a);
@@ -294,4 +295,5 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     commandPalette(a);   // Ctrl+K (ui/command_palette.h)
     crashNotePopup(disp);
     hiddenPopOut(a);
+    dockFrameEnd(a);
 }

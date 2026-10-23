@@ -117,6 +117,8 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--tour") { app.wizOpen = true; app.wizStep = i + 1 < argc && argv[i + 1][0] != '-' ? atoi(argv[++i]) : -1; }   // dev: open the tour (at this step)
         if (std::string(argv[i]) == "--credits") app.creditsOpen = true;   // dev: the Credits window open (screenshots)
         if (std::string(argv[i]) == "--mute") { app.muted = true; app.volume = 0; }
+        if (std::string(argv[i]) == "--specdemo") app.specDemo = true;   // dev: a synthetic spectrum (FM, OFDM, SSB) without a radio, for screenshots of the looks
+        if (std::string(argv[i]) == "--look" && i + 1 < argc) specLookSet(app, atoi(argv[++i]), false);   // dev: the spectrum look (0 OnAir, 1 SDR++, 2 SDRoxide), not saved
         if (std::string(argv[i]) == "--wbfile" && i + 1 < argc) {   // dev: the Signal workbench opens this recording (--wbrate for a raw file, --wbtab, --wbsel, --wbkind, --wbbaud, --wbrun)
             double rate = 0; int tab = 0;
             for (int k = 1; k + 1 < argc; k++) { if (std::string(argv[k]) == "--wbrate") rate = atof(argv[k + 1]); if (std::string(argv[k]) == "--wbtab") tab = atoi(argv[k + 1]); }
@@ -161,10 +163,16 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--hc") app.highContrast = true;   // dev: View > Theme > High contrast
         if (std::string(argv[i]) == "--variant" && i + 1 < argc) app.uiVariant = std::max(0, std::min(7, atoi(argv[++i])));
         if (std::string(argv[i]) == "--classic") app.newUi = false;
+        if (std::string(argv[i]) == "--dock") app.dockOn = true;   // dev: View > Docking on
+        if (std::string(argv[i]) == "--dockselftest") { app.dockOn = true; dockDevSelfTest(); }   // dev: drives docking with scripted input and exits (ui2_dock.cpp)
+        if (std::string(argv[i]) == "--docktree" && i + 1 < argc) { app.dockOn = true; dockDevTree(argv[++i]); }   // dev: a dock layout in its text form (ui/dock_tree.h)
         if (std::string(argv[i]) == "--rate" && i + 1 < argc) app.file.sampleRate = atof(argv[++i]) * 1e6;
         if (std::string(argv[i]) == "--freq" && i + 1 < argc) app.freqMhz = atof(argv[++i]);
         if (std::string(argv[i]) == "--station" && i + 1 < argc) app.dabStation = atoi(argv[++i]);
         if (std::string(argv[i]) == "--constview" && i + 1 < argc) app.constView = atoi(argv[++i]);
+        if (std::string(argv[i]) == "--wf3d" && i + 1 < argc) {   // dev: the 3D waterfall at angle n (0-4, wf3d.h Preset) for a screenshot
+            app.wf.s3d.on = true; app.wf.s3d.preset = std::max(0, std::min((int)w3d::NumPresets - 1, atoi(argv[++i]))); app.wf.s3d.cam = w3d::preset(app.wf.s3d.preset);
+        }
         if (std::string(argv[i]) == "--synthgain") app.tune.synth.gainModel = true;
         if (std::string(argv[i]) == "--dvbt") { app.tune.synth.dvbt = true; app.tune.synth.snrDb = 28; }
         if (std::string(argv[i]) == "--t2only") app.stdMode = 1;

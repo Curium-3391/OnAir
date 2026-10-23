@@ -1,112 +1,113 @@
 # OnAir interface in Japanese. One text per line: the English text as in the source, a tab, the translation.
 # \n is a line break. Keep the printf conversions (%s, %d, %.1f ...) in the same order. tests/app/test_i18n.cpp checks this file.
+# Some entries are machine translations that no native speaker has reviewed yet: they are listed in unreviewed/ja.txt. Corrections are welcome.
 #  menus, status words, common buttons
-1 kHz test tone	1 kHz test tone
-A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.
-A SAME header. ZCZC- is added when missing.	A SAME header. ZCZC- is added when missing.
-Aircraft registration	Aircraft registration
-An RS41 with this serial. Empty: the demo sondes.	An RS41 with this serial. Empty: the demo sondes.
-Are you sure? This clears all previous data and cannot be undone.	Are you sure? This clears all previous data and cannot be undone.
-ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.
-Audio file	Audio file
-Audio input	Audio input
-AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI frame. Empty: the demo CubeSat cycle.
-Baud	Baud
-Browse…	Browse…
-Callsign / my ID	Callsign / my ID
+1 kHz test tone	1 kHz テストトーン
+A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	P6 PPM は画像として送信されます。それ以外のファイルや空のファイルではテスト画像を使用します。コールサインが画像に刻印されます。
+A SAME header. ZCZC- is added when missing.	SAME ヘッダー。ZCZC- がない場合は追加されます。
+Aircraft registration	航空機登録記号
+An RS41 with this serial. Empty: the demo sondes.	このシリアルの RS41。空の場合: デモゾンデ。
+Are you sure? This clears all previous data and cannot be undone.	よろしいですか？ これまでのデータがすべて消去され、元に戻せません。
+ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 は ROUTE / fMP4 のデモを使用します。独自の MPEG-TS はペイロード経路ではありません。
+Audio file	音声ファイル
+Audio input	音声入力
+AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI フレーム。空の場合: デモ CubeSat サイクル。
+Baud	ボー
+Browse…	参照…
+Callsign / my ID	コールサイン / 自分の ID
 Capcode	Capcode
-Carrier tune	Carrier tune
-Clear all	Clear all
-Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.
-Code rate / MODCOD index	Code rate / MODCOD index
-Colour code	Colour code
-Comment	Comment
+Carrier tune	キャリア調整
+Clear all	すべて消去
+Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	すべてのモードのデコード済みリスト (航空機、船舶、メッセージ、画像など) を、開いているすべての受信機で消去します。ディスク上の保存コピーも空になります。
+Code rate / MODCOD index	符号化率 / MODCOD インデックス
+Colour code	カラーコード
+Comment	コメント
 CQ	CQ
-D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC test scene (custom video is not wired into this analogue generator).
-DATV (DVB-S/S2 file)	DATV (DVB-S/S2 file)
-Default input	Default input
-Destination	Destination
-Destination / ID	Destination / ID
-Destination ID	Destination ID
-Device ID	Device ID
+D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC テストシーン (カスタム映像はこのアナログジェネレーターでは使えません)。
+DATV (DVB-S/S2 file)	DATV (DVB-S/S2 ファイル)
+Default input	既定の入力
+Destination	宛先
+Destination / ID	宛先 / ID
+Destination ID	宛先 ID
+Device ID	デバイス ID
 Dial frequency the decoder should assume (the sound card is not tuned)	デコーダーが仮定するダイヤル周波数（サウンドカードはチューニングしません）
-DVB standard	DVB standard
-Empty: the demo 802.15.4 scene.	Empty: the demo 802.15.4 scene.
-Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.
-Empty: the demo LoRa / mesh scene.	Empty: the demo LoRa / mesh scene.
-Empty: the demo Mode S uplink scene.	Empty: the demo Mode S uplink scene.
-Empty: the demo VDES scene.	Empty: the demo VDES scene.
+DVB standard	DVB 規格
+Empty: the demo 802.15.4 scene.	空の場合: デモ 802.15.4 シーン。
+Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	空の場合: デモ FLARM シーン。この ID は非公開の新しいプロトコルには組み込まれません。
+Empty: the demo LoRa / mesh scene.	空の場合: デモ LoRa / メッシュシーン。
+Empty: the demo Mode S uplink scene.	空の場合: デモ Mode S アップリンクシーン。
+Empty: the demo VDES scene.	空の場合: デモ VDES シーン。
 File	ファイル
-File to send	File to send
-Free text	Free text
+File to send	送信するファイル
+Free text	フリーテキスト
 Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)	ゲイン操作はラジオのみです（録音、サウンドカード、合成信号には使いません）
 I/Q stereo	I/Q ステレオ
-ICAO address	ICAO address
-Image (PNG / PPM)	Image (PNG / PPM)
-Image (PPM)	Image (PPM)
-Input device	Input device
-Latitude	Latitude
-libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.
-libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.
-Live voice is encoded with Codec 2 (FreeDV).	Live voice is encoded with Codec 2 (FreeDV).
-Live voice is encoded with Codec 2 (libcodec2).	Live voice is encoded with Codec 2 (libcodec2).
-Longitude	Longitude
+ICAO address	ICAO アドレス
+Image (PNG / PPM)	画像 (PNG / PPM)
+Image (PPM)	画像 (PPM)
+Input device	入力デバイス
+Latitude	緯度
+libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 が読み込まれていません: ライブエンコードは無効です。1 kHz トーン、無音、WAV/MP3 は引き続き送信できます。
+libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 が読み込まれていません: ライブエンコードは無効です。宛先コールサインは送信されますが、音声ビットは既知のテストパターンです。1 kHz トーン、無音、WAV/MP3 はアナログ NFM として引き続き送信できます。
+Live voice is encoded with Codec 2 (FreeDV).	ライブ音声は Codec 2 (FreeDV) でエンコードされます。
+Live voice is encoded with Codec 2 (libcodec2).	ライブ音声は Codec 2 (libcodec2) でエンコードされます。
+Longitude	経度
 LSB audio	LSB オーディオ
-Message	Message
-Mic level	Mic level
-Microphone	Microphone
+Message	メッセージ
+Mic level	マイクレベル
+Microphone	マイク
 MMSI	MMSI
 Mode	モード
-Morse identification, up to four letters.	Morse identification, up to four letters.
-NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.
-OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.	OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.
-PAN / short address	PAN / short address
-Path	Path
-Payload text	Payload text
-Power (dBm)	Power (dBm)
-Pre-emphasis	Pre-emphasis
-PSK variant	PSK variant
-QO-100 path	QO-100 path
-Radio ID	Radio ID
-Radio text (RT)	Radio text (RT)
+Morse identification, up to four letters.	モールス識別符号、最大4文字。
+NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX はテキストを送信します (ZCZC / NNNN がない場合は追加されます)。DSC (そのサービス選択時) は MMSI を使用します。
+OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.	OnAir は引き続きラジオにこれを要求しますが、ラジオまたはそのドライバーがこの周波数に届かないか、信号が弱い、または存在しない可能性があります。
+PAN / short address	PAN / ショートアドレス
+Path	経路
+Payload text	ペイロードテキスト
+Power (dBm)	電力 (dBm)
+Pre-emphasis	プリエンファシス
+PSK variant	PSK 方式
+QO-100 path	QO-100 経路
+Radio ID	無線 ID
+Radio text (RT)	ラジオテキスト (RT)
 RDS PI	RDS PI
-Receiver-style options (demo signal)	Receiver-style options (demo signal)
-Report	Report
-Reverse (mark is the upper tone)	Reverse (mark is the upper tone)
+Receiver-style options (demo signal)	受信機スタイルのオプション (デモ信号)
+Report	レポート
+Reverse (mark is the upper tone)	反転 (マークが上側のトーン)
 RFPI	RFPI
-RFPI of the base station.	RFPI of the base station.
-Roll-off	Roll-off
-Satellite standard	Satellite standard
-Send analog NFM of the audio instead of the digital test pattern	Send analog NFM of the audio instead of the digital test pattern
-Send analog NFM of the microphone or a file instead of the test scene	Send analog NFM of the microphone or a file instead of the test scene
-Serial / ID	Serial / ID
-Shift	Shift
-Sideband	Sideband
-Silence	Silence
+RFPI of the base station.	基地局の RFPI。
+Roll-off	ロールオフ
+Satellite standard	衛星規格
+Send analog NFM of the audio instead of the digital test pattern	デジタルテストパターンの代わりに音声のアナログ NFM を送信
+Send analog NFM of the microphone or a file instead of the test scene	テストシーンの代わりにマイクまたはファイルのアナログ NFM を送信
+Serial / ID	シリアル / ID
+Shift	シフト
+Sideband	サイドバンド
+Silence	無音
 sound card	サウンドカード
-SSB (microphone)	SSB (microphone)
-SSTV mode	SSTV mode
-Station name (PS)	Station name (PS)
-Symbol rate (Hz)	Symbol rate (Hz)
-Talkgroup	Talkgroup
-test DJI DroneID scene (custom serial is not packed)	test DJI DroneID scene (custom serial is not packed)
-test downlink scene (this generator does not take a custom message)	test downlink scene (this generator does not take a custom message)
-test LRPT/HRIT scene (custom image not wired)	test LRPT/HRIT scene (custom image not wired)
-test NCDXF-style beacon scene	test NCDXF-style beacon scene
-test weather-fax chart (custom image not wired)	test weather-fax chart (custom image not wired)
-TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Text	Text
+SSB (microphone)	SSB (マイク)
+SSTV mode	SSTV モード
+Station name (PS)	局名 (PS)
+Symbol rate (Hz)	シンボルレート (Hz)
+Talkgroup	トークグループ
+test DJI DroneID scene (custom serial is not packed)	テスト用 DJI DroneID シーン (カスタムシリアルは組み込まれません)
+test downlink scene (this generator does not take a custom message)	テスト用ダウンリンクシーン (このジェネレーターはカスタムメッセージに対応しません)
+test LRPT/HRIT scene (custom image not wired)	テスト用 LRPT/HRIT シーン (カスタム画像は未対応)
+test NCDXF-style beacon scene	テスト用 NCDXF 形式ビーコンシーン
+test weather-fax chart (custom image not wired)	テスト用ファックス気象図 (カスタム画像は未対応)
+TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP はここではエンコードされません。カラーコードと ID は表示され、ダウンリンクのテストパターンが送信されます。代わりに 1 kHz トーン、無音、または WAV/MP3 をアナログ NFM として送信できます。
+Text	テキスト
 The capture rate of the sound card. The engine runs at this rate; there is no radio to tune.	サウンドカードの取り込みレートです。エンジンはこのレートで動きます。チューニングするラジオはありません。
-The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.
-The microphone starts only when you press START TRANSMITTING.	The microphone starts only when you press START TRANSMITTING.
-The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.
-This frequency is outside what this radio is specified for	This frequency is outside what this radio is specified for
-this mode has no transmit generator	this mode has no transmit generator
-This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Timeslot	Timeslot
+The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	ファイルのバイト列がこのコールサインの HamDRM オブジェクトとして送信されます。ファイルが空の場合: テスト画像。
+The microphone starts only when you press START TRANSMITTING.	マイクは「送信開始」を押したときにのみ起動します。
+The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	登録記号とフリーテキストが H1 / ACARS ダウンリンクとして送信されます。空の場合: デモトラフィック。
+This frequency is outside what this radio is specified for	この周波数はこのラジオの仕様範囲外です
+this mode has no transmit generator	このモードには送信ジェネレーターがありません
+This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	このボコーダーはエンコードできません: OnAir は mbelib をデコード専用で読み込みます (AMBE/IMBE)。宛先 ID / トークグループ / カラーコードは送信されますが、音声ビットはテストパターンです。代わりに 1 kHz トーン、無音、または WAV/MP3 をアナログ NFM として送信できます。
+Timeslot	タイムスロット
 To	To
 USB audio	USB オーディオ
-Vessel name	Vessel name
+Vessel name	船名
 View	表示
 Help	ヘルプ
 Language	言語
@@ -129,14 +130,14 @@ searching	検索中
 syncing	同期中
 locked	ロック
 Locked	ロック
-Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.
-Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.
-WAV / MP3 file	WAV / MP3 file
+Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	警告: ADS-B は航空機を模擬します。ダミーロードまたはシールドされた環境にのみ送信し、アンテナには絶対に送信しないでください。
+Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	警告: AIS は船舶を模擬します。ダミーロードまたはシールドされた環境にのみ送信し、アンテナには絶対に送信しないでください。偽の船舶は実際の受信機を混乱させる恐れがあり、安全上のリスクであり、ほとんどの地域で違法です。
+WAV / MP3 file	WAV / MP3 ファイル
 weak	弱い
 stereo	ステレオ
 mono	モノラル
 radio disconnected	無線機が切断されました
-What to send	What to send
+What to send	送信内容
 WPM	WPM
 yes	はい
 no lock	ロックなし
@@ -603,7 +604,7 @@ Include beta versions	ベータ版を含める
 Check now	今すぐ確認
 Not checked yet.	まだ確認していません。
 Asking GitHub for the newest version…	GitHub に最新バージョンを問い合わせています…
-Yes, clear all	Yes, clear all
+Yes, clear all	はい、すべて消去
 You have the newest version.	最新バージョンです。
 Version %s is available%s.	バージョン %s が利用可能です%s。
  (beta)	 (ベータ)
@@ -1043,8 +1044,8 @@ GNSS NMEA RMC/GGA (UDP)	GNSS NMEA RMC/GGA（UDP）
 Bluetooth LE advertisements, JSON (UDP)	Bluetooth LE アドバタイズ、JSON（UDP）
 LoRa / LoRaWAN / Meshtastic, JSON (UDP)	LoRa / LoRaWAN / Meshtastic、JSON（UDP）
 JSON lines (one object a line) unless GNSS, which is NMEA. Off until you turn a feed on. Only modes that already have structured messages are sent.	JSON行（1行に1オブジェクト）。GNSSだけはNMEAです。フィードを入れるまでオフ。構造化されたメッセージがあるモードだけを送ります。
-Support	Support
-Support OnAir on Ko-fi	Support OnAir on Ko-fi
+Support	サポート
+Support OnAir on Ko-fi	Ko-fi で OnAir を支援
 Documentation	ドキュメント
 Troubleshooting	トラブルシューティング
 Website	ウェブサイト
@@ -1203,14 +1204,14 @@ test (no RF)	テスト(RFなし)
 the limiter is working: %.2f%% of samples (lower the level)	リミッター動作中:サンプルの %.2f%%(レベルを下げてください)
 25 kHz	25 kHz
 12.5 kHz	12.5 kHz
-Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Call letters	Call letters
-RDS standard	RDS standard
-Auto (RBDS on odd tenths)	Auto (RBDS on odd tenths)
-RDS (Europe)	RDS (Europe)
-RBDS (US)	RBDS (US)
-RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	受信フィルター幅。12.5 kHz は隣接チャンネルをよりよく除去しますが、信号がチャンネル中心にある必要があります。25 kHz は広く、許容範囲の大きいフィルターです。
+Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	受信フィルター幅。12.5 kHz は隣接チャンネルをよりよく除去します (APRS には最適なことが多い) が、信号がチャンネル中心にある必要があります。25 kHz は広く、許容範囲の大きいフィルターです。
+Call letters	コールレター
+RDS standard	RDS 規格
+Auto (RBDS on odd tenths)	自動 (十の位が奇数で RBDS)
+RDS (Europe)	RDS (ヨーロッパ)
+RBDS (US)	RBDS (米国)
+RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS と米国の RBDS はデータを共有しますが、番組タイプの名称が異なり、RBDS 局はコールレターを送信します。自動は米国のチャンネルラスター (87.9、88.1 ... 107.9 MHz) で RBDS を使用します。ヨーロッパにもこれらのチャンネルに局があるため、そこでは RDS (ヨーロッパ) を選んでください。
 Real (mono)	実数（モノ）
 Left	左
 Right	右
@@ -1252,83 +1253,83 @@ Keyboard	キーボード
 Re-sync	再同期
 Drop the lock and search for the CDR signal again without stopping the radio.\nUse it when the sound stays silent after the signal faded.	ラジオを止めずにロックを破棄してCDR信号を再探索します。\n信号が弱まった後に音が出なくなったときに使います。
 #  memories (English until translated)
-"%s" is stored on this frequency and mode already.	"%s" is stored on this frequency and mode already.
-%zu memories	%zu memories
-(frequency only)	(frequency only)
-(no name)	(no name)
-(nothing stored or used yet)	(nothing stored or used yet)
-0 keeps the mode's own rate (Auto)	0 keeps the mode's own rate (Auto)
-Add another	Add another
-Back to my list	Back to my list
-Bandwidth	Bandwidth
-Bandwidth (kHz)	Bandwidth (kHz)
-Click a heading of the table to sort by it too	Click a heading of the table to sort by it too
-Colour	Colour
-Could not apply this memory.	Could not apply this memory.
-Delete	Delete
-Edit...	Edit...
-Enter a frequency.	Enter a frequency.
-Export JSON...	Export JSON...
-Exported to 	Exported to 
-Favourite	Favourite
-Frequency only	Frequency only
-Group	Group
-Groups	Groups
-Import failed: 	Import failed: 
-Import...	Import...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Imported %zu memories, %zu skipped (duplicates or lines without a frequency).
-Include in the memory scan	Include in the memory scan
-Informative: the channel width at the time. The mode's own width options are in the options below.	Informative: the channel width at the time. The mode's own width options are in the options below.
-Keep the gains	Keep the gains
-Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.
-Last used	Last used
-Manual order	Manual order
-Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Memories: the frequencies you keep, with mode and settings (Ctrl+M)
-Memory	Memory
-Memory panel...	Memory panel...
-Memory...	Memory...
-No group	No group
-No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.
-Notes	Notes
-Options	Options
+"%s" is stored on this frequency and mode already.	「%s」はこの周波数とモードですでに保存されています。
+%zu memories	メモリ %zu 件
+(frequency only)	(周波数のみ)
+(no name)	(名前なし)
+(nothing stored or used yet)	(まだ保存・使用されたものはありません)
+0 keeps the mode's own rate (Auto)	0 でモード固有のレートを使用 (自動)
+Add another	もう1つ追加
+Back to my list	自分のリストに戻る
+Bandwidth	帯域幅
+Bandwidth (kHz)	帯域幅 (kHz)
+Click a heading of the table to sort by it too	表の見出しをクリックしてもソートできます
+Colour	色
+Could not apply this memory.	このメモリを適用できませんでした。
+Delete	削除
+Edit...	編集...
+Enter a frequency.	周波数を入力してください。
+Export JSON...	JSON をエクスポート...
+Exported to 	エクスポート先:
+Favourite	お気に入り
+Frequency only	周波数のみ
+Group	グループ
+Groups	グループ
+Import failed: 	インポートに失敗しました:
+Import...	インポート...
+Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	メモリを %zu 件インポートし、%zu 件をスキップしました (重複または周波数のない行)。
+Include in the memory scan	メモリスキャンに含める
+Informative: the channel width at the time. The mode's own width options are in the options below.	参考情報: 当時のチャンネル幅。モード固有の幅オプションは下のオプションにあります。
+Keep the gains	ゲインを維持
+Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	この受信機の周波数、モード、サンプルレート、ゲイン、モードのオプションを保存します。モードが局名を報告する場合は、名前に局名が使われます。
+Last used	最終使用
+Manual order	手動順
+Memories: the frequencies you keep, with mode and settings (Ctrl+M)	メモリ: モードと設定付きで保存した周波数 (Ctrl+M)
+Memory	メモリ
+Memory panel...	メモリパネル...
+Memory...	メモリ...
+No group	グループなし
+No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	メモリはまだありません。保存したい周波数に合わせて「現在を保存」を押すか、リストをインポートしてください。
+Notes	メモ
+Options	オプション
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.
-Recall	Recall
-Recall frequency only	Recall frequency only
-Sample rate (kHz)	Sample rate (kHz)
-Save	Save
-Scan memories	Scan memories
-Search name, tag, mode, frequency (162.4)	Search name, tag, mode, frequency (162.4)
-Show Memory as a tab	Show Memory as a tab
-Stars only	Stars only
-Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.
-Store current	Store current
-Store current...	Store current...
-Tags	Tags
-The list is the memories flagged for scan (Memory panel).	The list is the memories flagged for scan (Memory panel).
-The memory bank is full.	The memory bank is full.
-The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).
-The receiver Store current and Recall work on	The receiver Store current and Recall work on
-This receiver	This receiver
-Tunes to the frequency and keeps the mode as it is	Tunes to the frequency and keeps the mode as it is
-Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.
-Undo delete	Undo delete
-Update it	Update it
-Words separated by commas; the search finds them.	Words separated by commas; the search finds them.
-stored with: %s	stored with: %s
-Edit memory	Edit memory
-Click to make this a favourite	Click to make this a favourite
-Favourite: kept at the top. Click to remove	Favourite: kept at the top. Click to remove
+Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	メモリの CSV または JSON ファイル、「周波数,名前」形式 (MHz) のプレーンなリスト、または SDR++ Frequency Manager のエクスポートを読み込みます。同じ周波数とモードですでに保存されているメモリはスキップされます。
+Recall	呼び出し
+Recall frequency only	周波数のみ呼び出し
+Sample rate (kHz)	サンプルレート (kHz)
+Save	保存
+Scan memories	メモリをスキャン
+Search name, tag, mode, frequency (162.4)	名前、タグ、モード、周波数で検索 (162.4)
+Show Memory as a tab	メモリをタブとして表示
+Stars only	お気に入りのみ
+Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	「メモリスキャンに含める」にしたメモリをスキャナーで順にたどります。各メモリに同調してモードを切り替え、滞留時間だけ聴き、受信機が信号またはロックを報告している間は停止します。モードのないメモリは対象外です。
+Store current	現在を保存
+Store current...	現在を保存...
+Tags	タグ
+The list is the memories flagged for scan (Memory panel).	リストはスキャン対象に設定されたメモリです (メモリパネル)。
+The memory bank is full.	メモリバンクがいっぱいです。
+The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	モードの設定。1行につき key=value (復調器、ディエンファシス、幅 ...)。
+The receiver Store current and Recall work on	受信機の「現在を保存」と「呼び出し」の対象
+This receiver	この受信機
+Tunes to the frequency and keeps the mode as it is	周波数に同調し、モードはそのままにします
+Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	周波数に同調し、保存されたモードに切り替えて、そのオプションとゲインを適用します。行をダブルクリックしても同じです。モードが変わると、動作中の受信機は再起動します。
+Undo delete	削除を元に戻す
+Update it	更新する
+Words separated by commas; the search finds them.	カンマ区切りの単語。検索はそれらを探します。
+stored with: %s	保存内容: %s
+Edit memory	メモリを編集
+Click to make this a favourite	クリックしてお気に入りにする
+Favourite: kept at the top. Click to remove	お気に入り: 先頭に固定されます。クリックで解除
 Ham It Down: 1500 MHz down-converter for about 1.5 to 3 GHz (2.4 GHz, 2.3/3.4 GHz). Connect it between the antenna and the radio; the radio sees RF - 1500 MHz. Below 1500 MHz is not supported.	Ham It Down: 約1.5〜3 GHz (2.4 GHz、2.3/3.4 GHz) 用の1500 MHzダウンコンバーターです。アンテナと無線機の間に接続します。無線機には RF - 1500 MHz が見えます。1500 MHz未満は非対応です。
 Contrast	コントラスト
-Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)
-Credits and licences	Credits and licences
-OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.
-Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.
-Project	Project
-Author	Author
-Licence	Licence
-Used for	Used for
+Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	1 未満で弱い信号を持ち上げ、1 超でノイズを暗くします (ダブルクリック: 1)
+Credits and licences	クレジットとライセンス
+OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir は GNU General Public License v3 以降のフリーソフトウェアです。以下の人々とプロジェクトの成果の上に作られています。ありがとうございます。
+Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	リンクをクリックするとブラウザで開きます。完全な通知と未解決のライセンス事項は THIRD_PARTY.md にあります。
+Project	プロジェクト
+Author	作者
+Licence	ライセンス
+Used for	用途
 Update source	更新の取得元
 Automatic: GitHub	自動: GitHub
 GitHub only	GitHub のみ
@@ -1343,11 +1344,11 @@ Noise remover (neural)##gennr	ノイズ除去（ニューラル）##gennr
 Mix of cleaned and original audio: right removes more noise, left keeps more of the original. Adds about 20 ms of delay.	処理後と元の音声の混ぜ具合：右へ動かすほどノイズが減り、左は元の音に近づきます。約20 msの遅延が加わります。
 Speech only; do not use on music or data modes.	音声専用。音楽やデータモードでは使わないでください。
 Noise remover (neural)##airnr	ノイズ除去（ニューラル）##airnr
-Photo / info	Photo / info
-No identifier to look up	No identifier to look up
-Opens %s in your browser (nothing is loaded until you click)	Opens %s in your browser (nothing is loaded until you click)
-Pictures and details in a public database: opens your browser	Pictures and details in a public database: opens your browser
-Preferred site	Preferred site
+Photo / info	写真 / 情報
+No identifier to look up	検索する識別子がありません
+Opens %s in your browser (nothing is loaded until you click)	%s をブラウザで開きます (クリックするまで何も読み込まれません)
+Pictures and details in a public database: opens your browser	公開データベース内の写真と詳細: ブラウザで開きます
+Preferred site	優先サイト
 Sunday	日曜日
 Monday	月曜日
 Tuesday	火曜日
@@ -1356,7 +1357,7 @@ Thursday	木曜日
 Friday	金曜日
 Saturday	土曜日
 Your radio cannot tune 225 kHz.	お使いの無線機は 225 kHz に同調できません。
-Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.
+Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	長波には、SDRplay、Airspy HF+、ダイレクトサンプリングモードの RTL-SDR、または数 MHz から始まるラジオの前段に置くアップコンバーター (ラジオの設定で指定)、そして長いワイヤーまたはフェライトバーアンテナが必要です。ラジオ音声の BFO 録音も再生できます。受信タブで IQ ではなく Audio にチェックを入れてください。
 time decoded, two packets agree	時刻を復号、2 パケットが一致
 time decoded (one packet)	時刻を復号（1 パケット）
 carrier found, waiting for a time packet	搬送波を検出、時刻パケット待ち
@@ -1375,19 +1376,19 @@ transmitter	送信所
 computer clock	コンピュータの時計
 ahead	進み
 behind	遅れ
-The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.
+The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	各時刻パケットの開始時のコンピューター時計から、パケット内のスタンプと経路遅延を引いたものを、直近のパケットで平均した値です。ラジオのバッファリングを含みます (最も早い到着を使用)。サービスのフレームタイミングはその記述 (GUM, v1.0) によるもので、時計が既知の信号とはまだ照合していません。目安としてお使いください。
 nothing to compare (a recording)	比較対象なし（録音）
 once the time is decoded	時刻の復号後
 path	伝搬路
-; set your position in ADS-B (Receiver position) for the right delay	; set your position in ADS-B (Receiver position) for the right delay
+; set your position in ADS-B (Receiver position) for the right delay	; 正しい遅延にするには ADS-B で自分の位置を設定してください (受信位置)
 clock offset	時計のずれ
 level	レベル
 start the receiver to see the signal	受信を開始すると信号を表示します
 carrier	搬送波
 phase of the carrier	搬送波の位相
-The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.
+The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	キャリア位相の直近2秒間を8 ms ごとに1点で表示し、新しいほど明るく描きます。サービスは位相を36度離れた2つの状態の間でキーイングします (50 bit/s)。クリーンな信号では2つの密なクラスターが現れます。
 signal at the bit slicer	ビット判定器の信号
-The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.
+The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	20 ms ビットごとの位相変化: ±1 のステップはキーイング状態が変わるビット、0 は変わらないビットです。スライサーは中間 (破線) で判定します。直近2秒間。
 Computer UTC	コンピュータ UTC
 Frame	フレーム
 Result	結果
@@ -1395,13 +1396,13 @@ no frame yet: a time packet comes every few slots of the minute frame	フレー�
 , audio recording	、音声の録音
 Recording of the radio's audio	ラジオ音声の録音
 Audio, not IQ	IQ ではなく音声
-The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.
+The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	このファイルは、225 kHz から少しずらして同調した受信機の音声 (SSB / CW) の録音で、キャリアがトーンになっています (左チャンネルに音声、右チャンネルは無音の WAV。モノラル WAV: eczastool rx が直接読み込みます)。IQ ファイルやラジオ用ではありません。
 carrier tone Hz	搬送波トーン Hz
-The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).
-Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).
+The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	録音中のキャリアの音程: ラジオのダイヤルが 224 kHz (上側波帯) のとき 1000 Hz。
+Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	未使用: フレームの Reed-Solomon バイト (チェックバイトが誤ったフレームは修復されず破棄されます)。
 Carrier	搬送波
 Sync	同期
-The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).
+The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	テスト信号は 12 秒ごとにコンピューターの時刻を含む時刻パケットを運びます。時計オフセットはゼロ付近に保たれるはずです (シミュレーター自体のバッファリングが影響します)。
 LW time service, Poland	長波時報サービス（ポーランド）
 Predict positions	位置を予測
 Fills the gaps between position reports: the aircraft moves smoothly and, when messages stop, is dead-reckoned along its track (and along the route when a message named the destination). Predicted positions are drawn as a ghost with a dashed ring.	位置報告の間の空白を補います。機体は滑らかに動き、メッセージが途絶えると進路に沿って(目的地が通知されていれば航路に沿って)推測航法で位置を求めます。予測位置は破線の輪を付けた半透明の機影で描かれます。
@@ -1535,21 +1536,21 @@ Source...	出典...
 Switches to the entry's mode, applies the mode's tuning and tunes to the frequency. A double-click on a row does the same. A running receiver restarts when the mode changes.	項目のモードに切り替え、そのモードの同調設定を適用して周波数に同調します。行をダブルクリックしても同じです。動作中の受信機はモードが変わると再起動します。
 Tuned: %s  %s MHz	同調: %s  %s MHz
 Well-known frequencies of this mode: pick one to tune to it	このモードの既知の周波数: 選ぶと同調します
-Stop scan##dsc	Stop scan##dsc
-Scan band##dsc	Scan band##dsc
-DECT carrier %d, %.3f MHz	DECT carrier %d, %.3f MHz
-Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.
-US / Canada 1920-1930 MHz (DECT 6.0)	US / Canada 1920-1930 MHz (DECT 6.0)
-Brazil 1910-1920 MHz	Brazil 1910-1920 MHz
-Latin America 1910-1930 MHz	Latin America 1910-1930 MHz
-US ISM 902-928 MHz (DECT in ISM)	US ISM 902-928 MHz (DECT in ISM)
-Europe 1880-1900 MHz	Europe 1880-1900 MHz
-USA, Canada: the UPCS band, DECT 6.0 phones	USA, Canada: the UPCS band, DECT 6.0 phones
-Brazil	Brazil
-Several Latin American countries	Several Latin American countries
-USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT
-Europe, most of Asia, Africa, Australia: the common DECT band	Europe, most of Asia, Africa, Australia: the common DECT band
-Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.
+Stop scan##dsc	スキャン停止##dsc
+Scan band##dsc	バンドをスキャン##dsc
+DECT carrier %d, %.3f MHz	DECT キャリア %d、%.3f MHz
+Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	バンドのキャリアを1つあたり1.5秒ずつ順にたどり、バーストが聞こえている間はそのキャリアに留まります。
+US / Canada 1920-1930 MHz (DECT 6.0)	米国 / カナダ 1920-1930 MHz (DECT 6.0)
+Brazil 1910-1920 MHz	ブラジル 1910-1920 MHz
+Latin America 1910-1930 MHz	中南米 1910-1930 MHz
+US ISM 902-928 MHz (DECT in ISM)	米国 ISM 902-928 MHz (ISM 内の DECT)
+Europe 1880-1900 MHz	ヨーロッパ 1880-1900 MHz
+USA, Canada: the UPCS band, DECT 6.0 phones	米国、カナダ: UPCS 帯域、DECT 6.0 電話機
+Brazil	ブラジル
+Several Latin American countries	中南米のいくつかの国
+USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	米国、900 MHz ISM 帯の標準 DECT: まれで、900 MHz のコードレス電話の多くは DECT ではありません
+Europe, most of Asia, Africa, Australia: the common DECT band	ヨーロッパ、アジアの大部分、アフリカ、オーストラリア: 一般的な DECT 帯域
+Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	このラジオでは %.3f - %.3f MHz (%s バンド) に同調できません。対応範囲は %.6g - %.6g MHz です。届くラジオ (HackRF、PlutoSDR、LimeSDR、BladeRF) を使うか、ラジオの設定でコンバーターを指定してください。
 The nRSP-ST is reached through SDRconnect: run SDRconnect (or its headless build) on a computer with the WebSocket server on (port 5454) and its nRSP-ST selected, and type that computer's address. No password is needed or stored.	nRSP-STにはSDRconnect経由で接続します。WebSocketサーバー（ポート5454）を有効にし、nRSP-STを選択した状態で、コンピューター上のSDRconnect（またはヘッドレス版）を起動し、そのコンピューターのアドレスを入力してください。パスワードは不要で、保存もされません。
 #  the guided tour
 Tuning and gain	チューニングとゲイン
@@ -1590,17 +1591,17 @@ WAV header	WAVヘッダー
 Allow other computers	他のコンピューターを許可
 16-bit stereo, 48 kHz. ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:PORT, or a WAV player with the header on. Security: anyone who can reach the port can listen; leave 'Allow other computers' off unless you need it.	16ビットステレオ、48 kHz。ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:ポート、またはヘッダー付きWAVプレーヤー。セキュリティ: ポートに到達できる人は誰でも聞けます。必要がなければ「他のコンピューターを許可」はオフのままにしてください。
 Listeners:	リスナー:
-video	video
-audio	audio
-profile	profile
-Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work
-Open in an external player	Open in an external player
-Save the transport stream to a file	Save the transport stream to a file
-Stream it as UDP to %s	Stream it as UDP to %s
-Copy VLC command	Copy VLC command
-Copy mpv command	Copy mpv command
-Copy ffplay command	Copy ffplay command
-Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).
+video	映像
+audio	音声
+profile	プロファイル
+Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	映像: %s (OnAir はこの映像をデコードできません) — 音声、字幕、データは引き続き動作します
+Open in an external player	外部プレーヤーで開く
+Save the transport stream to a file	トランスポートストリームをファイルに保存
+Stream it as UDP to %s	%s へ UDP としてストリーム
+Copy VLC command	VLC コマンドをコピー
+Copy mpv command	mpv コマンドをコピー
+Copy ffplay command	ffplay コマンドをコピー
+Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	先に UDP ストリームを開始してからコマンドを実行してください。プレーヤーが映像を表示するかどうかはそのビルド次第です (docs/AVSPLUS.md)。
 # credits and contributors
 Credits	クレジット
 Contributors	貢献者
@@ -2715,7 +2716,7 @@ automatic	自動
 Sound	音声
 The sound subcarrier of the video transmitter, an FM carrier above the picture. Automatic takes the stronger of 6.0 and 6.5 MHz.	映像送信機の音声サブキャリア。映像の上にある FM 搬送波です。自動では 6.0 と 6.5 MHz の強い方を使います。
 Saturation	彩度
-Weave	Weave
+Weave	織り込み
 Bob	Bob
 offset	オフセット
 picture	映像

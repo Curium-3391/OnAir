@@ -1,112 +1,113 @@
 # OnAir interface in Polish. One text per line: the English text as in the source, a tab, the translation.
 # \n is a line break. Keep the printf conversions (%s, %d, %.1f ...) in the same order. tests/app/test_i18n.cpp checks this file.
+# Some entries are machine translations that no native speaker has reviewed yet: they are listed in unreviewed/pl.txt. Corrections are welcome.
 #  menus, status words, common buttons
-1 kHz test tone	1 kHz test tone
-A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.
-A SAME header. ZCZC- is added when missing.	A SAME header. ZCZC- is added when missing.
-Aircraft registration	Aircraft registration
-An RS41 with this serial. Empty: the demo sondes.	An RS41 with this serial. Empty: the demo sondes.
-Are you sure? This clears all previous data and cannot be undone.	Are you sure? This clears all previous data and cannot be undone.
-ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.
-Audio file	Audio file
-Audio input	Audio input
-AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI frame. Empty: the demo CubeSat cycle.
+1 kHz test tone	Ton testowy 1 kHz
+A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	P6 PPM jest wysyłany jako obraz; każdy inny lub pusty plik używa obrazu testowego. Znak wywoławczy jest na nim naniesiony.
+A SAME header. ZCZC- is added when missing.	Nagłówek SAME. ZCZC- jest dodawane, gdy go brakuje.
+Aircraft registration	Znak rejestracyjny statku powietrznego
+An RS41 with this serial. Empty: the demo sondes.	RS41 o tym numerze seryjnym. Puste: sondy demonstracyjne.
+Are you sure? This clears all previous data and cannot be undone.	Czy na pewno? To wyczyści wszystkie dotychczasowe dane i nie można tego cofnąć.
+ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 używa dema ROUTE / fMP4; własny MPEG-TS nie jest ścieżką danych.
+Audio file	Plik audio
+Audio input	Wejście audio
+AX.25 UI frame. Empty: the demo CubeSat cycle.	Ramka AX.25 UI. Puste: demonstracyjny cykl CubeSata.
 Baud	Baud
-Browse…	Browse…
-Callsign / my ID	Callsign / my ID
+Browse…	Przeglądaj…
+Callsign / my ID	Znak wywoławczy / mój ID
 Capcode	Capcode
-Carrier tune	Carrier tune
-Clear all	Clear all
-Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.
-Code rate / MODCOD index	Code rate / MODCOD index
-Colour code	Colour code
-Comment	Comment
+Carrier tune	Strojenie nośnej
+Clear all	Wyczyść wszystko
+Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Czyści wszystkie dotychczasowe dane: listy zdekodowane w każdym trybie (samoloty, statki, wiadomości, obrazy itd.) w każdym otwartym odbiorniku. Zapisana kopia na dysku również zostaje opróżniona.
+Code rate / MODCOD index	Szybkość kodu / indeks MODCOD
+Colour code	Kod koloru
+Comment	Komentarz
 CQ	CQ
-D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC test scene (custom video is not wired into this analogue generator).
-DATV (DVB-S/S2 file)	DATV (DVB-S/S2 file)
-Default input	Default input
-Destination	Destination
-Destination / ID	Destination / ID
-Destination ID	Destination ID
-Device ID	Device ID
+D2-MAC test scene (custom video is not wired into this analogue generator).	Scena testowa D2-MAC (własne wideo nie jest podłączone do tego generatora analogowego).
+DATV (DVB-S/S2 file)	DATV (plik DVB-S/S2)
+Default input	Wejście domyślne
+Destination	Cel
+Destination / ID	Cel / ID
+Destination ID	ID celu
+Device ID	ID urządzenia
 Dial frequency the decoder should assume (the sound card is not tuned)	Częstotliwość dial, którą dekoder ma przyjąć (karta dźwiękowa nie jest strojona)
-DVB standard	DVB standard
-Empty: the demo 802.15.4 scene.	Empty: the demo 802.15.4 scene.
-Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.
-Empty: the demo LoRa / mesh scene.	Empty: the demo LoRa / mesh scene.
-Empty: the demo Mode S uplink scene.	Empty: the demo Mode S uplink scene.
-Empty: the demo VDES scene.	Empty: the demo VDES scene.
+DVB standard	Standard DVB
+Empty: the demo 802.15.4 scene.	Puste: demonstracyjna scena 802.15.4.
+Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Puste: demonstracyjna scena FLARM. Ten ID nie jest pakowany do niepublikowanego nowszego protokołu.
+Empty: the demo LoRa / mesh scene.	Puste: demonstracyjna scena LoRa / mesh.
+Empty: the demo Mode S uplink scene.	Puste: demonstracyjna scena uplinku Mode S.
+Empty: the demo VDES scene.	Puste: demonstracyjna scena VDES.
 File	Plik
-File to send	File to send
-Free text	Free text
+File to send	Plik do wysłania
+Free text	Dowolny tekst
 Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)	Regulacja wzmocnienia dotyczy tylko radiostacji (nie nagrania, karty dźwiękowej ani sygnału syntetycznego)
-I/Q stereo	I/Q stereo
-ICAO address	ICAO address
-Image (PNG / PPM)	Image (PNG / PPM)
-Image (PPM)	Image (PPM)
-Input device	Input device
-Latitude	Latitude
-libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.
-libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.
-Live voice is encoded with Codec 2 (FreeDV).	Live voice is encoded with Codec 2 (FreeDV).
-Live voice is encoded with Codec 2 (libcodec2).	Live voice is encoded with Codec 2 (libcodec2).
-Longitude	Longitude
+I/Q stereo	Stereo I/Q
+ICAO address	Adres ICAO
+Image (PNG / PPM)	Obraz (PNG / PPM)
+Image (PPM)	Obraz (PPM)
+Input device	Urządzenie wejściowe
+Latitude	Szerokość geograficzna
+libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 nie jest załadowane: kodowanie na żywo jest wyłączone. Nadal można wysłać ton 1 kHz, ciszę lub WAV/MP3.
+libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 nie jest załadowane: kodowanie na żywo jest wyłączone. Znaki wywoławcze celu nadal są nadawane; bity głosu to znany wzorzec testowy. Ton 1 kHz, ciszę lub WAV/MP3 nadal można wysłać jako analogowe NFM.
+Live voice is encoded with Codec 2 (FreeDV).	Głos na żywo jest kodowany za pomocą Codec 2 (FreeDV).
+Live voice is encoded with Codec 2 (libcodec2).	Głos na żywo jest kodowany za pomocą Codec 2 (libcodec2).
+Longitude	Długość geograficzna
 LSB audio	Audio LSB
-Message	Message
-Mic level	Mic level
-Microphone	Microphone
+Message	Wiadomość
+Mic level	Poziom mikrofonu
+Microphone	Mikrofon
 MMSI	MMSI
 Mode	Tryb
-Morse identification, up to four letters.	Morse identification, up to four letters.
-NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.
-OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.	OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.
-PAN / short address	PAN / short address
-Path	Path
-Payload text	Payload text
-Power (dBm)	Power (dBm)
-Pre-emphasis	Pre-emphasis
-PSK variant	PSK variant
-QO-100 path	QO-100 path
-Radio ID	Radio ID
-Radio text (RT)	Radio text (RT)
+Morse identification, up to four letters.	Identyfikacja Morse'a, do czterech liter.
+NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX wysyła tekst (ZCZC / NNNN są dodawane, gdy ich brakuje). DSC (gdy ta usługa jest wybrana) używa MMSI.
+OnAir still asks the radio for it, but the radio or its driver may not reach this frequency, or the signal may be weak or absent.	OnAir nadal o to prosi radio, ale radio lub jego sterownik może nie obsługiwać tej częstotliwości, albo sygnał może być słaby lub nieobecny.
+PAN / short address	PAN / adres krótki
+Path	Ścieżka
+Payload text	Tekst ładunku
+Power (dBm)	Moc (dBm)
+Pre-emphasis	Pre-emfaza
+PSK variant	Wariant PSK
+QO-100 path	Ścieżka QO-100
+Radio ID	ID radia
+Radio text (RT)	Radiotekst (RT)
 RDS PI	RDS PI
-Receiver-style options (demo signal)	Receiver-style options (demo signal)
-Report	Report
-Reverse (mark is the upper tone)	Reverse (mark is the upper tone)
+Receiver-style options (demo signal)	Opcje w stylu odbiornika (sygnał demo)
+Report	Raport
+Reverse (mark is the upper tone)	Odwrócone (mark to górny ton)
 RFPI	RFPI
-RFPI of the base station.	RFPI of the base station.
+RFPI of the base station.	RFPI stacji bazowej.
 Roll-off	Roll-off
-Satellite standard	Satellite standard
-Send analog NFM of the audio instead of the digital test pattern	Send analog NFM of the audio instead of the digital test pattern
-Send analog NFM of the microphone or a file instead of the test scene	Send analog NFM of the microphone or a file instead of the test scene
-Serial / ID	Serial / ID
-Shift	Shift
-Sideband	Sideband
-Silence	Silence
+Satellite standard	Standard satelitarny
+Send analog NFM of the audio instead of the digital test pattern	Wyślij analogowe NFM audio zamiast cyfrowego wzorca testowego
+Send analog NFM of the microphone or a file instead of the test scene	Wyślij analogowe NFM z mikrofonu lub pliku zamiast sceny testowej
+Serial / ID	Numer seryjny / ID
+Shift	Przesunięcie
+Sideband	Wstęga boczna
+Silence	Cisza
 sound card	karta dźwiękowa
-SSB (microphone)	SSB (microphone)
-SSTV mode	SSTV mode
-Station name (PS)	Station name (PS)
-Symbol rate (Hz)	Symbol rate (Hz)
-Talkgroup	Talkgroup
-test DJI DroneID scene (custom serial is not packed)	test DJI DroneID scene (custom serial is not packed)
-test downlink scene (this generator does not take a custom message)	test downlink scene (this generator does not take a custom message)
-test LRPT/HRIT scene (custom image not wired)	test LRPT/HRIT scene (custom image not wired)
-test NCDXF-style beacon scene	test NCDXF-style beacon scene
-test weather-fax chart (custom image not wired)	test weather-fax chart (custom image not wired)
-TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Text	Text
+SSB (microphone)	SSB (mikrofon)
+SSTV mode	Tryb SSTV
+Station name (PS)	Nazwa stacji (PS)
+Symbol rate (Hz)	Szybkość symboli (Hz)
+Talkgroup	Grupa rozmówna
+test DJI DroneID scene (custom serial is not packed)	scena testowa DJI DroneID (własny numer seryjny nie jest pakowany)
+test downlink scene (this generator does not take a custom message)	scena testowa downlinku (ten generator nie przyjmuje własnej wiadomości)
+test LRPT/HRIT scene (custom image not wired)	scena testowa LRPT/HRIT (własny obraz niepodłączony)
+test NCDXF-style beacon scene	scena testowa beacona w stylu NCDXF
+test weather-fax chart (custom image not wired)	testowa mapa weather-fax (własny obraz niepodłączony)
+TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP nie jest tu kodowane. Pokazywane są kod koloru i ID; wysyłany jest wzorzec testowy downlinku. Zamiast tego można wysłać ton 1 kHz, ciszę lub WAV/MP3 jako analogowe NFM.
+Text	Tekst
 The capture rate of the sound card. The engine runs at this rate; there is no radio to tune.	Szybkość przechwytywania karty dźwiękowej. Silnik działa z tą szybkością; nie ma radia do strojenia.
-The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.
-The microphone starts only when you press START TRANSMITTING.	The microphone starts only when you press START TRANSMITTING.
-The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.
-This frequency is outside what this radio is specified for	This frequency is outside what this radio is specified for
-this mode has no transmit generator	this mode has no transmit generator
-This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Timeslot	Timeslot
+The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	Bajty pliku są nadawane jako obiekt HamDRM z tym znakiem wywoławczym. Pusty plik: obraz testowy.
+The microphone starts only when you press START TRANSMITTING.	Mikrofon włącza się dopiero po naciśnięciu START TRANSMITTING.
+The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	Rejestracja i dowolny tekst są nadawane jako downlink H1 / ACARS. Puste: ruch demonstracyjny.
+This frequency is outside what this radio is specified for	Ta częstotliwość leży poza zakresem, dla którego to radio jest przewidziane
+this mode has no transmit generator	ten tryb nie ma generatora nadawania
+This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	Ten vocoder nie potrafi kodować: OnAir ładuje mbelib tylko do dekodowania (AMBE/IMBE). ID celu / grupa rozmówna / kod koloru nadal są nadawane; bity głosu to wzorzec testowy. Zamiast tego można wysłać ton 1 kHz, ciszę lub WAV/MP3 jako analogowe NFM.
+Timeslot	Szczelina czasowa
 To	To
 USB audio	Audio USB
-Vessel name	Vessel name
+Vessel name	Nazwa jednostki
 View	Widok
 Help	Pomoc
 Language	Język
@@ -129,14 +130,14 @@ searching	szukanie
 syncing	synchronizacja
 locked	zsynchronizowano
 Locked	Zsynchronizowano
-Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.
-Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.
-WAV / MP3 file	WAV / MP3 file
+Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Ostrzeżenie: ADS-B symuluje samoloty. Wysyłaj tylko do sztucznego obciążenia lub w ekranowanym układzie, nigdy do anteny.
+Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Ostrzeżenie: AIS symuluje statki. Wysyłaj tylko do sztucznego obciążenia lub w ekranowanym układzie, nigdy do anteny: fałszywe statki mogą mylić prawdziwe odbiorniki, co zagraża bezpieczeństwu i jest w większości miejsc nielegalne.
+WAV / MP3 file	Plik WAV / MP3
 weak	słaby
 stereo	stereo
 mono	mono
 radio disconnected	radio odłączone
-What to send	What to send
+What to send	Co wysłać
 WPM	WPM
 yes	tak
 no lock	brak synchronizacji
@@ -322,9 +323,9 @@ Pagers, 512-2400 bd	Pagery, 512-2400 bd
 Pagers, 1600-6400	Pagery, 1600-6400
 Sensors, 433 / 868 MHz	Czujniki, 433 / 868 MHz
 IoT, 868.1 MHz	IoT, 868.1 MHz
-LoRa mesh, 869.525 MHz	LoRa mesh, 869.525 MHz
-LoRa mesh, 869.618 MHz	LoRa mesh, 869.618 MHz
-Advertising, 2.4 GHz	Advertising, 2.4 GHz
+LoRa mesh, 869.525 MHz	LoRa mesh, 869,525 MHz
+LoRa mesh, 869.618 MHz	LoRa mesh, 869,618 MHz
+Advertising, 2.4 GHz	Rozgłaszanie, 2,4 GHz
 Beacons, 2.4 / 5 / 6 GHz	Beacony, 2.4 / 5 / 6 GHz
 Balloons, 403 MHz	Balony, 403 MHz
 LF and HF time codes	Sygnały czasu DF i KF
@@ -334,7 +335,7 @@ Beacons, 14.0956 MHz	Beacony, 14.0956 MHz
 Keyboard chat, 14.070 MHz	Rozmowa klawiaturowa, 14.070 MHz
 Messaging, 14.078 MHz	Wiadomości, 14.078 MHz
 Teletype, 14.080 MHz	Dalekopis, 14.080 MHz
-Morse, 14.020 MHz	Morse, 14.020 MHz
+Morse, 14.020 MHz	Morse, 14,020 MHz
 Pictures, 14.230 MHz	Obrazy, 14.230 MHz
 Digital SSTV, 14.233 MHz	Cyfrowe SSTV, 14.233 MHz
 Link establishment, 14.109 MHz	Nawiązywanie łączności, 14.109 MHz
@@ -554,8 +555,8 @@ imported %d entries%s	zaimportowano wpisów: %d%s
  (some with a mode OnAir does not know)	 (niektóre z trybem nieznanym OnAir)
 exported	wyeksportowano
 could not write	nie udało się zapisać
-start MHz	start MHz
-stop MHz	stop MHz
+start MHz	MHz początkowa
+stop MHz	MHz końcowa
 step kHz	krok kHz
 %d steps, %d locked out	kroków: %d, zablokowanych: %d
 Time	Czas
@@ -603,7 +604,7 @@ Include beta versions	Uwzględniaj wersje beta
 Check now	Sprawdź teraz
 Not checked yet.	Jeszcze nie sprawdzono.
 Asking GitHub for the newest version…	Pytam GitHub o najnowszą wersję…
-Yes, clear all	Yes, clear all
+Yes, clear all	Tak, wyczyść wszystko
 You have the newest version.	Masz najnowszą wersję.
 Version %s is available%s.	Dostępna jest wersja %s%s.
  (beta)	 (beta)
@@ -744,7 +745,7 @@ Look again	Szukaj ponownie
 Look for Hermes Lite 2 radios on this computer's networks again	Wyszukaj ponownie radia Hermes Lite 2 w sieciach tego komputera
 Maritime, VHF	Żegluga, VHF
 Max hold	Max-hold
-Meteor scatter, 28.145 MHz	Meteor scatter, 28.145 MHz
+Meteor scatter, 28.145 MHz	Meteor scatter, 28,145 MHz
 Middle East	Bliski Wschód
 Mirror the spectrum (swap I and Q)	Odbij lustrzanie widmo (zamień I i Q)
 NB-IoT, band scan	NB-IoT, skan pasma
@@ -909,14 +910,14 @@ partial	częściowo
 point %s	punkt %s
 power (dBm)	moc (dBm)
 searching for Hermes Lite 2 radios…	wyszukiwanie radiów Hermes Lite 2…
-up-converter	up-converter
+up-converter	upconverter
 waiting	oczekiwanie
 waterfall dB##wfdb	wodospad dB##wfdb
 spectrum dB##specdb	widmo dB##specdb
 Clear##log	Wyczyść##log
 # added for 0.2.6: remaining acronyms, frequency labels and long texts
 ADS-B	ADS-B
-AFSK, 144.8 MHz	AFSK, 144.8 MHz
+AFSK, 144.8 MHz	AFSK, 144,8 MHz
 AIS	AIS
 APRS	APRS
 ATSC 8-VSB, 6 MHz	ATSC 8-VSB, 6 MHz
@@ -1043,8 +1044,8 @@ GNSS NMEA RMC/GGA (UDP)	GNSS NMEA RMC/GGA (UDP)
 Bluetooth LE advertisements, JSON (UDP)	Reklamy Bluetooth LE, JSON (UDP)
 LoRa / LoRaWAN / Meshtastic, JSON (UDP)	LoRa / LoRaWAN / Meshtastic, JSON (UDP)
 JSON lines (one object a line) unless GNSS, which is NMEA. Off until you turn a feed on. Only modes that already have structured messages are sent.	Linie JSON (jeden obiekt na linię), oprócz GNSS, które jest NMEA. Wyłączone, dopóki nie włączysz kanału. Wysyłane są tylko tryby, które już mają uporządkowane komunikaty.
-Support	Support
-Support OnAir on Ko-fi	Support OnAir on Ko-fi
+Support	Wsparcie
+Support OnAir on Ko-fi	Wesprzyj OnAir na Ko-fi
 Documentation	Dokumentacja
 Troubleshooting	Rozwiązywanie problemów
 Website	Strona internetowa
@@ -1203,14 +1204,14 @@ test (no RF)	test (bez RF)
 the limiter is working: %.2f%% of samples (lower the level)	limiter pracuje: %.2f%% próbek (obniż poziom)
 25 kHz	25 kHz
 12.5 kHz	12.5 kHz
-Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Call letters	Call letters
-RDS standard	RDS standard
-Auto (RBDS on odd tenths)	Auto (RBDS on odd tenths)
-RDS (Europe)	RDS (Europe)
-RBDS (US)	RBDS (US)
-RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Szerokość filtra odbioru. 12,5 kHz lepiej tnie sąsiedni kanał, ale wymaga sygnału na środku kanału; 25 kHz to szerszy, bardziej tolerancyjny filtr.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Szerokość filtra odbioru. 12,5 kHz lepiej tnie sąsiedni kanał (często najlepsze dla APRS), ale wymaga sygnału na środku kanału; 25 kHz to szerszy, bardziej tolerancyjny filtr.
+Call letters	Znaki wywoławcze stacji
+RDS standard	Standard RDS
+Auto (RBDS on odd tenths)	Auto (RBDS na nieparzystych dziesiątych)
+RDS (Europe)	RDS (Europa)
+RBDS (US)	RBDS (USA)
+RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS i amerykański RBDS dzielą dane, ale inaczej nazywają typy programów, a stacje RBDS nadają znaki wywoławcze. Auto używa RBDS na amerykańskiej siatce kanałów (87,9, 88,1 ... 107,9 MHz); w Europie też są stacje na tych kanałach, więc tam wybierz RDS (Europa).
 Real (mono)	Rzeczywiste (mono)
 Left	Lewy
 Right	Prawy
@@ -1252,83 +1253,83 @@ Keyboard	Klawiatura
 Re-sync	Synchronizuj ponownie
 Drop the lock and search for the CDR signal again without stopping the radio.\nUse it when the sound stays silent after the signal faded.	Porzuca synchronizację i szuka sygnału CDR od nowa bez zatrzymywania radia.\nUżyj, gdy dźwięk milczy po zaniku sygnału.
 #  memories (English until translated)
-"%s" is stored on this frequency and mode already.	"%s" is stored on this frequency and mode already.
-%zu memories	%zu memories
-(frequency only)	(frequency only)
-(no name)	(no name)
-(nothing stored or used yet)	(nothing stored or used yet)
-0 keeps the mode's own rate (Auto)	0 keeps the mode's own rate (Auto)
-Add another	Add another
-Back to my list	Back to my list
-Bandwidth	Bandwidth
-Bandwidth (kHz)	Bandwidth (kHz)
-Click a heading of the table to sort by it too	Click a heading of the table to sort by it too
-Colour	Colour
-Could not apply this memory.	Could not apply this memory.
-Delete	Delete
-Edit...	Edit...
-Enter a frequency.	Enter a frequency.
-Export JSON...	Export JSON...
-Exported to 	Exported to 
-Favourite	Favourite
-Frequency only	Frequency only
-Group	Group
-Groups	Groups
-Import failed: 	Import failed: 
-Import...	Import...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Imported %zu memories, %zu skipped (duplicates or lines without a frequency).
-Include in the memory scan	Include in the memory scan
-Informative: the channel width at the time. The mode's own width options are in the options below.	Informative: the channel width at the time. The mode's own width options are in the options below.
-Keep the gains	Keep the gains
-Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.
-Last used	Last used
-Manual order	Manual order
-Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Memories: the frequencies you keep, with mode and settings (Ctrl+M)
-Memory	Memory
-Memory panel...	Memory panel...
-Memory...	Memory...
-No group	No group
-No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.
-Notes	Notes
-Options	Options
+"%s" is stored on this frequency and mode already.	„%s” jest już zapisane dla tej częstotliwości i trybu.
+%zu memories	%zu pamięci
+(frequency only)	(tylko częstotliwość)
+(no name)	(bez nazwy)
+(nothing stored or used yet)	(nic jeszcze nie zapisano ani nie użyto)
+0 keeps the mode's own rate (Auto)	0 zachowuje własną częstotliwość trybu (Auto)
+Add another	Dodaj kolejny
+Back to my list	Wróć do mojej listy
+Bandwidth	Szerokość pasma
+Bandwidth (kHz)	Szerokość pasma (kHz)
+Click a heading of the table to sort by it too	Kliknij nagłówek tabeli, aby też według niego sortować
+Colour	Kolor
+Could not apply this memory.	Nie można zastosować tej pamięci.
+Delete	Usuń
+Edit...	Edytuj...
+Enter a frequency.	Wpisz częstotliwość.
+Export JSON...	Eksportuj JSON...
+Exported to 	Wyeksportowano do
+Favourite	Ulubione
+Frequency only	Tylko częstotliwość
+Group	Grupa
+Groups	Grupy
+Import failed: 	Import nie powiódł się:
+Import...	Importuj...
+Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Zaimportowano %zu pamięci, pominięto %zu (duplikaty lub wiersze bez częstotliwości).
+Include in the memory scan	Uwzględnij w skanowaniu pamięci
+Informative: the channel width at the time. The mode's own width options are in the options below.	Informacyjnie: ówczesna szerokość kanału. Własne opcje szerokości trybu są w opcjach poniżej.
+Keep the gains	Zachowaj wzmocnienia
+Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Zachowuje częstotliwość, tryb, częstotliwość próbkowania, wzmocnienia i opcje trybu tego odbiornika. Nazwa jest nazwą stacji, gdy tryb ją podaje.
+Last used	Ostatnio użyte
+Manual order	Kolejność ręczna
+Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Pamięci: częstotliwości, które zachowujesz, z trybem i ustawieniami (Ctrl+M)
+Memory	Pamięć
+Memory panel...	Panel pamięci...
+Memory...	Pamięć...
+No group	Bez grupy
+No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	Brak pamięci. Dostrój się do częstotliwości, którą chcesz zachować, i naciśnij Zapisz bieżącą; albo zaimportuj listę.
+Notes	Notatki
+Options	Opcje
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.
-Recall	Recall
-Recall frequency only	Recall frequency only
-Sample rate (kHz)	Sample rate (kHz)
-Save	Save
-Scan memories	Scan memories
-Search name, tag, mode, frequency (162.4)	Search name, tag, mode, frequency (162.4)
-Show Memory as a tab	Show Memory as a tab
-Stars only	Stars only
-Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.
-Store current	Store current
-Store current...	Store current...
-Tags	Tags
-The list is the memories flagged for scan (Memory panel).	The list is the memories flagged for scan (Memory panel).
-The memory bank is full.	The memory bank is full.
-The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).
-The receiver Store current and Recall work on	The receiver Store current and Recall work on
-This receiver	This receiver
-Tunes to the frequency and keeps the mode as it is	Tunes to the frequency and keeps the mode as it is
-Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.
-Undo delete	Undo delete
-Update it	Update it
-Words separated by commas; the search finds them.	Words separated by commas; the search finds them.
-stored with: %s	stored with: %s
-Edit memory	Edit memory
-Click to make this a favourite	Click to make this a favourite
-Favourite: kept at the top. Click to remove	Favourite: kept at the top. Click to remove
+Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Wczytuje plik CSV lub JSON z pamięciami, zwykłą listę wierszy „częstotliwość,nazwa” (MHz) albo eksport SDR++ Frequency Manager. Pamięci już zapisane dla tej samej częstotliwości i trybu są pomijane.
+Recall	Przywołaj
+Recall frequency only	Przywołaj tylko częstotliwość
+Sample rate (kHz)	Częstotliwość próbkowania (kHz)
+Save	Zapisz
+Scan memories	Skanuj pamięci
+Search name, tag, mode, frequency (162.4)	Szukaj nazwy, tagu, trybu, częstotliwości (162.4)
+Show Memory as a tab	Pokaż Pamięć jako zakładkę
+Stars only	Tylko gwiazdy
+Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Przechodzi przez pamięci oznaczone „Uwzględnij w skanowaniu pamięci” za pomocą Skanera: stroi każdą, przełącza tryb, słucha przez czas postoju i zatrzymuje się, dopóki odbiornik zgłasza sygnał lub synchronizację. Pamięci bez trybu są pomijane.
+Store current	Zapisz bieżącą
+Store current...	Zapisz bieżącą...
+Tags	Tagi
+The list is the memories flagged for scan (Memory panel).	Lista to pamięci oznaczone do skanowania (panel Pamięć).
+The memory bank is full.	Bank pamięci jest pełny.
+The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	Ustawienia trybu, jedno key=value w wierszu (demodulator, de-emfaza, szerokości ...).
+The receiver Store current and Recall work on	Na czym działają Zapisz bieżącą i Przywołaj odbiornika
+This receiver	Ten odbiornik
+Tunes to the frequency and keeps the mode as it is	Stroi na częstotliwość i zostawia tryb bez zmian
+Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Stroi na częstotliwość, przełącza na zapisany tryb i stosuje jego opcje i wzmocnienia. Dwuklik na wierszu robi to samo. Działający odbiornik uruchamia się ponownie, gdy tryb się zmienia.
+Undo delete	Cofnij usunięcie
+Update it	Zaktualizuj
+Words separated by commas; the search finds them.	Słowa oddzielone przecinkami; wyszukiwarka je znajdzie.
+stored with: %s	zapisano z: %s
+Edit memory	Edytuj pamięć
+Click to make this a favourite	Kliknij, aby dodać do ulubionych
+Favourite: kept at the top. Click to remove	Ulubione: trzymane na górze. Kliknij, aby usunąć
 Ham It Down: 1500 MHz down-converter for about 1.5 to 3 GHz (2.4 GHz, 2.3/3.4 GHz). Connect it between the antenna and the radio; the radio sees RF - 1500 MHz. Below 1500 MHz is not supported.	Ham It Down: konwerter obniżający 1500 MHz dla ok. 1,5-3 GHz (2,4 GHz, 2,3/3,4 GHz). Podłącz go między antenę a radio; radio widzi RF - 1500 MHz. Poniżej 1500 MHz nie jest obsługiwane.
 Contrast	Kontrast
-Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)
-Credits and licences	Credits and licences
-OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.
-Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.
-Project	Project
-Author	Author
-Licence	Licence
-Used for	Used for
+Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Poniżej 1 podbija słabe sygnały, powyżej 1 przyciemnia szum (dwuklik: 1)
+Credits and licences	Autorzy i licencje
+OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir jest wolnym oprogramowaniem na licencji GNU General Public License v3 lub nowszej. Powstało na pracy osób i projektów poniżej; dziękujemy.
+Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Kliknij łącze, aby otworzyć je w przeglądarce. Pełne informacje i otwarte kwestie licencyjne są w THIRD_PARTY.md.
+Project	Projekt
+Author	Autor
+Licence	Licencja
+Used for	Używane do
 Update source	Źródło aktualizacji
 Automatic: GitHub	Automatyczne: GitHub
 GitHub only	Tylko GitHub
@@ -1343,11 +1344,11 @@ Noise remover (neural)##gennr	Usuwanie szumu (neuronowe)##gennr
 Mix of cleaned and original audio: right removes more noise, left keeps more of the original. Adds about 20 ms of delay.	Mieszanka dźwięku oczyszczonego i oryginalnego: w prawo usuwa więcej szumu, w lewo zostaje więcej oryginału. Dodaje około 20 ms opóźnienia.
 Speech only; do not use on music or data modes.	Tylko mowa; nie używaj przy muzyce ani trybach danych.
 Noise remover (neural)##airnr	Usuwanie szumu (neuronowe)##airnr
-Photo / info	Photo / info
-No identifier to look up	No identifier to look up
-Opens %s in your browser (nothing is loaded until you click)	Opens %s in your browser (nothing is loaded until you click)
-Pictures and details in a public database: opens your browser	Pictures and details in a public database: opens your browser
-Preferred site	Preferred site
+Photo / info	Zdjęcie / informacje
+No identifier to look up	Brak identyfikatora do wyszukania
+Opens %s in your browser (nothing is loaded until you click)	Otwiera %s w przeglądarce (nic nie jest ładowane, dopóki nie klikniesz)
+Pictures and details in a public database: opens your browser	Zdjęcia i szczegóły w publicznej bazie danych: otwiera przeglądarkę
+Preferred site	Preferowana strona
 Sunday	niedziela
 Monday	poniedziałek
 Tuesday	wtorek
@@ -1356,7 +1357,7 @@ Thursday	czwartek
 Friday	piątek
 Saturday	sobota
 Your radio cannot tune 225 kHz.	Twoje radio nie może się dostroić do 225 kHz.
-Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.
+Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Fale długie wymagają SDRplay, Airspy HF+, RTL-SDR w trybie próbkowania bezpośredniego albo upconvertera przed radiem, które zaczyna od kilku MHz (ustaw go w ustawieniach radia), oraz długiego drutu lub anteny ferrytowej. Odtwarza się też nagranie BFO audio radia: zaznacz Audio, nie IQ w zakładce Odbiornik.
 time decoded, two packets agree	czas zdekodowany, dwa pakiety się zgadzają
 time decoded (one packet)	czas zdekodowany (jeden pakiet)
 carrier found, waiting for a time packet	nośna znaleziona, czekam na pakiet czasu
@@ -1375,19 +1376,19 @@ transmitter	nadajnik
 computer clock	zegar komputera
 ahead	spieszy się
 behind	spóźnia się
-The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.
+The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	Zegar komputera w chwili rozpoczęcia każdego pakietu czasu, minus znacznik w pakiecie i opóźnienie ścieżki, uśrednione z ostatnich pakietów. Obejmuje buforowanie radia (używane jest najwcześniejsze przybycie). Taktowanie ramek usługi pochodzi z jej opisu (GUM, v1.0) i nie zostało jeszcze sprawdzone na sygnale ze znanym zegarem: traktuj to orientacyjnie.
 nothing to compare (a recording)	nie ma z czym porównać (nagranie)
 once the time is decoded	po zdekodowaniu czasu
 path	trasa
-; set your position in ADS-B (Receiver position) for the right delay	; set your position in ADS-B (Receiver position) for the right delay
+; set your position in ADS-B (Receiver position) for the right delay	; ustaw swoją pozycję w ADS-B (Pozycja odbiornika), aby uzyskać właściwe opóźnienie
 clock offset	odchylenie zegara
 level	poziom
 start the receiver to see the signal	uruchom odbiornik, aby zobaczyć sygnał
 carrier	nośna
 phase of the carrier	faza nośnej
-The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.
+The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Ostatnie dwie sekundy fazy nośnej, jeden punkt na 8 ms, najnowszy najjaśniejszy. Usługa kluczuje fazę między dwoma stanami oddalonymi o 36 stopni (50 bit/s); czysty sygnał pokazuje dwa ciasne skupiska.
 signal at the bit slicer	sygnał przy decyzji bitowej
-The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.
+The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	Zmiana fazy w każdym 20-ms bicie: krok +-1 to bit zmieniający stan kluczowania, 0 taki, który go nie zmienia; slicer decyduje w połowie (linia przerywana). Ostatnie dwie sekundy.
 Computer UTC	UTC komputera
 Frame	Ramka
 Result	Wynik
@@ -1395,13 +1396,13 @@ no frame yet: a time packet comes every few slots of the minute frame	jeszcze br
 , audio recording	, nagranie audio
 Recording of the radio's audio	Nagranie dźwięku z radia
 Audio, not IQ	Audio, nie IQ
-The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.
+The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	Plik jest nagraniem audio odbiornika (SSB / CW) dostrojonego trochę obok 225 kHz, więc nośna jest tonem (WAV z audio w lewym kanale i ciszą w prawym; mono WAV: eczastool rx czyta go bezpośrednio). Nie dla plików IQ ani radiostacji.
 carrier tone Hz	ton nośnej Hz
-The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).
-Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).
+The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	Wysokość tonu nośnej w nagraniu: 1000 Hz, gdy tarcza radia była na 224 kHz (górna wstęga boczna).
+Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Nieużywane: bajty Reed-Solomon ramki (ramka z błędnym bajtem kontrolnym jest odrzucana, nie naprawiana).
 Carrier	Nośna
 Sync	Synchr.
-The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).
+The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	Sygnał testowy niesie czas komputera w pakiecie czasu co 12 s: przesunięcie zegara powinno pozostać bliskie zeru (widać w nim buforowanie symulatora).
 LW time service, Poland	serwis czasu na LW, Polska
 Predict positions	Przewiduj pozycje
 Fills the gaps between position reports: the aircraft moves smoothly and, when messages stop, is dead-reckoned along its track (and along the route when a message named the destination). Predicted positions are drawn as a ghost with a dashed ring.	Wypełnia luki między raportami pozycji: samolot porusza się płynnie, a gdy wiadomości przestają napływać, jego położenie jest szacowane wzdłuż kursu (i trasy, jeśli wiadomość podała cel podróży). Przewidziane pozycje są rysowane jako duch z przerywanym pierścieniem.
@@ -1535,21 +1536,21 @@ Source...	Źródło...
 Switches to the entry's mode, applies the mode's tuning and tunes to the frequency. A double-click on a row does the same. A running receiver restarts when the mode changes.	Przełącza na tryb wpisu, stosuje jego strojenie i dostraja do częstotliwości. Podwójne kliknięcie wiersza robi to samo. Działający odbiornik uruchamia się ponownie po zmianie trybu.
 Tuned: %s  %s MHz	Dostrojono: %s  %s MHz
 Well-known frequencies of this mode: pick one to tune to it	Znane częstotliwości tego trybu: wybierz jedną, aby się dostroić
-Stop scan##dsc	Stop scan##dsc
-Scan band##dsc	Scan band##dsc
-DECT carrier %d, %.3f MHz	DECT carrier %d, %.3f MHz
-Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.
-US / Canada 1920-1930 MHz (DECT 6.0)	US / Canada 1920-1930 MHz (DECT 6.0)
-Brazil 1910-1920 MHz	Brazil 1910-1920 MHz
-Latin America 1910-1930 MHz	Latin America 1910-1930 MHz
-US ISM 902-928 MHz (DECT in ISM)	US ISM 902-928 MHz (DECT in ISM)
-Europe 1880-1900 MHz	Europe 1880-1900 MHz
-USA, Canada: the UPCS band, DECT 6.0 phones	USA, Canada: the UPCS band, DECT 6.0 phones
-Brazil	Brazil
-Several Latin American countries	Several Latin American countries
-USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT
-Europe, most of Asia, Africa, Australia: the common DECT band	Europe, most of Asia, Africa, Australia: the common DECT band
-Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.
+Stop scan##dsc	Zatrzymaj skanowanie##dsc
+Scan band##dsc	Skanuj pasmo##dsc
+DECT carrier %d, %.3f MHz	Nośna DECT %d, %.3f MHz
+Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Przechodzi po nośnych pasma, po 1,5 s każda, i zostaje na jednej, dopóki słychać impulsy.
+US / Canada 1920-1930 MHz (DECT 6.0)	USA / Kanada 1920-1930 MHz (DECT 6.0)
+Brazil 1910-1920 MHz	Brazylia 1910-1920 MHz
+Latin America 1910-1930 MHz	Ameryka Łacińska 1910-1930 MHz
+US ISM 902-928 MHz (DECT in ISM)	Amerykańskie ISM 902-928 MHz (DECT w ISM)
+Europe 1880-1900 MHz	Europa 1880-1900 MHz
+USA, Canada: the UPCS band, DECT 6.0 phones	USA, Kanada: pasmo UPCS, telefony DECT 6.0
+Brazil	Brazylia
+Several Latin American countries	Kilka krajów Ameryki Łacińskiej
+USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	USA, standardowy DECT w paśmie ISM 900 MHz: rzadki, większość telefonów bezprzewodowych 900 MHz nie jest DECT
+Europe, most of Asia, Africa, Australia: the common DECT band	Europa, większość Azji, Afryka, Australia: popularne pasmo DECT
+Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Twoje radio nie może strojić %.3f - %.3f MHz (pasmo %s); jego zakres to %.6g - %.6g MHz. Użyj radia, które to obejmuje (HackRF, PlutoSDR, LimeSDR, BladeRF) albo konwertera ustawionego w ustawieniach radia.
 The nRSP-ST is reached through SDRconnect: run SDRconnect (or its headless build) on a computer with the WebSocket server on (port 5454) and its nRSP-ST selected, and type that computer's address. No password is needed or stored.	Do nRSP-ST łączy się przez SDRconnect: uruchom SDRconnect (lub jego wersję headless) na komputerze z włączonym serwerem WebSocket (port 5454) i wybranym nRSP-ST, a następnie wpisz adres tego komputera. Hasło nie jest potrzebne ani zapisywane.
 #  the guided tour
 Tuning and gain	Strojenie i wzmocnienie
@@ -1590,17 +1591,17 @@ WAV header	Nagłówek WAV
 Allow other computers	Zezwól innym komputerom
 16-bit stereo, 48 kHz. ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:PORT, or a WAV player with the header on. Security: anyone who can reach the port can listen; leave 'Allow other computers' off unless you need it.	Stereo 16 bit, 48 kHz. ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:PORT lub odtwarzacz WAV z nagłówkiem. Bezpieczeństwo: każdy, kto dotrze do portu, może słuchać; zostaw 'Zezwól innym komputerom' wyłączone, jeśli nie trzeba.
 Listeners:	Słuchacze:
-video	video
+video	wideo
 audio	audio
-profile	profile
-Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work
-Open in an external player	Open in an external player
-Save the transport stream to a file	Save the transport stream to a file
-Stream it as UDP to %s	Stream it as UDP to %s
-Copy VLC command	Copy VLC command
-Copy mpv command	Copy mpv command
-Copy ffplay command	Copy ffplay command
-Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).
+profile	profil
+Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	Wideo: %s (OnAir nie potrafi zdekodować tego wideo) — audio, napisy i dane nadal działają
+Open in an external player	Otwórz w zewnętrznym odtwarzaczu
+Save the transport stream to a file	Zapisz strumień transportowy do pliku
+Stream it as UDP to %s	Strumieniuj jako UDP do %s
+Copy VLC command	Kopiuj polecenie VLC
+Copy mpv command	Kopiuj polecenie mpv
+Copy ffplay command	Kopiuj polecenie ffplay
+Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	Najpierw uruchom strumień UDP, potem polecenie. To, czy odtwarzacz pokaże obraz, zależy od jego własnej wersji (docs/AVSPLUS.md).
 # credits and contributors
 Credits	Podziękowania
 Contributors	Współtwórcy
@@ -2715,7 +2716,7 @@ automatic	automatycznie
 Sound	Dźwięk
 The sound subcarrier of the video transmitter, an FM carrier above the picture. Automatic takes the stronger of 6.0 and 6.5 MHz.	Podnośna dźwięku nadajnika wideo, nośna FM nad obrazem. Automatycznie wybiera silniejszą z 6,0 i 6,5 MHz.
 Saturation	Nasycenie
-Weave	Weave
+Weave	Splot
 Bob	Bob
 offset	przesunięcie
 picture	obraz

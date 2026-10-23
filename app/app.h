@@ -67,6 +67,7 @@
 #include <unistd.h>
 #include "gfx/colormap.h"
 #include "gfx/wf_view.h"
+#include "gfx/wf3d.h"
 #include "gfx/spec_axis.h"
 
 using namespace dect2;
@@ -89,6 +90,7 @@ struct Waterfall {
     long long rows = 0;              // rows written since the start; the newest is number rows - 1, at writeRow
     gfx::Image* viewImg = nullptr;   // the history at the size it is shown (the main waterfall; made on first use, W x H)
     plt::WfView view;
+    w3d::State s3d;                  // the 3D view of the history (wf3d.h, drawn by wf3d_plot.cpp): its settings, camera and cached mesh
     float gamma = 1.f, builtGamma = 1.f;   // contrast: the level ^ gamma picks the colour (below 1 lifts weak signals)
     float brightness = 0.f, contrast = 1.f, builtBright = 0.f, builtContrast = 1.f;   // the level shifted and stretched before the gamma
     int builtCustom = 0;             // the custom gradient's version the table was made with
@@ -106,6 +108,7 @@ struct Waterfall {
     float minDb = -100, maxDb = -32;
     int map = -1;            // the colour map (Map); -1: the one that goes with the interface theme
     bool autoTrack = false;  // the intensity range follows the noise floor
+    float autoBelow = 6.f, autoHeadroom = 2.f;   // the auto range: dB under the noise floor, dB over the strongest signal
     float rowsPerSec = 0;    // 0: one row per spectrum frame (about 30 a second); else this many rows a second, each the highest level of the frames in between
     bool paused = false;     // no new rows: the picture stays and can be scrolled back
     double nextRowT = 0;
@@ -233,9 +236,8 @@ struct Waterfall {
         const size_t k = floorScratch.size() / 5;
         std::nth_element(floorScratch.begin(), floorScratch.begin() + (long)k, floorScratch.end());
         const float fl = floorScratch[k];
-        const float lo = std::floor(fl - 6.f);
-        float hi = std::ceil(std::min(top + 2.f, fl + 45.f));
-        if (hi < lo + 12.f) hi = lo + 12.f;
+        float lo = 0, hi = 0;
+        slook::autoRange(fl, top, autoBelow, autoHeadroom, 45.f, 12.f, lo, hi);
         if (instant) { minDb = lo; maxDb = hi; } else { minDb += (lo - minDb) * 0.25f; maxDb += (hi - maxDb) * 0.25f; }
     }
 };
@@ -442,6 +444,7 @@ struct App {
     bool dabMode = false;     // DAB / DAB+ (family 2)
     bool fmMode = false;      // FM radio (family 5)
     bool newUi = true;        // the new interface (ui2.cpp) instead of the classic one (View > Classic interface)
+    bool dockOn = false;      // View > Docking: the new interface's panels and floating windows dock into a layout (ui2_dock.cpp); off = floating as before
     struct FamGain { int lna = 32, vga = 34; bool amp = false, known = false; } famGain[kNumSlots];   // the radio gains remembered for each mode
     double famFreq[kNumSlots] = {};  // the frequency each of the modes added after FM was last tuned to (0 = never)
     std::string modeHidden, modeHiddenGroups, modeFavs;   // Mode > Modes shown...: the modes and groups left out of the lists, and the favourites, by name, separated by |
@@ -587,6 +590,16 @@ struct App {
     std::string specMarkers;   // the frequency markers on the spectrum and the waterfall (specaxis::parseMarkers text)
     float specLine = 1.2f;     // thickness of the spectrum trace
     bool specFill = true, specGrid = true, specPeaks = false, specReadout = true, specDbm = false;   // fill under the line, grid, peak markers, level at the cursor, dBm instead of dBFS
+    // The spectrum look (gfx/spec_look.h: 0 OnAir, 1 SDR++ look, 2 SDRoxide look) and the choices around it
+    int specLook = 0;
+    int specAxisLabels = -1;   // the frequency labels: -1 as the look has them, 0 frequencies, 1 offsets from the tuned frequency
+    float specLabelSize = 1.f; // the axis label size, times the look's
+    int specSmoothTrace = -1;  // mild smoothing passes over the trace: -1 as the look has it, else 0..4
+    bool specNfMarker = false; // the noise-floor line with its level on the spectrum
+    bool specSmoothZoom = true;// the wheel zoom eases in over a few frames
+    int specSnapHz = 0;        // a click tunes to a multiple of this (0: the mode's own step)
+    bool wfLowPass = false;    // the waterfall's 2D noise reduction (off by default)
+    bool specDemo = false;     // --specdemo: a synthetic spectrum (FM carriers, an OFDM block, an SSB voice) for screenshots
     double specLastT = 0;               // when the last spectrum frame came in
     ImFont* mono = nullptr;
     ImFont* ui = nullptr;
@@ -1064,6 +1077,12 @@ void ingestRx(App& a);
 std::vector<double> xs(const App& a);
 float dbmOffset(const App& a);                 // dB to add to a level in dBFS to get dBm, set for the selected radio (0 until it is)
 void setDbmOffset(const App& a, float db);
+// the spectrum looks (plots.cpp, gfx/spec_look.h): set one with its trace colour, weight, fill and colour map (save: into the settings);
+// the look in use (null: OnAir); its picker (Settings: the Spectrum menu, the Display section)
+void specLookSet(App& a, int look, bool save = true);
+const slook::LookSet* specLookActive(const App& a);
+void specLookCombo(App& a, float width);
+void specLookBand(const App& a, double x0, double x1, double centre, bool spectrum, bool dragging);   // the passband in the look's colours
 void wfAutoButton(App& a);                     // plots.cpp: "Auto", on while the waterfall range follows the noise floor
 void wfDisplayPopup(App& a);                   // plots.cpp: colour map, intensity range, speed and pause of the waterfall
 void specDisplayPopup(App& a);                 // plots.cpp: the spectrum's averaging, max hold, markers, grid, fill and unit
@@ -1194,6 +1213,13 @@ void wbDevDemod(int kind, double baud, bool runMeasure, bool runDemod);
 void mainTabs(App& a);          // the tab bar with the tabs that fit the current mode (main.cpp)
 void drawShell2(App& a, ImVec2 disp);   // ui2.cpp: the new interface (its parts: ui2_theme.cpp, ui2_widgets.cpp, ui2_shell.cpp, ui2_faces.cpp)
 void applyUiTheme(App& a);              // ui2.cpp: classic or new colours and shapes
+// ui2_dock.cpp: docking of the new interface (View > Docking; issue #242)
+bool dockActive(const App& a);          // docking is on and usable (new interface, touch interface off)
+void dockFrameBegin(App& a);            // before the interface is drawn: installs the window placement hook
+void dockFrameEnd(App& a);              // after every window: drop targets, docking on release, window order, shortcuts
+void dockDevSelfTest();                 // --dockselftest: scripted drag / keyboard / layout checks, then exit
+void dockDevTree(const char* text);     // --docktree: start with this layout (dock_tree.h text form)
+void dockRegisterIni();                 // once, before the first per-mode layout file is read: the dock layout is kept in that file
 // plots.cpp
 // The width of the channel the mode's receiver works with: the light band on the spectrum, its edges on the waterfall. DVB-T2 / DVB-T: the
 // measured or chosen raster width; FM: the channel filter; DTMB: 8 or 6 MHz; DVB-S/S2: symbol rate x (1 + roll-off) once it is known; the
@@ -1213,6 +1239,9 @@ void channelWidthButton(App& a, ImVec2 plotMin, ImVec2 plotSize, const char* yLa
 void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
 void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
 float specCornerPopup(App& a, const char* label, const char* popId, ImVec2 plotMin, ImVec2 plotSize, float rightUsed, float reserveLeft, float dropY, bool on, const char* tip, void (*body)(App&));
+double clickTuneMhz(const App& a, double mhz);   // plots.cpp: where a click on the spectrum at mhz tunes (the mode's limits and raster); NAN: the mode is not tuned by a click
+void waterfall3dPlot(App& a, ImVec2 size);       // gfx/wf3d_plot.cpp: the 3D waterfall in place of the flat one (a.wf.s3d.on)
+void waterfall3dPopup(App& a);                   // gfx/wf3d_plot.cpp: its settings (in the waterfall popup)
 float bandPlanStripHeight();         // plots.cpp: one text line plus padding; follows the font and resize
 void drawBandPlanStrip(ImDrawList* dl, float x0, float x1, float y, float h, double loMhz, double hiMhz);   // saAllocations in view
 // gfx/autolabel.cpp: the names of the stations in view, drawn on the spectrum (plotId 0) and the waterfall (1); a click on a name tunes and opens its mode
