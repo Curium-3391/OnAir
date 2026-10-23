@@ -277,7 +277,7 @@ void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
     ImGui::PushStyleColor(ImGuiCol_Button, bg);
     if (ImGui::SmallButton(lb)) {
         a.wideDecode = !a.wideDecode;
-        if (a.family >= 0 && a.family < 64) { if (a.wideDecode) a.wideFamMask |= 1ull << a.family; else a.wideFamMask &= ~(1ull << a.family); }
+        setWideFam(a, a.family, a.wideDecode);
         savePrefs(a);
     }
     ImGui::PopStyleColor();

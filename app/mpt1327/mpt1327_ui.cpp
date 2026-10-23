@@ -72,6 +72,7 @@ void tab(App& a) {
     else channelTable(t);
     ImGui::Spacing();
     ImGui::TextDisabled("Input %.0f Hz, centre %.4f MHz. No traffic channel audio is decoded and nothing encrypted is decoded.", t.inputRate, t.centerHz / 1e6);
+    wideCarriersTable(a, 0);   // whole span: every control channel in the span
 }
 
 void receiver(App& a) {

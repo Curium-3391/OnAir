@@ -94,6 +94,7 @@ void tab(App& a) {
     codecBlock(a);
     ImGui::Spacing();
     ImGui::TextDisabled("Input %.0f Hz, centre %.4f MHz", t.inputRate, t.centerHz / 1e6);
+    wideCarriersTable(a, 0);   // whole span: every Fusion carrier in the span (callsigns; the sound of the one listened to)
 }
 
 void receiver(App& a) {

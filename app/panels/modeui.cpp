@@ -314,26 +314,50 @@ void secondModeTabs(App& a) {
 
 // ---------------------------------------------------------------- whole-span decoding
 #include <set>
+#include <algorithm>
+#include <filesystem>
+#include <map>
+#include <cctype>
+#include "../platform/platform.h"
 static std::set<int>& wideFamilies() {
-    static std::set<int> s = {9, 31, 33, 38, 45, 50, 23, 24};   // DMR, M17, D-STAR, NXDN, dPMR, P25, pagers, APRS / packet: one decoder per carrier (core/wide_modes.h)
+    // DMR, M17, D-STAR, NXDN, dPMR, P25, pagers, APRS / packet, MPT1327, Yaesu Fusion, LTR, EDACS: one decoder per carrier (core/wide_modes.h)
+    static std::set<int> s = {9, 31, 33, 38, 45, 50, 23, 24, 127, 128, 129, 130};
     return s;
 }
 bool modeSupportsWide(int family) { return modeSupportsWideHf(family) || wideFamilies().count(family) > 0; }
 void registerWideMode(int family) { wideFamilies().insert(family); }
 bool wideActive(const App& a) { return a.wideDecode && modeSupportsWide(a.family) && a.engine.running() && Engine::wideSupported(a.family + 1) && a.rx.standard == a.family + 1; }
 
+bool wideFamOn(const App& a, int f) {
+    if (f < 0 || f >= 192) return false;
+    const uint64_t m = f < 64 ? a.wideFamMask : a.wideFamMaskHi[f / 64 - 1];
+    return (m >> (f & 63)) & 1;
+}
+void setWideFam(App& a, int f, bool on) {
+    if (f < 0 || f >= 192) return;
+    uint64_t& m = f < 64 ? a.wideFamMask : a.wideFamMaskHi[f / 64 - 1];
+    if (on) m |= 1ull << (f & 63); else m &= ~(1ull << (f & 63));
+}
+
 void wideSync(App& a) {
     static int lastFam = -1; static bool lastOn = false, lastMuted = false; static int lastSel = -1;
     if (a.family != lastFam) {   // the switch is kept per mode
         lastFam = a.family;
-        a.wideDecode = a.family >= 0 && a.family < 64 && ((a.wideFamMask >> a.family) & 1);
+        a.wideDecode = wideFamOn(a, a.family);
         a.wideSel = 0; lastSel = -1;
     }
+    if (a.wideTuningDirty) { a.engine.setWideTuning(a.wideTuning); a.wideTuningDirty = false; }
     const bool on = a.wideDecode && modeSupportsWide(a.family) && Engine::wideSupported(a.family + 1);
     if (on != lastOn) { a.engine.setWideVoice(on); lastOn = on; a.wideSel = 0; lastSel = -1; }
     if (!on) return;
     if (a.wideSel != lastSel) { a.engine.setWideSelected(a.wideSel); lastSel = a.wideSel; }
     if (a.muted != lastMuted) { a.engine.setWideMuted(a.muted); lastMuted = a.muted; }
+    {   // the band plan's channels around the radio: known channels for the detector (the frequency database's are added in core)
+        static std::string lastKey;
+        const double c = radioCenterMhz(a) * 1e6;
+        char key[128]; snprintf(key, sizeof key, "%d|%s|%.0f", a.family, a.bandPlan.c_str(), std::round(c / 1e5));
+        if (lastKey != key) { lastKey = key; a.engine.setWideExtraPriors(bandPlanChannels(a, c - 10e6, c + 10e6)); }
+    }
 }
 
 void wideCarrierCell(const App& a, int carrierId, double relHz) {
@@ -341,28 +365,132 @@ void wideCarrierCell(const App& a, int carrierId, double relHz) {
     ImGui::Text("%.4f", radioCenterMhz(a) + relHz / 1e6);
 }
 
+namespace {
+// the detector's settings, in a popup from the table's header line
+void wideSettingsPopup(App& a) {
+    if (!ImGui::BeginPopup("##widecfg")) return;
+    dect2::WideTuning& w = a.wideTuning;
+    bool ch = false;
+    float on = (float)w.onDb, off = (float)w.offDb, snr = (float)w.minSnrDb, dwell = (float)(w.dwellSec < 0 ? 0.3 : w.dwellSec), hold = (float)(w.holdSec < 0 ? 8 : w.holdSec);
+    float cpu = (float)(w.cpuBudget * 100);
+    ImGui::TextDisabled("%s", tr("Whole-span carrier detector"));
+    ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Threshold dB"), &on, 4, 30, "%.1f")) { w.onDb = on; w.offDb = std::min(w.offDb, w.onDb - 0.5); ch = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A carrier must be this far above the noise floor to be found"));
+    ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Quiet below dB"), &off, 1, (float)w.onDb - 0.5f, "%.1f")) { w.offDb = off; ch = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Hysteresis: a found carrier counts as quiet only below this"));
+    ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Minimum SNR dB"), &snr, 0, 40, "%.1f")) { w.minSnrDb = snr; ch = true; }
+    bool own = w.dwellSec < 0;
+    if (ImGui::Checkbox(tr("Mode's own dwell and hold"), &own)) { w.dwellSec = own ? -1 : 0.3; w.holdSec = own ? -1 : 8; ch = true; }
+    if (!own) {
+        ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Dwell s"), &dwell, 0.05f, 3, "%.2f")) { w.dwellSec = dwell; ch = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A new carrier must stay on this long before it is decoded"));
+        ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("Hold s"), &hold, 1, 120, "%.0f")) { w.holdSec = hold; ch = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A quiet carrier keeps its decoder this long"));
+    }
+    ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderInt(tr("Carriers at most"), &w.maxCarriers, 1, 32)) ch = true;
+    ImGui::SetNextItemWidth(160 * gUi); if (ImGui::SliderFloat(tr("CPU limit %"), &cpu, 0, 100, cpu <= 0 ? "off" : "%.0f")) { w.cpuBudget = cpu / 100.0; ch = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("When the decoders take longer than this share of real time, the weakest carrier is dropped (never the one you listen to)"));
+    if (ImGui::Checkbox(tr("Known channels first"), &w.usePriors)) ch = true;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Channels of this mode in the frequency database are found at a 3 dB lower threshold"));
+    if (w.usePriors) { ImGui::SameLine(); if (ImGui::Checkbox(tr("only"), &w.priorsOnly)) ch = true; }
+    if (ImGui::SmallButton(tr("Defaults"))) { w = dect2::WideTuning(); ch = true; }
+    if (ch) { a.wideTuningDirty = true; savePrefs(a); }
+    ImGui::EndPopup();
+}
+} // namespace
+
 void wideCarriersTable(App& a, float h) {
     if (!wideActive(a)) return;
-    ImGui::TextDisabled("%s", tr("Carriers in the span (click: listen and show; double click: tune to it)"));
-    if (!ImGui::BeginTable("##widecars", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, h > 0 ? h : 140 * gUi))) return;
+    static char filter[48] = "";
+    static bool onlyLocked = false, onlyOnAir = false;
+    static std::map<int, std::string> recording;   // carrier id -> file
+    const dect2::WideStatus& st = a.rx.wideStatus;
+    // the header line: the floor, the load, the cap; the settings
+    ImGui::TextDisabled("%s", tr("Carriers in the span (click: listen and show; double click or Tune: tune to it)"));
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Settings##wide"))) ImGui::OpenPopup("##widecfg");
+    wideSettingsPopup(a);
+    ImGui::TextDisabled(tr("noise %.1f dB, %zu carriers, CPU %.0f %% of real time, at most %d"), st.noiseDb, a.rx.wide.size(), st.load * 100, st.cap);
+    if (st.tooSlow) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.f, 0.6f, 0.2f, 1.f), tr("too slow: the weakest carriers were dropped (%llu); raise the CPU limit or narrow the span"), (unsigned long long)st.droppedForCpu);
+    }
+    ImGui::SetNextItemWidth(140 * gUi); ImGui::InputTextWithHint("##widefilt", tr("filter"), filter, sizeof filter);
+    ImGui::SameLine(); ImGui::Checkbox(tr("locked only"), &onlyLocked);
+    ImGui::SameLine(); ImGui::Checkbox(tr("on air only"), &onlyOnAir);
+    const int flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
+    if (!ImGui::BeginTable("##widecars", 9, flags, ImVec2(0, h > 0 ? h : 160 * gUi))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(tr("Carrier MHz")); ImGui::TableSetupColumn(tr("Level dB")); ImGui::TableSetupColumn(tr("SNR dB"));
-    ImGui::TableSetupColumn(tr("State")); ImGui::TableSetupColumn(tr("Seen")); ImGui::TableSetupColumn(tr("Details"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(tr("Carrier MHz"), ImGuiTableColumnFlags_DefaultSort);
+    ImGui::TableSetupColumn(tr("Level dB")); ImGui::TableSetupColumn(tr("SNR dB")); ImGui::TableSetupColumn(tr("Width kHz"));
+    ImGui::TableSetupColumn(tr("State")); ImGui::TableSetupColumn(tr("Seen")); ImGui::TableSetupColumn(tr("Age"));
+    ImGui::TableSetupColumn(tr("Details"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_NoSort);
     ImGui::TableHeadersRow();
-    static const char* kState[3] = {"searching", "partial", "locked"};
+    std::vector<const WideCarrier*> rows;
+    const std::string f = filter;
     for (const WideCarrier& c : a.rx.wide) {
+        if (onlyLocked && c.state < 2) continue;
+        if (onlyOnAir && !c.active) continue;
+        if (!f.empty()) {
+            char mhz[32]; snprintf(mhz, sizeof mhz, "%.4f", radioCenterMhz(a) + c.hz / 1e6);
+            auto lower = [](std::string s) { for (char& ch : s) ch = (char)std::tolower((unsigned char)ch); return s; };
+            if (lower(c.info).find(lower(f)) == std::string::npos && std::string(mhz).find(f) == std::string::npos) continue;
+        }
+        rows.push_back(&c);
+    }
+    if (ImGuiTableSortSpecs* ss = ImGui::TableGetSortSpecs(); ss && ss->SpecsCount > 0) {
+        const int col = ss->Specs[0].ColumnIndex; const bool asc = ss->Specs[0].SortDirection != ImGuiSortDirection_Descending;
+        auto key = [col](const WideCarrier* c) -> double {
+            switch (col) { case 1: return c->levelDb; case 2: return c->snrDb; case 3: return c->widthHz; case 4: return c->state; case 5: return c->active ? -1 : c->idleSec; case 6: return c->ageSec; default: return c->hz; }
+        };
+        std::stable_sort(rows.begin(), rows.end(), [&](const WideCarrier* x, const WideCarrier* y) { return asc ? key(x) < key(y) : key(x) > key(y); });
+    }
+    static const char* kState[3] = {"searching", "partial", "locked"};
+    for (auto it = recording.begin(); it != recording.end();) {   // a carrier that has gone: its file was closed by the engine
+        bool live = false; for (const WideCarrier& c : a.rx.wide) if (c.id == it->first) live = true;
+        it = live ? std::next(it) : recording.erase(it);
+    }
+    for (const WideCarrier* cp : rows) {
+        const WideCarrier& c = *cp;
+        const double mhz = radioCenterMhz(a) + c.hz / 1e6;
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        char b[48]; snprintf(b, sizeof b, "%.4f##wc%d", radioCenterMhz(a) + c.hz / 1e6, c.id);
-        if (ImGui::Selectable(b, c.selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick)) {
+        char b[48]; snprintf(b, sizeof b, "%.4f%s##wc%d", mhz, c.prior ? " *" : "", c.id);
+        if (ImGui::Selectable(b, c.selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_AllowOverlap)) {
             a.wideSel = c.id;
-            if (ImGui::IsMouseDoubleClicked(0)) tuneFreq(a, radioCenterMhz(a) + c.hz / 1e6);
+            if (ImGui::IsMouseDoubleClicked(0)) tuneFreq(a, mhz);
         }
+        if (c.prior && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("a known channel of this mode (frequency database)"));
         ImGui::TableNextColumn(); ImGui::Text("%.1f", c.levelDb);
         ImGui::TableNextColumn(); ImGui::Text("%.1f", c.snrDb);
+        ImGui::TableNextColumn(); if (c.widthHz > 0) ImGui::Text("%.1f", c.widthHz / 1e3); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); ImGui::TextUnformatted(tr(kState[std::max(0, std::min(2, c.state))]));
-        ImGui::TableNextColumn(); ImGui::TextUnformatted(c.active ? tr("on air") : tr("held"));
+        ImGui::TableNextColumn();
+        if (c.active) ImGui::TextUnformatted(tr("on air")); else ImGui::TextDisabled(tr("held %.0f s"), c.idleSec);
+        ImGui::TableNextColumn();
+        if (c.ageSec < 120) ImGui::Text("%.0f s", c.ageSec); else ImGui::Text("%.0f min", c.ageSec / 60);
         ImGui::TableNextColumn(); ImGui::TextUnformatted(c.info.c_str());
+        ImGui::TableNextColumn();
+        ImGui::PushID(c.id);
+        if (ImGui::SmallButton(c.selected && a.wideSel == c.id ? tr("Auto") : tr("Listen"))) a.wideSel = (a.wideSel == c.id) ? 0 : c.id;
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Tune"))) tuneFreq(a, mhz);
+        ImGui::SameLine();
+        const bool rec = c.recording;
+        if (ImGui::SmallButton(rec ? tr("Stop") : tr("Rec"))) {
+            if (rec) { a.engine.stopWideRecording(c.id); auto r = recording.find(c.id); if (r != recording.end()) { a.engine.log("carrier IQ saved to " + r->second); recording.erase(r); } }
+            else {
+                std::error_code ec;
+                const std::string dir = plat::dataDir() + "/carriers";
+                std::filesystem::create_directories(dir, ec);
+                const std::string path = a.engine.startWideRecording(c.id, dir);
+                if (path.empty()) a.engine.log("carrier recording could not start in " + dir);
+                else recording[c.id] = path;
+            }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", rec ? tr("Stop the IQ recording of this carrier") : tr("Record this carrier's IQ (WAV, 4 samples per channel step) to the carriers folder"));
+        ImGui::PopID();
     }
     ImGui::EndTable();
 }

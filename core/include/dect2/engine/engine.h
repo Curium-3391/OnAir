@@ -505,6 +505,13 @@ public:
     void setWideVolume(float v) { wide_.setVolume(v); }   // the volume slider reaches every carrier receiver of the whole-span modes
     void setWideSelected(int carrierId) { wide_.setSelected(carrierId); }   // the carrier whose sound plays and whose detail shows (0: the best locked)
     static bool wideSupported(int analysisMode) { return WideModes::supports(analysisMode); }
+    // the whole-span detector's settings (threshold, hysteresis, minimum SNR, dwell, hold, cap, CPU budget, known channels)
+    void setWideTuning(const WideTuning& t) { wide_.setTuning(t); }
+    WideTuning wideTuning() const { return wide_.tuning(); }
+    void setWideExtraPriors(const std::vector<double>& absHz) { wide_.setExtraPriors(absHz); }
+    // IQ of one carrier of the running mode to an IQ WAV file in dir (the path, "" on failure)
+    std::string startWideRecording(int carrierId, const std::string& dir) { return wide_.startRecording(activeStd_.load(), carrierId, dir); }
+    void stopWideRecording(int carrierId) { wide_.stopRecording(activeStd_.load(), carrierId); }
     void clearAllResults();                              // the lists of every mode at once (the top bar's Clear all)
     // the files of the DSM-CC carousels of the stream received, saved to dir/pid_XXXX/path (clear broadcast data); returns the number of files written
     size_t saveCarouselFiles(const std::string& dir) { std::lock_guard<std::mutex> lk(tsMu_); return demux_.saveCarouselFiles(dir); }
@@ -644,7 +651,7 @@ private:
     DmrReceiver rxDmr_;
     WideModes wide_;
     std::atomic<bool> wideOn_{false};
-    uint64_t wideSeq_[64] = {};
+    uint64_t wideSeq_[256] = {};
     DrmReceiver rxDrm_;
     AdsbReceiver rxAdsb_;
     GnssReceiver rxGnss_;

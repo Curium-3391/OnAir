@@ -218,3 +218,21 @@ bool tvChannelCombo(App& a) {
     }
     return changed;
 }
+
+// The active plan's channels between loHz and hiHz, of the bands that suggest a mode of the current family: the whole-span detector finds
+// carriers on them at a lower threshold (core/include/dect2/engine/wide_modes.h)
+std::vector<double> bandPlanChannels(const App& a, double loHz, double hiHz) {
+    std::vector<double> out;
+    const bp::Plan* p = activePlan(a);
+    if (!p) return out;
+    std::vector<std::string> names;
+    for (const auto& m : allModes()) if (m.family == a.family && m.name) names.push_back(m.name);
+    for (const bp::Band& b : p->bands) {
+        if (b.endHz < loHz || b.startHz > hiHz) continue;
+        bool fits = false;
+        for (const std::string& bm : b.modes) for (const std::string& n : names) if (bm == n) fits = true;
+        if (!fits) continue;
+        for (const bp::Channel& c : b.list(4000)) if (c.centreHz >= loHz && c.centreHz <= hiHz) out.push_back(c.centreHz);
+    }
+    return out;
+}

@@ -20,6 +20,8 @@ struct MptMessageRow {
     std::string caller;        // IDENT2 where the message has one
     int channel = -1;          // channel number the message carries, -1 none
     std::string detail;
+    int carrierId = 0;          // whole-span decoding: 1 when the row came from a carrier of the span (carrierHz: its offset from the centre)
+    double carrierHz = 0;
 };
 
 struct MptChannelRow {

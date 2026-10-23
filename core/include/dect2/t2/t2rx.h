@@ -145,6 +145,7 @@ struct P1Info {
 
 struct RxTelemetry {
     std::vector<WideCarrier> wide;   // whole-span decoding: the carriers table (empty otherwise)
+    WideStatus wideStatus;           // whole-span decoding: noise floor, CPU load and cap of the bank
     std::vector<TvChannelRow> tvChannels;   // multi-channel TV (DVB-T / DVB-T2): the channels of the span (empty otherwise)
     AtscTelemetry atsc;          // valid when standard == 2
     DabTelemetry dab;            // valid when standard == 3

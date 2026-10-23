@@ -353,6 +353,18 @@ void loadPrefs(App& a) {
     loadKeys(d, a, false);
     loadSpectrumRanges(d, a);
     if (d.has("wideMaskLo")) a.wideFamMask = (uint64_t)(uint32_t)d.getI("wideMaskLo", 0) | ((uint64_t)(uint32_t)d.getI("wideMaskHi", 0) << 32);
+    for (int k = 0; k < 2; k++) {   // families 64-191
+        const std::string lo = "wideMask" + std::to_string(k + 2) + "Lo", hi = "wideMask" + std::to_string(k + 2) + "Hi";
+        if (d.has(lo.c_str())) a.wideFamMaskHi[k] = (uint64_t)(uint32_t)d.getI(lo.c_str(), 0) | ((uint64_t)(uint32_t)d.getI(hi.c_str(), 0) << 32);
+    }
+    {   // the whole-span detector's settings
+        dect2::WideTuning& w = a.wideTuning;
+        w.onDb = d.getD("wideOnDb", w.onDb); w.offDb = d.getD("wideOffDb", w.offDb); w.minSnrDb = d.getD("wideMinSnr", w.minSnrDb);
+        w.dwellSec = d.getD("wideDwell", w.dwellSec); w.holdSec = d.getD("wideHold", w.holdSec);
+        w.maxCarriers = (int)d.getI("wideMax", w.maxCarriers); w.cpuBudget = d.getD("wideCpu", w.cpuBudget);
+        w.usePriors = d.getI("widePriors", w.usePriors ? 1 : 0) != 0; w.priorsOnly = d.getI("widePriorsOnly", w.priorsOnly ? 1 : 0) != 0;
+        a.wideTuningDirty = true;
+    }
     if (a.rxId == 1 && a.mapSend && !a.mapConsent) a.mapSend = false;   // never on without consent
     i18n::set(a.uiLang.empty() ? plat::uiLanguage() : a.uiLang);
     loadFmStations(d, a);
@@ -378,6 +390,16 @@ void savePrefs(const App& a) {
     if (a.rxId > 1) { d.flush(); return; }   // a further receiver keeps only its own radio, mode, frequency and gains: everything else is shared and written by RX 1
     saveKeys(d, a, true);
     d.setI("wideMaskLo", (int)(uint32_t)(a.wideFamMask & 0xffffffffu)); d.setI("wideMaskHi", (int)(uint32_t)(a.wideFamMask >> 32));
+    for (int k = 0; k < 2; k++) {
+        const std::string lo = "wideMask" + std::to_string(k + 2) + "Lo", hi = "wideMask" + std::to_string(k + 2) + "Hi";
+        d.setI(lo.c_str(), (int)(uint32_t)(a.wideFamMaskHi[k] & 0xffffffffu)); d.setI(hi.c_str(), (int)(uint32_t)(a.wideFamMaskHi[k] >> 32));
+    }
+    {
+        const dect2::WideTuning& w = a.wideTuning;
+        d.setD("wideOnDb", w.onDb); d.setD("wideOffDb", w.offDb); d.setD("wideMinSnr", w.minSnrDb); d.setD("wideDwell", w.dwellSec);
+        d.setD("wideHold", w.holdSec); d.setI("wideMax", w.maxCarriers); d.setD("wideCpu", w.cpuBudget);
+        d.setI("widePriors", w.usePriors ? 1 : 0); d.setI("widePriorsOnly", w.priorsOnly ? 1 : 0);
+    }
     saveFmStations(d, a);
     d.setS("fmSaved", fmSavedEncode(a.fmSaved));   // the saved-stations library, not the scan results
     d.setChannels(a.channels);
