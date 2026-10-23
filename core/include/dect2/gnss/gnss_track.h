@@ -8,7 +8,6 @@
 #include "gnss_nav.h"
 #include "gnss_tel.h"
 #include <cstdint>
-#include <cstring>
 #include <deque>
 #include <vector>
 
@@ -142,11 +141,6 @@ private:
     const char* lostWhy_ = "";
     bool phaseDrop_ = false;
     double pllInt_ = 0, pllF0_ = 0;
-    bool weakPll_ = false;            // the phase loop runs once per data bit (weak LNAV signal, bit edge known)
-    double wkI_ = 0, wkQ_ = 0, wkT_ = 0;
-    int wkN_ = 0;
-    double liI_ = 0, liQ_ = 0;        // the prompt summed for the lock indicator
-    int liN_ = 0;
     double flSum_ = 0, flDiff_ = 0;   // the false lock check
     int falseLocks_ = 0;
     double dllInt_ = 0, dllRate_ = 0;   // code loop: integrator and the rate correction on top of the carrier aiding, chips/s
@@ -171,12 +165,6 @@ private:
     bool bitSync_ = false;
     int syncPhase_ = 0;
     int bitHistTotal_ = 0;
-    // the bit edge of a weak signal (1 ms sign changes mostly noise under ~30 dB-Hz): the energy |sum of 20 epochs of I| for each start phase
-    double mlE_[20] = {}, mlS2_[20] = {};
-    float mlRing_[20] = {};
-    double mlS_ = 0, mlI2_ = 0;
-    int mlN_ = 0;
-    void mlReset() { std::memset(mlE_, 0, sizeof mlE_); std::memset(mlS2_, 0, sizeof mlS2_); std::memset(mlRing_, 0, sizeof mlRing_); mlS_ = mlI2_ = 0; mlN_ = 0; }
     double bitAcc_ = 0;
     int bitCount_ = 0;
     int64_t firstBitEpoch_ = 0;
