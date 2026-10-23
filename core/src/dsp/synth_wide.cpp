@@ -172,7 +172,7 @@ void FracResampler::process(const cf32* x, size_t n, std::vector<cf32>& out) {
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 
 bool SynthWideband::configure(const SynthCfg& c) {
-    if (c.slices < 2 || c.slices > 4) return false;
+    if (c.slices < 2 || c.slices > kSynthMaxSlices) return false;
     if (c.n < 256 || (c.n & (c.n - 1))) return false;
     if (c.stepBins <= 0 || (c.stepBins & 1)) return false;
     int u = (int)(c.usable * c.n);
@@ -189,6 +189,7 @@ bool SynthWideband::configure(const SynthCfg& c) {
     for (auto& r : r_) { r.rs.configure(c.fs); r.spec.assign(c.n, cf32(0, 0)); }
     acc_.assign(c.slices - 1, Acc());
     for (auto& a : acc_) a.clear(ov);
+    trk_.assign(c.slices - 1, Track());
     pairs_.assign(c.slices - 1, PairStatus());
     sl_.assign(c.slices, SliceStatus());
     amp_.assign(c.slices, 1.0); ph_.assign(c.slices, 0.0); tau_.assign(c.slices, 0.0);
@@ -227,7 +228,7 @@ void SynthWideband::setAlive(int i, bool alive) {
         if (r_[i].alive) return;
         r_[i].alive = true; r_[i].manualDown = false;
         r_[i].ring.clear(); r_[i].head = 0; r_[i].rs.reset(); r_[i].pendDrop = 0; shifted_[i] = 0;
-        for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { acc_[p].clear(ov_); stage_[p] = 0; tH_[p].clear(); dH_[p].clear(); }
+        for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { acc_[p].clear(ov_); stage_[p] = 0; tH_[p].clear(); dH_[p].clear(); trk_[p] = Track(); }
         // the others drop what they hold, so the returning radio and the rest are about equally current
         for (int k = 0; k < c_.slices; k++) if (k != i && r_[k].alive) r_[k].head = r_[k].ring.size();
         sl_[i].alive = true; sl_[i].locked = false;
@@ -243,7 +244,7 @@ void SynthWideband::markDown(int i) {
     r_[i].alive = false;
     r_[i].ring.clear(); r_[i].head = 0;
     sl_[i].alive = false; sl_[i].locked = false; sl_[i].dropouts++;
-    for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { pairs_[p].valid = false; acc_[p].clear(ov_); }
+    for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { pairs_[p].valid = false; pairs_[p].tracking = false; acc_[p].clear(ov_); trk_[p] = Track(); }
     rebuildWeights();
 }
 
@@ -309,6 +310,7 @@ void SynthWideband::hop() {
         fftN_->forward(tmp.data());
         for (int j = -N / 2; j < N / 2; j++) r.spec[j + N / 2] = tmp[(j + N) % N];
     }
+    if (c_.trackPhase) trackHop();
     // alignment statistics: pair p (slices p, p+1): wide bins [k_{p+1}-U/2, k_p+U/2)
     for (int p = 0; p + 1 < S; p++) {
         if (!r_[p].alive || !r_[p + 1].alive) continue;
@@ -317,13 +319,17 @@ void SynthWideband::hop() {
         const int offA = N / 2 - U / 2 + ja, offB = N / 2 - U / 2;
         const size_t base = a.rows.size();
         a.rows.resize(base + ov_);
+        const bool trk = c_.trackPhase && trk_[p].init;
+        const cf32 deph = trk ? cf32((float)std::cos(trk_[p].phi), (float)-std::sin(trk_[p].phi)) : cf32(1, 0);
         for (int u = 0; u < ov_; u++) {
             const cf32 A = r_[p].spec[offA + u], B = r_[p + 1].spec[offB + u];
             const cf32 cr = A * std::conj(B);
             a.cross[u] += cr; a.pa[u] += std::norm(A); a.pb[u] += std::norm(B);
             a.rows[base + u] = cr;
+            if (trk) a.crossT[u] += cr * deph;
         }
         a.frames++;
+        if (trk) a.trkFrames++;
     }
     // stitch
     std::vector<cf32> Y(M, cf32(0, 0));
@@ -384,7 +390,63 @@ void SynthWideband::shiftSlice(int i, int d) {
         r.ring.insert(r.ring.begin() + r.head, (size_t)(-d), cf32(0, 0));
     }
     shifted_[i] += d;
-    for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { acc_[p].clear(ov_); tH_[p].clear(); dH_[p].clear(); }
+    for (int p = std::max(0, i - 1); p <= std::min(i, c_.slices - 2); p++) { acc_[p].clear(ov_); tH_[p].clear(); dH_[p].clear(); trk_[p] = Track(); pairs_[p].tracking = false; }
+}
+
+void SynthWideband::recalibrate() {
+    for (int i = 0; i < c_.slices; i++) {
+        Radio& r = r_[i];
+        r.off = 0; r.ppm = 0; r.rs.set(0, 0); r.pendDrop = 0;
+        shifted_[i] = 0;
+        amp_[i] = 1; ph_[i] = 0; tau_[i] = 0;
+        sl_[i].locked = false; sl_[i].offsetHz = 0; sl_[i].driftPpm = 0;
+    }
+    for (int p = 0; p + 1 < c_.slices; p++) {
+        acc_[p].clear(ov_); trk_[p] = Track(); stage_[p] = 0; tH_[p].clear(); dH_[p].clear();
+        pairs_[p] = PairStatus();
+    }
+}
+
+void SynthWideband::trackHop() {
+    // every pair in order from slice 0: measure this hop's seam phase, filter it, and set the slice's phase correction for this very hop
+    const int N = c_.n, S = c_.slices, U = usableBins_;
+    const double hopSec = (double)(N / 2) / c_.fs;
+    const double q = 2.0 * kPi * std::max(0.1, c_.trackLinewidthHz) * hopSec;   // phase random-walk variance per hop (Lorentzian linewidth)
+    const double qw = q * 1e-3;                                                // the phase step per hop (residual frequency) moves slowly
+    for (int p = 0; p + 1 < S; p++) {
+        Track& t = trk_[p];
+        if (!t.init || !r_[p].alive || !r_[p + 1].alive) continue;
+        const int offA = N / 2 - U / 2 + c_.stepBins, offB = N / 2 - U / 2;
+        std::complex<double> z(0, 0);
+        double mag = 0;
+        const std::complex<double> rot = std::polar(1.0, -2.0 * kPi * t.delay / N);
+        std::complex<double> ph(1.0, 0.0);
+        for (int u = 0; u < ov_; u++) {
+            const cf32 A = r_[p].spec[offA + u], B = r_[p + 1].spec[offB + u];
+            const cf32 cr = A * std::conj(B);
+            z += std::complex<double>(cr.real(), cr.imag()) * ph;
+            mag += std::abs(cr);
+            ph *= rot;
+        }
+        // predict
+        t.phi += t.w;
+        t.p00 += 2 * t.p01 + t.p11 + q; t.p01 += t.p11; t.p11 += qw;
+        if (mag > 0 && std::abs(z) > 0) {
+            const double c = std::min(0.999999, std::abs(z) / mag);   // coherence of the common signal in this hop's overlap
+            const double R = 2.0 * (1.0 - c) / (c * ov_) + 1e-7;
+            const double innov = std::remainder(std::arg(z) - t.phi, 2.0 * kPi);
+            const double S2 = t.p00 + R, k0 = t.p00 / S2, k1 = t.p01 / S2;
+            t.phi += k0 * innov; t.w += k1 * innov;
+            const double p00 = (1 - k0) * t.p00, p01 = (1 - k0) * t.p01, p11 = t.p11 - k1 * t.p01;
+            t.p00 = p00; t.p01 = p01; t.p11 = p11;
+            t.sq += (k0 * innov) * (k0 * innov); t.nsq++;
+            if (t.nsq >= 256) { pairs_[p].trackRmsDeg = std::sqrt(t.sq / t.nsq) * 180.0 / kPi; t.sq = 0; t.nsq = 0; }
+        }
+        t.phi = std::remainder(t.phi, 2.0 * kPi);
+        const int b = p + 1;
+        const double w0 = (double)((int)std::lround((b - 0.5 * (S - 1)) * c_.stepBins) - U / 2);
+        ph_[b] = ph_[p] + t.phi - 2.0 * kPi * t.delay * w0 / N;
+    }
 }
 
 void SynthWideband::solve(int p) {
@@ -407,8 +469,10 @@ void SynthWideband::solve(int p) {
         }
         stage_[p] = 1;
     }
-    // delay / phase / gain from the accumulated cross-spectrum
-    DelayPhase dp = estimateDelay(a.cross, N);
+    // delay / phase / gain from the accumulated cross-spectrum (with the tracked phase taken out when the tracker ran the whole time: the
+    // free-running phase wander then no longer smears the average)
+    const bool tracked = c_.trackPhase && trk_[p].init && a.trkFrames == a.frames && a.frames > 0;
+    DelayPhase dp = estimateDelay(tracked ? a.crossT : a.cross, N);
     if (std::fabs(dp.delay) > 8.0 && dp.strength > 0.05) {
         shiftSlice(b, (int)std::lround(dp.delay));
         return;
@@ -441,12 +505,21 @@ void SynthWideband::solve(int p) {
     const double w0 = (double)((int)std::lround((b - 0.5 * (c_.slices - 1)) * c_.stepBins) - U / 2);
     amp_[b] = amp_[p] * r;
     tau_[b] = tau_[p] + dp.delay;
-    ph_[b] = ph_[p] + dp.phase0 - 2.0 * kPi * dp.delay * w0 / N;
+    if (c_.trackPhase && (trk_[p].init || stage_[p] == 2)) {
+        Track& t = trk_[p];
+        if (!t.init) { t = Track(); t.init = true; t.phi = dp.phase0; t.p00 = 0.1; t.p11 = 1e-3; }
+        else if (tracked) t.phi = std::remainder(t.phi + dp.phase0, 2.0 * kPi);   // the mean residual of the tracked phase (a slow bias)
+        t.delay = dp.delay;
+        ps.tracking = true;
+        ph_[b] = ph_[p] + t.phi - 2.0 * kPi * dp.delay * w0 / N;
+    } else {
+        ph_[b] = ph_[p] + dp.phase0 - 2.0 * kPi * dp.delay * w0 / N;
+    }
     ps.valid = true;
     ps.gainDb = 20.0 * std::log10(r);
     ps.delaySamples = dp.delay;
     ps.confidence = dp.strength;
-    ps.mismatchDb = mismatchDb(a.cross, a.pa, a.pb, N, dp, r);
+    ps.mismatchDb = mismatchDb(tracked ? a.crossT : a.cross, a.pa, a.pb, N, dp, r);
     // clock drift: slope of the total delay seen over time -> back into the resampler
     tH_[p].push_back(t_);
     dH_[p].push_back(shifted_[b] + dp.delay);
