@@ -43,7 +43,26 @@ void T2Receiver::Impl::derotate(int64_t w0, double ph0, double dph) {
     const int N = fftN;
     fr.assign(N, 0.f); fi.assign(N, 0.f);
     const cd step(std::cos(dph), std::sin(dph));
-    for (int n0 = 0; n0 < N; n0 += 256) {
+    // Four 256-sample blocks side by side: each block's phasor recurrence is a chain of dependent complex multiplies (about eight cycles a
+    // sample one block at a time); four independent chains run in the time of one. Every sample gets exactly the phasor it got before.
+    int n0 = 0;
+    if (w0 >= base && w0 + N <= end()) {   // the window is inside the buffer: no bounds checks per sample
+        const cf32* src = &buf[(size_t)(w0 - base)];
+        for (; n0 + 4 * 256 <= N; n0 += 4 * 256) {
+            cd z[4];
+            for (int q = 0; q < 4; q++) { const double a = ph0 + dph * (n0 + 256 * q); z[q] = cd(std::cos(a), std::sin(a)); }
+            for (int j = 0; j < 256; j++)
+                for (int q = 0; q < 4; q++) {
+                    const int n = n0 + 256 * q + j;
+                    const cf32 x = src[n];
+                    const float cs = (float)z[q].real(), sn = (float)z[q].imag();
+                    fr[n] = x.real() * cs - x.imag() * sn;
+                    fi[n] = x.real() * sn + x.imag() * cs;
+                    z[q] *= step;
+                }
+        }
+    }
+    for (; n0 < N; n0 += 256) {
         const double a = ph0 + dph * n0;
         cd z(std::cos(a), std::sin(a));
         const int n1 = std::min(N, n0 + 256);
