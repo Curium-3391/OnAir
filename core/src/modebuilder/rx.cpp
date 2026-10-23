@@ -302,9 +302,26 @@ struct Receiver::Impl {
                 }
             } else if (fsk) {
                 // more levels: the nominal deviation, shifted to fit the symbols of the burst start (a frequency offset)
+                // sampled at the widest eye near the timing estimate: a timing error pulls neighbouring tones towards each other, and a
+                // pair of tones squeezed together fits the level grid shifted by half a step as well as unshifted (8FSK lost bursts)
                 std::vector<double> sv;
-                for (double t = tNext; t + 2 < (double)b; t += sps) { const double r = interp(t).real(); if (std::fabs(r) < 1.4) sv.push_back(r); }
-                if (sv.size() > 7) sv.erase(sv.begin(), sv.begin() + 2);
+                double bestVar = -1;
+                for (int k = -8; k <= 8; k++) {
+                    std::vector<double> cand;
+                    for (double t = tNext + k * sps / 32; t + 2 < (double)b; t += sps) {
+                        if (t < (double)bufBase + 2) continue;
+                        const double r = interp(t).real();
+                        if (std::fabs(r) < 1.4) cand.push_back(r);
+                    }
+                    if (cand.size() > 7) cand.erase(cand.begin(), cand.begin() + 2);
+                    if (cand.size() < 2) continue;
+                    double m = 0, var = 0;
+                    for (double r : cand) m += r;
+                    m /= (double)cand.size();
+                    for (double r : cand) var += (r - m) * (r - m);
+                    var /= (double)cand.size();
+                    if (var > bestVar * (1 + 1e-9) || (k == 0 && var >= bestVar)) { bestVar = var; sv = std::move(cand); }
+                }
                 const double sp = 2.0 / (M - 1);
                 double bestC = 0, bestCost = 1e300;
                 const auto mm = std::minmax_element(sv.begin(), sv.end());
