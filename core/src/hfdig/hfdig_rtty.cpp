@@ -8,6 +8,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,7 +24,13 @@ constexpr double kFs = kHfdigAudioRate;
 constexpr int kFft = 2048, kHop = 1024;
 constexpr double kBinHz = kFs / kFft;
 constexpr int kBinLo = 77, kBinHi = 844;               // 300 .. 3300 Hz
-constexpr double kLockRatio = 251.0, kUnlockRatio = 100.0;   // pair score against the noise floor: 24 dB to lock, 20 dB to keep
+constexpr double kLockRatio = 251.0;    // pair score against the noise floor: 24 dB to lock at once,
+const double kLockRatioWeak = std::getenv("RTTY_LOCKW") ? std::atof(std::getenv("RTTY_LOCKW")) : 40.0;   // 16 dB held for kLockFrames frames,
+const double kUnlockRatio = std::getenv("RTTY_UNLOCK") ? std::atof(std::getenv("RTTY_UNLOCK")) : 30.0;   // 15 dB to keep
+const int kRttyAtc = std::getenv("RTTY_ATC") ? std::atoi(std::getenv("RTTY_ATC")) : 2;
+const double kRttyHyst = std::getenv("RTTY_HYST") ? std::atof(std::getenv("RTTY_HYST")) : 0.05;
+const double kAtcRatio = std::getenv("RTTY_ATCR") ? std::atof(std::getenv("RTTY_ATCR")) : 3.0;
+const int kLockFrames = std::getenv("RTTY_LOCKF") ? std::atoi(std::getenv("RTTY_LOCKF")) : 5;
 constexpr int kUnlockFrames = 12, kRelinkFrames = 4;
 
 // ITA2 (US TTY variant for the figures)
@@ -80,6 +87,8 @@ struct HfdigRtty::Impl {
     double loHz = 0, hiHz = 0;
     int weakFrames = 0, relinkFrames = 0;
     double relinkLo = 0;
+    double candLo = 0;                        // a weaker pair that has to stay put for kLockFrames before it locks
+    int candFrames = 0;
     double ratio = 0;                         // pair score of the locked tones against the floor
     // demodulator
     int len = 176;
@@ -202,7 +211,13 @@ struct HfdigRtty::Impl {
         const double candRatio = best / fl;
 
         if (!locked) {
-            if (candRatio >= kLockRatio) {
+            // a strong pair locks at once; a weak one (down to kLockRatioWeak) once it has stayed on the same tones for kLockFrames frames,
+            // which noise peaks do not
+            if (candRatio >= kLockRatioWeak && std::fabs(lo - candLo) <= 6.0) candFrames++;
+            else if (candRatio >= kLockRatioWeak) { candLo = lo; candFrames = 1; }
+            else candFrames = 0;
+            if (candRatio >= kLockRatio || candFrames >= kLockFrames) {
+                candFrames = 0;
                 locked = true; loHz = lo; hiHz = lo + shift;
                 weakFrames = relinkFrames = 0;
                 clearDemod(); setTones();
@@ -283,8 +298,11 @@ struct HfdigRtty::Impl {
         maxM = std::max(em, maxM * dec + em * (1 - dec));
         maxS = std::max(es, maxS * dec + es * (1 - dec));
         const double refM = std::max({maxM, 0.3 * maxS, 1e-9}), refS = std::max({maxS, 0.3 * maxM, 1e-9});
-        const double x = em / refM - es / refS;
-        const bool m = x > 0.15 ? true : (x < -0.15 ? false : mark);
+        // with the tones about as strong as each other the plain difference (scaled by their mean peak) is the better decision at weak
+        // signals; the per-tone ATC takes over when one tone has faded (selective fading: the peaks more than 2:1 apart)
+        const bool atc = kRttyAtc == 1 || (kRttyAtc == 2 && std::max(refM, refS) > kAtcRatio * std::min(refM, refS));
+        const double x = atc ? em / refM - es / refS : 2 * (em - es) / (refM + refS);
+        const bool m = x > kRttyHyst ? true : (x < -kRttyHyst ? false : mark);
         if (fsm == 0) {
             if (mark && !m) { fsm = 1; bit = 0; code = 0; soft = 0; cnt = 0.5 * bitSamples; }
         } else {
