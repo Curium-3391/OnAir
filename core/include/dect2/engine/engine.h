@@ -91,6 +91,8 @@
 #include "dect2/dect/dect_rx.h"
 #include "dect2/multitone/multitone_rx.h"
 #include "dect2/loraraw/loraraw_rx.h"
+#include "dect2/lorawan/lorawan_rx.h"
+#include "dect2/lorasat/lorasat_rx.h"
 #include "dect2/wisun/wisun_rx.h"
 #include "dect2/zwave/zwave_rx.h"
 #include "dect2/eczas/eczas_live.h"
@@ -451,6 +453,8 @@ public:
     SatbeaconLiveReceiver& satbeacon() { return rxSb_; }   // satellite beacon: CSV log file (telemetry through latestRx)
     MscatterLiveReceiver& mscatter() { return rxMs_; }   // meteor scatter: threshold, CSV log file, clear the list (telemetry through latestRx)
     WisunReceiver& wisun() { return rxWs_; }   // Wi-SUN FAN: region, clear the tables (telemetry through latestRx)
+    LorawanReceiver& lorawan() { return rxLw_; }   // LoRaWAN, all channels of a plan: settings, clear (telemetry through latestRx)
+    LoraSatReceiver& lorasat() { return rxLs_; }   // LoRa satellites: settings, the pass planner names the satellite
     LoraRawReceiver& loraraw() { return rxLr_; }   // LoRa (raw): settings, clear the frame log (telemetry through latestRx)
     HfbReceiver& hfbeacon() { return rxHfb_; }   // HF beacons: the list, receiver position, ppm, clock offset (telemetry through latestRx)
     DjiReceiver& dji() { return rxDji_; }   // DJI drones: clear the results (telemetry through latestRx)
@@ -741,6 +745,8 @@ private:
     TetrapolReceiver rxTetrapol_;
     MultitoneReceiver rxMt_;
     LoraRawReceiver rxLr_;
+    LorawanReceiver rxLw_;
+    LoraSatReceiver rxLs_;
     WisunReceiver rxWs_;
     ZwaveReceiver rxZw_;
     EczasLiveReceiver rxEcz_;

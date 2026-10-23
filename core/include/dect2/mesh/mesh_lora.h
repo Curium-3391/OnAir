@@ -24,6 +24,8 @@ struct Params {
     bool crc = true;
     bool implicitHdr = false;    // no header: the length (implicitLen), coding rate (cr) and CRC (crc) are agreed beforehand (plain LoRa links)
     int implicitLen = 0;
+    double carrierHz = 0;        // cfoTrack > 0: the carrier frequency when known (a Doppler shift stretches the symbol clock by the same fraction)
+    double cfoTrack = 0;         // 0: the carrier offset is measured once per frame (every plain LoRa link); > 0: followed through the frame at this loop gain (satellites: Doppler rate)
 };
 
 // RadioLib turns the low data rate optimisation on when a symbol lasts 16 ms or more (SX126x::setSpreadingFactor, autoLDRO)
@@ -86,6 +88,7 @@ struct TxFrame {
     double startSec = 0, freqHz = 0, sroPpm = 0;
     float amp = 0.3f;
     double phase0 = 0;           // carrier phase at the start, cycles
+    double freqRateHzS = 0;      // the carrier's drift in Hz per second (a satellite's Doppler rate); 0 for every ground link
     double endSec() const;
     void render(cf32* out, size_t n, double t0, double rate) const;
 };
@@ -96,7 +99,9 @@ struct RxFrame {
     Header hdr;
     bool crcOk = false;
     int corrected = 0;           // codewords with a corrected bit
-    double cfoHz = 0;            // carrier offset from the channel centre
+    double cfoHz = 0;            // carrier offset from the channel centre (at the end of the frame)
+    double cfoStartHz = 0;       // the same at the first data symbol, and the drift in Hz per second (both only with Params::cfoTrack > 0)
+    double cfoRateHzS = 0;
     double sfoPpm = 0;           // clock offset measured over the frame
     double snrDb = 0;            // in the LoRa bandwidth
     double levelDb = 0;          // signal power, dB relative to full scale at the channel output

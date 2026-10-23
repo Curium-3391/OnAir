@@ -9,6 +9,7 @@
 #include "../adsb/adsb_map.h"
 #include "dect2/geo/passes.h"
 #include "dect2/geo/doppler_fit.h"
+#include "dect2/lorasat/lorasat_presets.h"
 #include "dect2/geo/pass_sched.h"
 #include "dect2/automation/engine.h"
 #include <algorithm>
@@ -30,7 +31,7 @@ namespace {
 namespace fs = std::filesystem;
 fs::path fsPath(const std::string& p) { return fs::path(reinterpret_cast<const char8_t*>(p.c_str())); }
 
-constexpr int kSpecx = 41, kAprs = 24, kOrbcomm = 44, kMeteor = 59, kCubesat = 61, kGlobalstar = 62, kArgos = 152;   // mode families: Spectrum explorer (no decoder), APRS (AFSK), Orbcomm, Meteor-M LRPT, CubeSat telemetry, Argos
+constexpr int kSpecx = 41, kAprs = 24, kOrbcomm = 44, kMeteor = 59, kCubesat = 61, kGlobalstar = 62, kArgos = 152, kLoraSat = 201;   // mode families: Spectrum explorer (no decoder), APRS (AFSK), Orbcomm, Meteor-M LRPT, CubeSat telemetry, Argos, LoRa satellites
 
 struct Source { const char* file; const char* url; };
 const Source kSources[] = {
@@ -175,6 +176,9 @@ void buildSats() {
         if (t.name.rfind("ORBCOMM", 0) == 0) add(t.name, no, ot ? ot->defMhz : 137.25, "Orbcomm", kOrbcomm, Orbcomm);
     for (const auto& [no, t] : S.tles)
         if (t.name.rfind("GLOBALSTAR", 0) == 0) add(t.name, no, 1618.25, "Globalstar", kGlobalstar, GlobalstarGrp);
+    for (const auto& [no, t] : S.tles)   // satellites that use LoRa (public presets, unverified): matched by the start of the name in the elements files
+        for (const auto& p : dect2::lorasat::presets())
+            if (p.tleName[0] && !p.uplinkOnly && t.name.rfind(p.tleName, 0) == 0) { add(t.name, no, p.mhz, "LoRa satellite", kLoraSat, Amateur); break; }
     for (const Cube& c : S.cubes) add(c.name, c.norad, c.mhz, c.aprs ? "APRS" : "CubeSat telemetry", c.aprs ? kAprs : kCubesat, Amateur);
     S.selSat = -1;
     for (int i = 0; i < (int)S.sats.size(); i++) if (!S.selName.empty() && S.sats[i].name == S.selName) S.selSat = i;
@@ -364,6 +368,7 @@ void endPass(App& a, bool los) {
     if (S.weStarted && a.engine.running()) a.engine.stop();
     S.weStarted = false;
     a.engine.cubesat().setTracked(0, "");
+    a.engine.lorasat().setTracked(0, "");
     retuneTo(a, S.nominalMhz);
     if (los) disarmOnce();
 }
@@ -455,6 +460,7 @@ void trackTick(App& a) {
             ev.str("name", sat.name).num("max_el_deg", r->p.maxElDeg);
             dect2::automation::emit(std::move(ev));
         }
+        if (sat.family == kLoraSat) a.engine.lorasat().setTracked(sat.norad, sat.name);   // the decoder follows the Doppler shift itself
         if (sat.family == kCubesat) a.engine.cubesat().setTracked(sat.norad, sat.name);   // names the frames of the pass
         if (autoStart && !a.engine.running()) {
             if (a.family != sat.family) selectMode(a, sat.family);
@@ -472,7 +478,7 @@ void trackTick(App& a) {
         if (a.engine.startRecording(path, f, err)) { S.weRecord = true; a.recDonePath.clear(); a.engine.log("pass of " + sat.name + ": recording IQ to " + path); }
         else a.engine.log("recording failed: " + err);
     }
-    if (now - S.lastTune >= 1.0) {   // Doppler: about once a second
+    if (sat.family != kLoraSat && now - S.lastTune >= 1.0) {   // Doppler: about once a second (not for LoRa: a retune in the middle of a frame would break it, and the decoder follows the shift)
         S.lastTune = now;
         dect2::Look l;
         if (lookNow(sat, now, l)) retuneTo(a, (S.nominalMhz * 1e6 + dect2::dopplerHz(S.nominalMhz * 1e6, l.rangeRateKmS)) / 1e6);
