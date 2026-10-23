@@ -314,4 +314,60 @@ std::string loraJson(const char* kind, const std::string& hex, float snrDb, doub
     return o;
 }
 
+// ---------------------------------------------------------------- MQTT 3.1.1 (QoS 0)
+
+static void mqttLen(std::string& o, size_t n) {   // the remaining length, 7 bits a byte
+    do { uint8_t b = (uint8_t)(n & 0x7F); n >>= 7; if (n) b |= 0x80; o += (char)b; } while (n);
+}
+static void mqttStr(std::string& o, const std::string& s) {
+    const size_t n = std::min<size_t>(s.size(), 65535);
+    o += (char)(n >> 8); o += (char)(n & 0xFF); o.append(s, 0, n);
+}
+
+std::string mqttConnect(const std::string& clientId, const std::string& user, const std::string& pass, int keepAliveSec) {
+    std::string v;
+    mqttStr(v, "MQTT");
+    v += (char)4;                                            // protocol level 3.1.1
+    uint8_t flags = 0x02;                                    // clean session
+    if (!user.empty()) { flags |= 0x80; if (!pass.empty()) flags |= 0x40; }
+    v += (char)flags;
+    const int ka = std::max(0, std::min(65535, keepAliveSec));
+    v += (char)(ka >> 8); v += (char)(ka & 0xFF);
+    mqttStr(v, clientId);
+    if (!user.empty()) { mqttStr(v, user); if (!pass.empty()) mqttStr(v, pass); }
+    std::string o(1, (char)0x10);
+    mqttLen(o, v.size());
+    return o + v;
+}
+
+std::string mqttPublish(const std::string& topic, const std::string& payload) {
+    std::string v;
+    mqttStr(v, topic);
+    v += payload;
+    std::string o(1, (char)0x30);                            // PUBLISH, QoS 0, no retain
+    mqttLen(o, v.size());
+    return o + v;
+}
+
+std::string mqttPingReq() { return std::string("\xC0\x00", 2); }
+std::string mqttDisconnect() { return std::string("\xE0\x00", 2); }
+
+std::string mqttTopicPart(const std::string& s) {
+    std::string o;
+    for (char c : s) o += (c == '/' || c == '+' || c == '#' || c == ' ' || (unsigned char)c < 0x20 || c == 0x7F) ? '_' : c;
+    return o.empty() ? std::string("_") : o;
+}
+
+std::string adsbJson(const FeedAdsbFrame& f) {
+    char b[96];
+    snprintf(b, sizeof b, "{\"hex\":\"%06X\",\"df\":%u,\"raw\":\"", f.icao & 0xFFFFFF, (unsigned)(f.bytes[0] >> 3));
+    std::string o = b;
+    for (int i = 0; i < f.bits / 8 && i < 14; i++) { snprintf(b, sizeof b, "%02X", f.bytes[i]); o += b; }
+    snprintf(b, sizeof b, "\",\"level_dbfs\":%.1f", f.levelDbfs);
+    o += b;
+    if (f.nonIcao) o += ",\"non_icao\":true";
+    if (f.hasPos) { snprintf(b, sizeof b, ",\"lat\":%.5f,\"lon\":%.5f", f.lat, f.lon); o += b; }
+    return o + "}";
+}
+
 } // namespace dect2::feedfmt
