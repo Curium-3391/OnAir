@@ -55,6 +55,7 @@ static void toolbarSource(App& a, bool vertical, bool running) {
             ImGui::EndMenu();
         }
         if (ImGui::Selectable(tr("Add network radio…"))) a.netAddOpen = true;
+        if (ImGui::Selectable(tr("Group radios…"))) { a.groupOpen = true; a.groupEdit = -1; }
         if (hamlibSupported() && ImGui::Selectable(tr("Add Hamlib rig…"))) a.hamlibAddOpen = true;
         ImGui::EndCombo();
     }

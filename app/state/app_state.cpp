@@ -137,6 +137,7 @@ void refreshDevices(App& a) {
     std::string err;
     setNetworkRadios(a.netRadios);   // the ones the user added by address come after the ones found
     setHamlibRigs(a.hamlibRigs);
+    setSynthGroups(a.synthGroups);   // the saved radio groups: listed after the radios they are made of
     // HackRF, the radios with a native driver (RTL-SDR, Airspy, BladeRF, LimeSDR, PlutoSDR, USRP) and the rest through SoapySDR
     for (auto& d : listRadios(err)) a.devices.push_back(d);
     for (App* o : receiversAll()) {   // a radio another receiver has open may be missing from the list (drivers cannot look at a radio in use): it stays, as "in use by RX n"

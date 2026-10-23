@@ -315,6 +315,7 @@ void saveSpectrumRanges(plat::Prefs& d, const App& a) {
 void loadPrefs(App& a) {
     plat::Prefs& d = plat::prefs();
     a.netRadios = netRadiosFromString(d.getS("netRadios", ""));
+    a.synthGroups = synthGroupsFromString(d.getS("synthGroups", ""));
     a.hamlibRigs = hamlibRigsFromString(d.getS("hamlibRigs", ""));
     {   // radios hidden from the list, one name per line
         a.hiddenRadios.clear();
@@ -358,6 +359,7 @@ void savePrefs(const App& a) {
     plat::Prefs& d = plat::prefs();
     if (a.rxId == 1) {
         d.setS("netRadios", netRadiosToString(a.netRadios));
+        d.setS("synthGroups", synthGroupsToString(a.synthGroups));
         d.setS("hamlibRigs", hamlibRigsToString(a.hamlibRigs));
         { std::string j; for (const auto& n : a.hiddenRadios) j += n + "\n"; d.setS("hiddenRadios", j); }
     }

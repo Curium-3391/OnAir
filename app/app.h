@@ -23,6 +23,7 @@
 #include "dect2/t2/t2rx.h"
 #include "dect2/net/nettuner.h"
 #include "dect2/net/netradio.h"
+#include "dect2/source/synth_group.h"
 #include "dect2/net/kiwisdr.h"
 #include "dect2/source/hamlib_rig.h"
 #include "dect2/source/rig_setup.h"
@@ -335,6 +336,13 @@ struct App {
     struct NetProbe { std::atomic<bool> done{false}; bool ok = false; std::string err; NetRadio radio; };
     std::shared_ptr<NetProbe> netAddProbe;   // a connection test running on a worker thread
     bool netAddOpen = false;
+    // radio groups (synthetic wideband, synth_group.h): prefs "synthGroups", listed by refreshDevices; the "Group radios" window
+    std::vector<SynthGroupDef> synthGroups;
+    bool groupOpen = false;
+    int groupEdit = -1;                   // the saved group being edited, -1 = a new one
+    char groupName[64] = "";
+    double groupCenterMhz = 100.0, groupSpanMhz = 8.0, groupRateMsps = 0;   // rate 0 = automatic
+    std::vector<int> groupPick;           // indices into devices, in frequency order (lowest slice first)
     int netAddType = NetRadio::RtlTcp;
     char netAddHost[128] = "";
     int netAddPort = 1234;
@@ -822,7 +830,8 @@ int modeSlot(const App& a);                    // index of famFreq / famGain for
 int engineStd(const App& a);
 void refreshDevices(App& a);
 void kiwiFindWindow(App& a);    // the "Find KiwiSDR" window (toolbar_rig.cpp)
-void netRadioWindow(App& a);   // the "Add network radio" window (toolbar_rig.cpp)
+void netRadioWindow(App& a);
+void synthGroupWindow(App& a);   // the "Group radios" window: define, save and watch synthetic wideband groups (synth_group_ui.cpp)   // the "Add network radio" window (toolbar_rig.cpp)
 void hamlibRigWindow(App& a);  // the "Add Hamlib rig" window (toolbar_rig.cpp)
 void applyBandwidth(App& a);
 double halowWantedRateHz();       // Wi-Fi HaLow (halow/halow_ui.cpp): the radio rate the chosen receive width needs (4 / 20 Msps for Auto, else the width's own)

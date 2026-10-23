@@ -19,7 +19,7 @@ SlicePlan planSlices(int radios, double fs, double wantSpanHz, double usable) {
     if (!(fs > 10e3)) { p.why = "the radios have no common sample rate"; return p; }
     // FFT size: a hop (n/2 samples) of about 0.2 ms, so the per-hop phase tracking follows free-running oscillators
     int n = 256;
-    while (n < 16384 && (double)n < fs * 4.3e-4 * 1.41) n *= 2;
+    while (n < 16384 && (double)n * 1.41 < fs * 4.3e-4) n *= 2;   // the power of 2 nearest to 0.43 ms of samples (1024 at 2.4 Msps)
     const double df = fs / n;
     int U = (int)(usable * n) & ~1;
     const int minOv = std::max(64, n / 16);                  // the overlap the alignment needs (150 kHz at 2.4 Msps)
@@ -236,7 +236,8 @@ bool SyntheticWideSource::startChild(int i, std::string& err) {
     std::string e;
     if (!c.src->start(childTune(i), *c.ring, e)) { c.error = e.empty() ? "did not start" : e; c.src.reset(); err = c.error; return false; }
     const double r = c.src->sampleRate();
-    if (std::fabs(r - plan_.cfg.fs) > 1e-6 * plan_.cfg.fs + 1) {
+    // drivers round the rate a little (an RTL-SDR's divider): up to 50 ppm the drift correction takes it; more would be a different rate
+    if (std::fabs(r - plan_.cfg.fs) > 50e-6 * plan_.cfg.fs) {
         char b[200];
         snprintf(b, sizeof b, "runs at %.4f Msps instead of %.4f: left out", r / 1e6, plan_.cfg.fs / 1e6);
         c.error = b; c.src->stop(); c.src.reset(); err = c.error; return false;
