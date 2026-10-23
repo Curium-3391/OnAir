@@ -3,6 +3,7 @@
 #include "dect2/adsb/adsb_rx.h"
 #include "dect2/ais/ais_rx.h"
 #include "dect2/cw/cw_rx.h"
+#include "dect2/cw/cw_tel.h"
 #include "dect2/fm/fm_rx.h"
 #include "dect2/fm/fm_tel.h"
 #include "dect2/hfdig/hfdig_rx.h"
