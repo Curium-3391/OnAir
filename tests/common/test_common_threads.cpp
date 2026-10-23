@@ -181,8 +181,41 @@ static void testStress() {
     }
 }
 
+// cpu_meter.h: a scope charges its block, the pool charges its jobs to the account of the thread that queued them
+static void spin(double secs) {
+    const uint64_t t0 = cpu::threadNs();
+    volatile double x = 1;
+    while ((double)(cpu::threadNs() - t0) * 1e-9 < secs) x = x * 1.0000001 + 1e-9;
+}
+static void testCpuMeter() {
+    const int a = cpu::account("test a"), b = cpu::account("test b");
+    CHECK(a > 0 && b > 0 && a != b && cpu::account("test a") == a && cpu::name(b) == "test b");
+    {
+        cpu::Scope s(a);
+        CHECK(cpu::current() == a);
+        spin(0.05);
+        {
+            cpu::Scope s2(b);
+            spin(0.03);
+        }
+        CHECK(cpu::current() == a);
+    }
+    CHECK(cpu::current() == 0);
+    const double sa = cpu::seconds(a), sb = cpu::seconds(b);
+    CHECK(sa >= 0.045 && sa < 0.5);
+    CHECK(sb >= 0.025 && sb < 0.5);
+    const int c = cpu::account("test pool");
+    {
+        cpu::Scope s(c);
+        ThreadPool::shared().parallelFor(4, [](size_t) { spin(0.02); });
+    }
+    CHECK(cpu::seconds(c) >= 0.075);   // all four jobs, wherever they ran
+    CHECK(cpu::processPercent() >= 0);
+}
+
 int main() {
     printf("DECT2_THREADS=%d pool workers=%d\n", configuredThreads(), ThreadPool::shared().workers());
+    testCpuMeter();
     testDeterminism();
     testReorder();
     testQueue();
