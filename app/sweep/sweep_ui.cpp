@@ -143,7 +143,7 @@ void csvButtons(App& a) {
 // The band survey: the sweeps of one range kept over time (core/src/sweep/survey.cpp)
 void surveyPanel(App& a) {
     (void)a;
-    if (!ImGui::CollapsingHeader(tr("Band survey"))) return;
+    if (!ImGui::CollapsingHeader(trw("Band survey"))) return;
     std::string err;
     std::lock_guard<std::mutex> l(S.mu);
     S.survey.setThreshold(S.thrDb);
@@ -233,7 +233,7 @@ void surveyPanel(App& a) {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(900 * gUi, 760 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(900 * gUi, 760 * gUi);
     if (!ImGui::Begin(trw("Sweep scanner"), &a.sweepOpen)) { ImGui::End(); return; }
     const bool run = S.running.load();
     if (S.th.joinable() && !run) S.th.join();

@@ -160,8 +160,8 @@ void hfdigMultiBandPanel(App& a, const dect2::HfdigTelemetry& t) {
             ImGui::PopID();
         }
         ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("List"); ImGui::SameLine(0, 6);
-        ImGui::SetNextItemWidth(90);
+        ImGui::TextDisabled("List"); ImGui::SameLine(0, 6 * gUi);
+        ImGui::SetNextItemWidth(90 * gUi);
         if (ImGui::BeginCombo("##mbfilter", M.bandFilter == 0 ? "all bands" : mbBand(M.bandFilter - 1).name)) {
             if (ImGui::Selectable("all bands", M.bandFilter == 0)) M.bandFilter = 0;
             for (int b = 0; b < kMbBands; b++) if (ImGui::Selectable(mbBand(b).name, M.bandFilter == b + 1)) M.bandFilter = b + 1;

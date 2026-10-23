@@ -340,6 +340,7 @@ int main(int argc, char** argv) {
             receiversFrame(app, io.DisplaySize);
             perfOverlayDraw(app);
             popOutFrame(app);
+            keepWindowsReachable();
             ImGui::Render();
             if (app.highContrast) lightenDrawData(ImGui::GetDrawData(), false, true);   // High contrast wins over Light
             else if (app.lightUi) lightenDrawData(ImGui::GetDrawData());

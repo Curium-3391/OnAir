@@ -108,7 +108,7 @@ void drawWarning(App& first) {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button(tr("Cancel"))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
     (void)first;
 }

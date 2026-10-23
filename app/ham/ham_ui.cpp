@@ -130,7 +130,7 @@ void save(HamUi& h) {
     p.flush();
 }
 void uploadSection(HamUi& h) {
-    if (!ImGui::CollapsingHeader(tr("Logbook uploads (off by default)"))) return;
+    if (!ImGui::CollapsingHeader(trw("Logbook uploads (off by default)"))) return;
     plat::Prefs& p = plat::basePrefs();
     auto fld = [](char* b, size_t n, const std::string& v) { snprintf(b, n, "%s", v.c_str()); };
     if (!h.upFieldsInit) {
@@ -276,7 +276,7 @@ void hamPanel(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Answers the replies to your CQ or call by itself: report, R-report, RR73, 73."));
     int par = c.txEven ? 0 : 1;
     ImGui::SameLine(); ImGui::SetNextItemWidth(80 * gUi);
-    if (ImGui::Combo(tr("TX slot"), &par, "Even\0Odd\0")) { c.txEven = par == 0; h.eng.userAction(now); }
+    if (comboTr(tr("TX slot"), &par, {N_("Even"), N_("Odd")})) { c.txEven = par == 0; h.eng.userAction(now); }
     if (!h.eng.active()) c.txHz = h.txHz; else h.txHz = (float)c.txHz;
 
     const bool canCq = stationOk && h.licence;

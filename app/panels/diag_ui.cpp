@@ -204,7 +204,7 @@ void recordUi(App& a) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Writes a .sigmf-meta file (sample rate, data type, centre frequency, time) next to the recording, and the same data under a .sigmf-data name, so the recording opens in IQEngine (iqengine.org) and other SigMF tools.");
     if (!a.recDonePath.empty() && !rs.active) {
         flowNext(6 * gUi);
-        if (ImGui::SmallButton("Show recording")) dect2::openUrl(a.recDonePath.substr(0, a.recDonePath.find_last_of("/\\")));
+        if (ImGui::SmallButton(tr("Show recording##iq"))) dect2::openUrl(a.recDonePath.substr(0, a.recDonePath.find_last_of("/\\")));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", a.recDonePath.c_str());
     }
     flowEnd();
@@ -290,7 +290,7 @@ void audioRecordUi(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keeps recording when the mode or the frequency changes. Off: the recording stops then."));
     if (!a.audioRecDonePath.empty() && !rs.active) {
         flowNext(6 * gUi);
-        if (ImGui::SmallButton(tr("Show recording"))) dect2::openUrl(a.audioRecDonePath.substr(0, a.audioRecDonePath.find_last_of("/\\")));
+        if (ImGui::SmallButton(tr("Show recording##aud"))) dect2::openUrl(a.audioRecDonePath.substr(0, a.audioRecDonePath.find_last_of("/\\")));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", a.audioRecDonePath.c_str());
         if (!rs.error.empty()) { flowNext(4 * gUi); ImGui::TextColored(pal::warnAmber(), "%s", rs.error.c_str()); }
     }

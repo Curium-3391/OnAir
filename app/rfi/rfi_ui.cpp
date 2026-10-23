@@ -444,13 +444,13 @@ void walkTab() {
 
 void windowPanel(App& a) {
     load();
-    ImGui::SetNextWindowSize(ImVec2(940 * gUi, 780 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(940 * gUi, 780 * gUi);
     if (!ImGui::Begin(trw("Interference hunter"), &a.rfiOpen)) { ImGui::End(); return; }
     pump();
     controls(a);
     if (ImGui::BeginTabBar("##rfitabs")) {
-        if (ImGui::BeginTabItem(tr("Monitor"))) { monitorTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem(tr("Walk"))) { walkTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Monitor"))) { monitorTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Walk"))) { walkTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();

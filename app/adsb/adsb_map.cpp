@@ -743,7 +743,7 @@ void fullCorner(ImVec2 p0, ImVec2 size) {
     const bool autoHit = autoFull && !gFullOn && (autoFull = false, true);
     if (fullButton(gFullOn, "screen") || autoHit) fullToggle();
     ImGui::PopStyleColor();
-    ImGui::SetCursorScreenPos(keep);
+    restoreCursor(keep);
 }
 
 void tileControls(const char* privacy, bool fullBtn) {

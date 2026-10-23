@@ -20,11 +20,14 @@ bool saveButton(const Table& t, const char* kind, std::string& note, const char*
     ImGui::SameLine();
     if (ImGui::SmallButton("Save results...")) hit = true;
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(90);
+    ImGui::SetNextItemWidth(90 * gUi);
     ImGui::Combo("##fmt", &fmt, "CSV\0JSON\0ADIF\0KML\0GPX\0");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(110);
-    ImGui::Combo("##scope", &scope, "Since start\0All\0");
+    ImGui::SetNextItemWidth(110 * gUi);
+    {
+        const char* scopes[] = {tr("Since start"), tr("All")};
+        ImGui::Combo("##scope", &scope, scopes, IM_ARRAYSIZE(scopes));
+    }
     ImGui::PopID();
     if (!hit) return false;
     const Fmt f = order[fmt];

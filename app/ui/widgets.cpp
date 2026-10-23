@@ -4,6 +4,7 @@
 #include "touch.h"
 #include "command_palette.h"
 #include "imgui_internal.h"
+#include "window_fit.h"
 
 // Frequency step arrows: one step on press, then after 0.40 s one more step every 0.08 s.
 // At most one step per frame so a hitch does not jump many channels.
@@ -26,6 +27,54 @@ bool freqStepArrow(const char* id, ImGuiDir dir) {
     return false;
 }
 
+void restoreCursor(ImVec2 screenPos) {
+    ImGui::SetCursorScreenPos(screenPos);
+    // the spot came from the layout (GetCursorScreenPos after the last item): nothing is extended, so the check at End()/EndChild() is not wanted
+    ImGui::GetCurrentWindow()->DC.IsSetPos = false;
+}
+
+void keepWindowsReachable() {
+    ImGuiContext& g = *GImGui;
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    if (d.x < 64 || d.y < 64) return;   // minimised
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) return;   // not while the user moves one: it would fight the drag
+    const float grab = 4 * ImGui::GetFrameHeight();
+    for (ImGuiWindow* w : g.Windows) {
+        if (!w->WasActive || w->Hidden) continue;
+        if (w->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_Popup | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) continue;
+        const winfit::V2 p0{w->Pos.x, w->Pos.y};
+        const winfit::V2 p = winfit::reachablePos(p0, {w->Size.x, w->Size.y}, {d.x, d.y}, grab, w->TitleBarHeight);
+        if (winfit::moved(p, p0)) ImGui::SetWindowPos(w, ImVec2(p.x, p.y), ImGuiCond_Always);
+    }
+}
+
+bool comboTr(const char* label, int* v, std::initializer_list<const char*> items) {
+    const char* t[32];
+    int n = 0;
+    for (const char* s : items) if (n < 32) t[n++] = tr(s);
+    return ImGui::Combo(label, v, t, n);
+}
+
+ImVec2 fitButton(const char* label, float minW) {
+    return ImVec2(std::max(minW, ImGui::CalcTextSize(label, nullptr, true).x + 2 * ImGui::GetStyle().FramePadding.x), 0);
+}
+
+bool runningButton(const App& a, const char* label, bool small) {
+    const bool run = a.engine.running();
+    ImGui::BeginDisabled(!run);
+    const bool hit = small ? ImGui::SmallButton(label) : ImGui::Button(label);
+    ImGui::EndDisabled();
+    if (!run && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Start the receiver first"));
+    return hit && run;
+}
+
+void firstWindowSize(float w, float h) {
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    const winfit::V2 s = d.x > 0 && d.y > 0 ? winfit::firstSize({w, h}, {d.x, d.y}, 24 * gUi) : winfit::V2{w, h};
+    ImGui::SetNextWindowSize(ImVec2(s.x, s.y), ImGuiCond_FirstUseEver);
+}
+
+int gSpaceClaimFrame = -10;
 bool gTightTabs = false;
 void setUiLanguage(App& a, const std::string& code) {
     a.uiLang = code;
@@ -151,13 +200,14 @@ void handleFullscreenHotkeys() {
 bool pillButton(const char* label, bool selected, float padX) {
     ImGui::PushID(label);
     const ImVec2 ts = ImGui::CalcTextSize(label);
-    const ImVec2 sz(ts.x + padX * 2, ImGui::GetFrameHeight() - 3);
+    padX *= gUi;   // the padding is given in unscaled pixels
+    const ImVec2 sz(ts.x + padX * 2, ImGui::GetFrameHeight() - 3 * gUi);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     const bool clicked = ImGui::InvisibleButton("##pill", sz);
     const bool hov = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImU32 bg = selected ? pal::remap(IM_COL32(52, 92, 108, 255)) : hov ? IM_COL32(46, 56, 68, 255) : IM_COL32(30, 35, 42, 255);
-    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, pal::rnd(3.f));
+    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, pal::rnd(3.f * gUi));
     dl->AddText(ImVec2(p.x + padX, p.y + (sz.y - ts.y) * 0.5f), selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(176, 184, 194, 255), label);
     ImGui::PopID();
     return clicked;
@@ -167,7 +217,7 @@ bool pillButton(const char* label, bool selected, float padX) {
 int subNav(const char* id, int& cur, std::initializer_list<const char*> names) {
     ImGui::PushID(id);
     int i = 0;
-    for (const char* n : names) { if (i) sameLineIf(ImGui::CalcTextSize(n).x + 22, 6 * gUi); if (pillButton(n, cur == i)) cur = i; i++; }   // wraps in a narrow tab
+    for (const char* n : names) { if (i) sameLineIf(ImGui::CalcTextSize(n).x + 22 * gUi, 6 * gUi); if (pillButton(n, cur == i)) cur = i; i++; }   // wraps in a narrow tab
     ImGui::PopID();
     ImGui::Spacing();
     return cur;

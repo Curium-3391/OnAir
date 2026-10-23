@@ -368,7 +368,7 @@ void roomsPopups(App& a) {
     ImGui::EndDisabled();
     if (!canText) ImGui::TextDisabled("%s", tr("Needs Server > Send data to map server and Also share interesting ACARS messages."));
     ImGui::Dummy(ImVec2(0, 6 * gUi));
-    if (ImGui::Button(tr("Go live"), ImVec2(160 * gUi, 0))) {
+    if (ImGui::Button(tr("Go live"), fitButton(tr("Go live"), 160 * gUi))) {
         {
             std::lock_guard<std::mutex> lk(gMu);
             gTitle = title[0] ? title : "OnAir receiver";
@@ -380,6 +380,6 @@ void roomsPopups(App& a) {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button(tr("Cancel"), ImVec2(120 * gUi, 0))) ImGui::CloseCurrentPopup();
+    if (ImGui::Button(tr("Cancel"), fitButton(tr("Cancel"), 120 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }

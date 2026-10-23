@@ -180,7 +180,7 @@ void polar(const AdsbRangeStats& st) {
 
 void stationHealthWindow(App& a) {
     if (!a.stationHealthOpen) { if (S.th.joinable()) stopRun(); return; }
-    ImGui::SetNextWindowSize(ImVec2(760 * gUi, 640 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(760 * gUi, 640 * gUi);
     if (!ImGui::Begin(trw("Station health"), &a.stationHealthOpen)) { ImGui::End(); return; }
     const bool run = S.running.load();
     if (S.th.joinable() && !run) S.th.join();

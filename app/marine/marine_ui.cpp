@@ -332,9 +332,9 @@ void dscDetail(App& a, const DscCall* c, ImVec2 size) {
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 6 * gUi, p0.y + 6 * gUi));
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(24 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1);
+    if (ImGui::Button("+", ImVec2(24 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
     ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(24 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1);
+    if (ImGui::Button("-", ImVec2(24 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
     ImGui::PopStyleColor();
     ImGui::SameLine(0, 6 * gUi);
     adsbmap::tileControls("never the position itself");
@@ -875,8 +875,7 @@ void bandsView(App& a) {
         const std::string p = saveFileDialog("ship_names.tsv");
         if (!p.empty()) { char mb[600]; snprintf(mb, sizeof mb, writeText(p, db.exportTsv()) ? tr("saved %s") : tr("could not write %s"), p.c_str()); S.dbMsg = mb; }
     }
-    ImGui::SameLine();
-    if (!S.dbMsg.empty()) ImGui::TextDisabled("%s", S.dbMsg.c_str());
+    if (!S.dbMsg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.dbMsg.c_str()); }
     ImGui::TextDisabled("%s", tr("There is no bundled coast station list: no openly licensed one is available, so bring your own file."));
     ImGui::Spacing();
     ImGui::TextColored(pal::heading(), "%s", tr("Marine bands"));
@@ -972,9 +971,9 @@ void mapView(App& a) {
     if (!hover.empty() && ImGui::IsMouseHoveringRect(p0, ImVec2(p0.x + sz.x, p0.y + sz.y))) ImGui::SetTooltip("%s", hover.c_str());
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 6 * gUi, p0.y + 6 * gUi));
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(24 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1);
+    if (ImGui::Button("+", ImVec2(24 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
     ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(24 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1);
+    if (ImGui::Button("-", ImVec2(24 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
     ImGui::PopStyleColor();
     ImGui::SameLine(0, 6 * gUi);
     adsbmap::tileControls("never the position itself");

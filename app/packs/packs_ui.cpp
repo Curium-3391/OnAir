@@ -206,7 +206,7 @@ void body() {
     snprintf(fb, sizeof fb, "%s", u.filter.c_str());
     if (ImGui::InputTextWithHint("##packfilter", tr("Search"), fb, sizeof fb)) u.filter = fb;
     // the area around the station
-    if (ImGui::CollapsingHeader(tr("Map tiles around a position"))) {
+    if (ImGui::CollapsingHeader(trw("Map tiles around a position"))) {
         bool ch = false;
         ImGui::SetNextItemWidth(110 * gUi); ch |= ImGui::InputDouble(tr("Latitude"), &u.lat, 0, 0, "%.4f");
         ImGui::SameLine(); ImGui::SetNextItemWidth(110 * gUi); ch |= ImGui::InputDouble(tr("Longitude"), &u.lon, 0, 0, "%.4f");
@@ -233,7 +233,7 @@ void body() {
 
 void packsWindow(App& a) {
     if (!a.packsOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 520 * gUi);
     if (!ImGui::Begin(trw("Data packs"), &a.packsOpen)) { ImGui::End(); return; }
     body();
     ImGui::End();

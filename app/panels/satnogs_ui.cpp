@@ -170,7 +170,7 @@ void rebuild() {
 }
 
 void drawWindow(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(860 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(860 * gUi, 520 * gUi);
     if (!ImGui::Begin(trw("SatNOGS transmitters"), &a.satnogsOpen)) { ImGui::End(); return; }
     const double now = nowSec();
     if (ImGui::Button(tr("Refresh"))) startDownload();

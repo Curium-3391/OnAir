@@ -218,63 +218,63 @@ chdb::Submission buildSubmission() {
 }
 
 void shareDialog(App& a) {
-    if (sh.pending) { sh.pending = false; sh.open = true; sh.stage = 0; ImGui::OpenPopup("Share your scan"); }
-    ImGui::SetNextWindowSize(ImVec2(620 * gUi, 0));
-    if (!ImGui::BeginPopupModal("Share your scan", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (sh.pending) { sh.pending = false; sh.open = true; sh.stage = 0; ImGui::OpenPopup(trw("Share your scan")); }
+    ImGui::SetNextWindowSize(ImVec2(std::min(620 * gUi, ImGui::GetIO().DisplaySize.x - 32 * gUi), 0));
+    if (!ImGui::BeginPopupModal(trw("Share your scan"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     if (!sh.open) { ImGui::CloseCurrentPopup(); ImGui::EndPopup(); return; }
-    ImGui::PushTextWrapPos(600 * gUi);
+    ImGui::PushTextWrapPos(std::min(600 * gUi, ImGui::GetIO().DisplaySize.x - 52 * gUi));
     if (sh.stage == 0) {
-        ImGui::Text("The scan found %zu channel%s. Do you want to share the result?", sh.rows.size(), sh.rows.size() == 1 ? "" : "s");
-        ImGui::TextDisabled("It goes into a public list at github.com/%s that shows others which channels can be received where. You see exactly what is sent before anything leaves this computer, and nothing is sent without your click.", kRepoName);
+        ImGui::Text(sh.rows.size() == 1 ? tr("The scan found %zu channel. Do you want to share the result?") : tr("The scan found %zu channels. Do you want to share the result?"), sh.rows.size());
+        ImGui::TextDisabled(tr("It goes into a public list at github.com/%s that shows others which channels can be received where. You see exactly what is sent before anything leaves this computer, and nothing is sent without your click."), kRepoName);
         ImGui::Spacing();
-        if (ImGui::Button("  Yes, share  ")) {
+        if (ImGui::Button(tr("Yes, share"))) {
             sh.stage = 1;
             const std::string c = plat::prefs().getS("scanDbCountry", "");
             if (sh.country < 0) sh.country = countryIndex(c);
         }
-        ImGui::SameLine(); if (ImGui::Button("  No  ")) { sh.open = false; ImGui::CloseCurrentPopup(); }
-        ImGui::SameLine(); if (ImGui::Button("  No, and do not ask again  ")) { plat::prefs().setB("scanDbAsk", false); sh.open = false; ImGui::CloseCurrentPopup(); }
-        ImGui::TextDisabled("You can turn the question back on, or share later, in the Scan tab under Shared data.");
+        ImGui::SameLine(); if ((ImGui::Button(tr("No")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))) { sh.open = false; ImGui::CloseCurrentPopup(); }
+        ImGui::SameLine(); if (ImGui::Button(tr("No, and do not ask again"))) { plat::prefs().setB("scanDbAsk", false); sh.open = false; ImGui::CloseCurrentPopup(); }
+        ImGui::TextDisabled("%s", tr("You can turn the question back on, or share later, in the Scan tab under Shared data."));
     } else if (sh.stage == 1) {
-        ImGui::TextUnformatted("Where did you scan?");
-        if (filterCombo("country", sh.country >= 0 ? sh.countries[(size_t)sh.country].c_str() : "choose a country", sh.countries, sh.country, sh.cflt, sizeof sh.cflt, 360 * gUi)) { sh.city = -1; }
+        ImGui::TextUnformatted(tr("Where did you scan?"));
+        if (filterCombo("country", sh.country >= 0 ? sh.countries[(size_t)sh.country].c_str() : tr("choose a country"), sh.countries, sh.country, sh.cflt, sizeof sh.cflt, 360 * gUi)) { sh.city = -1; }
         loadCities();
         pollCities();
         if (sh.country >= 0) {
-            if (sh.cityJob && sh.cityJob->state == 0) ImGui::TextDisabled("loading the list of cities from github.com/%s ...", kRepoName);
-            else if (sh.cities.empty()) ImGui::TextColored(kWarn, "The list of cities could not be loaded (%s). Check the connection and try again.", sh.cityJob ? sh.cityJob->err.c_str() : "");
-            else filterCombo("city", sh.city >= 0 ? sh.cityNames[(size_t)sh.city].c_str() : "choose the nearest city", sh.cityNames, sh.city, sh.tflt, sizeof sh.tflt, 360 * gUi);
+            if (sh.cityJob && sh.cityJob->state == 0) ImGui::TextDisabled(tr("loading the list of cities from github.com/%s ..."), kRepoName);
+            else if (sh.cities.empty()) ImGui::TextColored(kWarn, tr("The list of cities could not be loaded (%s). Check the connection and try again."), sh.cityJob ? sh.cityJob->err.c_str() : "");
+            else filterCombo("city", sh.city >= 0 ? sh.cityNames[(size_t)sh.city].c_str() : tr("choose the nearest city"), sh.cityNames, sh.city, sh.tflt, sizeof sh.tflt, 360 * gUi);
         }
-        ImGui::TextDisabled("The city is only used to group channels; no position is sent.");
+        ImGui::TextDisabled("%s", tr("The city is only used to group channels; no position is sent."));
         ImGui::Spacing();
         ImGui::BeginDisabled(sh.city < 0);
-        if (ImGui::Button("  Submit  ")) sh.stage = 2;
+        if (ImGui::Button(tr("Submit"))) sh.stage = 2;
         ImGui::EndDisabled();
-        ImGui::SameLine(); if (ImGui::Button("  Cancel  ")) { sh.open = false; ImGui::CloseCurrentPopup(); }
+        ImGui::SameLine(); if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { sh.open = false; ImGui::CloseCurrentPopup(); }
     } else {
         const chdb::Submission s = buildSubmission();
         bool withSv = true;
         const auto parts = chdb::submissionParts(s, withSv);
-        ImGui::TextUnformatted("This is exactly the text that will be submitted:");
+        ImGui::TextUnformatted(tr("This is exactly the text that will be submitted:"));
         std::string text;
         for (size_t i = 0; i < parts.size(); i++) { if (i) text += "\n----- next issue -----\n"; text += chdb::issueBody(parts[i], withSv); }
         ImGui::PushFont(a.mono, 0);
         ImGui::InputTextMultiline("##txt", text.data(), text.size() + 1, ImVec2(-1, 200 * gUi), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
-        if (!withSv) ImGui::TextDisabled("The service lists are left out because the text is too long for one link.");
-        if (parts.size() > 1) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("The text is too long for one issue: it goes as %zu issues, one after the other.", parts.size()); ImGui::PopTextWrapPos(); }
-        { ImGui::PushTextWrapPos(0); ImGui::TextColored(kWarn, "GitHub shows your GitHub user name on the submission."); ImGui::PopTextWrapPos(); }
-        { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("The button opens your browser on GitHub with this text filled in; you press \"Submit new issue\" there. You need a free GitHub account."); ImGui::PopTextWrapPos(); }
+        if (!withSv) ImGui::TextDisabled("%s", tr("The service lists are left out because the text is too long for one link."));
+        if (parts.size() > 1) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled(tr("The text is too long for one issue: it goes as %zu issues, one after the other."), parts.size()); ImGui::PopTextWrapPos(); }
+        { ImGui::PushTextWrapPos(0); ImGui::TextColored(kWarn, "%s", tr("GitHub shows your GitHub user name on the submission.")); ImGui::PopTextWrapPos(); }
+        { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("The button opens your browser on GitHub with this text filled in; you press \"Submit new issue\" there. You need a free GitHub account.")); ImGui::PopTextWrapPos(); }
         ImGui::Spacing();
         if (sh.sent >= parts.size()) sh.sent = 0;
-        char lbl[64]; snprintf(lbl, sizeof lbl, parts.size() > 1 ? "  Open GitHub (issue %zu of %zu)  " : "  Open GitHub  ", sh.sent + 1, parts.size());
+        char lbl[160]; snprintf(lbl, sizeof lbl, parts.size() > 1 ? tr("Open GitHub (issue %zu of %zu)") : tr("Open GitHub"), sh.sent + 1, parts.size());
         if (ImGui::Button(lbl)) {
             openUrl(chdb::submissionUrl(parts[sh.sent], withSv));
             plat::prefs().setS("scanDbCountry", s.country); plat::prefs().setS("scanDbCity", s.city); plat::prefs().flush();
             if (++sh.sent >= parts.size()) { sh.sent = 0; sh.open = false; ImGui::CloseCurrentPopup(); }
         }
-        ImGui::SameLine(); if (ImGui::Button("  Back  ")) sh.stage = 1;
-        ImGui::SameLine(); if (ImGui::Button("  Cancel  ")) { sh.open = false; sh.sent = 0; ImGui::CloseCurrentPopup(); }
+        ImGui::SameLine(); if (ImGui::Button(tr("Back"))) sh.stage = 1;
+        ImGui::SameLine(); if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { sh.open = false; sh.sent = 0; ImGui::CloseCurrentPopup(); }
     }
     ImGui::PopTextWrapPos();
     ImGui::EndPopup();

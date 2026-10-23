@@ -655,7 +655,7 @@ void tvRecordingsTab(App& a) {
     tvPlaybackBar(a);
 
     // ---- scheduled
-    if (ImGui::CollapsingHeader(tr("Scheduled"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Scheduled"), ImGuiTreeNodeFlags_DefaultOpen)) {
         const auto jobs = s.rec.schedule().list();
         const auto conf = s.rec.conflicts();
         const auto act = s.rec.active();
@@ -726,7 +726,7 @@ void tvRecordingsTab(App& a) {
     }
 
     // ---- recorded
-    if (ImGui::CollapsingHeader(tr("Recorded"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Recorded"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (t - s.lastRecs > 5) { s.recs = listRecordings(s.cfg.dir); s.lastRecs = t; }
         if (s.recs.empty()) ImGui::TextDisabled("%s", tr("No recordings yet."));
         const auto act = s.rec.active();
@@ -773,7 +773,7 @@ void tvRecordingsTab(App& a) {
                 s.lastRecs = -1000; ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(tr("Cancel"))) ImGui::CloseCurrentPopup();
+            if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
         if (ImGui::SmallButton(tr("Open folder"))) dect2::openUrl(s.cfg.dir);
@@ -783,7 +783,7 @@ void tvRecordingsTab(App& a) {
     }
 
     // ---- settings
-    if (ImGui::CollapsingHeader(tr("Recorder settings"))) {
+    if (ImGui::CollapsingHeader(trw("Recorder settings"))) {
         bool ch = false;
         ImGui::SetNextItemWidth(360 * gUi);
         if (ImGui::InputText(tr("Folder"), s.dirBuf, sizeof s.dirBuf)) { s.cfg.dir = s.dirBuf; ch = true; }

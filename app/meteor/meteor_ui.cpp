@@ -202,13 +202,13 @@ void tab(App& a) {
                                                   "automatic picks from the channels the satellite sends. A channel alone is shown in grey.");
     flowNext(6 * gUi);
     ImGui::SetNextItemWidth(130 * gUi);
-    if (ImGui::Combo("##metenh", &S.enh, "As received\0Contrast stretch\0Thermal colours\0Stretch + brighten\0")) { plat::prefs().setI("meteorEnh", S.enh); plat::prefs().flush(); }
+    if (comboTr("##metenh", &S.enh, {N_("As received"), N_("Contrast stretch"), N_("Thermal colours"), N_("Stretch + brighten")})) { plat::prefs().setI("meteorEnh", S.enh); plat::prefs().flush(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enhancement of the picture (saved PNGs too). Contrast stretch: each channel's own 2-98 %% range to the full range.\nThermal colours colour a single (infrared) channel by temperature; pick a Channel view for it.");
     flowNext(8 * gUi);
     if (ImGui::Button("Save PNG")) savePng(t);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The picture as shown, at full size, in <data folder>/meteor/");
     flowNext(5 * gUi);
-    if (ImGui::Button("New picture") && a.engine.running()) { a.engine.meteor().clearImage(); S.msg.clear(); }
+    if (runningButton(a, tr("New picture"))) { a.engine.meteor().clearImage(); S.msg.clear(); }
     flowNext(8 * gUi);
     if (ImGui::Checkbox("Auto-save", &S.autoSave)) { plat::prefs().setB("meteorAutoSave", S.autoSave); plat::prefs().flush(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the picture as a PNG when no new lines have come for 90 seconds (the pass is over)");

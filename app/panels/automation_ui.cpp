@@ -625,7 +625,7 @@ void runConfirmPopup() {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(tr("Cancel"))) { S.confirmId.clear(); ImGui::CloseCurrentPopup(); }
+            if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { S.confirmId.clear(); ImGui::CloseCurrentPopup(); }
         }
         ImGui::EndPopup();
     }
@@ -657,7 +657,7 @@ void recipesPopup() {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 640 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 640 * gUi);
     if (!ImGui::Begin(trw("Automations"), &a.automationOpen)) { ImGui::End(); return; }
     if (ImGui::Button(tr("New rule"))) addItem(newRule());
     ImGui::SameLine();

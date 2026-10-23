@@ -335,7 +335,7 @@ void logTable() {
 }
 
 void scannerPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(760 * gUi, 620 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(760 * gUi, 620 * gUi);
     if (!ImGui::Begin(trw("Scanner (highly experimental)"), &a.scannerOpen)) { ImGui::End(); return; }
     ImGui::TextColored(pal::warnAmber(), "%s", tr("HIGHLY EXPERIMENTAL"));
     ImGui::SameLine();

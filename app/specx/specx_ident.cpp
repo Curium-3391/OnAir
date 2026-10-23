@@ -165,7 +165,7 @@ void resultView(App& a, const si::Result& res) {
             ImGui::PopID();
         }
     }
-    if (ImGui::TreeNode(tr("Why?"))) {
+    if (ImGui::TreeNode(trw("Why?"))) {
         if (ImGui::BeginTable("##sidf", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
             for (const auto& kv : si::featureRows(f)) row(kv.first.c_str(), kv.second);
             ImGui::EndTable();
@@ -325,9 +325,9 @@ void identifyWindow(App& a) {
             if (ImGui::Button(tr("Copy as text"))) { ImGui::SetClipboardText(si::toText(*shown).c_str()); I.note = tr("Copied"); }
             ImGui::SameLine();
         }
-        if (ImGui::Button(tr("Again")) && a.engine.running()) { I.have = I.haveAll = false; I.detail = -1; I.note.clear(); startCapture(a); }
+        if (runningButton(a, tr("Again"))) { I.have = I.haveAll = false; I.detail = -1; I.note.clear(); startCapture(a); }
         ImGui::SameLine();
-        if (!I.all) { if (ImGui::Button(tr("Identify all signals")) && a.engine.running()) identifyAll(a); ImGui::SameLine(); }
+        if (!I.all) { if (runningButton(a, tr("Identify all signals"))) identifyAll(a); ImGui::SameLine(); }
         if (ImGui::Button(tr("Close"))) I.open = false;
     }
     ImGui::End();

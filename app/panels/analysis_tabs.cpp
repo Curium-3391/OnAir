@@ -9,7 +9,7 @@ void syncTab(App& a) {
         { ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::heading(), "DVB-T synchronisation"); ImGui::PopTextWrapPos(); }
         if (rx.state == 0) { { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("looking for a cyclic prefix: the FFT size (2K/8K) and guard interval are found from the correlation of each symbol's guard with its end"); ImGui::PopTextWrapPos(); } return; }
         if (ImGui::BeginTable("synct", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 220);
+            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 220 * gUi);
             auto row = [&](const char* k, const char* fmt, auto... args) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("%s", k); ImGui::TableNextColumn(); char b[160]; snprintf(b, sizeof b, fmt, args...); ImGui::TextUnformatted(b); };
             row("FFT size / guard interval", "%d / %s (%d samples)", rx.fftN, dvbt::guardName(rx.giIdx), rx.guard);
             row("Carrier frequency offset", "%+.1f Hz", rx.cfoHz);
@@ -195,7 +195,7 @@ void signallingTab(App& a) {
         dvbt::Params q; q.mode = rx.dvbt.mode; q.guard = rx.dvbt.guard; q.mod = rx.dvbt.mod; q.hier = rx.dvbt.hier; q.crHp = rx.dvbt.crHp; q.crLp = rx.dvbt.crLp;
         { ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::heading(), "DVB-T transmission parameters (TPS, EN 300 744)"); ImGui::PopTextWrapPos(); }
         if (ImGui::BeginTable("tps", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 200);
+            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 200 * gUi);
             auto row = [&](const char* k, const char* fmt, auto... args) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("%s", k); ImGui::TableNextColumn(); char b[160]; snprintf(b, sizeof b, fmt, args...); ImGui::TextUnformatted(b); };
             row("FFT mode", "%s (%d carriers, %d data carriers per symbol)", modes[rx.dvbt.mode & 1], dvbt::carriersK(rx.dvbt.mode), dvbt::dataCarriers(rx.dvbt.mode));
             row("Guard interval", "%s of the useful symbol (%d samples)", dvbt::guardName(rx.dvbt.guard), dvbt::guardSamples(rx.dvbt.mode, rx.dvbt.guard));
@@ -495,14 +495,14 @@ void constellationsTab(App& a) {
         }
         ImGui::PushID("cview");
         if (ImGui::CalcTextSize("cellsdensityclusters").x + 6 * 8 + 8 * gUi <= side) {
-            if (pillButton("cells", a.constView == 0, 8)) a.constView = 0;
+            if (pillButton(tr("cells"), a.constView == 0, 8)) a.constView = 0;
             ImGui::SameLine(0, 4 * gUi);
-            if (pillButton("density", a.constView == 1, 8)) a.constView = 1;
+            if (pillButton(tr("density"), a.constView == 1, 8)) a.constView = 1;
             ImGui::SameLine(0, 4 * gUi);
-            if (pillButton("clusters", a.constView == 2, 8)) a.constView = 2;
+            if (pillButton(tr("clusters"), a.constView == 2, 8)) a.constView = 2;
         } else {   // narrower than the three buttons: the same choice as a drop-down under the plot
             ImGui::SetNextItemWidth(side);
-            ImGui::Combo("##cview", &a.constView, "cells\0density\0clusters\0");
+            comboTr("##cview", &a.constView, {N_("cells"), N_("density"), N_("clusters")});
         }
         ImGui::PopID();
         if (a.constView == 2 && ImGui::IsItemHovered()) ImGui::SetTooltip("One ring per transmitted point: centre = average received position, radius = 1 sigma of the error.\nColour is relative to the average ring: green = tighter, red = looser.\nAt this MER the rings overlap their neighbours; the LDPC code corrects the resulting errors.");
@@ -623,7 +623,7 @@ void fecTab(App& a) {
         if (!rx.dvbt.tpsOk) { ImGui::TextDisabled("waiting for TPS"); return; }
         const double tot = (double)(rx.dvbt.rsClean + rx.dvbt.rsCorrected + rx.dvbt.rsFailed);
         if (ImGui::BeginTable("fect", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 230);
+            ImGui::TableSetupColumn("k", ImGuiTableColumnFlags_WidthFixed, 230 * gUi);
             auto row = [&](const char* k, const char* fmt, auto... args) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("%s", k); ImGui::TableNextColumn(); char b[160]; snprintf(b, sizeof b, fmt, args...); ImGui::TextUnformatted(b); };
             row("Transport stream sync", "%s", rx.dvbt.fecSync ? "locked" : "searching (puncturing phase, byte phase)");
             row("Puncturing phase", "%d", rx.dvbt.punctPhase);
@@ -685,7 +685,7 @@ static void tsPidsView(App& a) {
     ImGui::Spacing();
     if (ImGui::BeginTable("pids", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp, ImVec2(0, -1))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, 70);
+        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
         ImGui::TableSetupColumn("content");
         ImGui::TableSetupColumn("packets", ImGuiTableColumnFlags_WidthFixed, 90 * gUi);
         ImGui::TableSetupColumn("rate", ImGuiTableColumnFlags_WidthFixed, 100 * gUi);

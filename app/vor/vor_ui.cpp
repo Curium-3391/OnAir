@@ -248,9 +248,9 @@ void fixMap(App& a, ImVec2 size, const dect2::NavStation* st[2], const dect2::Na
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 8 * gUi, p0.y + 8 * gUi));
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1);
+    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
     ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1);
+    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
     ImGui::PopStyleColor();
     ImGui::SameLine(0, 6 * gUi);
     adsbmap::tileControls("never the position itself");
@@ -286,7 +286,7 @@ void fixView(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The radio retunes between the two stations; each radial is kept from the end of its dwell.");
     ImGui::SameLine(); ImGui::SetNextItemWidth(120 * gUi);
     if (ImGui::SliderFloat("##dwell", &S.dwell, 4, 30, "dwell %.0f s")) save();
-    ImGui::SameLine();
+    if (f.ok) ImGui::SameLine();   // only before the text: with no fix the map below would start on this line
     if (f.ok) ImGui::Text("%.4f %.4f   95 %%: %.1f x %.1f km, crossing %.0f deg", f.lat, f.lon, 2.45 * f.sigMajorM / 1e3, 2.45 * f.sigMinorM / 1e3, f.crossDeg);
     fixMap(a, ImVec2(ImGui::GetContentRegionAvail().x, std::max(120 * gUi, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 3)), st, f);
     ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x - 120 * gUi));

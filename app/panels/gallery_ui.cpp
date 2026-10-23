@@ -724,7 +724,7 @@ void runDev() {
 void windowPanel(App& a) {
     load();
     runDev();
-    ImGui::SetNextWindowSize(ImVec2(960 * gUi, 620 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(960 * gUi, 620 * gUi);
     ImGui::SetNextWindowPos(ImVec2(260 * gUi, 60 * gUi), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(trw("Images"), &a.galleryOpen)) { ImGui::End(); return; }
     if (S.sel.empty() && !S.items.empty()) selectItem(S.items[0]);

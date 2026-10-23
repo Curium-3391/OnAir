@@ -107,7 +107,7 @@ void wfExportPopup(App& a) {
     ImGui::SameLine(0, 6);
     if (ImGui::RadioButton("Timelapse", e.timelapse)) e.timelapse = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("One row every few seconds, 512 rows to a frame: a long span in a short video");
-    ImGui::SetNextItemWidth(170);
+    ImGui::SetNextItemWidth(170 * gUi);
     if (e.timelapse) ImGui::SliderFloat("##wfxtl", &e.tlSec, 1.f, 60.f, "one row every %.0f s");
     else ImGui::SliderFloat("##wfxfr", &e.frameSec, 1.f, 30.f, "a frame every %.0f s");
     if (ImGui::Button("Choose folder...")) {
@@ -115,7 +115,7 @@ void wfExportPopup(App& a) {
         if (!d.empty()) snprintf(dirBuf, sizeof dirBuf, "%s", d.c_str());
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The folder for the PNG files (you can also type the path below)");
-    ImGui::SetNextItemWidth(260);
+    ImGui::SetNextItemWidth(260 * gUi);
     ImGui::InputText("##wfxdir", dirBuf, sizeof dirBuf);
     ImGui::EndDisabled();
 

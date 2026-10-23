@@ -43,9 +43,9 @@ void statusStateLabel(const App& a, bool live, const std::string& summaryText) {
 
 void mapCornerButtons(adsbmap::View& map, bool& follow, const char* tileNote) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) { map.zoom = std::min(adsbmap::kMaxZoom, map.zoom + 1); follow = false; }
+    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) { map.zoom = std::min(adsbmap::kMaxZoom, map.zoom + 1); follow = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
     ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) { map.zoom = std::max(adsbmap::kMinZoom, map.zoom - 1); follow = false; }
+    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) { map.zoom = std::max(adsbmap::kMinZoom, map.zoom - 1); follow = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
     ImGui::SameLine(0, 6 * gUi);
     if (ImGui::Button("fit")) follow = true;
     ImGui::PopStyleColor();

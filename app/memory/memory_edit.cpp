@@ -149,14 +149,14 @@ uint64_t editDialogs() {
         if (e.m.scan) { ImGui::SameLine(); ImGui::SetNextItemWidth(60 * gUi); ImGui::InputDouble(tr("dwell s"), &e.m.dwellSec, 0, 0, "%.1f"); }
         if (!e.err.empty()) ImGui::TextColored(pal::badRed(), "%s", e.err.c_str());
         ImGui::Spacing();
-        if (ImGui::Button(tr("Save"), ImVec2(90 * gUi, 0))) {
+        if (ImGui::Button(tr("Save"), fitButton(tr("Save"), 90 * gUi))) {
             const dect2::Memory m = collect();
             if (m.freqHz == 0) e.err = tr("Enter a frequency.");
             else if (e.isNew && memoryBank().findDuplicate(m.freqHz, m.mode)) { e.dupId = memoryBank().findDuplicate(m.freqHz, m.mode)->id; e.askDup = true; }
             else commit(m, false);
         }
         ImGui::SameLine(0, 8 * gUi);
-        if (ImGui::Button(tr("Cancel"), ImVec2(90 * gUi, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel"), fitButton(tr("Cancel"), 90 * gUi)) || (ImGui::IsKeyPressed(ImGuiKey_Escape) && !ImGui::IsPopupOpen("##mdup"))) ImGui::CloseCurrentPopup();
         if (e.askDup) { ImGui::OpenPopup("##mdup"); e.askDup = false; }
         if (ImGui::BeginPopupModal("##mdup", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
             const dect2::Memory* d = memoryBank().find(e.dupId);

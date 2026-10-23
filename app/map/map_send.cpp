@@ -752,7 +752,8 @@ void consentPopup(App& a) {
     ImGui::PopTextWrapPos();
     ImGui::Dummy(ImVec2(0, 8 * gUi));
     const bool wasOn = s.mapSend && s.mapConsent;   // sending was already on from an earlier answer
-    if (ImGui::Button(wasOn ? tr("Keep sending positions") : tr("Send positions"), ImVec2(190 * gUi, 0))) {
+    const char* sendLbl = wasOn ? tr("Keep sending positions") : tr("Send positions");
+    if (ImGui::Button(sendLbl, fitButton(sendLbl, 190 * gUi))) {
         ensureStation(s);
         s.mapConsent = true;
         s.mapMsgs = shareMsgs;
@@ -761,13 +762,13 @@ void consentPopup(App& a) {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button(tr("Not now"), ImVec2(100 * gUi, 0))) {
+    if (ImGui::Button(tr("Not now"), fitButton(tr("Not now"), 100 * gUi))) {
         stopSend(s);   // no connecting in this session; the question comes again at the next start
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Nothing is sent in this session. OnAir asks again the next time it starts."));
     ImGui::SameLine();
-    if (ImGui::Button(tr("No, do not ask again"), ImVec2(190 * gUi, 0))) {
+    if (ImGui::Button(tr("No, do not ask again"), fitButton(tr("No, do not ask again"), 190 * gUi))) {
         stopSend(s);
         s.mapDeclined = true;
         s.mapDeclinedVersion = ONAIR_VERSION;

@@ -692,7 +692,7 @@ void settingsPanel() {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", have ? tr("Already downloaded") : tr("English only. tiny is the fastest (real time on a laptop), small hears more words and needs a stronger computer."));
         }
-        if (ImGui::TreeNode(tr("Other languages (multilingual models)"))) {
+        if (ImGui::TreeNode(trw("Other languages (multilingual models)"))) {
             for (const char* id : {"tiny", "base", "small"}) {
                 const dect2::SpeechModel* m = dect2::findSpeechModel(id);
                 if (!m) continue;
@@ -748,22 +748,22 @@ void modelPopups() {
             ImGui::TextUnformatted(tr("OnAir asks the model repository (huggingface.co) for this one file and sends nothing else. The file is checked against a fixed SHA-256 checksum and thrown away if it does not match. The model is MIT licensed."));
             ImGui::PopTextWrapPos();
             ImGui::Spacing();
-            if (ImGui::Button(tr("Download"), ImVec2(140 * gUi, 0))) {
+            if (ImGui::Button(tr("Download"), fitButton(tr("Download"), 140 * gUi))) {
                 gDl.start(*U.askModel, modelsDir());
                 U.askModel = nullptr;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
         }
-        if (ImGui::Button(tr("Cancel##txask"), ImVec2(100 * gUi, 0))) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
+        if (ImGui::Button(tr("Cancel##txask"), fitButton(tr("Cancel##txask"), 100 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { U.askModel = nullptr; ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
     }
     if (U.askDelete) { ImGui::OpenPopup("##txdel"); U.askDelete = false; }
     if (ImGui::BeginPopupModal("##txdel", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted(tr("Delete all saved transcripts? This cannot be undone."));
-        if (ImGui::Button(tr("Delete all"), ImVec2(140 * gUi, 0))) { gStore.clear(); U.ver = ~0ull; ImGui::CloseCurrentPopup(); }
+        if (ImGui::Button(tr("Delete all"), fitButton(tr("Delete all"), 140 * gUi))) { gStore.clear(); U.ver = ~0ull; ImGui::CloseCurrentPopup(); }
         ImGui::SameLine();
-        if (ImGui::Button(tr("Cancel##txdelc"), ImVec2(100 * gUi, 0))) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Cancel##txdelc"), fitButton(tr("Cancel##txdelc"), 100 * gUi)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }
@@ -996,7 +996,7 @@ void captionsWindow(App& a) {
     bool open = true;
     char id[64];
     snprintf(id, sizeof id, "%s###caption%d", tr("Captions"), h->rxId);
-    ImGui::SetNextWindowSize(ImVec2(560 * gUi, 110 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(560 * gUi, 110 * gUi);
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->Pos.x + 80 * gUi, ImGui::GetMainViewport()->Pos.y + ImGui::GetMainViewport()->Size.y - 220 * gUi), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha((float)st.bgAlpha / 100.f);
     if (ImGui::Begin(id, &open, ImGuiWindowFlags_NoCollapse)) {
@@ -1048,7 +1048,7 @@ void captionsSettings(App& a) {
     (void)a;
     load();
     ImGui::Spacing();
-    if (!ImGui::TreeNode(tr("Auto subtitles (captions)"))) return;
+    if (!ImGui::TreeNode(trw("Auto subtitles (captions)"))) return;
     ImGui::PushTextWrapPos(0);
     ImGui::TextDisabled("%s", tr("Captions from the speech of the sound you hear: FM and AM broadcast, DAB, TV audio, amateur and digital voice. They are made here with the offline speech model, shown on the receiver, and kept only in memory (and in .srt / .vtt files if you save them). Music is skipped. Off until you turn it on."));
     ImGui::PopTextWrapPos();

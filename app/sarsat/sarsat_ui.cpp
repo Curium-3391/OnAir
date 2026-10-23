@@ -196,9 +196,9 @@ void mapView(App& a, ImVec2 size) {
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 8 * gUi, p0.y + 8 * gUi));
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) { S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); S.mapFollow = false; }
+    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) { S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); S.mapFollow = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
     ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) { S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); S.mapFollow = false; }
+    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) { S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); S.mapFollow = false; } if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
     ImGui::SameLine(0, 6 * gUi);
     if (ImGui::Button(tr("fit"))) S.mapFollow = true;
     ImGui::PopStyleColor();
@@ -238,8 +238,7 @@ void tab(App& a) {
     helpButton();
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Clear"))) a.engine.sarsat().clearResults();
-    ImGui::SameLine();
-    if (live(a)) ImGui::TextDisabled("%s", dect2::sarsatSummary(a.rx.sarsat).c_str());
+    if (live(a)) { ImGui::SameLine(); ImGui::TextDisabled("%s", dect2::sarsatSummary(a.rx.sarsat).c_str()); }
     const int v0 = S.view;
     subNav("sarv", S.view, {tr("Beacons"), tr("Map"), tr("Raw bits")});
     if (S.view != v0) plat::prefs().setI("sarsatView", S.view);

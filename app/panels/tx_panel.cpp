@@ -28,7 +28,8 @@ void banner(Note kind, const char* text) {
     ImGui::PushTextWrapPos(p0.x + w - pad - ImGui::GetWindowPos().x + ImGui::GetScrollX());
     ImGui::TextUnformatted(text);
     ImGui::PopTextWrapPos();
-    ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + h + 4 * gUi));
+    ImGui::SetCursorScreenPos(p0);
+    ImGui::Dummy(ImVec2(w, h));   // an item the size of the box: the window grows to hold it (a bare cursor move would not)
 }
 
 } // namespace txui
@@ -77,6 +78,7 @@ bool bigButton(const char* lab, bool stop, bool enabled, float w) {
 // Space / Esc: only when no text box wants the keyboard
 void shortcuts(App& a, TxUi& s, const DeviceInfo* radio, int conflict, const TxModeSpec* mode) {
     ImGuiIO& io = ImGui::GetIO();
+    gSpaceClaimFrame = ImGui::GetFrameCount();   // Space is the transmitter's here, not the receiver's
     if (io.WantTextInput || ImGui::IsPopupOpen("##txnotice") || ImGui::IsPopupOpen("##freqtype")) return;
     const bool running = s.session.running();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && (running || s.pendingStart)) stopTx(a, s, "(Esc)");
@@ -141,7 +143,7 @@ void body(App& a, bool inWindow) {
         std::string sig = std::string(tr("Signal")) + ": " + (c.mode ? c.mode->name : tr("none chosen")) + "###txsigsec";
         if (ImGui::CollapsingHeader(sig.c_str(), c.mode ? 0 : ImGuiTreeNodeFlags_DefaultOpen)) stepSignal(a, s, running, 280 * gUi);
         ImGui::Spacing();
-        if (ImGui::CollapsingHeader(tr("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) stepSend(a, s, c.radio, c.conflict, c.mode, running);
+        if (ImGui::CollapsingHeader(trw("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) stepSend(a, s, c.radio, c.conflict, c.mode, running);
         ImGui::EndChild();
     }
     txNoticePopup(s);
@@ -336,9 +338,9 @@ void txPanel(App& a) {
         ImGui::Dummy(ImVec2(1, 8 * gUi));
         ImGui::TextWrapped("%s", tr("The transmit panel is in its own window."));
         if (ImGui::Button(tr("Bring it back here"))) s.popped = false;
-        ImGui::SetNextWindowSize(ImVec2(560 * gUi, 720 * gUi), ImGuiCond_FirstUseEver);
+        firstWindowSize(560 * gUi, 720 * gUi);
         bool open = true;
-        if (ImGui::Begin(tr("Transmit##txpop"), &open, ImGuiWindowFlags_NoSavedSettings)) {
+        if (ImGui::Begin(trw("Transmit##txpop"), &open, ImGuiWindowFlags_NoSavedSettings)) {
             if (gBarFrame != ImGui::GetFrameCount()) fallbackBar(a);
             body(a, true);
         }

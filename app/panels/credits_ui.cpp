@@ -186,7 +186,7 @@ void creditsWindow(App& a) {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(std::min(900 * gUi, vp->WorkSize.x * 0.95f), std::min(620 * gUi, vp->WorkSize.y * 0.9f)), ImGuiCond_Appearing);
-    if (!ImGui::Begin(tr("Credits"), &a.creditsOpen)) { ImGui::End(); return; }
+    if (!ImGui::Begin(trw("Credits"), &a.creditsOpen)) { ImGui::End(); return; }
     if (ImGui::BeginTabBar("##credtabs")) {
         const int want = a.creditsTab; a.creditsTab = -1;
         if (typo::beginTabItem(tr("Contributors"), nullptr, want == 0 ? ImGuiTabItemFlags_SetSelected : 0)) { contributorsTab(); ImGui::EndTabItem(); }

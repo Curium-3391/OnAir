@@ -142,8 +142,8 @@ void exportButton(const char* label, const char* fmt, const char* ext) {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(980, 620), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("Messages"), &a.msgdbOpen)) { ImGui::End(); return; }
+    firstWindowSize(980 * gUi, 620 * gUi);
+    if (!ImGui::Begin(trw("Messages"), &a.msgdbOpen)) { ImGui::End(); return; }
     mdb::Db& db = mdb::global();
     if (!db.isOpen()) {
         ImGui::TextWrapped("%s %s", tr("The message database could not be opened:"), S.err.c_str());
@@ -151,39 +151,41 @@ void windowPanel(App& a) {
         return;
     }
     bool ch = false;
-    ImGui::SetNextItemWidth(260);
+    ImGui::SetNextItemWidth(260 * gUi);
     ch |= ImGui::InputTextWithHint("##q", tr("Search text (words, prefix*)"), S.text, sizeof S.text);
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(130);
+    ImGui::SetNextItemWidth(130 * gUi);
     ch |= ImGui::InputTextWithHint("##id", tr("Identity"), S.ident, sizeof S.ident);
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(130);
+    ImGui::SetNextItemWidth(130 * gUi);
     if (ImGui::BeginCombo("##mode", S.modeSel > 0 && S.modeSel <= (int)S.modes.size() ? S.modes[(size_t)S.modeSel - 1].c_str() : tr("All modes"))) {
         if (ImGui::Selectable(tr("All modes"), S.modeSel == 0)) { S.modeSel = 0; ch = true; }
         for (size_t i = 0; i < S.modes.size(); i++) if (ImGui::Selectable(S.modes[i].c_str(), S.modeSel == (int)i + 1)) { S.modeSel = (int)i + 1; ch = true; }
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(130);
-    ch |= ImGui::Combo("##range", &S.range, "All time\0Last hour\0Last 24 hours\0Last 7 days\0Last 30 days\0");
+    ImGui::SetNextItemWidth(130 * gUi);
+    {
+        const char* ranges[] = {tr("All time"), tr("Last hour"), tr("Last 24 hours"), tr("Last 7 days"), tr("Last 30 days")};
+        ch |= ImGui::Combo("##range", &S.range, ranges, IM_ARRAYSIZE(ranges));
+    }
     ImGui::SameLine();
     ch |= ImGui::Checkbox(tr("With position"), &S.posOnly);
     if (ch) { S.page = 0; S.dirty = true; }
     if (S.dirty || ImGui::GetTime() - S.lastQ > 3.0) { S.lastQ = ImGui::GetTime(); refresh(); }
 
     ImGui::TextDisabled("%lld %s, %lld %s, %.1f MB", (long long)S.matches, tr("matching"), (long long)S.stats.rows, tr("stored"), (double)S.stats.bytes / 1048576.0);
-    ImGui::SameLine();
-    if (S.page > 0 && ImGui::SmallButton(tr("Newer"))) { S.page--; S.dirty = true; }
-    ImGui::SameLine();
-    if ((S.page + 1) * kPage < S.matches && ImGui::SmallButton(tr("Older"))) { S.page++; S.dirty = true; }
+    // a SameLine only before a button that is drawn: otherwise the table below would start on this line
+    if (S.page > 0) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Newer"))) { S.page--; S.dirty = true; } }
+    if ((S.page + 1) * kPage < S.matches) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Older"))) { S.page++; S.dirty = true; } }
 
-    const float h = ImGui::GetContentRegionAvail().y - 112;
-    if (ImGui::BeginTable("msgs", 5, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, ImVec2(0, std::max(120.f, h)))) {
+    const float h = ImGui::GetContentRegionAvail().y - 112 * gUi;
+    if (ImGui::BeginTable("msgs", 5, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV, ImVec2(0, std::max(120.f * gUi, h)))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(tr("Time (UTC)"), ImGuiTableColumnFlags_WidthFixed, 150);
-        ImGui::TableSetupColumn(tr("Mode"), ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn(tr("Identity"), ImGuiTableColumnFlags_WidthFixed, 110);
-        ImGui::TableSetupColumn(tr("MHz"), ImGuiTableColumnFlags_WidthFixed, 70);
+        ImGui::TableSetupColumn(tr("Time (UTC)"), ImGuiTableColumnFlags_WidthFixed, 150 * gUi);
+        ImGui::TableSetupColumn(tr("Mode"), ImGuiTableColumnFlags_WidthFixed, 80 * gUi);
+        ImGui::TableSetupColumn(tr("Identity"), ImGuiTableColumnFlags_WidthFixed, 110 * gUi);
+        ImGui::TableSetupColumn(tr("MHz"), ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
         ImGui::TableSetupColumn(tr("Message"), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         auto drawRow = [](size_t i) {
@@ -209,7 +211,7 @@ void windowPanel(App& a) {
     }
     if (S.sel >= 0 && S.sel < (int)S.rows.size()) {
         const mdb::Record& r = S.rows[(size_t)S.sel];
-        ImGui::BeginChild("detail", ImVec2(0, 60), true);
+        ImGui::BeginChild("detail", ImVec2(0, 60 * gUi), true);
         std::string e = r.extra;
         for (char& c : e) if (c == '\n') c = ' ';
         ImGui::TextWrapped("%s  %s  %s", r.type.c_str(), r.hasPos ? (std::to_string(r.lat).substr(0, 8) + ", " + std::to_string(r.lon).substr(0, 8)).c_str() : "", e.c_str());
@@ -222,12 +224,12 @@ void windowPanel(App& a) {
     exportButton(tr("Export ADIF"), "adif", ".adi");
     ImGui::SameLine();
     ImGui::TextDisabled("%s", S.note.c_str());
-    if (ImGui::CollapsingHeader(tr("Storage"))) {
+    if (ImGui::CollapsingHeader(trw("Storage"))) {
         bool sc = false;
         sc |= ImGui::Checkbox(tr("Record decoded messages"), &S.record);
-        ImGui::SetNextItemWidth(120); sc |= ImGui::InputInt(tr("Most rows (thousands, 0 = no limit)"), &S.maxRowsK, 0, 0);
-        ImGui::SetNextItemWidth(120); sc |= ImGui::InputInt(tr("Size cap in MB (0 = none)"), &S.maxMB, 0, 0);
-        ImGui::SetNextItemWidth(120); sc |= ImGui::InputInt(tr("Keep days (0 = forever)"), &S.keepDays, 0, 0);
+        ImGui::SetNextItemWidth(120 * gUi); sc |= ImGui::InputInt(tr("Most rows (thousands, 0 = no limit)"), &S.maxRowsK, 0, 0);
+        ImGui::SetNextItemWidth(120 * gUi); sc |= ImGui::InputInt(tr("Size cap in MB (0 = none)"), &S.maxMB, 0, 0);
+        ImGui::SetNextItemWidth(120 * gUi); sc |= ImGui::InputInt(tr("Keep days (0 = forever)"), &S.keepDays, 0, 0);
         if (sc) {
             S.maxRowsK = std::max(0, S.maxRowsK); S.maxMB = std::max(0, S.maxMB); S.keepDays = std::max(0, S.keepDays);
             applySettings();
