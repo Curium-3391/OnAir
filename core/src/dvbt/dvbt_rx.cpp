@@ -87,6 +87,7 @@ struct DvbtReceiver::Impl {
     int back = 0;
     std::unique_ptr<Fft> fft;
     std::vector<cf32> fbuf;
+    std::vector<float> fre, fim;   // transform() works on these split arrays
     std::atomic<int> detect{0};
     std::atomic<bool> lpReq{false};
     int agreeCount = 0, agreeMode = -1, agreeGi = -1;
@@ -285,14 +286,27 @@ struct DvbtReceiver::Impl {
         cf32 tab[B];
         for (int i = 0; i < B; i++) tab[i] = cf32((float)std::cos(dph * i), (float)std::sin(dph * i));
         const cf32* src = &at(w);
+        // straight into the transform's split real / imaginary arrays (the same values Fft::forward made from fbuf, without its two copies)
+        fre.resize((size_t)N); fim.resize((size_t)N);
+        float* __restrict re = fre.data();
+        float* __restrict im = fim.data();
         for (int i0 = 0; i0 < N; i0 += B) {
             const double a = ph0 + dph * i0;
             const cf32 c0((float)std::cos(a), (float)std::sin(a));
-            for (int j = 0; j < B; j++) fbuf[i0 + j] = src[i0 + j] * (c0 * tab[j]);
+            for (int j = 0; j < B; j++) { const cf32 v = src[i0 + j] * (c0 * tab[j]); re[i0 + j] = v.real(); im[i0 + j] = v.imag(); }
         }
-        fft->forward(fbuf.data());
+        int lg = 0;
+        while ((1 << lg) < N) lg++;
+        fftSplit(re, im, lg, false);
+        if (!intLocked) for (int i = 0; i < N; i++) fbuf[(size_t)i] = cf32(re[i], im[i]);   // the integer search reads the whole unshifted transform
         Y.resize(K);
-        for (int k = 0; k < K; k++) Y[k] = fbuf[(((k + intShift - kc) % N) + N) % N];
+        // carrier k is bin (k + intShift - kc) mod N: at most two contiguous runs of bins (no two divisions per carrier)
+        {
+            const int b0 = (((intShift - kc) % N) + N) % N;
+            const int run1 = std::min(K, N - b0);
+            for (int k = 0; k < run1; k++) Y[(size_t)k] = cf32(re[b0 + k], im[b0 + k]);
+            for (int k = run1; k < K; k++) Y[(size_t)k] = cf32(re[k - run1], im[k - run1]);
+        }
     }
 
     // CP correlation around the expected position: timing error and fractional CFO
@@ -847,21 +861,36 @@ struct DvbtReceiver::Impl {
         g.resize((size_t)(K + 2) / 3, cf32(0, 0));
         interp.run(g, 3, K, N, tau0, H, 1.0);
         // ---- equalise the data carriers
-        if (roleMode != mode) { for (int l = 0; l < 4; l++) carrierRoles(mode, l, roleCache[l]); roleMode = mode; }   // the pattern repeats every 4 symbols
-        const std::vector<uint8_t>& roles = roleCache[symIdx % 4];
+        if (roleMode != mode) {   // the pattern repeats every 4 symbols: the data carriers of each of the four, in order
+            for (int l = 0; l < 4; l++) {
+                std::vector<uint8_t> roles;
+                carrierRoles(mode, l, roles);
+                dataIdx[l].clear();
+                for (int k = 0; k < K && k < (int)roles.size(); k++) if (roles[k] == 0) dataIdx[l].push_back(k);
+            }
+            roleMode = mode;
+        }
+        const std::vector<int>& dk = dataIdx[symIdx % 4];
         const int Nd = dataCarriers(mode);
+        if ((int)dk.size() < Nd) return;
         std::vector<cf32>& eq = scrEq;
         std::vector<float>& n0 = scrN0;
         eq.resize((size_t)Nd); n0.resize((size_t)Nd);
-        int di = 0;
-        for (int k = 0; k < K && di < Nd; k++) {
-            if (roles[k] != 0) continue;
-            const float g2 = std::max(1e-9f, std::norm(H[k]));
-            eq[di] = Yc[k] * std::conj(H[k]) / g2;
-            n0[di] = (float)(sigma2 / (2.0 * g2));
-            di++;
+        // the data carriers' channel and value side by side first, then one plain loop over them (the same operations, which now vectorise)
+        hD.resize((size_t)Nd); yD.resize((size_t)Nd);
+        for (int i = 0; i < Nd; i++) { hD[(size_t)i] = H[(size_t)dk[(size_t)i]]; yD[(size_t)i] = Yc[(size_t)dk[(size_t)i]]; }
+        {
+            const cf32* __restrict hp = hD.data();
+            const cf32* __restrict yp = yD.data();
+            cf32* __restrict ep = eq.data();
+            float* __restrict np = n0.data();
+            const double s2 = sigma2;
+            for (int i = 0; i < Nd; i++) {
+                const float g2 = std::max(1e-9f, std::norm(hp[i]));
+                ep[i] = yp[i] * std::conj(hp[i]) / g2;
+                np[i] = (float)(s2 / (2.0 * g2));
+            }
         }
-        if (di != Nd) return;
         est.stop();
         fecPush(eq.data(), n0.data(), symIdx);
         streaming = true;
@@ -897,8 +926,9 @@ struct DvbtReceiver::Impl {
     size_t lastTpsK = 0;
     std::vector<cf32> ceC, ceYc;   // estimateAndDecode()'s work buffers
     std::vector<cd> ceZ;
-    std::vector<uint8_t> roleCache[4];
+    std::vector<int> dataIdx[4];   // the data carriers of the four symbol patterns (estimateAndDecode)
     int roleMode = -1;
+    std::vector<cf32> hD, yD;
 
     // ------------------------------------------------------------------ the error correction stage
     // Demapping, Viterbi and Reed-Solomon of one symbol after another. Synchronous by default (feed() returns with everything decoded); with
