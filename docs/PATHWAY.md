@@ -460,3 +460,10 @@ No Dear ImGui docking branch on this machine (only master 1.92.2b and 1.87 copie
 ## 2026-10-23 Translations: about 220 entries in each of 12 catalogs (i18n-030)
 About 220 missing entries were added to each of the 12 catalogs in app/i18n (de, es, fr, hu, it, ja, lt, nl, pl, pt, ru, zh). All of it is machine-made and unreviewed by a native speaker; the entries are listed in app/i18n/unreviewed. New helpers: tools/i18n_missing.py (lists keys missing from a catalog), tools/i18n_keep_english.txt (keys that are meant to stay English), docs/I18N.md (how the catalogs work and how to review). Test: the i18n test reported all passed. Open: entries still identical to the English text in nl, fr, it and de need a manual look (some are legitimately the same word, some are probably untranslated). No native review has been done in any language.
 
+
+## 2026-10-23 perf2-hf-030 (parked)
+- Added tools/bench/bench_hf.cpp + bench_hf.sh (FT8/FT4/FT2/WSPR/JT65/JT9/Q65/JT4... N synthetic stations; prints CPU, cost, decode count, digest).
+- Build: `CORE_BUILD=/tmp/hambuild tools/bench/bench_hf.sh` (guarded); binary already built at /tmp/onair-bench-hf/bench_hf (hfdig sources of this tree linked ahead of the old lib).
+- No baselines recorded yet: run `bench_hf ft8 100 2`, `ft8 20 2`, ft4, wspr, jt65, jt9, q65 and note cost + digest before changing anything.
+- Next: profile FT8 with `sample`, look at candidate sync search, LDPC bp (hfdig_ftx_tables.cpp ldpcDecode), per-candidate allocations, threads.
+- Output must stay identical (digest, decode counts); then Monitor bands, PSK/JS8/CW/HFDL/ALE/SSTV benches.
