@@ -40,8 +40,8 @@ bool isUsState(const std::string& s) { return inList(up(s), kStates); }
 bool isVeProvince(const std::string& s) { return inList(up(s), kProv); }
 bool isArrlSection(const std::string& s) { return inList(up(s), kSections); }
 
-const std::vector<ContestDef>& contestDefs() {
-    static const std::vector<ContestDef> v = {
+const std::vector<KeyerContestDef>& keyerContestDefs() {
+    static const std::vector<KeyerContestDef> v = {
         {"cqww-rtty", "CQ WW RTTY", "CQ-WW-RTTY", {F::Rst, F::CqZone, F::State}, false},
         {"cqwpx-rtty", "CQ WPX RTTY", "CQ-WPX-RTTY", {F::Rst, F::Serial}, false},
         {"arrl-rtty", "ARRL RTTY Roundup", "ARRL-RTTY", {F::Rst, F::StateOrSerial}, false},
@@ -55,8 +55,8 @@ const std::vector<ContestDef>& contestDefs() {
     };
     return v;
 }
-const ContestDef* contestById(const std::string& id) {
-    for (const auto& d : contestDefs()) if (id == d.id) return &d;
+const KeyerContestDef* contestById(const std::string& id) {
+    for (const auto& d : keyerContestDefs()) if (id == d.id) return &d;
     return nullptr;
 }
 const char* contestFieldName(ContestField f) {
@@ -98,7 +98,7 @@ std::string ContestExchange::get(ContestField f) const {
     return "";
 }
 
-std::string contestExchangeText(const ContestDef& d, const ContestStation& s, int serial, const std::string& hhmm, bool twice) {
+std::string contestExchangeText(const KeyerContestDef& d, const ContestStation& s, int serial, const std::string& hhmm, bool twice) {
     std::string one;
     for (F f : d.fields) {
         std::string t;
@@ -127,7 +127,7 @@ std::string contestExchangeText(const ContestDef& d, const ContestStation& s, in
     return twice ? one + " " + one : one;
 }
 
-std::vector<ContestMacro> contestMacros(const ContestDef& d, const ContestStation& s, const std::string& call, const std::string& exch) {
+std::vector<ContestMacro> contestMacros(const KeyerContestDef& d, const ContestStation& s, const std::string& call, const std::string& exch) {
     const std::string me = up(s.myCall), dx = up(call);
     const bool cw = d.cwCut;
     std::vector<ContestMacro> m;
@@ -140,7 +140,7 @@ std::vector<ContestMacro> contestMacros(const ContestDef& d, const ContestStatio
     return m;
 }
 
-bool contestParseExchange(const ContestDef& d, const std::string& text, ContestExchange& out, std::string* why) {
+bool contestParseExchange(const KeyerContestDef& d, const std::string& text, ContestExchange& out, std::string* why) {
     out.v.clear();
     std::vector<std::string> w;
     for (std::string t : words(text)) {
