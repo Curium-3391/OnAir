@@ -184,7 +184,16 @@ double quickVoicing(const float* x, int n) {
 }
 
 float clamp16(float v) { return v > 32767.0f ? 32767.0f : (v < -32768.0f ? -32768.0f : v); }
-int16_t toS16(float v) { return (int16_t)std::lround(clamp16(v)); }
+// soft limiter above 28000: no hard clipping when a loud or damaged frame overshoots
+int16_t toS16(float v) {
+    const float a = v < 0 ? -v : v;
+    if (!(a <= 28000.0f)) {
+        const float t = (a > 1e9f ? 1e9f : a) - 28000.0f, k = 4767.0f;
+        const float y = 28000.0f + k * (t / (t + k));
+        v = v < 0 ? -y : y;
+    }
+    return (int16_t)std::lround(clamp16(v));
+}
 }  // namespace
 
 bool valid(const Config& c, std::string* why) {
@@ -312,18 +321,22 @@ struct Encoder::Impl {
         cur.resDb = core->residualDb();
         cur.hbDb = P.fs == 16000 ? hbe->levelDb() : 0.0;
         cur.hbTilt = P.fs == 16000 ? hbe->tiltDb() : 0.0;
+        cur.resDb = cur.resDb < 0.0 ? 0.0 : cur.resDb;   // the SID range starts at 0 dB
+        cur.hbDb = cur.hbDb < 0.0 ? 0.0 : cur.hbDb;
         if (!haveNoise) { noise = cur; haveNoise = true; }
         else {
-            for (int i = 0; i < kP; i++) noise.lsf[i] = 0.7 * noise.lsf[i] + 0.3 * cur.lsf[i];
-            noise.resDb = 0.7 * noise.resDb + 0.3 * cur.resDb;
-            noise.hbDb = 0.7 * noise.hbDb + 0.3 * cur.hbDb;
-            noise.hbTilt = 0.7 * noise.hbTilt + 0.3 * cur.hbTilt;
+            const double a = cfg.frameMs == 40 ? 0.75 : 0.85;   // about 130 ms averaging
+            for (int i = 0; i < kP; i++) noise.lsf[i] = a * noise.lsf[i] + (1 - a) * cur.lsf[i];
+            noise.resDb = a * noise.resDb + (1 - a) * cur.resDb;
+            noise.hbDb = a * noise.hbDb + (1 - a) * cur.hbDb;
+            noise.hbTilt = a * noise.hbTilt + (1 - a) * cur.hbTilt;
         }
         sinceSid += cfg.frameMs;
         double dl = 0;
         for (int i = 0; i < kP; i++) dl += (noise.lsf[i] - sidSent.lsf[i]) * (noise.lsf[i] - sidSent.lsf[i]);
-        const bool send = lastSent == FrameType::Speech || sinceSid >= 160 || std::fabs(noise.resDb - sidSent.resDb) > 3.0 ||
-                          std::fabs(noise.hbDb - sidSent.hbDb) > 4.5 || dl > 0.01;
+        // a SID on the first silent frame, then every 480 ms, or sooner when the background has clearly changed
+        const bool send = lastSent == FrameType::Speech || sinceSid >= 480 ||
+                          (sinceSid >= 80 && (std::fabs(noise.resDb - sidSent.resDb) > 4.0 || std::fabs(noise.hbDb - (sidSent.hbDb < 0.0 ? 0.0 : sidSent.hbDb)) > 6.0 || dl > 0.04));
         if (!send) { lastSent = FrameType::NoData; return FrameType::NoData; }
         uint8_t s5[5];
         sidQuant(noise, s5, sidSent);

@@ -411,7 +411,8 @@ double gcLevel(int bits, int j) {
     const double step = bits >= 5 ? 1.6 : bits == 4 ? 2.8 : 5.0;
     return (j - (n - 1) * 0.5) * step;
 }
-constexpr double kGcMean = 33.0;                          // mean innovation energy (dB per sample) the MA prediction centres on
+constexpr double kGcMean = 33.0;
+constexpr double kGpTame = 1.0;                          // mean innovation energy (dB per sample) the MA prediction centres on
 const double kGcPred[4] = {0.68, 0.58, 0.34, 0.19};       // MA prediction of the energy correction
 
 int lagMinUnits(int res) { return kPitMin * res; }
@@ -751,6 +752,7 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         for (int j = 0; j < ngc; j++) gcv[j] = base * kvPow10(gcLevel(P.gcBits, j) / 20.0);
         for (int i = 0; i < ngp; i++) {
             const double gp = gpLevel(P.gpBits, i);
+            if (gp > kGpTame && st_.gpPrev > kGpTame) continue;   // never two pitch gains above 1 in a row (decoder stability)
             for (int j = 0; j < ngc; j++) {
                 const double gc = gcv[j];
                 const double e = gp * gp * yy - 2.0 * gp * xy + gc * gc * zz - 2.0 * gc * xz + 2.0 * gp * gc * yz;
@@ -779,6 +781,10 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         st_.lagPrev = bu;
         float u[80];
         for (int n = 0; n < L; n++) u[n] = (float)gp * exc[pos + n] + (float)gc * c[n];
+        for (int n = 0; n < L; n++) {   // the same guard as the decoder (keeps both sides identical)
+            if (!(u[n] < 1e5f)) u[n] = 1e5f;
+            if (!(u[n] > -1e5f)) u[n] = -1e5f;
+        }
         std::memcpy(exc + pos, u, sizeof(float) * (size_t)L);
         float w[80];
         if (getenv("KVDBG")) {
@@ -890,6 +896,7 @@ void CoreDecoder::decode(const FrameQ* q, const bool* fcbBad, bool pf, float* ou
         } else {
             gp = gpLevel(P.gpBits, q->sub[s].gp);
             corr = gcLevel(P.gcBits, q->sub[s].gc);
+            if (gp > kGpTame && st_.gpPrev > kGpTame) gp = kGpTame;   // the encoder never sends this: a damaged frame
             if (lost_ > 0 && gp > 1.0) gp = 1.0;   // first good frame after a loss: the past excitation differs
         }
         gc = sq ? kvPow10((pred + corr - ec) / 20.0) : 0.0;
@@ -902,8 +909,16 @@ void CoreDecoder::decode(const FrameQ* q, const bool* fcbBad, bool pf, float* ou
         vs += gp;
         float u[80], sy[80];
         for (int n = 0; n < L; n++) u[n] = (float)gp * exc[pos + n] + (float)gc * c[n];
+        for (int n = 0; n < L; n++) {   // guards against damaged frames running the filters away
+            if (!(u[n] < 1e5f)) u[n] = 1e5f;
+            if (!(u[n] > -1e5f)) u[n] = -1e5f;
+        }
         std::memcpy(exc + pos, u, sizeof(float) * (size_t)L);
         iirA(aq, u, sy, L, st_.syn);
+        for (int k = 0; k < kP; k++) {
+            if (!(st_.syn[k] < 1e5f)) st_.syn[k] = 1e5f;
+            if (!(st_.syn[k] > -1e5f)) st_.syn[k] = -1e5f;
+        }
         if (pf) postfilter(aq, sy, out + s * L, L, Ti, gp);
         else std::memcpy(out + s * L, sy, sizeof(float) * (size_t)L);
     }
