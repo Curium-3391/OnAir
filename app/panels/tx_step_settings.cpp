@@ -30,12 +30,12 @@ void radioRow(App& a, TxUi& s, const DeviceInfo*& radio, bool running) {
     const std::vector<int> radios = txRadios(a);
     ImGui::BeginDisabled(running || noRadio(s));
     ImGui::SetNextItemWidth(std::max(160.f * gUi, ImGui::GetContentRegionAvail().x - 150 * gUi));
-    if (ImGui::BeginCombo(tr("Transmit radio"), radio ? radio->name.c_str() : tr("Choose a radio to transmit with."))) {
+    if (ImGui::BeginCombo(tr("Transmit radio"), radio ? txRadioLabel(*radio).c_str() : tr("Choose a radio to transmit with."))) {
         for (int i : radios) {
             const DeviceInfo& d = a.devices[(size_t)i];
             const int h = rxHolder(d);
             char nm[256];
-            if (h) snprintf(nm, sizeof nm, tr("%s (in use by RX %d)"), d.name.c_str(), h); else snprintf(nm, sizeof nm, "%s", d.name.c_str());
+            if (h) snprintf(nm, sizeof nm, tr("%s (in use by RX %d)"), txRadioLabel(d).c_str(), h); else snprintf(nm, sizeof nm, "%s", txRadioLabel(d).c_str());
             if (ImGui::Selectable(nm, radio == &d)) { s.radioKey = deviceClaimKey(d); radio = &d; s.gainSet = false; }
         }
         ImGui::EndCombo();
@@ -43,12 +43,16 @@ void radioRow(App& a, TxUi& s, const DeviceInfo*& radio, bool running) {
     ImGui::EndDisabled();
     if (radios.empty() && !noRadio(s)) {
         banner(Note::Info, tr("No radio that can transmit was found. Plug one in (HackRF, PlutoSDR, or a SoapySDR radio with a transmitter) and refresh the radio list. The test below needs no radio."));
-        int shown = 0;
-        for (const auto& d : a.devices) {
-            if (!d.isRadio() || d.canTransmit || shown >= 3) continue;
-            ImGui::TextDisabled("%s: %s", d.name.c_str(), txUnavailableReason(d).c_str());
-            shown++;
-        }
+    }
+    // receive-only radios: a short line with a toggle, not a wall of grey text
+    const std::vector<int> rxOnly = txReceiveOnlyRadios(a.devices);
+    if (!rxOnly.empty() && radios.empty() && !noRadio(s)) {
+        static bool showRxOnly = false;
+        ImGui::TextDisabled(rxOnly.size() == 1 ? tr("1 receive-only radio hidden") : tr("%d receive-only radios hidden"), (int)rxOnly.size());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(showRxOnly ? tr("hide##rxonly") : tr("show##rxonly"))) showRxOnly = !showRxOnly;
+        if (showRxOnly)
+            for (int i : rxOnly) ImGui::TextDisabled("%s", txUnavailableReason(a.devices[(size_t)i]).c_str());
     }
 }
 

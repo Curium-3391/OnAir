@@ -56,6 +56,10 @@ struct Out {
 };
 
 char gVersion[32] = ONAIR_VERSION;
+// An illegal instruction at start is nearly always a part built for newer processors (AVX2 on a 2nd-generation Core i5, #226): said in
+// plain words in the report, on standard error and (Windows) in a message box, as the user sees no console.
+[[maybe_unused]] const char kIllegalNote[] = "This computer's processor does not have an instruction a part of OnAir uses (most often AVX2, which Intel "
+                            "processors before 2013 and AMD before about 2015 lack). Please send this report: a build for older processors can be made.";
 bool gPrevCrashed = false;
 std::string gPrevReport;
 int gFailedStarts = 0;
@@ -100,6 +104,7 @@ void report(EXCEPTION_POINTERS* ep, const char* what) {
         }
         o.put("\nimage base of OnAir.exe: "); o.hex((uintptr_t)GetModuleHandleW(nullptr));
         o.put("\n");
+        if (r->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION || r->ExceptionCode == EXCEPTION_PRIV_INSTRUCTION) { o.put(kIllegalNote); o.put("\n"); }
         writeAll(h, o);   // the header first: it is kept even if walking the stack fails
 
         o.n = 0;
@@ -131,6 +136,11 @@ void report(EXCEPTION_POINTERS* ep, const char* what) {
         mei.ThreadId = GetCurrentThreadId(); mei.ExceptionPointers = ep; mei.ClientPointers = FALSE;
         MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), d, MiniDumpNormal, &mei, nullptr, nullptr);
         CloseHandle(d);
+    }
+    if (r->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION) {   // the program would vanish without a word (#226)
+        wchar_t msg[600];
+        MultiByteToWideChar(CP_UTF8, 0, kIllegalNote, -1, msg, 600);
+        MessageBoxW(nullptr, msg, L"OnAir cannot run on this processor", MB_OK | MB_ICONERROR | MB_TOPMOST);
     }
 }
 
@@ -175,10 +185,11 @@ const char* sigName(int s) {
 }
 
 void onSignal(int sig, siginfo_t* si, void*) {
-    char buf[256];
+    char buf[768];
     Out o{buf, 0, sizeof buf};
     o.put("OnAir "); o.put(gVersion); o.put(" crashed: signal "); o.dec(sig);
     o.put(" ("); o.put(sigName(sig)); o.put("), address "); o.hex((uintptr_t)(si ? si->si_addr : nullptr));
+    if (sig == SIGILL) { o.put("\n"); o.put(kIllegalNote); }
     o.put("\nstack:\n");
     void* frames[64];
     const int n = backtrace(frames, 64);

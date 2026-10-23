@@ -25,8 +25,14 @@ constexpr size_t kGpuBatch = 32;      // codewords the GPU takes at once
 
 namespace {
 constexpr size_t kQueueLimit = 256;   // codewords waiting for a worker before old ones are dropped (about 50 ms of the fastest modes, 8 MB)
-constexpr int kMaxIter = 60;
+// 36: with the corrected check rule (kAlpha below) the words that decode at all do so within it (64QAM 0.8 at the cliff: 17 failed of 100 at 35,
+// 15 at 60), and the hopeless ones near the cliff cost a third less CPU than at 60 (the real-time queue drops words when the workers fall behind)
+constexpr int kMaxIter = 36;
 constexpr int kSearchIter = 20;      // alignment attempts (32QAM, 4QAM-NR) give up sooner
+// The LDPC check rule: min-sum with the two-minimum correction (dect2/dsp/minsum_corr.h) and this factor, the same for the three rates. Measured on an
+// ideal channel at the receiver's cliffs (4QAM 0.4 / 0.6 / 0.8, 16QAM 0.6, 64QAM 0.8): failed words 27 / 14 / 44 / 11 / 60 (of 150 / 150 / 150 /
+// 100 / 100) against 53 / 39 / 64 / 23 / 78 for plain min-sum at its best factor (0.6): about 0.1 dB.
+constexpr float kAlpha = 0.68f;
 constexpr int kSearchEvery = 16;     // frames between alignment attempts that failed
 constexpr int kThrottleAfter = 24;   // failed codewords in a row before the decoder only probes
 constexpr int kProbeEvery = 8;
@@ -210,7 +216,7 @@ FecChain::Result FecChain::decode(const Job& j, LdpcCode::Decoder& dec, int maxI
     Result r;
     std::vector<uint8_t> info((size_t)code_.infoBits());
     const double t0 = nowSec();
-    const LdpcCode::Result lr = dec.decode(j.llr.data(), info.data(), maxIter);
+    const LdpcCode::Result lr = dec.decode(j.llr.data(), info.data(), maxIter, kAlpha, true);
     r.iterations = lr.iterations;
     r.ldpcSec = nowSec() - t0;
     if (!lr.ok) return r;
@@ -263,7 +269,7 @@ void FecChain::decodeBatch(std::vector<Job>& jobs, std::vector<Result>& out, Ldp
         std::vector<uint8_t> info(m * infoN), ok(m);
         std::vector<int> iters(m);
         const double t0 = wallSec();
-        if (GpuLdpc::instance().decodeQc(code_.qcTable(), llr.data(), (int)m, kMaxIter, info.data(), ok.data(), iters.data(), 0.6f)) {
+        if (GpuLdpc::instance().decodeQc(code_.qcTable(), llr.data(), (int)m, kMaxIter, info.data(), ok.data(), iters.data(), kAlpha, true)) {
             const double dt = wallSec() - t0;
             for (size_t i = 0; i < m; i++) {
                 Result r;
@@ -271,7 +277,8 @@ void FecChain::decodeBatch(std::vector<Job>& jobs, std::vector<Result>& out, Ldp
                 r.ldpcSec = dt / (double)m;
                 if (ok[i]) r = afterLdpc(jobs[onGpu[i]], &info[i * infoN], std::move(r));
                 out[onGpu[i]] = std::move(r);
-                done[onGpu[i]] = 1;
+                // a kernel without the correction (Vulkan) fails some words the CPU decoder gets: those go to the CPU as well
+                done[onGpu[i]] = ok[i] || GpuLdpc::instance().boxCorrKernels() ? 1 : 0;
             }
             gpuWords_ += m;
             compute_->report(true, 1e3 * dt / (double)m);
