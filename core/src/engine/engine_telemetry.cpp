@@ -317,7 +317,7 @@ int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     case 145: return pollStd(rxSb_, 145, t, seqs[140], &RxTelemetry::satbeacon);   // TV sat beacon decoder (slot 140)
     case 130: return pollStd(rxLtr_, 130, t, seqs[126], &RxTelemetry::ltr);     // LTR control channel (slot 126)
     case 131: return pollStd(rxEdacs_, 131, t, seqs[127], &RxTelemetry::edacs); // EDACS control channel (slot 127)
-    case 149: return pollStd(rxMarineVhf_, 149, t, seqs[141], &RxTelemetry::marinevhf);   // Marine VHF voice (slot 141)
+    case 156: return pollStd(rxMarineVhf_, 156, t, seqs[142], &RxTelemetry::marinevhf);   // Marine VHF voice (slot 142)
     default: return -1;
     }
 }

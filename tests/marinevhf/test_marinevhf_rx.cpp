@@ -92,7 +92,7 @@ static std::unique_ptr<MarineVhfReceiver> make() {
 int main() {
     // the tuning
     const ModeTuning t = marineVhfTuning();
-    CHECK(t.stdMode == 150 && std::string(t.id) == "marinevhf" && t.minSampleRate <= 250000 && t.sampleRate >= 6.5e6, "tuning");
+    CHECK(t.stdMode == 157 && std::string(t.id) == "marinevhf" && t.minSampleRate <= 250000 && t.sampleRate >= 6.5e6, "tuning");
 
     const std::vector<Tx> txs = {{156.800, 1.0, 3.0, 1000}, {156.300, 1.5, 2.5, 700}, {156.650, 4.0, 5.0, 1300}};
     const std::vector<cf32> x = synth(txs, 0.1f, 0.0436f);

@@ -621,7 +621,7 @@ bool MarineVhfReceiver::telemetry(MarineVhfTelemetry& out, uint64_t lastSeq) {
 
 ModeTuning marineVhfTuning() {
     ModeTuning t;
-    t.stdMode = 150;
+    t.stdMode = 157;
     t.id = "marinevhf";
     t.name = "Marine VHF";
     t.minMhz = 156.0;

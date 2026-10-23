@@ -45,7 +45,7 @@ struct State {
 };
 State S;
 
-bool live(const App& a) { return a.rx.standard == 149; }   // family 148, engine standard 150, active standard 149
+bool live(const App& a) { return a.rx.standard == 156; }   // family 155, engine standard 157, active standard 156
 
 mv::Region region() { return (mv::Region)std::max(0, std::min((int)mv::kRegionCount - 1, S.region)); }
 
@@ -485,7 +485,7 @@ void summary(const App& a, std::string& l1, std::string& l2) {
 void marineVhfJump(App& a, int number, char suffix) {
     load();
     S.pendNum = number; S.pendSuf = suffix;
-    selectMode(a, 148);
+    selectMode(a, 155);
 }
 
 extern const ModeUi kMarineVhfUi;

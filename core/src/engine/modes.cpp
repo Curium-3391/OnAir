@@ -690,7 +690,7 @@ std::string modeSummary(const RxTelemetry& t) {
     case 123: return kaalSummary(t.kaal);
     case 130: return ltrSummary(t.ltr);
     case 131: return edacsSummary(t.edacs);
-    case 149: return marineVhfSummary(t.marinevhf);
+    case 156: return marineVhfSummary(t.marinevhf);
     case 132: return kaitSummary(t.kait);
     case 124: return kavbSummary(t.kavb);
     case 134: return kawsSummary(t.kaws);

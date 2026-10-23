@@ -1,4 +1,4 @@
-// Marine VHF telemetry. RxTelemetry::marinevhf, engine standard 150, active standard 149 (family 148).
+// Marine VHF telemetry. RxTelemetry::marinevhf, engine standard 157, active standard 156 (family 155).
 #pragma once
 #include <cstdint>
 #include <cstdio>

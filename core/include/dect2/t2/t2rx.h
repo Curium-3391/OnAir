@@ -265,7 +265,7 @@ struct RxTelemetry {
     MptTelemetry mpt1327;       // valid when standard == 128 (MPT1327 trunking, family 127)
     FusionTelemetry fusion;     // valid when standard == 129 (Yaesu Fusion, family 128, stdMode 130)
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)
-    MarineVhfTelemetry marinevhf;   // valid when standard == 149 (Marine VHF voice, engine standard 150)
+    MarineVhfTelemetry marinevhf;   // valid when standard == 156 (Marine VHF voice, engine standard 157)
     EdacsTelemetry edacs;       // valid when standard == 131 (EDACS control channel, engine standard 132)
     SbasTelemetry sbas;         // valid when standard == 151 (SBAS, family 150, engine standard 152)
     ArgosTelemetry argos;       // valid when standard == 153 (Argos, engine standard 154)

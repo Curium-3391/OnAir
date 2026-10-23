@@ -19,19 +19,19 @@ static std::string readFile(const std::string& rel) {
 }
 
 int main() {
-    CHECK(dect2::marineVhfTuning().stdMode == 150, "std mode");
-    const dect2::ModeTuning* m = dect2::modeTuning(150);
+    CHECK(dect2::marineVhfTuning().stdMode == 157, "std mode");
+    const dect2::ModeTuning* m = dect2::modeTuning(157);
     CHECK(m && std::string(m->name) == "Marine VHF", "Marine VHF not registered");
     CHECK(dect2::modeTuningById("marinevhf") != nullptr, "id not registered");
     CHECK(m && m->minSampleRate <= 250000 && m->sampleRate >= 6.5e6, "rates");
 
     const std::string table = readFile("app/ui/mode_table.cpp");
-    CHECK(table.find("{148, \"Marine VHF\", 3,") != std::string::npos, "mode row for family 148 missing (Maritime group)");
+    CHECK(table.find("{155, \"Marine VHF\", 3,") != std::string::npos, "mode row for family 155 missing (Maritime group)");
     const std::string appH = readFile("app/app.h");
-    { const size_t q = appH.find("constexpr int kNumFamilies = "); CHECK(q != std::string::npos && atoi(appH.c_str() + q + 29) >= 149, "kNumFamilies does not cover family 148"); }
+    { const size_t q = appH.find("constexpr int kNumFamilies = "); CHECK(q != std::string::npos && atoi(appH.c_str() + q + 29) >= 156, "kNumFamilies does not cover family 148"); }
     CHECK(appH.find("void marineVhfJump(App& a, int channel") != std::string::npos, "marineVhfJump not declared");
     const std::string modeUi = readFile("app/panels/modeui.cpp");
-    CHECK(modeUi.find("case 148: return &kMarineVhfUi;") != std::string::npos, "family 148 not mapped");
+    CHECK(modeUi.find("case 155: return &kMarineVhfUi;") != std::string::npos, "family 155 not mapped");
     const std::string cm = readFile("CMakeLists.txt");
     CHECK(cm.find(" marinevhf)") != std::string::npos, "marinevhf not in DECT2_MODES");
     CHECK(cm.find("marine_vhf_channels.csv") != std::string::npos, "the channel table is not compiled in");
@@ -41,7 +41,7 @@ int main() {
     const std::string marineUi = readFile("app/marine/marine_ui.cpp");
     CHECK(marineUi.find("Listen on VHF channel") != std::string::npos && marineUi.find("marineVhfJump(a,") != std::string::npos, "the DSC screen has no jump to the channel");
     const std::string engine = readFile("core/src/engine/engine_telemetry.cpp");
-    CHECK(engine.find("case 149: return pollStd(rxMarineVhf_, 149") != std::string::npos, "engine poll case");
+    CHECK(engine.find("case 156: return pollStd(rxMarineVhf_, 156") != std::string::npos, "engine poll case");
 
     std::printf("%s: %d failure(s)\n", fails ? "test_marinevhf_mode FAILED" : "test_marinevhf_mode OK", fails);
     return fails ? 1 : 0;
