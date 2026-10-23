@@ -79,6 +79,12 @@ pub fn fiw_data(cycle: i32, frame: i32) -> u32 {
     f
 }
 
+/// The block information word and the first vector word of every page carry the same 4-bit check as the FIW (bits 0-3; the nibbles of the
+/// 21 data bits plus bit 20 sum to 0xF). Real recordings (issue #95, #261) confirm it on the BIW and on vector words.
+pub fn check_ok(f: u32) -> bool {
+    (fiw_sum(f) & 0xF) == 0xF
+}
+
 /// Checks a FIW and returns (cycle, frame) when the checksum is right.
 pub fn fiw_check(f: u32) -> Option<(i32, i32)> {
     if (fiw_sum(f) & 0xF) != 0xF {
@@ -188,7 +194,7 @@ pub fn decode_phase(bits: &[u8], out: &mut [Page], st: &mut PhaseStat) -> usize 
         }
     }
     let mut count = 0;
-    if fx[0] < 0 || f[0] == 0 || f[0] == 0x1F_FFFF {
+    if fx[0] < 0 || f[0] == 0 || f[0] == 0x1F_FFFF || !check_ok(f[0]) {
         return 0;
     }
     st.biw_ok = true;
@@ -226,6 +232,12 @@ pub fn decode_phase(bits: &[u8], out: &mut [Page], st: &mut PhaseStat) -> usize 
             continue;
         }
         let viw = f[j];
+        if !check_ok(viw) {
+            // a vector word whose check fails is not a vector (a mis-repaired word, or a field this decoder does not understand)
+            i += used;
+            j += used;
+            continue;
+        }
         let has_viw2 = long_addr && j + 1 < PHASE_WORDS && fx[j + 1] >= 0;
         let viw2 = if has_viw2 { f[j + 1] } else { 0 };
         let j1 = j;
@@ -256,38 +268,45 @@ pub fn decode_phase(bits: &[u8], out: &mut [Page], st: &mut PhaseStat) -> usize 
                 m.mtype = T_TONE;
             }
         } else if vtype == 5 || vtype == 0 {
-            // alphanumeric: the word at the start index is a header (continuation bit 10, fragment bits 11-12), not text; the text is in the words
-            // after it up to start + length - 1, three 7-bit characters per word (bits 0-6, 7-13, 14-20); in the first of them bits 0-6 are not
-            // text when the fragment field is 3 (a complete message); a character 3 is a filler. Fragments are not joined.
+            // alphanumeric: a header word (continuation bit 10, fragment bits 11-12), then the text, three 7-bit characters per word (bits 0-6,
+            // 7-13, 14-20); in the first text word bits 0-6 are not text when the fragment field is 3 (a complete message); a character 3 is a
+            // filler. The length counts the header. Short address: the header is the word at the start index and the text follows it. Long
+            // address: the header is the second vector word and the text starts at the start index (seen in real 3200/4 frames: with that
+            // reading the messages of a phase tile its message field exactly, with the header at the start index they overlap by one word).
+            // Fragments are not joined.
             let len = ((viw >> 14) & 0x7F) as usize;
-            if len < 1 || mw1 >= PHASE_WORDS {
+            if len < 1 || mw1 >= PHASE_WORDS || (long_addr && len < 2) {
                 continue;
             }
-            let mw2 = (mw1 + len - 1).min(PHASE_WORDS - 1);
+            let (hdr, hfx, t1, t2) = if long_addr {
+                (viw2, if has_viw2 { fx[j1 + 1] } else { -1 }, mw1, (mw1 + len - 2).min(PHASE_WORDS - 1))
+            } else {
+                (f[mw1], fx[mw1], mw1 + 1, (mw1 + len - 1).min(PHASE_WORDS - 1))
+            };
             if vtype == 0 {
                 m.mtype = T_SECURE;
                 m.set_text(b"secure, not shown");
             } else {
                 m.mtype = T_ALPHA;
-                if fx[mw1] < 0 {
+                if hfx < 0 {
                     m.damaged = true;
                 } else {
-                    fixed_bits += fx[mw1];
+                    fixed_bits += hfx;
                 }
-                let frag = if fx[mw1] < 0 { 3 } else { (f[mw1] >> 11) & 3 };
+                let frag = if hfx < 0 { 3 } else { (hdr >> 11) & 3 };
                 let mut b7 = Bits::new();
                 let put = |b7: &mut Bits, c: u32| {
                     for k in 0..7 {
                         b7.push(((c >> k) & 1) as u8);
                     }
                 };
-                for w in mw1 + 1..=mw2 {
+                for w in t1..=t2 {
                     if fx[w] < 0 {
                         m.damaged = true;
                         continue;
                     }
                     fixed_bits += fx[w];
-                    if w > mw1 + 1 || frag != 3 {
+                    if w > t1 || frag != 3 {
                         put(&mut b7, f[w] & 0x7F);
                     }
                     put(&mut b7, (f[w] >> 7) & 0x7F);
