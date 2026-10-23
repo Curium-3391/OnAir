@@ -3,6 +3,7 @@
 #include "dect2/voicekeys/key_persist.h"
 #include "dect2/mesh/mesh_crypto.h"
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -39,9 +40,13 @@ const char kMagic[6] = {'O','A','V','K','1','\n'};
 void setSecretProvider(SecretGet get, SecretSet set, SecretDel del) { gGet = std::move(get); gSet = std::move(set); gDel = std::move(del); }
 bool haveSecretProvider() { return (bool)gGet && (bool)gSet; }
 
-bool keychainMasterKey(std::vector<uint8_t>& out) {
+bool keychainMasterKey(std::vector<uint8_t>& out, bool createIfMissing) {
     if (!haveSecretProvider()) return false;
     if (gGet(kMasterAccount, out) && out.size() == 32) return true;
+    out.clear();
+    // the read can fail for other reasons than "no such item" (locked keychain, access denied): a new key would replace the old one and the
+    // existing key file would never open again, so a new key is made only when the caller says there is nothing to lose
+    if (!createIfMissing) return false;
     out.assign(32, 0);
     randomBytes(out.data(), 32);
     if (!gSet(kMasterAccount, out)) { out.clear(); return false; }
@@ -168,8 +173,10 @@ std::string decryptStore(const std::string& f, const std::vector<uint8_t>& maste
     std::vector<uint8_t> master;
     if (source == 1) {
         if (passphrase.empty()) return "this key file needs a passphrase";
+        // the round count is read from the file: an imported file with 4 billion rounds would hang the program, one with 0 would be a free guess
+        if (rounds < 1000 || rounds > 5000000) return "the key file is damaged";
         master.assign(32, 0);
-        pbkdf2HmacSha256((const uint8_t*)passphrase.data(), passphrase.size(), salt, 16, rounds ? rounds : 1, master.data(), 32);
+        pbkdf2HmacSha256((const uint8_t*)passphrase.data(), passphrase.size(), salt, 16, rounds, master.data(), 32);
     } else {
         if (master32.size() != 32) return "the keychain master key is unavailable";
         master = master32;
@@ -189,7 +196,16 @@ std::string decryptStore(const std::string& f, const std::vector<uint8_t>& maste
 
 std::string saveToFile(const std::string& path, const std::string& passphrase) {
     std::vector<uint8_t> master;
-    if (haveSecretProvider() && !keychainMasterKey(master)) return "could not reach the OS keychain";
+    if (haveSecretProvider()) {
+        // an existing key file that was sealed with the keychain key keeps that key: if it cannot be read now, save nothing
+        bool existingKeychainFile = false;
+        {
+            std::ifstream in(path, std::ios::binary);
+            char hdr[7] = {};
+            if (in && in.read(hdr, 7) && std::memcmp(hdr, kMagic, 6) == 0 && (uint8_t)hdr[6] == 0) existingKeychainFile = true;
+        }
+        if (!keychainMasterKey(master, !existingKeychainFile)) return existingKeychainFile ? "the OS keychain key for the existing key file cannot be read; nothing was saved" : "could not reach the OS keychain";
+    }
     std::string fileBytes;
     const std::string err = encryptStore(store().list(), master, passphrase, fileBytes);
     std::fill(master.begin(), master.end(), (uint8_t)0);
@@ -197,7 +213,12 @@ std::string saveToFile(const std::string& path, const std::string& passphrase) {
     std::ofstream o(path, std::ios::binary | std::ios::trunc);
     if (!o) return "could not open " + path + " for writing";
     o.write(fileBytes.data(), (std::streamsize)fileBytes.size());
-    return o ? std::string() : "could not write " + path;
+    const bool wrote = (bool)o;
+    o.close();
+#ifndef _WIN32
+    { std::error_code ec; std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write, std::filesystem::perm_options::replace, ec); }   // 0600
+#endif
+    return wrote ? std::string() : "could not write " + path;
 }
 
 std::string loadFromFile(const std::string& path, const std::string& passphrase) {
@@ -209,7 +230,7 @@ std::string loadFromFile(const std::string& path, const std::string& passphrase)
     bool needsPass = false;
     if (!fileNeedsPassphrase(f, needsPass)) return "not an OnAir key file";
     std::vector<uint8_t> master;
-    if (!needsPass) { if (!keychainMasterKey(master)) return "this key file needs the OS keychain, which is unavailable"; }
+    if (!needsPass) { if (!keychainMasterKey(master, false)) return "this key file needs the OS keychain, which is unavailable"; }
     std::vector<VoiceKey> keys;
     const std::string err = decryptStore(f, master, passphrase, keys);
     std::fill(master.begin(), master.end(), (uint8_t)0);

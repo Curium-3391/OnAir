@@ -8,6 +8,7 @@
 #include "dect2/voicekeys/key_persist.h"
 #include "dect2/mesh/mesh_crypto.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <random>
 
@@ -144,6 +145,13 @@ static void testPersist() {
     std::vector<VoiceKey> back;
     CHECK(decryptStore(file, {}, "correct horse", back).empty() && back.size() == 1 && back[0].name == "n1", "decrypt with right passphrase");
     CHECK(!decryptStore(file, {}, "wrong passphrase", back).empty(), "wrong passphrase rejected");
+    {   // the PBKDF2 round count (bytes 23..26: magic 6, flag 1, salt 16) comes from the file: absurd values are refused at once
+        std::string evil = file;
+        for (int i = 0; i < 4; i++) evil[23 + i] = (char)0xFF;
+        CHECK(!decryptStore(evil, {}, "correct horse", back).empty(), "4 billion rounds refused");
+        for (int i = 0; i < 4; i++) evil[23 + i] = 0;
+        CHECK(!decryptStore(evil, {}, "correct horse", back).empty(), "0 rounds refused");
+    }
 
     // keychain-style master key path
     std::vector<uint8_t> master(32); for (int i = 0; i < 32; i++) master[i] = (uint8_t)(i * 7 + 1);
@@ -154,6 +162,43 @@ static void testPersist() {
     CHECK(decryptStore(file2, master, "", back2).empty() && back2.size() == 1, "decrypt with master key");
     std::vector<uint8_t> wrongMaster = master; wrongMaster[0] ^= 1;
     CHECK(!decryptStore(file2, wrongMaster, "", back2).empty(), "wrong master key rejected");
+}
+
+static void testKeychainLoss() {
+    // a keychain read that fails (locked, denied) must not make a new master key: the old key file would never open again
+    KeyStore& s = KeyStore::instance();
+    s.clear();
+    VoiceKey k; k.name = "keep"; k.protocol = Protocol::Nxdn; k.algorithm = Algorithm::Scrambler; k.keyId = 1;
+    parseKeyHex(Algorithm::Scrambler, "1acf", k.key); s.add(k);
+    std::vector<uint8_t> stored;       // the "keychain"
+    bool failReads = false;
+    int sets = 0;
+    setSecretProvider([&](const std::string&, std::vector<uint8_t>& out) { if (failReads || stored.empty()) return false; out = stored; return true; },
+                      [&](const std::string&, const std::vector<uint8_t>& d) { stored = d; sets++; return true; });
+    const std::string path = std::string(::getenv("TMPDIR") ? ::getenv("TMPDIR") : "/tmp") + "/onair_vk_test_keys.oavk";
+    std::remove(path.c_str());
+    CHECK(saveToFile(path).empty() && sets == 1 && stored.size() == 32, "first save makes the key");
+    const std::vector<uint8_t> first = stored;
+    s.clear();
+    CHECK(loadFromFile(path).empty() && s.list().size() == 1, "load with the key");
+    // the keychain stops answering: load fails and nothing is replaced
+    failReads = true;
+    s.clear();
+    CHECK(!loadFromFile(path).empty() && sets == 1 && stored == first, "a failed read on load makes no new key");
+    // and a save over the existing keychain file is refused instead of replacing the key
+    s.add(k);
+    CHECK(!saveToFile(path).empty() && sets == 1 && stored == first, "a failed read on save makes no new key");
+    failReads = false;
+    s.clear();
+    CHECK(loadFromFile(path).empty() && s.list().size() == 1, "the old file still opens with the old key");
+    // with no file at all a new key may be made
+    std::remove(path.c_str());
+    stored.clear(); sets = 0;
+    s.add(k);
+    CHECK(saveToFile(path).empty() && sets == 1, "no file: a new key is made");
+    std::remove(path.c_str());
+    setSecretProvider({}, {}, {});
+    s.clear();
 }
 
 static void testPbkdf2() {
@@ -176,6 +221,7 @@ int main() {
     testStorePolicy();
     testCsv();
     testPersist();
+    testKeychainLoss();
     testPbkdf2();
     if (fails == 0) printf("voice_keys: all tests passed\n");
     else printf("voice_keys: %d FAILED\n", fails);
