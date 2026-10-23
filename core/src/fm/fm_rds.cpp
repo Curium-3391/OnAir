@@ -58,7 +58,7 @@ const char* rtPlusTypeName(int t) {
     static const char* const n[64] = {
         "Dummy", "Title", "Album", "Track", "Artist", "Composition", "Movement", "Conductor", "Composer", "Band", "Comment", "Genre",
         "News", "Local news", "Stock market", "Sport", "Lottery", "Horoscope", "Daily diversion", "Health", "Event", "Scene", "Cinema",
-        "Stupidity machine", "Date and time", "Weather", "Traffic", "Alarm", "Advertisement", "Website", "Other info",
+        "TV", "Date and time", "Weather", "Traffic", "Alarm", "Advertisement", "Website", "Other info",
         "Station (short)", "Station (long)", "Programme now", "Programme next", "Programme part", "Host", "Editorial staff", "Frequency",
         "Programme homepage", "Sub-channel", "Hotline phone", "Studio phone", "Phone", "Studio SMS", "SMS", "Hotline e-mail",
         "Studio e-mail", "E-mail", "MMS", "Chat", "Chat centre", "Vote question", "Vote centre", "Reserved", "Reserved", "Private",
