@@ -44,7 +44,7 @@ jobs:
             echo "ver=${base}" >> "$GITHUB_OUTPUT"
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             echo "base=${base}" >> "$GITHUB_OUTPUT"
-          elif [[ "$GITHUB_REF_NAME" == release-* ]]; then
+          elif [[ "$GITHUB_REF_NAME" == release-* && "$GITHUB_EVENT_NAME" == push ]]; then   # a run started by hand on a release-* branch builds only, it publishes nothing
             base="${GITHUB_REF_NAME#release-}"
             n=$(git rev-list --count HEAD)
             echo "beta=true" >> "$GITHUB_OUTPUT"
@@ -208,7 +208,7 @@ jobs:
     name: Attach to the release
     # macOS/Linux first; Windows attaches in attach-windows (long cross build, must not block the beta).
     needs: [version, macos, linux]
-    if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release-')) && needs.version.outputs.skip != 'true'
+    if: (startsWith(github.ref, 'refs/tags/v') || (startsWith(github.ref, 'refs/heads/release-') && github.event_name == 'push')) && needs.version.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -251,7 +251,7 @@ jobs:
     name: Attach Windows to the release
     needs: [version, publish, windows]
     if: |
-      (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release-')) &&
+      (startsWith(github.ref, 'refs/tags/v') || (startsWith(github.ref, 'refs/heads/release-') && github.event_name == 'push')) &&
       needs.windows.result == 'success'
     runs-on: ubuntu-24.04
     steps:
