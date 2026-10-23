@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <regex>
@@ -63,9 +64,16 @@ static int numberAfter(const std::string& text, const char* key) {
 int main(int argc, char** argv) {
     const bool markdown = argc > 1 && std::strcmp(argv[1], "--markdown") == 0;
     // the headers that hold the named family numbers
-    for (const char* h : {"core/include/dect2/railway/railway_modes.h", "core/include/dect2/horus/horus_modes.h",
-                          "core/include/dect2/lora/lora_modes.h", "core/include/dect2/nfc/nfc_modes.h"})
-        scanConstants(readFile(h));
+    {   // every core/include/dect2/<mode>/<x>_modes.h (railway, horus ...)
+        std::error_code ec;
+        for (auto it = std::filesystem::recursive_directory_iterator(std::string(DECT2_SOURCE_DIR) + "/core/include/dect2", ec);
+             !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+            const std::string fn = it->path().filename().string();
+            if (fn.size() > 8 && fn.compare(fn.size() - 8, 8, "_modes.h") == 0) {
+                std::ifstream in(it->path()); std::stringstream ss; ss << in.rdbuf(); scanConstants(ss.str());
+            }
+        }
+    }
     const int numFamilies = numberAfter(readFile("app/app.h"), "constexpr int kNumFamilies = ");
     const int pollSlots = numberAfter(readFile("core/include/dect2/engine/engine.h"), "kPollSeqSlots = ");
     CHECK(numFamilies > 0 && pollSlots > 0, "kNumFamilies (%d) or kPollSeqSlots (%d) not found", numFamilies, pollSlots);
@@ -73,23 +81,49 @@ int main(int argc, char** argv) {
     // 1. families: the rows of the mode table
     const std::string table = readFile("app/ui/mode_table.cpp");
     CHECK(!table.empty(), "app/ui/mode_table.cpp not read");
+    // A row with a subId (its 9th field, ModeDef::subId) is a protocol entry of a family (FT8 in HF digital, POCSAG in pagers ...):
+    // those share their family on purpose and must be unique as (family, subId) instead.
+    auto subIdOf = [&](size_t brace) -> std::string {
+        int depth = 0, field = 0; bool str = false; std::string cur;
+        for (size_t p = brace + 1; p < table.size(); p++) {
+            const char ch = table[p];
+            if (str) { if (ch == '\\') { cur += ch; cur += table[++p]; continue; } if (ch == '"') str = false; cur += ch; continue; }
+            if (ch == '"') { str = true; cur += ch; continue; }
+            if (ch == '(' || ch == '{') depth++;
+            if ((ch == ')' || ch == '}') && depth > 0) { depth--; cur += ch; continue; }
+            if (ch == '}' || (ch == ',' && depth == 0)) {
+                if (field == 8) {
+                    const size_t a = cur.find('"'), b = cur.rfind('"');
+                    return a != std::string::npos && b > a ? cur.substr(a + 1, b - a - 1) : std::string();
+                }
+                if (ch == '}') return std::string();
+                field++; cur.clear(); continue;
+            }
+            cur += ch;
+        }
+        return std::string();
+    };
     std::map<int, std::vector<std::string>> fam;
+    std::map<std::pair<int, std::string>, std::vector<std::string>> subs;
     {
         static const std::regex row(R"(\n\s*\{\s*([A-Za-z0-9_:]+(?:\s*[+-]\s*[0-9]+)?)\s*,\s*\"([^\"]*)\")");
         for (auto it = std::sregex_iterator(table.begin(), table.end(), row); it != std::sregex_iterator(); ++it) {
             int f = 0;
             const std::string expr = (*it)[1].str(), name = (*it)[2].str();
             if (!evalExpr(expr, f)) { CHECK(false, "mode row \"%s\": cannot read the family '%s'", name.c_str(), expr.c_str()); continue; }
-            fam[f].push_back(name);
+            const std::string sub = subIdOf(table.find('{', (size_t)it->position()));
+            if (sub.empty()) fam[f].push_back(name); else subs[{f, sub}].push_back(name);
         }
     }
+    for (const auto& [k, names] : subs)
+        if (names.size() > 1) CHECK(false, "protocol entry %d/%s is used by %zu mode rows", k.first, k.second.c_str(), names.size());
     CHECK(fam.size() > 100, "only %zu families read from the mode table", fam.size());
     for (const auto& [f, names] : fam) {
         if (names.size() > 1) {
             std::string all; for (const auto& n : names) all += " \"" + n + "\"";
             CHECK(false, "family %d is used by %zu mode rows:%s", f, names.size(), all.c_str());
         }
-        if (f != 999 && f != 19999) CHECK(f >= 0 && f < numFamilies, "family %d (%s) is outside 0 .. kNumFamilies-1 (%d)", f, names[0].c_str(), numFamilies);
+        if (f != 999 && f != 19999 && f < 20000) CHECK(f >= 0 && f < numFamilies, "family %d (%s) is outside 0 .. kNumFamilies-1 (%d)", f, names[0].c_str(), numFamilies);
     }
 
     // 2. engine standards: the tuning registry

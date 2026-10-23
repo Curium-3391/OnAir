@@ -37,8 +37,13 @@ Several branches picked numbers on their own; the later ones were moved (integ-3
 | P25 Phase 2 | 180 | 182 | 181 | 181 | mode-p25-edacs-030 | |
 | LoRaWAN (all channels) | 200 | 202 | 201 | 160 | mode-lora-030 | |
 | LoRa satellites | 201 | 203 | 202 | 161 | mode-lora-030 | |
+| DME | 121 | 123 | 122 | 162 | (0.2.9) | poll slot was 110, shared with DGPS: moved in 3.0 |
 | Plugins | 999 | 1001 | - | - | | |
 | Mode Builder | 19999 | - | - | - | mode-builder-030 | |
+| custom modes (Mode Builder) | 20000+ | family + 2 | - | - | mode-builder-030 | kCustomFamilyBase, saved by number in modes/registered.txt |
+
+Protocol entries (a row with a subId, such as FT8 in HF digital or POCSAG in pagers) share their family on purpose; the test checks
+that each (family, subId) pair is unique instead.
 
 `kNumFamilies` = 202, `kPollSeqSlots` = 182.
 
