@@ -108,7 +108,7 @@ int main() {
         CHECK(tel.voiceFrames == (uint64_t)nType[12] && tel.typeCount[1] == (uint64_t)nType[1], "type counters");
         CHECK(tel.snrDb > 15 && tel.snrDb < 26, "snr %.1f", tel.snrDb);
         // Phase B: ACARS in short burst data, one message every 2.25 s
-        CHECK(tel.acars.size() >= 2 && tel.acars[0].reg == ".A6-EDA" && tel.acars[0].label == "RA" &&
+        CHECK(tel.acars.size() >= 2 && tel.acars[0].reg == "A6-EDA" && tel.acars[0].label == "RA" &&
               tel.acars[0].text == "WX DXB 34C WIND 330/12KT VIS 10KM NOSIG QNH 1006", "%zu ACARS messages", tel.acars.size());
     }
     // other rates (the whole band each covers around 1622 MHz)
