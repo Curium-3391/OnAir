@@ -51,6 +51,7 @@ void AdsbDemod::configure(double rate) {
     samples_ = rate_ > 0 ? (uint64_t)std::llround(keepSec * rate_) : 0;
     reset();
     pw_.reserve(kPiece + (size_t)(spus_ * 140) + 64);
+    zs_.reserve(kPiece + (size_t)(spus_ * 140) + 64);
     cum_.reserve(kPiece + (size_t)(spus_ * 140) + 65);
     bin_.reserve(4 * 140 + kPiece * 4 / 8 + 64);
     score_.reserve(4 * 140 + kPiece * 4 / 8 + 64);
@@ -59,6 +60,7 @@ void AdsbDemod::configure(double rate) {
 void AdsbDemod::reset() {
     smpBase_ = samples_;
     pw_.clear();
+    zs_.clear();
     cum_.assign(1, 0.0);   // an empty buffer still has cum_[0]
     dcInit_ = false; dcRe_ = dcIm_ = 0;
     binBase_ = spb_ > 0 ? (int64_t)std::ceil((double)smpBase_ / spb_) : 0;   // first bin that starts inside the data
@@ -103,8 +105,10 @@ void AdsbDemod::pushSamples(const cf32* x, size_t m) {
     const float* xf = reinterpret_cast<const float*>(x);
     const size_t base = pw_.size();
     pw_.resize(base + m);
+    zs_.resize(base + m);
     cum_.resize(base + m);
     float* pw = pw_.data() + base;
+    cf32* zs = zs_.data() + base;
     const float beta = (float)std::min(0.5, 64.0 / (rate_ * 1e-3));
     for (size_t i = 0; i < m; i += 64) {
         const size_t c = std::min<size_t>(64, m - i);
@@ -124,6 +128,7 @@ void AdsbDemod::pushSamples(const cf32* x, size_t m) {
                 const float re = xr - dr, im = xi - di;
                 const float p = re * re + im * im;
                 pw[i + j + l] = p;
+                zs[i + j + l] = cf32(re, im);
                 bp4[l] += p; sr4[l] += xr; si4[l] += xi;
             }
         }
@@ -132,6 +137,7 @@ void AdsbDemod::pushSamples(const cf32* x, size_t m) {
             const float re = xr - dr, im = xi - di;
             const float p = re * re + im * im;
             pw[i + j] = p;
+            zs[i + j] = cf32(re, im);
             bp4[0] += p; sr4[0] += xr; si4[0] += xi;
         }
         float bp = (bp4[0] + bp4[1]) + (bp4[2] + bp4[3]), sr = (sr4[0] + sr4[1]) + (sr4[2] + sr4[3]), si = (si4[0] + si4[1]) + (si4[2] + si4[3]);
@@ -236,7 +242,9 @@ void AdsbDemod::makeBins() {
     // preamble score for every bin that has the 8 us of its preamble (32 bins) behind it
     const int64_t binEnd = binBase_ + (int64_t)bin_.size();
     const float* bn = bin_.data();
-    const float thr = pulseThreshold();
+    const bool legacy = kSum_ <= 0;
+    const float thr = legacy ? pulseThreshold() : n0_ * (1.0f + kMinP_ * cv_);
+    const float dThr = legacy ? 0.f : 2.0f * kSum_ * 0.58f * cv_ * n0_;   // pulse mean over quiet mean, in the units of `pulse` below (twice the window mean)
     int64_t b = scoreEnd_;
     const int64_t last = binEnd - 32;
     const size_t need = (size_t)std::max<int64_t>(0, last - binBase_);
@@ -267,7 +275,7 @@ void AdsbDemod::makeBins() {
                     for (int k = 20; k < 32; k++) tail += p[k];                            // 3 us of quiet before the data
                     const float q = (gap + tail) * (1.0f / 24.0f) * 2.0f;                  // mean of the 12 quiet windows, in the same units as pulse
                     const float qi = gap * (1.0f / 12.0f) * 2.0f;
-                    if (pulse > kGap_ * q && pulse > kGap_ * qi) s = (pulse - q) * 0.5f;
+                    if (pulse > kGap_ * q && pulse > kGap_ * qi && pulse - q > dThr) s = (pulse - q) * 0.5f;
                 }
             }
         }
@@ -285,7 +293,12 @@ void AdsbDemod::scanCandidates() {
         const float s = score_[(size_t)i];
         if (s <= 0) continue;
         auto at = [&](int64_t k) { return k >= 0 && k < (int64_t)score_.size() ? score_[(size_t)k] : 0.f; };
-        if (s >= at(i - 1) && s >= at(i - 2) && s > at(i + 1) && s > at(i + 2)) {
+        // a peak of the score. The looser detector also finds the preamble of a strong frame shifted by 1 us (two of the four pulses still hit),
+        // which then slices into garbage: its peak has to be the highest within 1.5 us
+        const int span = kSum_ > 0 ? 6 : 2;
+        bool peak = true;
+        for (int k = 1; k <= span && peak; k++) peak = s >= at(i - k) && s > at(i + k);
+        if (peak) {
             candidates_++;
             tryFrame(b);
         }
@@ -331,15 +344,37 @@ bool AdsbDemod::tryFrame(int64_t bin) {
         if (k < 6) gapIn += g;
     }
     gap /= 12; gapIn /= 6;
-    if (minH <= pulseThreshold() || pulse <= kGap_ * gap || pulse <= kGap_ * gapIn) return false;
+    const bool legacy = kSum_ <= 0;
+    if (legacy) {
+        if (minH <= pulseThreshold() || pulse <= kGap_ * gap || pulse <= kGap_ * gapIn) return false;
+    } else {
+        // the four pulses together against the quiet windows: with a noise window of standard deviation cv n0, the difference of the mean of 4 and
+        // the mean of 12 windows has about 0.58 cv n0. Each pulse on its own only has to be above the noise (a weak pulse is often below 3 n0).
+        const double sd = 0.58 * cv_ * n0_;
+        if (minH <= n0_ * (1.0 + kMinP_ * cv_) || pulse - gap <= kSum_ * sd || pulse <= kGap_ * gap || pulse <= kGap_ * gapIn) return false;
+        // the data: a real frame has a pulse in one half of every bit, noise has about the same power in both. Mean contrast of the first 56 bits
+        // against kData_ standard deviations of a noise window (noise alone: about 1.13, with about 0.11 of spread).
+        double c = 0;
+        for (int k = 0; k < 56; k++) {
+            const double s0 = x0 + (8.0 + k) * spus_;
+            c += std::fabs((F(s0 + hw) - F(s0)) - (F(s0 + 2 * hw) - F(s0 + hw)));
+        }
+        c /= 56.0 * hw;
+        if (c <= kData_ * cv_ * n0_) { dataRejects_++; return false; }
+    }
     preambles_++;
+    // A failure is only counted (the "failed the CRC" figure, and the sign of activity on the channel) for a preamble that would also have passed
+    // the stricter test of before 3.0: the looser one finds many weak candidates that the figure would otherwise be full of.
+    const bool countable = legacy || (minH > pulseThreshold() && pulse > kGap_ * gap && pulse > kGap_ * gapIn);
 
     AdsbRaw raw;
     const double nz = std::max((double)n0_, 1e-12);
     const double sig = std::max(pulse - nz, 1e-12);
     const float levelDbfs = (float)(10.0 * std::log10(sig));
     const float snrDb = (float)(10.0 * std::log10(sig / nz));
-    const bool worth = snrDb >= 6.0f;      // below this a frame that fails the CRC is not tried again with other settings
+    // below this a frame that fails the CRC is not tried again with other settings. The older rule used the SNR per sample, which at high sample
+    // rates (more noise per sample) left out frames that are well above the threshold in 2 MHz.
+    const bool worth = legacy ? snrDb >= 6.0f : 10.0 * std::log10(sig / (nz * std::max(1e-3, (double)cv_ * cv_))) >= kWorthDb_;
 
     // The first 56 bits of the data, with a window of `w` samples centred on each half microsecond slot, starting at x. Collects the energy that is
     // in the winning half of every bit: the quantity that timing should maximise.
@@ -372,10 +407,20 @@ bool AdsbDemod::tryFrame(int64_t bin) {
     };
     auto attempt = [&](double x, double w, bool last, double tie = 0.0) {
         slice(raw, x, w, tie);
-        return sink_ ? sink_(raw, last) : false;
+        return sink_ ? sink_(raw, last && countable) : false;
     };
 
-    bool good = attempt(x0, hw, !worth);
+    bool good = coherentFirst_ ? (slice(raw, x0, hw, 0.0), false) : attempt(x0, hw, !worth && !coherent_);
+    // the coherent slicer, guided by the bits just sliced: helps most near the threshold, where the power slicer loses about 1.5 dB
+    if (!good && coherent_) {
+        AdsbRaw guide = raw, isi;
+        if (sliceCoherent(raw, x0, hw, guide, &isi)) {
+            good = sink_ ? sink_(raw, false) : false;
+            // the same halves, with the smearing of each pulse into its neighbours taken into account (sequence estimation)
+            if (!good && std::memcmp(isi.bytes, raw.bytes, 14) != 0) { raw = isi; good = sink_ ? sink_(raw, !worth && countable) : false; }
+            else if (!good && !worth && sink_) good = sink_(raw, countable);
+        } else if (!worth && sink_) good = sink_(raw, countable);   // the failure is counted once
+    }
     if (!good && worth) {
         // timing again from the data: the shift that puts the most energy into the winning half of each of the first 56 bits and the preamble
         double bestE = -1, xd = x0;
@@ -397,6 +442,210 @@ bool AdsbDemod::tryFrame(int64_t bin) {
     return good;
 }
 
+
+// Coherent slicing. The pulses of one reply come from one oscillator: within the 120 us of a frame they have the same phase apart from the carrier
+// offset (transponders may be up to 1 MHz off). The offset comes from the lag-1 products of the samples inside the pulses that the power slicer found
+// (`guide`), the samples are turned back by it, and every half bit is the complex integral of its window instead of the integral of the power. A
+// phase reference from the pulses around each bit (the preamble and the guide's pulses, 32 us of them) then gives a real number per bit: the difference
+// of the two halves along the reference. Noise outside the phase of the signal no longer counts, which is the coherent detection gain (about 1.5 dB
+// in bit error rate near the threshold). Returns false when the frame cannot be sliced (not enough samples).
+bool AdsbDemod::sliceCoherent(AdsbRaw& r, double x, double w, const AdsbRaw& guide, AdsbRaw* isi) {
+    const double hw = 0.5 * spus_;
+    const int64_t s0 = (int64_t)std::floor(x) - 2;
+    const int64_t s1 = (int64_t)std::ceil(x + 120.0 * spus_) + 3;
+    if (s0 < 0 || s1 >= (int64_t)zs_.size()) return false;
+    const cf32* z = zs_.data() + s0;
+    const size_t L = (size_t)(s1 - s0);
+    auto bitOf = [&](int k) { return (guide.bytes[k >> 3] >> (7 - (k & 7))) & 1; };
+    const int nb = bitOf(0) ? 112 : 56;   // the guide's format: DF 16 and up are long, the others short (the rest of a short one is noise)
+    // pulse windows (start, in local samples): the preamble's four, then one per bit
+    static const double pre[4] = {0.0, 1.0, 3.5, 4.5};
+    auto pulseStart = [&](int i) -> double {   // i < 4: preamble pulse, otherwise bit i - 4
+        if (i < 4) return x + pre[i] * spus_ - (double)s0;
+        const int k = i - 4;
+        return x + (8.0 + k) * spus_ + (bitOf(k) ? 0.0 : hw) - (double)s0;
+    };
+    // the carrier offset: lag-1 products over the samples well inside the pulses
+    std::complex<double> R(0, 0);
+    for (int i = 0; i < 4 + nb; i++) {
+        const double a = pulseStart(i);
+        const int n0 = (int)std::ceil(a + 0.1 * hw), n1 = (int)std::floor(a + 0.9 * hw);
+        for (int n = std::max(n0, 0); n < n1 && n + 1 < (int)L; n++) {
+            const cf32 p = z[n + 1] * std::conj(z[n]);
+            R += std::complex<double>(p.real(), p.imag());
+        }
+    }
+    const double om = std::arg(R);    // radians per sample
+    // derotate and integrate (the same straight-line model between samples as the power integral)
+    ly_.resize(L); lc_.resize(L);
+    {
+        const std::complex<double> st = std::polar(1.0, -om);
+        std::complex<double> ph(1, 0);
+        for (size_t n = 0; n < L; n++) {
+            const std::complex<double> v = std::complex<double>(z[n].real(), z[n].imag()) * ph;
+            ly_[n] = cf32((float)v.real(), (float)v.imag());
+            ph *= st;
+            if ((n & 255) == 255) ph /= std::abs(ph);
+        }
+        lc_[0] = 0;
+        for (size_t n = 0; n + 1 < L; n++) lc_[n + 1] = lc_[n] + 0.5 * (std::complex<double>(ly_[n].real(), ly_[n].imag()) + std::complex<double>(ly_[n + 1].real(), ly_[n + 1].imag()));
+    }
+    auto Fc = [&](double xl) {
+        if (xl < 0) xl = 0;
+        if (xl > (double)(L - 2)) xl = (double)(L - 2);
+        const size_t j = (size_t)xl;
+        const double f = xl - (double)j;
+        const std::complex<double> y0(ly_[j].real(), ly_[j].imag()), y1(ly_[j + 1].real(), ly_[j + 1].imag());
+        return lc_[j] + f * y0 + 0.5 * f * f * (y1 - y0);
+    };
+    // the two halves of every bit, and the pulses of the preamble
+    std::complex<double> A1[112], A0[112], P[4 + 112];
+    for (int i = 0; i < 4; i++) { const double a = pulseStart(i); P[i] = Fc(a + 0.5 * hw + 0.5 * w) - Fc(a + 0.5 * hw - 0.5 * w); }
+    for (int k = 0; k < 112; k++) {
+        const double cc = x + (8.0 + k) * spus_ + 0.5 * hw - (double)s0;
+        A1[k] = Fc(cc + 0.5 * w) - Fc(cc - 0.5 * w);
+        A0[k] = Fc(cc + hw + 0.5 * w) - Fc(cc + hw - 0.5 * w);
+    }
+    int bits[112];
+    for (int k = 0; k < 112; k++) bits[k] = bitOf(k);
+    // The lag-1 estimate is coarse (a pulse holds only a few samples: at 10 dB it is tens of kHz off, which turns the phase by radians over the
+    // frame). The fine offset: the turn per microsecond that lines up the pulses of the whole frame (the preamble and the guide's pulses), searched
+    // over +-1.2 rad/us (+-190 kHz) and refined on a parabola; the halves are then turned back by it at their centres.
+    {
+        double tc[4 + 112];
+        std::complex<double> Q[4 + 112];
+        for (int i = 0; i < 4; i++) { Q[i] = P[i]; tc[i] = (x + pre[i] * spus_ + 0.5 * hw - (double)s0) / spus_; }
+        for (int k = 0; k < nb; k++) { Q[4 + k] = bits[k] ? A1[k] : A0[k]; tc[4 + k] = (x + (8.0 + k + (bits[k] ? 0.25 : 0.75)) * spus_ - (double)s0) / spus_; }
+        const double t0 = tc[0];
+        auto power = [&](double d) {
+            std::complex<double> s(0, 0);
+            for (int i = 0; i < 4 + nb; i++) s += Q[i] * std::polar(1.0, -d * (tc[i] - t0));
+            return std::norm(s);
+        };
+        // the pulse centres lie on a grid of 0.25 us: one FFT of the pulses placed on that grid gives the whole search at once
+        const int N = 2048;
+        fftBuf_.assign(N, cf32(0, 0));
+        for (int i = 0; i < 4 + nb; i++) {
+            const int m = (int)std::lround(4.0 * (tc[i] - t0));
+            if (m >= 0 && m < N) fftBuf_[(size_t)m] += cf32((float)Q[i].real(), (float)Q[i].imag());
+        }
+        fft_.forward(fftBuf_.data());
+        const int K = 98;                                    // +-1.2 rad/us: d = 8 pi k / N rad/us for bin k
+        double best = -1; int bi = 0;
+        auto at = [&](int k) { return (double)std::norm(fftBuf_[(size_t)((k + N) % N)]); };
+        for (int k = -K; k <= K; k++) { const double v = at(k); if (v > best) { best = v; bi = k; } }
+        double kf = bi;
+        {
+            const double y0 = at(bi - 1), y1 = at(bi), y2 = at(bi + 1), den = y0 - 2 * y1 + y2;
+            if (den < 0) kf += 0.5 * (y0 - y2) / den;
+        }
+        double d = 8.0 * M_PI * kf / N;
+        if (power(-d) > power(d)) d = -d;                    // whichever sign convention the FFT has
+        for (int i = 0; i < 4; i++) P[i] *= std::polar(1.0, -d * (tc[i] - t0));
+        for (int k = 0; k < 112; k++) {
+            A1[k] *= std::polar(1.0, -d * ((x + (8.0 + k + 0.25) * spus_ - (double)s0) / spus_ - t0));
+            A0[k] *= std::polar(1.0, -d * ((x + (8.0 + k + 0.75) * spus_ - (double)s0) / spus_ - t0));
+        }
+    }
+    std::complex<double> refs[112];
+    // two passes: the reference from the guide's decisions, then from the coherent decisions
+    for (int pass = 0; pass < 2; pass++) {
+        for (int k = 0; k < 112; k++) P[4 + k] = bits[k] ? A1[k] : A0[k];
+        // running sum of the pulse phasors over 33 pulses centred on each bit
+        const int H = 16;
+        std::complex<double> win(0, 0);
+        int lo = 0, hi = 0;   // window [lo, hi) in pulse indices
+        for (int k = 0; k < 112; k++) {
+            const int c = 4 + k;
+            const int wl = std::max(0, c - H), wh = std::max(wl, std::min(4 + nb, c + H + 1));
+            while (hi < wh) win += P[hi++];
+            while (lo < wl) win -= P[lo++];
+            const std::complex<double> ref = win - P[c];        // leave the bit itself out of its own reference
+            const double m = std::abs(ref);
+            refs[k] = m > 0 ? std::conj(ref) / m : std::complex<double>(0, 0);
+            const double d = ((A1[k] - A0[k]) * refs[k]).real();
+            bits[k] = d > 0 ? 1 : 0;
+            r.conf[k] = (float)(std::fabs(d) / w);
+        }
+    }
+    std::memset(r.bytes, 0, sizeof r.bytes);
+    for (int k = 0; k < 112; k++) if (bits[k]) r.bytes[k >> 3] |= (uint8_t)(0x80 >> (k & 7));
+    r.bits = 112;
+    r.levelDbfs = guide.levelDbfs; r.snrDb = guide.snrDb; r.timeSec = guide.timeSec;
+    if (!isi) return true;
+
+    // Sequence estimation. Along the phase reference every half bit is a real number a_j = gm b_(j-1) + g0 b_j + gp b_(j+1) + noise, b being 1 where
+    // a pulse is: the radio's filter spreads each pulse into the half bits next to it (much of it at 2 Msps with a 1.75 MHz filter). The three taps
+    // come from the decisions just made (least squares over the half bits of the frame); a two-state Viterbi over the bits (each bit is either 10 or 01)
+    // then finds the sequence that fits best. The half bit before the data and the one after it are quiet. Done twice: the second time with the
+    // phase reference and the taps from the first sequence.
+    auto sq = [](double e) { return e * e; };
+    auto det3 = [](const double m[3][3]) {
+        return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    };
+    *isi = r;
+    for (int iter = 0; iter < 2; iter++) {
+        if (iter > 0) {   // the reference again, from the sequence of the first pass
+            for (int k = 0; k < 112; k++) P[4 + k] = bits[k] ? A1[k] : A0[k];
+            const int H = 16;
+            std::complex<double> win(0, 0);
+            int lo = 0, hi = 0;
+            for (int k = 0; k < nb; k++) {
+                const int c = 4 + k;
+                const int wl = std::max(0, c - H), wh = std::max(wl, std::min(4 + nb, c + H + 1));
+                while (hi < wh) win += P[hi++];
+                while (lo < wl) win -= P[lo++];
+                const std::complex<double> ref = win - P[c];
+                const double m = std::abs(ref);
+                refs[k] = m > 0 ? std::conj(ref) / m : std::complex<double>(0, 0);
+            }
+        }
+        double a[224];
+        int b[226];   // b[j + 1] = pulse in half bit j; b[0] and b[2 nb + 1] quiet
+        for (int k = 0; k < nb; k++) {
+            a[2 * k] = (A1[k] * refs[k]).real();
+            a[2 * k + 1] = (A0[k] * refs[k]).real();
+            b[2 * k + 1] = bits[k]; b[2 * k + 2] = 1 - bits[k];
+        }
+        b[0] = 0; b[2 * nb + 1] = 0;
+        double M[3][3] = {{0}}, v[3] = {0};
+        for (int j = 0; j < 2 * nb; j++) {
+            const double u[3] = {(double)b[j], (double)b[j + 1], (double)b[j + 2]};
+            for (int p = 0; p < 3; p++) { v[p] += u[p] * a[j]; for (int q = 0; q < 3; q++) M[p][q] += u[p] * u[q]; }
+        }
+        const double D = det3(M);   // the 3 x 3 system by Cramer's rule
+        if (!(std::fabs(D) > 1e-9 * std::pow(M[1][1], 3))) return true;
+        double g[3];
+        for (int p = 0; p < 3; p++) {
+            double T[3][3];
+            for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) T[i][j] = j == p ? v[i] : M[i][j];
+            g[p] = det3(T) / D;
+        }
+        const double gm = g[0], g0 = g[1], gp = g[2];
+        if (!(g0 > 0) || std::fabs(gm) > g0 || std::fabs(gp) > g0) return true;
+        // Viterbi: state = the previous bit. Moving from bit k-1 = s to bit k = t settles two half bits: the second half of bit k-1 (pulse 1-s, left
+        // neighbour s, right neighbour t) and the first half of bit k (pulse t, left 1-s, quiet before the data, right 1-t). The last half bit (right
+        // neighbour quiet) is added at the end.
+        double cost[2];
+        uint8_t from[112][2];
+        for (int t = 0; t < 2; t++) { cost[t] = sq(a[0] - (g0 * t + gp * (1 - t))); from[0][t] = 0; }
+        for (int k = 1; k < nb; k++) {
+            double nc[2] = {1e300, 1e300};
+            for (int t = 0; t < 2; t++) for (int s = 0; s < 2; s++) {
+                const double m = cost[s] + sq(a[2 * k - 1] - (gm * s + g0 * (1 - s) + gp * t)) + sq(a[2 * k] - (gm * (1 - s) + g0 * t + gp * (1 - t)));
+                if (m < nc[t]) { nc[t] = m; from[k][t] = (uint8_t)s; }
+            }
+            cost[0] = nc[0]; cost[1] = nc[1];
+        }
+        for (int s = 0; s < 2; s++) cost[s] += sq(a[2 * nb - 1] - (gm * s + g0 * (1 - s)));
+        int s = cost[1] < cost[0] ? 1 : 0;
+        for (int k = nb - 1; k >= 0; k--) { bits[k] = s; s = from[k][s]; }
+        std::memset(isi->bytes, 0, sizeof isi->bytes);
+        for (int k = 0; k < 112; k++) if (bits[k]) isi->bytes[k >> 3] |= (uint8_t)(0x80 >> (k & 7));
+    }
+    return true;
+}
+
 // Drop what the search is done with: samples and bins before the scan position (a little is kept for the timing search)
 void AdsbDemod::compact() {
     const int64_t keepBin = std::max<int64_t>(binBase_, scanBin_ - 8);
@@ -412,6 +661,7 @@ void AdsbDemod::compact() {
         const size_t drop = (size_t)firstX;
         const double c = cum_[drop];
         pw_.erase(pw_.begin(), pw_.begin() + drop);
+        zs_.erase(zs_.begin(), zs_.begin() + drop);
         cum_.erase(cum_.begin(), cum_.begin() + drop);
         for (double& v : cum_) v -= c;
         smpBase_ += drop;

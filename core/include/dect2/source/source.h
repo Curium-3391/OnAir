@@ -154,7 +154,8 @@ struct DeviceInfo {
     int txChannels = 1;                    // transmit outputs (LimeSDR-USB, bladeRF 2.0, USRP: more than one). 0: not known until the radio has been opened
     double txMinRateHz = 0, txMaxRateHz = 0;
     double txGainMinDb = 0, txGainMaxDb = 0;
-    std::string txGainNote;                // what the TX gain number means on this radio ("HackRF: 0-47 dB TX VGA, +14 dB with the amplifier")
+    std::string txName;                    // the name the TX window lists the radio under when one device has several receive entries (a USRP's inputs); "" = name
+    std::string txGainNote;               // what the TX gain number means on this radio ("HackRF: 0-47 dB TX VGA, +14 dB with the amplifier")
     std::vector<RadioSetting> settings;    // the radio's own settings the app offers (TuneSettings::radio); empty for files and the test signal
     bool isRadio() const { return kind == HackRF || kind == Soapy || kind == Native || kind == Hamlib || kind == Group; }
     bool isGeneric() const { return kind == Soapy || kind == Native || kind == Group; }   // one overall gain, a sample-rate range reported by the radio

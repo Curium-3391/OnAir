@@ -5,6 +5,7 @@
 #include <vector>
 
 namespace dect2 {
+class LdpcCode;
 namespace atsc3 {
 
 const int* ldpcTable16200(int rate15, const int** lens, int* numRows);   // generated in atsc3_ldpc_tables.cpp
@@ -23,7 +24,8 @@ public:
     void encode(std::vector<uint8_t>& bits) const;
 
     // Normalised min-sum decoding; llr > 0 means bit 0. Returns true when every parity check is satisfied.
-    bool decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr) const;
+    // `boxCorr`: the two-minimum correction of the check rule (dect2/dsp/minsum_corr.h; the LLRs must be in their true scale).
+    bool decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr, float alpha = 0.8f, bool boxCorr = false) const;
 
     // Layered offset min-sum on saturating 8-bit values for up to kBatch blocks at once (the lanes of a vector). `llr[b]` are the blocks' LLRs
     // (llr > 0 means bit 0), already scaled to the 8-bit range (+-31). Fills hard[b] and ok[b] (every check satisfied) for each block.
@@ -42,6 +44,15 @@ private:
 
 const Ldpc& ldpc16200(int rate15);
 const Ldpc& ldpcCode(int n, int rate15);   // cached, 16200 or 64800
+
+// The Type B codes (rates 6/15 and up) have the structure of the DVB-S2 ones (360 bit groups, an accumulator chain), so the fast quasi-cyclic
+// layered decoder of dect2::LdpcCode (SIMD float and 8-bit, the two-minimum correction) runs them: same code words, the same bit order as Ldpc.
+// nullptr for a Type A code. Cached.
+const dect2::LdpcCode* qcCode(int n, int rate15);
+// Its normalisation factor (with the correction), measured per code on an ideal channel near the threshold
+float qcAlpha(int n, int rate15);
+// The factor of Ldpc::decode with the correction for a Type A code
+float typeAAlpha(int n, int rate15);
 
 } // namespace atsc3
 } // namespace dect2

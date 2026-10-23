@@ -18,6 +18,8 @@ struct AdsbReceiver::Impl {
     AdsbDemod demod;
     std::atomic<double> rate{0};         // read by ready() from other threads
     std::atomic<float> kPulse{3.0f}, kGap{2.0f};    // preamble thresholds: set from any thread, handed to the demodulator by feed()
+    std::atomic<float> dSum{-1}, dMin{0}, dData{0}, dWorth{0};
+    std::atomic<bool> coherent{true};   // setDetector (test knob); dSum < -0.5: the demodulator's defaults
     std::function<void(const std::string&)> log;
     std::function<void(const AdsbFrame&)> frameCb;
     std::atomic<bool> resetPending{false};
@@ -157,6 +159,8 @@ void AdsbReceiver::feed(const cf32* x, size_t n) {
     if (!ready()) return;
     if (p.resetPending.exchange(false)) p.demod.reset();
     p.demod.setThresholds(p.kPulse, p.kGap);
+    if (p.dSum > -0.5f) p.demod.setDetector(p.dSum, p.dMin, p.dData, p.dWorth);
+    p.demod.setCoherent(p.coherent);
     p.demod.feed(x, n);
     p.lastFeedNs.store(steadyNow(), std::memory_order_relaxed);
     const double t = p.demod.timeSec();
@@ -218,6 +222,8 @@ bool AdsbReceiver::loadResults(const std::string& blob) {
 }
 
 void AdsbReceiver::setThresholds(float pulseOverNoise, float pulseOverGap) { p_->kPulse = pulseOverNoise; p_->kGap = pulseOverGap; }
+void AdsbReceiver::setCoherent(bool on) { p_->coherent = on; }
+void AdsbReceiver::setDetector(float sum, float minPulse, float data, float worthDb) { p_->dMin = minPulse; p_->dData = data; p_->dWorth = worthDb; p_->dSum = sum; }
 
 ModeTuning adsbTuning() {
     ModeTuning t;

@@ -229,6 +229,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     msgdbWindow(a);
     watchlistWindow(a);
     txTick(a);
+    autodetTick(a);
     shareTick(a);
     remoteApiTick(a);
     mapWindow(a);

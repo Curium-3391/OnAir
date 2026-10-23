@@ -44,10 +44,11 @@ public:
         // llr[0 .. 7488): log-likelihood ratios of the transmitted bits, positive favours zero. info receives infoBits() bits.
         // The decoder stops at the first iteration whose parity checks all hold.
         // A word that is plainly hopeless (many erased LLRs, or still over a third of the checks unsatisfied after 12 iterations) is given up early.
-        Result decode(const float* llr, uint8_t* info, int maxIter, float alpha = 0.6f);
+        // boxCorr: the two-minimum correction of the check rule (dect2/dsp/minsum_corr.h)
+        Result decode(const float* llr, uint8_t* info, int maxIter, float alpha = 0.6f, bool boxCorr = false);
     private:
-        Result decodeBody(const float* llr, uint8_t* info, int maxIter, float alpha);
-        Result decodeAvx2(const float* llr, uint8_t* info, int maxIter, float alpha);
+        Result decodeBody(const float* llr, uint8_t* info, int maxIter, float alpha, bool boxCorr);
+        Result decodeAvx2(const float* llr, uint8_t* info, int maxIter, float alpha, bool boxCorr);
         const LdpcCode& code_;
         std::vector<float> lv_, r_, q_;
         std::vector<uint64_t> hard_;
