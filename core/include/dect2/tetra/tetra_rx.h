@@ -70,6 +70,20 @@ namespace tetra {
 // One carrier brought to 72 kHz (4 samples per symbol): x at fs mixed down by shiftHz and filtered to the TETRA channel
 std::vector<cf32> channelize(const cf32* x, size_t n, double fs, double shiftHz);
 
+// The carriers of a capture at fs, strongest first (at most 24): 25 kHz wide rises of the spectrum within the middle kUsableBand of the
+// span, where a radio's decimation filter is flat (the span the application steps by). The floor the rises are measured against is local,
+// the 20th percentile of the spectrum within kFloorWindowHz around each bin: a floor taken over the whole span sat in the roll-off of the
+// passband at its edges, and the whole passband then stood above the threshold as one rise too wide to be carriers, or was cut into
+// carriers only where the noise happened to dip, so the carriers of a capture came and went from one capture to the next.
+struct CarrierPeak {
+    double off = 0;        // Hz from the centre of the capture
+    float levelDb = 0;     // peak over the local floor
+    float powerDb = 0;     // power of the rise
+};
+constexpr double kUsableBand = 0.72;
+constexpr double kFloorWindowHz = 600e3;
+std::vector<CarrierPeak> findCarriers(const cf32* x, size_t n, double fs);
+
 // What one carrier's capture held
 struct CarrierDecode {
     bool tetra = false;        // slot synchronised on the training sequences

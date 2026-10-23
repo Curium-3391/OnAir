@@ -4,11 +4,13 @@
 #include "dect2/tetra/tetra_gen.h"
 #include "dect2/tetra/tetra_rx.h"
 #include "dect2/tetra/tetra_tel.h"
+#include "dect2/dsp/fftutil.h"
 #include "dect2/engine/modes.h"
 #include "dect2/source/source.h"
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <random>
 #include <thread>
 using namespace dect2;
 #include "../common/test_util.h"
@@ -129,6 +131,37 @@ int main() {
         const TetraCell* c = find(t, 5);
         CHECK(t.blocks == 2 && c && c->seen == 2, "back-to-back captures: %llu decoded, cell seen %llu times", (unsigned long long)t.blocks, c ? (unsigned long long)c->seen : 0ull);
         CHECK(ends.n == 2, "the voice sink is told the end of each capture (%d)", ends.n);
+    }
+    // the carrier search against the roll-off of the capture's passband: noise 20 dB higher within +-350 kHz than outside it, as a radio's
+    // decimation filter leaves it. A floor taken over the whole span sat in the roll-off, and the whole passband stood above the threshold
+    // as one rise too wide to be carriers: nothing was found in a capture whose two cells are 46 dB above the noise.
+    {
+        const double rate = 1e6;
+        SynthConfig sc; sc.mode = 48; sc.snrDb = 99; sc.modeOpt[0] = 1;   // scene 1: two cells, 187.5 kHz apart
+        auto syn = makeTetraSynth(sc, rate);
+        std::vector<cf32> x((size_t)(rate * 2.3));
+        syn->generate(x.data(), x.size());
+        constexpr int N = 4096;
+        dect2::Fft fft(N);
+        std::mt19937 g(5);
+        std::normal_distribution<float> nd(0.f, 0.1f);
+        std::vector<cf32> blk((size_t)N);
+        for (size_t at = 0; at + N <= x.size(); at += N) {
+            for (auto& v : blk) v = cf32(nd(g), nd(g));
+            fft.forward(blk.data());
+            for (int k = 0; k < N; k++) { const double hz = (k < N / 2 ? k : k - N) * rate / N; if (std::fabs(hz) > 350e3) blk[(size_t)k] *= 0.1f; }
+            fft.inverse(blk.data());
+            for (int k = 0; k < N; k++) x[at + (size_t)k] += blk[(size_t)k] / (float)N;
+        }
+        const std::vector<tetra::CarrierPeak> c = tetra::findCarriers(x.data(), x.size(), rate);
+        bool a = false, b = false;
+        std::string list;
+        for (const auto& p : c) {
+            if (std::fabs(p.off - (392.4125e6 - kTetraTestCentreHz)) < 5e3) a = true;
+            if (std::fabs(p.off - (392.6e6 - kTetraTestCentreHz)) < 5e3) b = true;
+            char t[48]; snprintf(t, sizeof t, " %+.1fk/%.0fdB", p.off / 1e3, p.levelDb); list += t;
+        }
+        CHECK(a && b && c.size() <= 8, "both cells found through the passband roll-off (%zu carriers:%s)", c.size(), list.c_str());
     }
     printf(fails ? "tetra rx: %d FAILED\n" : "tetra rx: all passed\n", fails);
     return fails ? 1 : 0;
