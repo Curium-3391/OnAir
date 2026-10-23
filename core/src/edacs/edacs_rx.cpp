@@ -1,10 +1,18 @@
 // EDACS receiver: FM front end at 76.8 kHz (8 samples per bit), dotting search at every phase, then the 240 payload bits are sliced for
 // the three alignments the dotting leaves open (one bit earlier, exact, one later) and the one whose three copies agree best is voted.
+// On top: the message layer (assumed layout, edacs_msg.h) with the call and talkgroup tables, a power scan of the voice channels of a frequency table (one FFT
+// of the capture), and the following of one analog voice channel through a second FM front end.
 #include "dect2/edacs/edacs_rx.h"
+#include "dect2/audio/audioout.h"
+#include "dect2/dsp/fftutil.h"
 #include "dect2/dsp/fm_front.h"
+#include "dect2/edacs/edacs_msg.h"
 #include "dect2/edacs/edacs_proto.h"
 #include "dect2/edacs/edacs_tel.h"
 #include <algorithm>
+#include <atomic>
+#include <memory>
+#include <vector>
 #include <cmath>
 #include <ctime>
 #include <map>
@@ -36,6 +44,10 @@ constexpr int kPayloadBits = 240;
 constexpr int kMaxDisagree = 4;           // per message, of 40 bits
 constexpr double kMinRangeHz = 400.0;
 constexpr double kLockSec = 5.0;
+constexpr double kVoiceRate = 48000.0;
+constexpr double kCallHoldSec = 4.0;       // an announced call with no repeat and no carrier on its channel ends after this
+constexpr double kActivityHoldSec = 1.5;   // a carrier-only call ends this long after the carrier went
+constexpr double kChanHalfHz = 6250.0;     // half the width of a channel in the power scan
 int pop(uint64_t x) { return __builtin_popcountll(x); }
 }
 
@@ -59,6 +71,230 @@ struct EdacsReceiver::Impl {
     double lastGoodSec = -1e9, lastPub = 0;
     std::map<uint32_t, uint64_t> wordCount;
 
+    // ---- message layer, voice channels
+    edacs::Layout layout;
+    std::vector<double> lcnFreq;                  // Hz, index lcn - 1
+    bool follow = false, followAct = false;
+    std::vector<int> followGroups;
+    int followLcn = 0;
+    std::unique_ptr<Fft> fft;
+    std::vector<cf32> blk, fftBuf;
+    std::vector<float> win;
+    double winPow = 1;
+    size_t blkN = 0;
+    std::vector<double> chPow, chFloor;           // linear power per channel (smoothed), and its floor
+    std::vector<char> chOn, floorInit;
+    std::vector<int> chRun;                       // consecutive blocks above the threshold (a key click is not a carrier)
+    std::vector<double> chLastOn;                 // signal time the channel was last above the threshold
+    FmFront voice;
+    FmBiquad vlp;
+    bool voiceOk = false;
+    double vdc = 0;
+    std::vector<float> vdisc, aud;
+    std::unique_ptr<AudioOut> audioOut;
+    std::atomic<float> volume{1.f};
+    std::atomic<bool> muted{false}, silent{false};
+    std::function<void(int, const float*, size_t)> tap;
+    int pendingLid = -1;
+    double pendingLidT = -1e9;
+
+    void initActivity() {
+        int N = 256;
+        while (N < 8192 && (double)N < fs / 500.0) N <<= 1;
+        fft = std::make_unique<Fft>(N);
+        blk.assign((size_t)N, cf32(0, 0)); fftBuf.assign((size_t)N, cf32(0, 0)); blkN = 0;
+        win.resize((size_t)N);
+        winPow = 0;
+        for (int i = 0; i < N; i++) { win[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * (i + 0.5) / N)); winPow += (double)win[(size_t)i] * win[(size_t)i]; }
+        resizeChannels();
+    }
+    void resizeChannels() {
+        chPow.assign(lcnFreq.size(), 0.0); chFloor.assign(lcnFreq.size(), 0.0); chOn.assign(lcnFreq.size(), 0); floorInit.assign(lcnFreq.size(), 0); chRun.assign(lcnFreq.size(), 0); chLastOn.assign(lcnFreq.size(), -1e9);
+        tel.lcnTableSize = lcnFreq.size();
+        tel.channels.clear();
+        for (size_t i = 0; i < lcnFreq.size(); i++) {
+            EdacsChannelActivity c;
+            c.lcn = (int)i + 1; c.freqHz = lcnFreq[i]; c.inCapture = inCapture(lcnFreq[i]);
+            tel.channels.push_back(c);
+        }
+    }
+    bool inCapture(double f) const { return centreHz > 0 && fs > 0 && std::fabs(f - centreHz) < 0.42 * fs; }
+
+    void activityBlock() {
+        if (lcnFreq.empty() || !fft) return;
+        const size_t N = blk.size();
+        for (size_t i = 0; i < N; i++) fftBuf[i] = blk[i] * win[i];
+        fft->forward(fftBuf.data());
+        const double binHz = fs / (double)N;
+        const int kw = std::max(1, (int)std::lround(kChanHalfHz / binHz));
+        const double blockSec = (double)N / fs;
+        for (size_t c = 0; c < lcnFreq.size(); c++) {
+            if (!inCapture(lcnFreq[c])) { chOn[c] = 0; continue; }
+            const double off = lcnFreq[c] - centreHz;
+            const int k0 = (int)std::lround(off / binHz);
+            double sum = 0;
+            for (int k = -kw; k <= kw; k++) {
+                int b = (k0 + k) % (int)N;
+                if (b < 0) b += (int)N;
+                sum += std::norm(fftBuf[(size_t)b]);
+            }
+            const double p = sum / ((double)N * winPow);
+            chPow[c] = floorInit[c] ? 0.5 * chPow[c] + 0.5 * p : p;
+            if (!floorInit[c]) { chFloor[c] = p; floorInit[c] = 1; }
+            if (chPow[c] < chFloor[c]) chFloor[c] = chPow[c];
+            else if (!chOn[c]) chFloor[c] *= std::pow(10.0, 0.1 * blockSec);   // a steady carrier is absorbed into the floor within ten seconds or so
+            const bool strong = chPow[c] > chFloor[c] * 6.3 && chPow[c] > 1e-9;   // 8 dB above the floor
+            const bool weak = chPow[c] < chFloor[c] * 2.5;                         // back to 4 dB: the carrier is gone
+            if (strong) { if (++chRun[c] * blockSec >= 0.06) chOn[c] = 1; }
+            else { chRun[c] = 0; if (weak) chOn[c] = 0; }
+            if (chOn[c]) chLastOn[c] = timeSec();
+        }
+    }
+    bool chActive(int lcn) const { return lcn >= 1 && (size_t)lcn <= chOn.size() && chOn[(size_t)lcn - 1]; }
+
+    // ---- calls
+    void touchTg(int gid, int lid, int lcn, double freq) {
+        auto it = std::find_if(tel.talkgroups.begin(), tel.talkgroups.end(), [&](const EdacsTalkgroup& t) { return t.gid == gid; });
+        EdacsTalkgroup t;
+        if (it != tel.talkgroups.end()) { t = *it; tel.talkgroups.erase(it); }
+        t.gid = gid; t.calls++;
+        if (lid >= 0) t.lastLid = lid;
+        t.lastLcn = lcn; if (freq > 0) t.lastFreqHz = freq;
+        t.lastWall = (int64_t)std::time(nullptr); t.active = true;
+        tel.talkgroups.insert(tel.talkgroups.begin(), t);
+        if (tel.talkgroups.size() > kEdacsTgMax) tel.talkgroups.pop_back();
+    }
+    EdacsCall* activeCall(int lcn) {
+        for (auto& c : tel.calls) if (c.active && c.lcn == lcn) return &c;
+        return nullptr;
+    }
+    void endCall(EdacsCall& c) {
+        c.active = false; c.durSec = c.lastSec - c.startSec;
+        c.followed = false;
+        if (log) { char b[120]; snprintf(b, sizeof b, "EDACS call ended: LCN %d, %s %d, %.1f s", c.lcn, c.group ? "group" : "unit", c.gid, c.durSec); log(b); }
+    }
+    void newCall(int lcn, int gid, int lid, bool group, bool emerg, bool dig, bool fromAct, double t) {
+        EdacsCall c;
+        c.lcn = lcn; c.gid = gid; c.lid = lid; c.group = group; c.emergency = emerg; c.digital = dig; c.fromActivity = fromAct; c.active = true;
+        c.wallTime = (int64_t)std::time(nullptr); c.startSec = c.lastSec = t;
+        c.freqHz = (lcn >= 1 && (size_t)lcn <= lcnFreq.size()) ? lcnFreq[(size_t)lcn - 1] : 0;
+        tel.calls.insert(tel.calls.begin(), c);
+        if (tel.calls.size() > kEdacsCallMax) tel.calls.pop_back();
+        if (gid >= 0 && group) touchTg(gid, lid, lcn, c.freqHz);
+        if (log) { char b[140]; snprintf(b, sizeof b, "EDACS call: LCN %d%s, %s %d", lcn, fromAct ? " (carrier only)" : "", group ? "group" : "unit", gid); log(b); }
+    }
+    void assignment(const edacs::Msg& m, double t) {
+        const bool group = m.type == edacs::MsgType::GroupAssign;
+        EdacsCall* c = activeCall(m.lcn);
+        if (c && (c->fromActivity || (c->gid == m.gid && c->group == group))) {
+            if (c->fromActivity) { c->fromActivity = false; c->gid = m.gid; c->group = group; if (group) touchTg(m.gid, c->lid, m.lcn, c->freqHz); }
+            c->lastSec = t; c->emergency = c->emergency || m.emergency; c->digital = m.digital;
+            return;
+        }
+        if (c) endCall(*c);
+        const int lid = t - pendingLidT < 0.1 ? pendingLid : -1;
+        newCall(m.lcn, m.gid, lid, group, m.emergency, m.digital, false, t);
+    }
+    void handleWord(uint32_t word, double t) {
+        const edacs::Msg m = edacs::parse(word, layout);
+        tel.messages++;
+        if (m.type != edacs::MsgType::Unknown) tel.messagesKnown++;
+        switch (m.type) {
+        case edacs::MsgType::SiteId: tel.siteValid = true; tel.siteId = m.site; tel.systemId = m.system; break;
+        case edacs::MsgType::ControlChannel: tel.controlLcn = m.lcn; tel.nChannels = m.nChannels; break;
+        case edacs::MsgType::GroupAssign: case edacs::MsgType::IndividualAssign: assignment(m, t); break;
+        case edacs::MsgType::LidInfo:
+            pendingLid = m.lid; pendingLidT = t;
+            for (auto& c : tel.calls)
+                if (c.active && c.lid < 0 && t - c.lastSec < 0.3) {
+                    c.lid = m.lid;
+                    if (c.group) for (auto& g : tel.talkgroups) if (g.gid == c.gid) g.lastLid = m.lid;
+                    break;
+                }
+            break;
+        case edacs::MsgType::CallEnd: { EdacsCall* c = activeCall(m.lcn); if (c && !c->fromActivity) { c->lastSec = t; endCall(*c); } break; }
+        default: break;
+        }
+    }
+    std::string frameText(uint32_t a, uint32_t b) {
+        return edacs::describe(edacs::parse(a, layout)) + "  |  " + edacs::describe(edacs::parse(b, layout));
+    }
+
+    // ---- housekeeping (every report): channel activity into calls, call timeouts, the choice of the followed channel
+    void housekeeping() {
+        const double t = timeSec();
+        tel.note.clear();
+        for (size_t c = 0; c < lcnFreq.size() && c < tel.channels.size(); c++) {
+            EdacsChannelActivity& ch = tel.channels[c];
+            ch.levelDb = chPow[c] > 0 ? (float)(10 * std::log10(chPow[c] + 1e-20)) : -200.f;
+            ch.floorDb = chFloor[c] > 0 ? (float)(10 * std::log10(chFloor[c] + 1e-20)) : -200.f;
+            ch.active = chOn[c] != 0;
+            ch.inCapture = inCapture(lcnFreq[c]);
+            const int lcn = (int)c + 1;
+            if (ch.active && !activeCall(lcn) && lcn != tel.controlLcn) newCall(lcn, -1, -1, true, false, false, true, t);
+        }
+        for (auto& c : tel.calls) {
+            if (!c.active) continue;
+            const bool on = chActive(c.lcn);
+            if (on) c.lastSec = std::max(c.lastSec, t);
+            c.durSec = t - c.startSec;
+            const double hold = (c.fromActivity || (c.freqHz > 0 && inCapture(c.freqHz))) ? kActivityHoldSec : kCallHoldSec;   // a channel we can see: its carrier says when the call is over
+            if (!on && t - c.lastSec > hold) endCall(c);
+        }
+        for (auto& g : tel.talkgroups) g.active = false;
+        for (auto& c : tel.calls) if (c.active && c.group && c.gid >= 0) for (auto& g : tel.talkgroups) if (g.gid == c.gid) g.active = true;
+        // the followed channel
+        if (followLcn) {
+            EdacsCall* c = activeCall(followLcn);
+            const bool carrier = chActive(followLcn) || t - chLastOn[(size_t)followLcn - 1] < 0.4 || (c && t - c->startSec < 1.0);   // the call is over when its carrier is
+            if (!follow || !c || !carrier) { flushAudio(); followLcn = 0; voice.reset(); }
+        }
+        if (follow && !followLcn) {
+            if (lcnFreq.empty()) tel.note = "no frequency table: enter the voice channel frequencies (LCN 1, 2, 3 ...) to follow calls";
+            else if (centreHz <= 0) tel.note = "the frequency of the capture is not known (file input): the voice channels cannot be placed";
+            for (int pass = 0; pass < 2 && !followLcn; pass++)   // first the calls with a carrier on the air, then the ones just announced
+                for (auto& c : tel.calls) {   // newest first
+                    if (!c.active || c.freqHz <= 0 || c.digital) continue;
+                    if (c.fromActivity && !followAct) continue;
+                    if (!followGroups.empty() && std::find(followGroups.begin(), followGroups.end(), c.gid) == followGroups.end()) continue;
+                    if (!inCapture(c.freqHz)) { if (tel.note.empty()) tel.note = "LCN " + std::to_string(c.lcn) + " is outside the captured span: use a wider capture"; continue; }
+                    if (pass == 0 ? !chActive(c.lcn) : t - c.startSec > 1.0) continue;
+                    followLcn = c.lcn;
+                    voice.reset(); vdc = 0; vlp.clear(); aud.clear();
+                    voice.setOffset(c.freqHz - centreHz);
+                    break;
+                }
+        }
+        for (auto& c : tel.calls) c.followed = c.active && c.lcn == followLcn && followLcn != 0;
+        tel.follow = follow; tel.followActivity = followAct; tel.followLcn = followLcn;
+        tel.audioOpen = followLcn != 0 && chActive(followLcn) && !muted.load();
+    }
+
+    // ---- the followed voice channel
+    void voiceSamples() {
+        const bool gate = chActive(followLcn);
+        for (float d : vdisc) {
+            const double a = d / 5000.0;
+            vdc += 0.0005 * (a - vdc);
+            const double v = vlp.run(a - vdc);
+            aud.push_back(gate ? (float)(0.9 * v) : 0.f);
+        }
+        if (aud.size() >= 960) flushAudio();
+    }
+    void flushAudio() {
+        if (aud.empty()) return;
+        if (tap) tap(followLcn, aud.data(), aud.size());
+        if (!silent.load()) {
+            std::vector<float> st(aud.size() * 2);
+            for (size_t i = 0; i < aud.size(); i++) st[2 * i] = st[2 * i + 1] = aud[i];
+            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
+            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
+            audioOut->write(st.data(), (int)aud.size());
+        }
+        aud.clear();
+    }
+
     double timeSec() const { return (double)n / kWork; }
 
     void clearState() {
@@ -68,6 +304,9 @@ struct EdacsReceiver::Impl {
         const uint64_t s = tel.seq;
         tel = EdacsTelemetry();
         tel.seq = s + 1; tel.inputRate = fs; tel.centerHz = centreHz; tel.state = rateSet ? 1 : 0; tel.inverted = inverted;
+        followLcn = 0; pendingLid = -1; pendingLidT = -1e9; vdisc.clear(); aud.clear(); vdc = 0; voice.reset(); vlp.clear();
+        if (fft) { blkN = 0; resizeChannels(); }
+        tel.follow = follow; tel.followActivity = followAct;
     }
 
     double soft(uint64_t idx) const { return (ring[idx & kMask] + ring[(idx - 1) & kMask] + ring[(idx - 2) & kMask]) / 3.0; }
@@ -115,6 +354,9 @@ struct EdacsReceiver::Impl {
         f.wallTime = (int64_t)std::time(nullptr);
         f.timeSec = timeSec();
         f.msgA = bestA; f.msgB = bestB; f.errA = bestEa; f.errB = bestEb; f.good = true;
+        f.text = frameText(bestA, bestB);
+        handleWord(bestA, f.timeSec);
+        handleWord(bestB, f.timeSec);
         if (tel.frames.size() >= kEdacsLogMax) tel.frames.pop_back();
         tel.frames.insert(tel.frames.begin(), f);
         wordCount[bestA]++; wordCount[bestB]++;
@@ -174,6 +416,7 @@ struct EdacsReceiver::Impl {
         tel.timeSec = timeSec();
         tel.locked = timeSec() - lastGoodSec < kLockSec;
         tel.state = rateSet ? (tel.locked ? 2 : 1) : 0;
+        housekeeping();
         tel.seq++;
     }
 };
@@ -187,16 +430,19 @@ void EdacsReceiver::configure(double inputRateHz) {
     p_->rateSet = inputRateHz >= edacsTuning().minSampleRate - 1 && p_->fm.configure(inputRateHz, kWork, 9000.0);
     p_->fm.setOffset(p_->offHz);
     p_->post.lowpass(6000.0, kWork, 0.7071);
+    p_->voiceOk = p_->rateSet && p_->voice.configure(inputRateHz, kVoiceRate, 7500.0);
+    p_->vlp.lowpass(3400.0, kVoiceRate, 0.7071);
+    p_->initActivity();
     p_->clearState();
 }
 void EdacsReceiver::setSignalOffset(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->offHz = hz; p_->fm.setOffset(hz); }
-void EdacsReceiver::setCenterHz(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->centreHz = hz; p_->tel.centerHz = hz; }
+void EdacsReceiver::setCenterHz(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->centreHz = hz; p_->tel.centerHz = hz; if (p_->fft) p_->resizeChannels(); }
 void EdacsReceiver::setInverted(bool inv) { std::lock_guard<std::mutex> lk(p_->mu); p_->inverted = inv; p_->tel.inverted = inv; p_->tel.seq++; }
 bool EdacsReceiver::ready() const { return p_->rateSet; }
 void EdacsReceiver::reset() { std::lock_guard<std::mutex> lk(p_->mu); p_->clearState(); }
 void EdacsReceiver::clearMessages() {
     std::lock_guard<std::mutex> lk(p_->mu);
-    p_->tel.frames.clear(); p_->tel.words.clear(); p_->wordCount.clear(); p_->tel.dataValid = false; p_->tel.seq++;
+    p_->tel.frames.clear(); p_->tel.words.clear(); p_->wordCount.clear(); p_->tel.dataValid = false; p_->tel.calls.clear(); p_->tel.talkgroups.clear(); p_->tel.messages = p_->tel.messagesKnown = 0; p_->tel.seq++;
 }
 void EdacsReceiver::feed(const cf32* x, size_t n) {
     if (!x || !n) return;
@@ -205,6 +451,18 @@ void EdacsReceiver::feed(const cf32* x, size_t n) {
     p_->disc.clear();
     p_->fm.feed(x, n, p_->disc);
     for (float d : p_->disc) p_->sample(p_->post.run(d));
+    if (!p_->lcnFreq.empty() && p_->fft) {   // the power scan of the voice channels
+        const size_t N = p_->blk.size();
+        for (size_t i = 0; i < n; i++) {
+            p_->blk[p_->blkN++] = x[i];
+            if (p_->blkN == N) { p_->activityBlock(); p_->blkN = 0; }
+        }
+    }
+    if (p_->followLcn && p_->voiceOk) {
+        p_->vdisc.clear();
+        p_->voice.feed(x, n, p_->vdisc);
+        p_->voiceSamples();
+    }
     if (p_->timeSec() - p_->lastPub >= 0.25) { p_->lastPub = p_->timeSec(); p_->publish(); }
 }
 bool EdacsReceiver::telemetry(EdacsTelemetry& out, uint64_t lastSeq) {
@@ -214,5 +472,20 @@ bool EdacsReceiver::telemetry(EdacsTelemetry& out, uint64_t lastSeq) {
     return true;
 }
 void EdacsReceiver::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }
+void EdacsReceiver::setLcnTable(const std::vector<double>& f) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    p_->lcnFreq = f;
+    p_->followLcn = 0;
+    if (p_->fft) p_->resizeChannels();
+    p_->tel.seq++;
+}
+void EdacsReceiver::setLayout(const edacs::Layout& l) { std::lock_guard<std::mutex> lk(p_->mu); p_->layout = l; }
+void EdacsReceiver::setFollow(bool on) { std::lock_guard<std::mutex> lk(p_->mu); p_->follow = on; if (!on) p_->followLcn = 0; p_->tel.follow = on; p_->tel.seq++; }
+void EdacsReceiver::setFollowActivity(bool on) { std::lock_guard<std::mutex> lk(p_->mu); p_->followAct = on; p_->tel.followActivity = on; p_->tel.seq++; }
+void EdacsReceiver::setFollowGroups(const std::vector<int>& g) { std::lock_guard<std::mutex> lk(p_->mu); p_->followGroups = g; }
+void EdacsReceiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
+void EdacsReceiver::setMuted(bool m) { p_->muted = m; }
+void EdacsReceiver::setSilent(bool s) { p_->silent = s; }
+void EdacsReceiver::setAudioTap(std::function<void(int, const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tap = std::move(cb); }
 
 } // namespace dect2
