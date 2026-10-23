@@ -50,6 +50,9 @@ cbuffer P : register(b0) {
     uint4 layerR[64]; // layerR[r / 4][r % 4]: highest repeat rank of layer r
 };
 
+// log(1 + e^-t), t >= 0: the four tangents of softplusNeg in ldpc.cpp (a negative alpha asks for the two-minimum correction)
+float spNeg(float t) { return max(0.0f, max(max(0.6854f - 0.4378f * t, 0.5822f - 0.2689f * t), max(0.3653f - 0.1192f * t, 0.1323f - 0.0293f * t))); }
+
 Buffer<int> lStart : register(t0);
 Buffer<int> cGrp : register(t1);
 Buffer<int> cSh : register(t2);
@@ -130,6 +133,7 @@ void ldpc(uint3 gtid : SV_GroupThreadID, uint3 gid : SV_GroupID) {
                     if (a < min1) { min2 = min1; min1 = a; idx1 = j; }
                     else if (a < min2) min2 = a;
                 }
+                if (alpha < 0.0f) min1 = max(0.0f, min1 + spNeg(min1 + min2) - spNeg(min2 - min1));   // the two-minimum correction (LdpcCode::decodeFast)
                 // A layer may reach the same variable group twice (a variable then has two edges in the layer, owned by different
                 // threads): the new messages are computed from the posteriors as they were at the start of the layer and the
                 // increments applied afterwards, unique edges at once and repeated ones one rank at a time.
@@ -137,7 +141,7 @@ void ldpc(uint3 gtid : SV_GroupThreadID, uint3 gid : SV_GroupID) {
                     uint vi = pBase + vidx(j, nc0, c0, r, m);
                     float oldMsg = LM(mr + j * Z + m);   // read once: the old message is needed again for the update below
                     float x = LP(vi) - oldMsg;
-                    float mag = (idx1 == j ? min2 : min1) * alpha;
+                    float mag = (idx1 == j ? min2 : min1) * abs(alpha);
                     float nm = asfloat(asuint(mag) | (sg ^ (asuint(x) & 0x80000000u)));
                     float d = nm - oldMsg;
                     SM(mr + j * Z + m, nm);
@@ -504,7 +508,7 @@ bool GpuLdpc::available() const { return p_->ready; }
 const char* GpuLdpc::deviceName() const { return p_->name.c_str(); }
 size_t GpuLdpc::dedicatedMemoryMb() const { return p_->dedicatedMb; }
 
-bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter, uint8_t* hard, uint8_t* ok, int* iters, float alpha) {
+bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter, uint8_t* hard, uint8_t* ok, int* iters, float alpha, bool boxCorr) {
     if (!available() || code.q() * 360 != code.n() - code.k()) return false;
     std::lock_guard<std::mutex> lk(p_->mu);
     Impl& d = *p_;
@@ -514,7 +518,7 @@ bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter
     const int n = code.n();
     CBuf cb{};
     cb.k = (uint32_t)code.k(); cb.n = (uint32_t)n; cb.q = (uint32_t)code.q(); cb.G = (uint32_t)code.groups();
-    cb.alpha = alpha; cb.msgPer = s.msgPer; cb.postPer = s.postPer; cb.nWords = s.nWords;
+    cb.alpha = boxCorr ? -alpha : alpha; cb.msgPer = s.msgPer; cb.postPer = s.postPer; cb.nWords = s.nWords;
     for (size_t i = 0; i < s.layerR.size() && i < 256; i++) cb.layerR[i] = s.layerR[i];
 
     for (int b0 = 0; b0 < nb; b0 += kChunkBlocks) {
@@ -589,6 +593,7 @@ bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter
 
 // The table-driven quasi-cyclic kernel (DTMB) exists for Metal only so far: Windows decodes those codes on the CPU.
 bool GpuLdpc::qcAvailable() const { return false; }
-bool GpuLdpc::decodeQc(const QcLdpc&, const float*, int, int, uint8_t*, uint8_t*, int*, float) { return false; }
+bool GpuLdpc::decodeQc(const QcLdpc&, const float*, int, int, uint8_t*, uint8_t*, int*, float, bool) { return false; }
+bool GpuLdpc::boxCorrKernels() const { return true; }
 
 } // namespace dect2
