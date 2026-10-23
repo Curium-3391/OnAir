@@ -4,6 +4,7 @@
 #include "state/results_export.h"
 #include <chrono>
 #include <climits>
+#include <cstdlib>
 
 bool freqStepArrow(const char* id, ImGuiDir dir);
 
@@ -335,13 +336,33 @@ void fmRadioPanel(App& a) {
             ImGui::TableNextColumn(); ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::Text(fmt, v...); ImGui::PopTextWrapPos(); ImGui::PopFont();   // wraps in a narrow column
         };
         row(Ic::Antenna, "Frequency", "%.1f MHz", a.freqMhz);
-        row(Ic::Radio, "Station", "%s", live && !fmTrim(fm.psName).empty() ? fmTrim(fm.psName).c_str() : "-");
+        if (live && fmTrim(fm.psName).empty() && !fm.rds.psPartial.empty()) row(Ic::Radio, "Station", "%s (receiving)", fm.rds.psPartial.c_str());   // the name so far, '_' not yet received
+        else row(Ic::Radio, "Station", "%s", live && !fmTrim(fm.psName).empty() ? fmTrim(fm.psName).c_str() : "-");
+        if (live) {   // RadioText+: what is playing, as the station tags it
+            std::string artist, title;
+            for (const auto& t : fm.rds.rtPlus) { if (t.type == 4 || (t.type == 9 && artist.empty())) artist = t.text; if (t.type == 1) title = t.text; }
+            if (!title.empty() || !artist.empty()) row(Ic::Speaker, tr("Now playing"), "%s%s%s", artist.c_str(), !artist.empty() && !title.empty() ? " - " : "", title.c_str());
+            if (!fm.rds.ert.empty()) row(Ic::Wave, tr("Text (eRT)"), "%s", fm.rds.ert.c_str());
+        }
         row(Ic::Layers, "Programme", "%s", live && !fm.ptyText.empty() && fm.ptyText != "None" ? fm.ptyText.c_str() : "-");
         if (live && fm.rbds && !fm.callSign.empty()) row(Ic::Radio, tr("Call letters"), "%s", fm.callSign.c_str());
-        row(Ic::Speaker, "Sound", "%s", !live ? "-" : fm.stereo ? "stereo" : "mono");
-        char rds[48] = "-";
-        if (live && fm.rdsSync) snprintf(rds, sizeof rds, "%.0f %% blocks ok", fm.rdsBlockOkPct);
+        {
+            char snd[64];
+            if (!live) snprintf(snd, sizeof snd, "-");
+            else if (fm.stereo && fm.stereoPct < 95) snprintf(snd, sizeof snd, "stereo, blended %.0f %% (weak signal)", fm.stereoPct);
+            else snprintf(snd, sizeof snd, "%s", fm.stereo ? "stereo" : "mono");
+            row(Ic::Speaker, "Sound", "%s", snd);
+            if (ImGui::IsItemHovered() && live && fm.stereo && fm.stereoPct < 95)
+                ImGui::SetTooltip("%s", tr("On a weak station the stereo part carries most of the hiss: Auto mixes it down towards mono as the signal gets weaker. Pick Stereo below to keep full stereo."));
+        }
+        char rds[64] = "-";
+        if (live && fm.rdsSync) {
+            const uint64_t all = fm.rds.blocksGood + fm.rds.blocksCorrected + fm.rds.blocksBad;
+            if (fm.rds.blocksCorrected && all) snprintf(rds, sizeof rds, "%.0f %% blocks ok (%.0f %% repaired)", fm.rdsBlockOkPct, 100.0 * fm.rds.blocksCorrected / all);
+            else snprintf(rds, sizeof rds, "%.0f %% blocks ok", fm.rdsBlockOkPct);
+        }
         row(Ic::Wave, "RDS", "%s", rds);
+        if (live && fm.equaliser) row(Ic::Wave, tr("Multipath"), "%s", tr("echo found, equaliser on"));
         row(Ic::Warning, "Traffic", "%s", !live ? "-" : fm.trafficAlert ? "ANNOUNCEMENT" : fm.trafficProgram ? "station (TP)" : "no");
         ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Wave, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("%s", tr("RDS standard")); ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
@@ -411,6 +432,45 @@ void fmRadioPanel(App& a) {
         ImGui::EndTable();
     }
     ImGui::Spacing();
+    if (live && fm.rdsSync && (!fm.rds.afMhz.empty() || !fm.rds.ptyn.empty() || fm.rds.clockUtc || fm.rds.ecc >= 0 || !fm.rds.eon.empty() || !fm.rds.oda.empty())) {
+        // the rest of RDS: what the station sends beyond the name and the text
+        if (typo::collapsingHeader(tr("RDS details"), 0)) {
+            ImGui::PushTextWrapPos(0);
+            if (!fm.rds.ptyn.empty()) ImGui::Text("%s: %s", tr("Programme type name"), fmTrim(fm.rds.ptyn).c_str());
+            if (fm.rds.clockUtc) {
+                const int64_t loc = fm.rds.clockUtc + (int64_t)fm.rds.clockOffsetMin * 60;
+                const int64_t day = loc / 86400, sec = loc % 86400;
+                // civil date from days since 1970 (Howard Hinnant's algorithm)
+                const int64_t z = day + 719468, era = (z >= 0 ? z : z - 146096) / 146097, doe = z - era * 146097;
+                const int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365, doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+                const int64_t mp = (5 * doy + 2) / 153, dd = doy - (153 * mp + 2) / 5 + 1, mm = mp < 10 ? mp + 3 : mp - 9, yy = yoe + era * 400 + (mm <= 2);
+                ImGui::Text("%s: %04d-%02d-%02d %02d:%02d (UTC%+d:%02d)", tr("Station clock"), (int)yy, (int)mm, (int)dd, (int)(sec / 3600), (int)(sec / 60 % 60),
+                            fm.rds.clockOffsetMin / 60, std::abs(fm.rds.clockOffsetMin % 60));
+            }
+            if (!fm.rds.afMhz.empty()) {
+                std::string af;
+                for (double f : fm.rds.afMhz) { char b[16]; snprintf(b, sizeof b, "%s%.1f", af.empty() ? "" : ", ", f); af += b; }
+                ImGui::Text("%s: %s MHz", tr("Also on"), af.c_str());
+            }
+            if (fm.rds.ecc >= 0) ImGui::Text("%s: %02X  PI %04X", tr("Country code (ECC)"), fm.rds.ecc, fm.piCode);
+            if (fm.rds.pinDay) ImGui::Text("%s: day %d, %02d:%02d", tr("Programme item"), fm.rds.pinDay, fm.rds.pinHour, fm.rds.pinMinute);
+            for (const auto& e : fm.rds.eon) ImGui::Text("%s: %04X %s", tr("Other network"), e.pi, e.ps.empty() ? "..." : fmTrim(e.ps).c_str());
+            for (const auto& t : fm.rds.rtPlus) if (t.type != 1 && t.type != 4) ImGui::Text("%s: %s", t.name.c_str(), t.text.c_str());
+            if (!fm.rds.oda.empty()) {
+                std::string o;
+                for (const auto& p : fm.rds.oda) {
+                    const char* n = p.first == 0x4BD7 ? "RT+" : p.first == 0x6552 ? "eRT" : (p.first == 0xCD46 || p.first == 0xCD47) ? "TMC" : nullptr;
+                    char b[48]; snprintf(b, sizeof b, "%s%s %d%c", o.empty() ? "" : ", ", n ? n : "", p.second / 2, p.second & 1 ? 'B' : 'A');
+                    if (!n) snprintf(b, sizeof b, "%s%04X %d%c", o.empty() ? "" : ", ", p.first, p.second / 2, p.second & 1 ? 'B' : 'A');
+                    o += b;
+                }
+                ImGui::TextDisabled("%s: %s", tr("Data applications"), o.c_str());
+            }
+            ImGui::TextDisabled("%s: %llu good, %llu repaired, %llu lost", tr("Blocks"), (unsigned long long)fm.rds.blocksGood,
+                                (unsigned long long)fm.rds.blocksCorrected, (unsigned long long)fm.rds.blocksBad);
+            ImGui::PopTextWrapPos();
+        }
+    }
     if (live && fm.tmc.seen) {   // RDS-TMC traffic messages, only for a station that carries TMC
         char hd[96];
         snprintf(hd, sizeof hd, "Traffic (TMC) - %zu", fm.tmcMessages.size());

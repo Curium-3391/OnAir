@@ -1,6 +1,7 @@
 // FM receiver telemetry, shared by the receiver and the UI.
 #pragma once
 #include "dect2/common/ring.h"
+#include "fm_rds.h"
 #include "rds_tmc.h"
 #include <cstdint>
 #include <string>
@@ -16,7 +17,10 @@ struct FmTelemetry {
     float devKhz = 0;           // peak frequency deviation over the last moment (75 kHz = 100 % modulation)
     bool carrier = false;       // a constant-envelope carrier is in the channel (noise alone is not)
     float levelDbfs = -120;     // power of the selected channel after filtering
+    float multipathPct = 0;     // ripple of the channel's level over the frequencies the modulation sweeps (an echo), %
+    bool equaliser = false;     // the multipath equaliser is in use (multipathPct above about 6 %)
     bool stereo = false;        // the 19 kHz pilot is locked and the stereo decoder is on
+    float stereoPct = 0;        // how much of the stereo difference is in the sound: 100 full stereo, lower = blended towards mono (a weak station)
     bool squelched = false;     // the squelch (setSquelch) holds the sound muted
     float pilotPct = 0;         // pilot injection in % of 75 kHz deviation (a healthy station: 8 - 10)
     bool rdsSync = false;       // RDS block synchronisation
@@ -36,6 +40,7 @@ struct FmTelemetry {
     TmcSystem tmc;              // RDS-TMC announcement (group 3A); tmc.seen = the station carries TMC
     std::vector<TmcMessage> tmcMessages;   // traffic messages not yet expired, newest first
     int piCode = 0;             // programme identification, 0 = unknown
+    RdsInfo rds;                // the rest of RDS: AF, PTYN, ECC, PIN, clock, ODA, RT+, eRT, EON, the name being collected, block counts
 
     std::vector<float> mpxDb;   // spectrum of the multiplex, 0 .. mpxMaxHz, dB relative to full deviation
     float mpxMaxHz = 0;
