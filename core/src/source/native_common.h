@@ -278,6 +278,10 @@ inline std::vector<std::string> codecFolders() {
 #define DECT2_MBE_STEM "mbe"
 #define DECT2_MBE_SO {".1.3", ".1"}
 #define DECT2_MBE_WIN {"mbelib.dll", "libmbe.dll", "libmbe-1.dll", "mbe.dll"}
+// mbelib-neo (a fork with other frame-function arguments, mbe_dyn.h tells them apart): libmbe-neo.so.2 / libmbe-neo.2.dylib / mbe-neo.dll
+#define DECT2_MBE_NEO_STEM "mbe-neo"
+#define DECT2_MBE_NEO_SO {".2", ".3", ".1"}
+#define DECT2_MBE_NEO_WIN {"libmbe-neo.dll", "mbe-neo.dll", "libmbe-neo-2.dll"}
 #define DECT2_CODEC2_STEM "codec2"
 #define DECT2_CODEC2_SO {".1.2", ".1.1", ".1.0", ".1", ".0.9"}
 #define DECT2_CODEC2_WIN {"codec2.dll", "libcodec2.dll"}

@@ -207,6 +207,19 @@ static void toolbarTuner(App& a, int mask, bool vertical, bool& retune, const Mo
 
 // the gain sliders (LNA / VGA / amp, or one gain), AGC, Auto-tune, DC spike and IQ correction, bias-tee
 static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
+    {   // a SoapyRemote radio is listed before it was ever opened, its gain range unknown (0..1 dB on the slider, #228): once it runs, the
+        // range it reported is taken over (checked about once a second while the range is still unknown)
+        static double nextLearn = 0;
+        DeviceInfo& d = a.devices[a.devIdx];
+        if (running && d.kind == DeviceInfo::Soapy && !(d.gainMaxDb > d.gainMinDb) && ImGui::GetTime() >= nextLearn) {
+            nextLearn = ImGui::GetTime() + 1.0;
+            if (soapyLearnRanges(d)) {
+                const double lo = d.gainMinDb, hi = d.gainMaxDb;
+                a.tune.gainDb = std::round(lo + 0.6 * (hi - lo));   // the same start as a radio listed with its range
+                retune = true;
+            }
+        }
+    }
     const DeviceInfo& curDev = a.devices[a.devIdx];
     const bool isHw = curDev.isRadio();
     const bool generic = curDev.isGeneric();

@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #endif
 #include "../main_internal.h"
+#include "dect2/codec/codec_guard.h"
 
 bool gIdentifyDev = false;   // --identify
 
@@ -239,6 +240,23 @@ static void floatingWindows(App& a, ImVec2 disp) {
     rotatorWindow(a);
 }
 
+// a voice codec (plug-in, mbelib or mbelib-neo) crashed or hung and the codec guard disabled it: said once, in plain words
+static void codecNotePopup(ImVec2 disp) {
+    static std::string note;
+    if (note.empty()) note = dect2::codec::guardTakeNotice();
+    if (note.empty() || !gCrashNote.empty()) return;   // one modal at a time
+    if (!ImGui::IsPopupOpen(trw("Voice codec disabled")) && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+        ImGui::OpenPopup(trw("Voice codec disabled"));
+    ImGui::SetNextWindowPos(ImVec2(disp.x * 0.5f, disp.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal(trw("Voice codec disabled"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::PushTextWrapPos(520 * gUi);
+        ImGui::TextUnformatted(note.c_str());
+        ImGui::PopTextWrapPos();
+        if (ImGui::Button(tr("OK"))) { note.clear(); ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
+}
+
 // a modal note once per start when the last run crashed or the startup guard acted
 static void crashNotePopup(ImVec2 disp) {
     if (!gCrashNote.empty()) {   // once per start; the same text is in the log panel
@@ -295,6 +313,7 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     floatingWindows(a, disp);
     commandPalette(a);   // Ctrl+K (ui/command_palette.h)
     crashNotePopup(disp);
+    codecNotePopup(disp);
     hiddenPopOut(a);
     dockFrameEnd(a);
 }

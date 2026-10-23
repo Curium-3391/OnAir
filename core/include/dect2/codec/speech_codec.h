@@ -11,6 +11,9 @@
 //   int     onair_speech_decode(void* state, const uint8_t* coded, size_t nbytes,
 //                               int16_t* pcm, size_t max_samples);
 //                                                        // one coded frame in, PCM samples out; returns the count, -1 on error
+//   int     onair_speech_abi(void);                      // optional: returns 1 (kSpeechAbi); a plug-in that returns another
+//                                                        // number is refused with a plain-words message instead of being called
+// Every call into a plug-in runs on the codec guard (codec_guard.h): one that crashes or hangs is disabled, OnAir goes on.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +23,8 @@
 #include <vector>
 
 namespace dect2::codec {
+
+constexpr int kSpeechAbi = 1;   // the plug-in interface version (onair_speech_abi)
 
 // What a voice mode uses: one decoder, one coded frame at a time.
 class SpeechCodec {

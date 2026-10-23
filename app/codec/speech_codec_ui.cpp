@@ -7,6 +7,7 @@
 #include "dect2/codec/speech_codec.h"
 #include "dect2/codec/codec_registry.h"
 #include "dect2/codec/codec_paths.h"
+#include "dect2/codec/codec_arch.h"
 #include "dect2/engine/updater.h"
 #include "dect2/dstar/dstar_ambe.h"
 #include "dect2/nxdn/nxdn_ambe.h"
@@ -222,6 +223,25 @@ void codecFoldersList(const std::string& codec) {
     }
 }
 
+// The processor OnAir runs as, the Rosetta notice (the Intel build on an Apple Silicon Mac cannot load arm64 plug-ins) and, for the
+// build steps, which architecture to build a plug-in for.
+void codecArchLines(bool buildTip) {
+    namespace cd = dect2::codec;
+    if (cd::runningUnderRosetta()) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "%s", cd::rosettaNotice().c_str());
+        ImGui::PopTextWrapPos();
+        if (ImGui::SmallButton("Open download page")) dect2::openUrl("https://github.com/adswill/OnAir/releases/latest");
+    }
+    ImGui::TextDisabled("OnAir runs as %s.", cd::processArch());
+#if defined(__APPLE__)
+    if (buildTip)
+        ImGui::TextDisabled("Build plug-ins for %s (uname -m in a Terminal shows the Mac's own), or universal: add -arch arm64 -arch x86_64 to the cc line.", cd::processArch());
+#else
+    (void)buildTip;
+#endif
+}
+
 void codecInstallHelper(const char* id) {
     const std::string codec = id;
     voiceCodecTick(id);
@@ -240,6 +260,7 @@ void codecInstallHelper(const char* id) {
         ImGui::PopTextWrapPos();
         if (r.status == dect2::codec::CodecStatus::NoticeRequired) speechCodecGate(id, tmp);
     }
+    codecArchLines(true);
     codecFoldersList(codec);
     openCodecFolderButtons();
     ImGui::SameLine();
@@ -257,6 +278,7 @@ void voiceCodecsWindow(App& a) {
     ImGui::PushTextWrapPos(0);
     ImGui::TextUnformatted("OnAir never ships a patented voice codec. Patented codecs are loaded at run time from a plug-in (or library) that you install yourself in the codecs folder; open codecs need nothing. Encrypted calls are never decoded. Check the patent and radio rules where you live.");
     ImGui::PopTextWrapPos();
+    codecArchLines(false);
     ImGui::Spacing();
     namespace cd = dect2::codec;
     if (ImGui::BeginTable("##vcodecs", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
@@ -290,6 +312,16 @@ void voiceCodecsWindow(App& a) {
                 else if (onDisk) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "plug-in file found: accept the notice or start the mode to load it");
                 else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: %s", cd::speechCodecFileName(id).c_str());
                 if (!plug && onDisk) ImGui::TextDisabled("found in %s", hits[0].path.c_str());
+#if defined(__APPLE__)
+                if (onDisk) {   // the plug-in file's processor next to OnAir's: an arm64 file cannot load into the Intel OnAir and back
+                    const std::string arch = cd::machoArchOfFile(cd::joinPath(hits[0].path, cd::speechCodecFileName(id)));
+                    if (!arch.empty()) {
+                        const bool fits = arch.find(cd::processArch()) != std::string::npos;
+                        if (fits) ImGui::TextDisabled("built for %s", arch.c_str());
+                        else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "built for %s, OnAir runs as %s: it cannot load", arch.c_str(), cd::processArch());
+                    }
+                }
+#endif
                 if (hits.size() > 1) {
                     ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "Warning: also in %d other folder(s); %s wins:", (int)hits.size() - 1, hits[0].path.c_str());
                     for (size_t h = 1; h < hits.size(); ++h) ImGui::BulletText("%s (ignored)", hits[h].path.c_str());
