@@ -465,3 +465,11 @@ Status (2026-10-23, later): the dect2 target builds, and a hidden, muted, isolat
 ## 2026-10-23 OpenGL 3.1 fallback (fix-gl31-030, #283)
 Mesa on a Pi CM5 offers only OpenGL 3.1, so the 3.2 core request failed and main() returned 1 silently. New app/gfx/gl_level.h (pure table): 3.2 core/GLSL 150 -> 3.1/140 -> 3.0/130; createMainWindow tries each level, gfx::setLevel() keeps it for the pop-out, ImGui init and the video converter shaders (version line now prepended at runtime). All levels failing, or gfx::create failing, now prints the GLFW error and shows plat::showFatalError naming MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330. Metal: one level, unchanged. OpenGL ES not added (needs a different loader, shaders and ImGui GLSL ES setup). Nothing else in app/gfx/ needs more than GL 3.0 (only VAO, FBO, texelFetch, R8/RG8). Test: test_gl_level (built and run); app files only syntax-checked; untested on real Pi hardware.
 
+
+## 2026-10-23 issues round: new modes and decoder requests (issue-modes-030)
+Status check of 22 mode/decoder issues against integ-30 and the pub branches (table: docs/ISSUES-2026-10-23-modes.md). New: PSK demodulator
+mode (#282, family 202: blind symbol rate from the |x|^2, x^2/x^4 side and OQPSK rail lines, order by trial demodulation, zoom for narrow
+signals, Doppler following, DPSK/NRZ-M/NRZ-S, G3RUH/CCSDS, sync hunt incl. OQPSK rail pairing, bit saving; tests/pskdsp), PACTOR-I monitor
+(#216, family 203, sub-branch), MHEG-5 carousel viewer and static renderer (#176, sub-branch), NICAM-728 / A2 and the snow option for
+analogue TV (#73/#239, sub-branch), SIB1 MFBI and bands above 64 (#164), SARSAT whole-capture search for 1544 MHz (#214), 41.7 kHz LoRa and
+the #229 presets. Everything new is checked against generated signals only.
