@@ -1,0 +1,156 @@
+# OnAir for Nix: the GUI (pname "onair") or the headless server (server = true, pname "onair-server").
+# Untested on a real Nix machine (written from CMakeLists.txt and cmake/OnairRust.cmake); see docs/NIXOS.md.
+{
+  lib,
+  stdenv,
+  cmake,
+  pkg-config,
+  cargo,
+  rustc,
+  makeWrapper,
+  # build-time libraries (the CMake pkg_check_modules list)
+  hackrf,
+  libusb1,
+  ffmpeg,
+  glfw,
+  libGL,
+  soapysdr,
+  hamlib,
+  # libraries OnAir loads with dlopen at run time (core/src/source/source_*.cpp, docs/CODECS.md): the wrapper puts them on LD_LIBRARY_PATH
+  rtl-sdr,
+  airspy,
+  airspyhf,
+  bladeRF,
+  libiio,
+  alsa-lib,
+  libpulseaudio,
+  zenity,
+  # SoapySDR modules (each one a package with lib/SoapySDR/modules*)
+  soapyModules ? [ ],
+  # more library packages for the wrapper's LD_LIBRARY_PATH, for example [ pkgs.libfdk_aac ]
+  extraRuntimeLibs ? [ ],
+  server ? false,
+  src ? ../..,
+}:
+
+let
+  runtimeLibs = [
+    hackrf
+    libusb1
+    rtl-sdr
+    airspy
+    airspyhf
+    bladeRF
+    libiio
+    soapysdr
+    hamlib
+    alsa-lib
+    libpulseaudio
+    libGL
+  ] ++ extraRuntimeLibs;
+  prog = if server then "onair-server" else "onair";
+in
+stdenv.mkDerivation {
+  pname = prog;
+  version = "0.2.9"; # CMakeLists.txt: project(OnAir VERSION ...)
+  inherit src;
+
+  nativeBuildInputs = [
+    cmake
+    pkg-config
+    cargo # the Rust workspace rust/ is mandatory (cmake/OnairRust.cmake): `cargo build --offline`; Cargo.lock has no external crates
+    rustc
+    makeWrapper
+  ];
+
+  buildInputs =
+    [
+      hackrf
+      libusb1
+      ffmpeg
+      soapysdr
+      hamlib
+    ]
+    ++ lib.optionals (!server) [
+      glfw
+      libGL
+    ];
+
+  cmakeFlags = [
+    (lib.cmakeBool "DECT2_BUILD_APP" (!server))
+    (lib.cmakeBool "DECT2_BUILD_TESTS" false)
+    (lib.cmakeBool "DECT2_CCACHE" false)
+    (lib.cmakeBool "DECT2_WITH_SOAPY" true)
+    (lib.cmakeBool "DECT2_HAVE_HAMLIB" true)
+    (lib.cmakeBool "DECT2_WITH_RFNM" false) # librfnm is not in nixpkgs
+    (lib.cmakeBool "DECT2_WITH_TLS" false)
+    (lib.cmakeBool "DECT2_BUNDLE_CODEC2" (!server)) # codec2 (FreeDV, M17) as a shared library built from third_party/codec2
+    (lib.cmakeBool "DECT2_BUILD_PLUGIN_EXAMPLES" (!server))
+    (lib.cmakeFeature "DECT2_UI_BACKEND" "OpenGL3")
+  ];
+
+  # cargo wants a writable home even when it works offline
+  preConfigure = ''
+    export CARGO_HOME=$TMPDIR/cargo
+  '';
+
+  # `cmake --install` also writes /etc/modprobe.d (an absolute path) which a Nix build cannot do: install by hand, same layout as the .deb.
+  dontUseCmakeInstall = true;
+  buildPhase = ''
+    runHook preBuild
+    cmake --build . --parallel $NIX_BUILD_CORES --target ${if server then "onair-server" else "dect2"}
+    runHook postBuild
+  '';
+
+  installPhase =
+    ''
+      runHook preInstall
+      mkdir -p $out/bin $out/lib/udev/rules.d $out/share/doc/onair
+      install -m644 ../packaging/linux/60-onair-sdr.rules $out/lib/udev/rules.d/60-onair-sdr.rules
+      install -m644 ../LICENSE ../THIRD_PARTY.md $out/share/doc/onair/
+      cp -r ../LICENSES $out/share/doc/onair/
+    ''
+    + (
+      if server then
+        ''
+          install -m755 onair-server $out/bin/onair-server
+        ''
+      else
+        ''
+          install -m755 dect2 $out/bin/onair
+          mkdir -p $out/lib/onair
+          install -m755 onair-plugin-host $out/lib/onair/   # the program looks in ../lib/onair of its own folder
+          cp -r plugins $out/lib/onair/plugins
+          find . -maxdepth 2 -name 'libonair_codec2.so*' -exec cp -P {} $out/lib/onair/ \;
+          install -Dm644 ../packaging/icons/onair.svg $out/share/icons/hicolor/scalable/apps/onair.svg
+          install -Dm644 ../packaging/icons/onair_1024.png $out/share/icons/hicolor/1024x1024/apps/onair.png
+          install -Dm644 ../packaging/linux/onair.desktop $out/share/applications/onair.desktop
+        ''
+    )
+    + ''
+      runHook postInstall
+    '';
+
+  # LD_LIBRARY_PATH for the radio, audio and OpenGL libraries OnAir opens with dlopen; the SoapySDR modules; zenity for file dialogs.
+  # User-installed codecs (mbelib, ...) are not touched: they live in ~/.local/share/onair/codecs (docs/CODECS.md).
+  postFixup = ''
+    soapy=""
+    for m in ${lib.concatStringsSep " " (map toString soapyModules)}; do
+      for d in $m/lib/SoapySDR/modules*; do
+        if [ -d "$d" ]; then soapy="$soapy''${soapy:+:}$d"; fi
+      done
+    done
+    wrapProgram $out/bin/${prog} \
+      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath runtimeLibs} \
+      ${lib.optionalString (!server) "--suffix PATH : ${lib.makeBinPath [ zenity ]}"} \
+      ''${soapy:+--prefix SOAPY_SDR_PLUGIN_PATH : "$soapy"}
+  '';
+
+  meta = {
+    description = "Software radio receiver for HackRF and other SDRs: DVB-T2, DVB-T, ATSC, FM and many more modes";
+    homepage = "https://github.com/adswill/OnAir";
+    license = lib.licenses.gpl3Only; # LICENSE is GPL-3.0; THIRD_PARTY.md lists the bundled code
+    platforms = lib.platforms.linux;
+    mainProgram = prog;
+  };
+}
