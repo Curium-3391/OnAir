@@ -237,7 +237,9 @@ void T2Receiver::configure(double inputRateHz, double bandwidthMhz) {
     I.fn = nativeRateHz(bandwidthMhz);
     {
         std::lock_guard<std::mutex> rl(I.stage.rsMu);
-        I.rateOk = I.resampler.configure(inputRateHz, I.fn) && inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
+        // The signal fills at most the 27841 carriers of 32K extended mode: only what folds into them has to be stopped, so the kernel is sized
+        // for that (as DVB-T's is): 32 taps per output at 10 Msps instead of 64, with the same 65 dB in the band that is used.
+        I.rateOk = I.resampler.configure(inputRateHz, I.fn, nullptr, 27841.0 * I.fn / 32768.0) && inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
     }
     I.decimate = I.rateOk && !I.resampler.passthrough();
     I.gateOff = getenv("DECT2_NOP1GATE") != nullptr;
