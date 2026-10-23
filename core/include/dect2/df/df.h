@@ -19,6 +19,7 @@ struct Array {
     std::vector<std::array<double, 2>> pos;   // element positions (m), x east, y north
     bool isUla = false;                       // uniform linear array along x (needed for root-MUSIC and spatial smoothing)
     double spacing = 0;                       // ULA spacing (m)
+    std::vector<double> z;                    // optional element heights (m) for a 3D array; empty = planar (elevation then has no effect)
     int n() const { return (int)pos.size(); }
     // Uniform circular array: n elements on a circle of `radius`, element 0 at `orientationDeg` (clockwise from north)
     static Array uca(int n, double radius, double orientationDeg = 0);
