@@ -34,7 +34,7 @@ std::vector<AisSentBurst> aisSynthSent(const ModeSynth& s);
 // ---- bursts at chosen times, for tests and the tool
 struct AisBurstSpec {
     ais::Bits payload;       // message bits without FCS
-    char channel = 'A';      // 'A' = AIS 1 (-25 kHz), 'B' = AIS 2 (+25 kHz)
+    char channel = 'A';      // 'A' = AIS 1 (-25 kHz), 'B' = AIS 2 (+25 kHz), 'C' / 'D' = channels 75 / 76 (longRangeMidHz -+ 25 kHz)
     double startSec = 0;     // when the burst starts
     double level = 1.0;      // amplitude relative to the reference burst
     double cfoHz = 0;        // carrier error of this transmitter
@@ -48,6 +48,7 @@ struct AisRenderConfig {
     double cfoHz = 0;        // added to every burst
     double sroPpm = 0;       // bit clock error
     double tuneOffsetHz = 0; // the channels are placed at +-25 kHz - tuneOffsetHz
+    double longRangeMidHz = -5.2e6;   // the middle of channels 75 and 76 relative to the middle of AIS 1 and 2 (156.800 - 162.000 MHz)
     double dcOffset = 0;     // added to I and Q
     int quantBits = 0;       // 8: round to 8 bits like a HackRF (0 = not)
     uint32_t seed = 1;

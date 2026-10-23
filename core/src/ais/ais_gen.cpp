@@ -81,7 +81,7 @@ Burst makeBurst(const ais::Bits& payload, int ch, double t0, double amp, double 
 // Adds the bursts that overlap [tA, tB) (sample n0 is at time n0 / rate) to out.
 class Mixer {
 public:
-    Mixer(double rate, double sroPpm, double tuneOffsetHz, double cfoHz) : rate_(rate), bitRate_(kBit * (1.0 + sroPpm * 1e-6)), off_(tuneOffsetHz), cfo_(cfoHz) {}
+    Mixer(double rate, double sroPpm, double tuneOffsetHz, double cfoHz, double lrMidHz = -5.2e6) : rate_(rate), bitRate_(kBit * (1.0 + sroPpm * 1e-6)), off_(tuneOffsetHz), cfo_(cfoHz), lrMid_(lrMidHz) {}
     void add(Burst b) { bursts_.push_back(std::move(b)); }
     size_t pending() const { return bursts_.size(); }
     void render(cf32* out, size_t n, uint64_t n0) {
@@ -89,7 +89,7 @@ public:
         for (const Burst& b : bursts_) {
             const double dur = (b.nbits + 1) / bitRate_;
             if (b.t0 >= tB || b.t0 + dur <= tA) continue;
-            const double fc = (b.ch ? kChanHz : -kChanHz) - off_ + cfo_ + b.cfo;
+            const double fc = (b.ch >= 2 ? lrMid_ : 0.0) + ((b.ch & 1) ? kChanHz : -kChanHz) - off_ + cfo_ + b.cfo;   // 0 / 1: AIS 1 / 2, 2 / 3: channels 75 / 76
             const double w = 2 * kPi * fc;
             size_t i0 = b.t0 > tA ? (size_t)std::ceil((b.t0 - tA) * rate_) : 0;
             for (size_t i = i0; i < n; i++) {
@@ -115,7 +115,7 @@ public:
         bursts_.erase(std::remove_if(bursts_.begin(), bursts_.end(), [&](const Burst& b) { return b.t0 + (b.nbits + 1) / bitRate_ < now - 0.01; }), bursts_.end());
     }
 private:
-    double rate_, bitRate_, off_, cfo_;
+    double rate_, bitRate_, off_, cfo_, lrMid_;
     std::vector<Burst> bursts_;
 };
 
@@ -573,8 +573,8 @@ std::vector<AisSentBurst> aisSynthSent(const ModeSynth& s) {
 std::vector<cf32> renderAisBursts(const std::vector<AisBurstSpec>& specs, const AisRenderConfig& c) {
     const size_t n = (size_t)(c.durationSec * c.rate);
     std::vector<cf32> out(n, cf32(0, 0));
-    Mixer mx(c.rate, c.sroPpm, c.tuneOffsetHz, c.cfoHz);
-    for (const auto& s : specs) mx.add(makeBurst(s.payload, s.channel == 'B' ? 1 : 0, s.startSec, kRefAmp * s.level, s.cfoHz, s.phase));
+    Mixer mx(c.rate, c.sroPpm, c.tuneOffsetHz, c.cfoHz, c.longRangeMidHz);
+    for (const auto& s : specs) mx.add(makeBurst(s.payload, s.channel == 'B' ? 1 : s.channel == 'C' ? 2 : s.channel == 'D' ? 3 : 0, s.startSec, kRefAmp * s.level, s.cfoHz, s.phase));
     const size_t chunk = 65536;
     for (size_t i = 0; i < n; i += chunk) mx.render(out.data() + i, std::min(chunk, n - i), i);
     const Levels l = levelsFor(c.rate, c.snrDb);

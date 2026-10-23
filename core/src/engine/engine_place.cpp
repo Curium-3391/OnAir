@@ -245,7 +245,7 @@ void Engine::setWideDecode(bool on, double spanHz) {
 void Engine::placeReceiver(int a, double o, double centreHz, double dialHz, double chanHz) {
     switch (a) {
     case 14: rxSonde_.setSignalOffset(o); break;
-    case 15: rxAis_.setSignalOffset(o); break;
+    case 15: rxAis_.setSignalOffset(o); if (lastDev_.isRadio() && centreHz > 0) rxAis_.setCenterHz(centreHz); break;
     case 16: rxMarine_.setSignalOffset(o); break;
     case 17: rxAcars_.setSignalOffset(o); if (centreHz > 0) rxAcars_.setCenterHz(centreHz); break;
     case 18: rxInmc_.setSignalOffset(o); break;

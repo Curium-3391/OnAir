@@ -175,6 +175,21 @@ static AisBurstResult decodeOnce(const cf32* x, size_t n, size_t core0, size_t c
     return res;
 }
 
+// The burst shifted down by 'w' radians per sample and filtered with the narrow filter
+static std::vector<cf32> narrowAt(const cf32* x, size_t n, double w, const AisPhyConfig& cfg) {
+    const std::vector<float> h = dmr::lowpassTaps(cfg.narrowPassHz, cfg.narrowStopHz, kAisWorkRate, 60, 9);
+    const int m = (int)h.size() / 2;
+    std::vector<cf32> rot(n), y(n);
+    for (size_t i = 0; i < n; i++) rot[i] = x[i] * std::polar(1.0f, (float)(-w * (double)i));
+    for (size_t i = 0; i < n; i++) {
+        float re = 0, im = 0;
+        const long lo = std::max<long>(0, (long)i - m), hi = std::min<long>((long)n - 1, (long)i + m);
+        for (long k = lo; k <= hi; k++) { const float hv = h[(size_t)(k - (long)i + m)]; re += hv * rot[(size_t)k].real(); im += hv * rot[(size_t)k].imag(); }
+        y[i] = cf32(re, im);
+    }
+    return y;
+}
+
 // Two passes: the channel filter of the receiver has to pass every carrier offset, so it is wide. Once the burst's own frequency is known, the burst is
 // shifted to zero and filtered again with a narrower filter, which takes away noise (about 1.2 dB at 90 % of the bursts) whatever the offset was.
 AisBurstResult aisDecodeBurst(const cf32* x, size_t n, size_t core0, size_t core1, const AisPhyConfig& cfg) {
@@ -187,16 +202,7 @@ AisBurstResult aisDecodeBurst(const cf32* x, size_t n, size_t core0, size_t core
             cf32 sum(0, 0);
             for (size_t i = a; i < b; i++) sum += x[i] * std::conj(x[i - 1]);
             acc = std::atan2((double)sum.imag(), (double)sum.real());
-            const std::vector<float> h = dmr::lowpassTaps(cfg.narrowPassHz, cfg.narrowStopHz, kAisWorkRate, 60, 9);
-            const int m = (int)h.size() / 2;
-            std::vector<cf32> rot(n), y(n);
-            for (size_t i = 0; i < n; i++) rot[i] = x[i] * std::polar(1.0f, (float)(-acc * (double)i));
-            for (size_t i = 0; i < n; i++) {
-                float re = 0, im = 0;
-                const long lo = std::max<long>(0, (long)i - m), hi = std::min<long>((long)n - 1, (long)i + m);
-                for (long k = lo; k <= hi; k++) { const float hv = h[(size_t)(k - (long)i + m)]; re += hv * rot[(size_t)k].real(); im += hv * rot[(size_t)k].imag(); }
-                y[i] = cf32(re, im);
-            }
+            const std::vector<cf32> y = narrowAt(x, n, acc, cfg);
             AisBurstResult r = decodeOnce(y.data(), n, core0, core1, cfg);
             r.cfoHz += acc * kAisWorkRate / (2 * kPi);
             r.narrow = true;
@@ -208,6 +214,17 @@ AisBurstResult aisDecodeBurst(const cf32* x, size_t n, size_t core0, size_t core
         }
     }
     return decodeOnce(x, n, core0, core1, cfg);
+}
+
+AisBurstResult aisDecodeBurstAt(const cf32* x, size_t n, size_t core0, size_t core1, double freqHz, const AisPhyConfig& cfg) {
+    const double w = 2 * kPi * freqHz / kAisWorkRate;
+    AisPhyConfig c = cfg;
+    if (c.narrowPassHz <= 0) { c.narrowPassHz = 3500; c.narrowStopHz = 8500; }
+    const std::vector<cf32> y = narrowAt(x, n, w, c);
+    AisBurstResult r = decodeOnce(y.data(), n, core0, core1, c);
+    r.cfoHz += freqHz;
+    r.narrow = true;
+    return r;
 }
 
 } // namespace dect2

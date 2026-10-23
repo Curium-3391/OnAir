@@ -1,6 +1,8 @@
-// AIS receiver: two channels (AIS 1 at -25 kHz and AIS 2 at +25 kHz of the user's frequency) at the same time.
-// Front end: mix out the signal offset, decimate to about 100 kHz, resample to exactly 96 kHz; each channel is mixed to zero, filtered and
-// decimated to 48 kHz (5 samples per bit). A power detector finds the bursts (they are short and stand alone), each one is cut out of a ring of samples
+// AIS receiver: up to four channels at the same time, in two pairs 50 kHz wide: AIS 1 + 2 (161.975 / 162.025 MHz) and the long-range channels
+// 75 + 76 (156.775 / 156.825 MHz). With the radio's centre known every pair the capture holds is placed by its frequency; without it AIS 1 and 2 sit
+// at -25 and +25 kHz of the user's frequency.
+// Front end, per pair: mix the pair's middle to 0 Hz, decimate to about 100 kHz, resample to exactly 96 kHz; each channel is mixed to zero, filtered
+// and decimated to 48 kHz (5 samples per bit). A power detector finds the bursts (they are short and stand alone), each one is cut out of a ring of samples
 // and decoded offline by aisDecodeBurst (ais_phy.cpp). The message layer and the station table are here.
 #include "dect2/marine/marine_mmsi.h"
 #include "dect2/ais/ais_rx.h"
@@ -9,6 +11,9 @@
 #include "dect2/net/feeds.h"
 #include "dect2/ais/ais_phy.h"
 #include "dect2/ais/ais_proto.h"
+#include "dect2/ais/ais_longrange.h"
+#include "dect2/ais/ais_sat.h"
+#include "dect2/automation/event.h"
 #include "dect2/dmr/dmr_dsp.h"
 #include "dect2/dsp/exact_resampler.h"
 #include <algorithm>
@@ -71,6 +76,23 @@ std::vector<int> splitFactors(int d) {
 
 struct Pending { uint64_t start, end, decodeAt; };
 
+// the front end of one pair of channels
+struct Front {
+    bool on = false;
+    double midHz = 0;           // where the pair's middle sits relative to 0 Hz in the input
+    std::vector<dmr::Fir<cf32>> stages;
+    ExactResampler rs;
+    bool rsPass = true;
+    uint64_t n96 = 0;
+    double offPhase = 0;
+    std::vector<cf32> bufA, bufB, mixBuf, o2;
+    void reset() {
+        for (auto& st : stages) st.reset();
+        if (!rsPass) rs.reset();
+        n96 = 0; offPhase = 0;
+    }
+};
+
 struct Chan {
     dmr::Fir<cf32> dec, filt;
     std::vector<cf32> ring = std::vector<cf32>(kRing);
@@ -86,6 +108,8 @@ struct Chan {
     bool active = false;
     uint64_t start = 0; double peak = 0; int low = 0;
     std::deque<Pending> pend;
+    double epoch = 0;           // signal time (of the receiver's clock) of this channel's sample 0
+    AisDopplerTracker dop;
     void reset() {
         dec.reset(); filt.reset();
         total = 0;
@@ -94,6 +118,7 @@ struct Chan {
         blocks.clear(); nf = 0; nfKnown = false; levelEma = 0;
         active = false; start = 0; peak = 0; low = 0;
         pend.clear();
+        dop.reset();
     }
 };
 
@@ -110,23 +135,29 @@ struct AisReceiver::Impl {
     std::mutex telMu;           // the published snapshot
     std::function<void(const std::string&)> log;
 
-    double fs = 0, offsetHz = 0;
+    double fs = 0, offsetHz = 0, centreHz = 0;
+    int planMask = 15;
     bool isReady = false;
-    std::vector<dmr::Fir<cf32>> stages;
-    ExactResampler rs;
-    bool rsPass = true;
+    Front fr[2];                // 0: AIS 1 + 2, 1: channels 75 + 76
     double enbw = 10000;        // noise bandwidth of the channel chain in Hz
     cf32 mixTab[2][96];
-    uint64_t n96 = 0;
-    double offPhase = 0;
-    Chan ch[2];
-    std::vector<cf32> bufA, bufB, mixBuf, tmp, o1, o2, o3, clean;
+    Chan ch[4];
+    std::vector<cf32> tmp, o1, o3, clean;
+    std::vector<float> h2;      // the channel filter at 48 kHz (the cancelled bursts go through it)
+    uint64_t inSamples = 0;     // input samples since the start or the last reset: the receiver's clock
+    bool sat = false;
+    std::unique_ptr<Sgp4> satSgp;
+    double timeBase = 0;        // UNIX time of signal time 0 (0 = take the computer's clock at the first sample)
+    bool timeBaseFixed = false;
+    std::deque<AisRxRecord> recent;
+    uint64_t recN = 0;
+    std::vector<double> hints[4];   // satellite mode: frequency candidates per channel, refreshed with every report
 
     // results
     AisTelemetry t;             // counters and tables (the vessels and sentences are kept separately below)
     std::unordered_map<uint32_t, Rec> vessels;
     std::deque<std::string> nmea;
-    std::deque<double> goodTimes[2];
+    std::deque<double> goodTimes[4];
     int nmeaSeq = 0;
     double lastGood = -1e9, lastBurst = -1e9, cfoEma = 0, snrEma = 0;
     bool haveSnr = false;
@@ -141,35 +172,41 @@ struct AisReceiver::Impl {
     bool forwardFeeds = true;
 
     void logLine(const std::string& s) { if (log) log(s); }
-    double now() const { return (double)ch[0].total / kAisWorkRate; }
+    double now() const { return fs > 0 ? (double)inSamples / fs : 0.0; }
 
-    void configure(double rate) {
-        fs = rate;
-        isReady = false;
-        stages.clear();
-        if (fs < aisTuning().minSampleRate - 1) return;
+    bool designFront(Front& F) {
+        F.stages.clear();
         const int d = pickDecimation(fs);
         const std::vector<int> f = splitFactors(d);
         double r = fs;
-        stages.assign(f.size(), dmr::Fir<cf32>());
+        F.stages.assign(f.size(), dmr::Fir<cf32>());
         for (size_t i = 0; i < f.size(); i++) {
             const double out = r / f[i];
             const double pass = 38000.0, stop = std::max(pass + 4000.0, out - pass);
-            stages[i].design(dmr::lowpassTaps(pass, std::min(stop, r * 0.5), r, 60, 9), f[i]);
+            F.stages[i].design(dmr::lowpassTaps(pass, std::min(stop, r * 0.5), r, 60, 9), f[i]);
             r = out;
         }
-        rsPass = std::fabs(r - kMidRate) < 0.01;
-        if (!rsPass && !rs.configure(r, kMidRate)) return;
-        // the two channels: mixers at +-25 kHz of the 96 kHz stream
-        for (int c = 0; c < 2; c++)
-            for (int i = 0; i < 96; i++) {
-                const double a = 2 * kPi * (c ? -kChanHz : kChanHz) * i / kMidRate;      // mixing the channel down
-                mixTab[c][i] = cf32((float)std::cos(a), (float)std::sin(a));
-            }
-        // the channel filters: 96 -> 48 kHz (rejects the other channel), then the channel filter itself
-        const std::vector<float> h1 = dmr::lowpassTaps(9500.0, 38000.0, kMidRate, 60, 9);
-        const std::vector<float> h2 = bbf::overrideTaps("ais", dmr::lowpassTaps(phy.chanPassHz, phy.chanStopHz, kAisWorkRate, 60, 9), kAisWorkRate, phy.chanPassHz + phy.chanStopHz);
-        for (int c = 0; c < 2; c++) { ch[c].dec.design(h1, 2); ch[c].filt.design(h2, 1); }
+        F.rsPass = std::fabs(r - kMidRate) < 0.01;
+        return F.rsPass || F.rs.configure(r, kMidRate);
+    }
+
+    // which pairs the capture holds, and where
+    void place() {
+        const bool known = centreHz > 1e6;
+        fr[0].midHz = known ? ais::kAisMidHz - centreHz : offsetHz;
+        fr[1].midHz = known ? ais::kLongRangeMidHz - centreHz : offsetHz + (ais::kLongRangeMidHz - ais::kAisMidHz);
+        for (int p = 0; p < 2; p++) {
+            const bool fits = std::fabs(fr[p].midHz) + ais::kPairMarginHz <= 0.49 * fs;
+            fr[p].on = ((planMask >> (2 * p)) & 3) != 0 && (fits || (p == 0 && !known));   // without the centre, AIS 1 + 2 as before
+        }
+    }
+
+    // the channel filters (the satellite mode widens them for the Doppler shift)
+    void designChannels() {
+        const double pass = sat ? 12000.0 : phy.chanPassHz, stop = sat ? 18000.0 : phy.chanStopHz;
+        const std::vector<float> h1 = dmr::lowpassTaps(std::max(9500.0, pass + 1500.0), 38000.0, kMidRate, 60, 9);   // 96 -> 48 kHz (rejects the other channel)
+        h2 = bbf::overrideTaps("ais", dmr::lowpassTaps(pass, stop, kAisWorkRate, 60, 9), kAisWorkRate, pass + stop);
+        for (int c = 0; c < 4; c++) { ch[c].dec.design(h1, 2); ch[c].filt.design(h2, 1); }
         // noise bandwidth of both filters together: sum of |H1 H2|^2 df over the 48 kHz of the output
         double acc = 0;
         const int np = 4096;
@@ -181,17 +218,42 @@ struct AisReceiver::Impl {
             acc += std::norm(a1 * a2);
         }
         enbw = std::max(1000.0, acc * (kAisWorkRate / np));
+    }
+
+    void configure(double rate) {
+        fs = rate;
+        isReady = false;
+        if (fs < aisTuning().minSampleRate - 1) return;
+        for (Front& F : fr) if (!designFront(F)) return;
+        // the two channels of a pair: mixers at +-25 kHz of the 96 kHz stream
+        for (int c = 0; c < 2; c++)
+            for (int i = 0; i < 96; i++) {
+                const double a = 2 * kPi * (c ? -kChanHz : kChanHz) * i / kMidRate;      // mixing the channel down
+                mixTab[c][i] = cf32((float)std::cos(a), (float)std::sin(a));
+            }
+        designChannels();
+        place();
         isReady = true;
         resetState();
     }
 
+    // after the placement may have changed (a retune): the front ends and channels start again, the counters and tables stay
+    void replace() {
+        const bool was0 = fr[0].on, was1 = fr[1].on;
+        const double m0 = fr[0].midHz, m1 = fr[1].midHz;
+        place();
+        if (!isReady || (was0 == fr[0].on && was1 == fr[1].on && m0 == fr[0].midHz && m1 == fr[1].midHz)) return;
+        for (Front& F : fr) F.reset();
+        for (int c = 0; c < 4; c++) { ch[c].reset(); ch[c].epoch = now(); }
+    }
+
     void resetState() {
-        for (auto& s : stages) s.reset();
-        if (!rsPass) rs.reset();
-        n96 = 0; offPhase = 0;
-        ch[0].reset(); ch[1].reset();
+        for (Front& F : fr) F.reset();
+        for (Chan& C : ch) { C.reset(); C.epoch = 0; }
+        inSamples = 0;
+        if (!timeBaseFixed) timeBase = 0;
         t = AisTelemetry();
-        goodTimes[0].clear(); goodTimes[1].clear();
+        for (auto& g : goodTimes) g.clear();
         for (auto& kv : vessels) kv.second.lastHeard -= lastNow;   // the stations and sentences stay (clearResults)
         lastNow = 0;
         lastGood = lastBurst = -1e9; cfoEma = snrEma = 0; haveSnr = false;
@@ -214,7 +276,10 @@ struct AisReceiver::Impl {
             o.vessels.push_back(std::move(v));
         }
         o.vesselCount = (uint32_t)vessels.size();
+        o.longRangeVessels = 0;
+        for (const auto& kv : vessels) o.longRangeVessels += kv.second.v.longRange;
         o.nmea.assign(nmea.begin(), nmea.end());
+        o.recent.assign(recent.begin(), recent.end());
     }
     // a report of the lists alone (after a reset, a load or a clear: no new signal to wait for)
     void republish() {
@@ -227,7 +292,7 @@ struct AisReceiver::Impl {
     }
 
     // ---- stations
-    void updateVessel(const ais::AisMsg& m, char chan, double tnow) {
+    void updateVessel(const ais::AisMsg& m, char chan, double tnow, double utc) {
         auto it = vessels.find(m.mmsi);
         if (it == vessels.end()) {
             if (vessels.size() >= kMaxVessels) {
@@ -245,19 +310,23 @@ struct AisReceiver::Impl {
         v.messages++;
         v.lastType = m.type;
         v.channel = chan;
+        v.lastUtc = utc;
+        if (m.type == 27 && m.valid) { v.longRange = true; v.longRangeMsgs++; v.posLatency = m.posLatency; }
         if (m.cls != AIS_CLASS_OTHER) v.cls = m.cls;
         if (!m.valid) return;
         const bool movement = m.type == 1 || m.type == 2 || m.type == 3 || m.type == 9 || m.type == 18 || m.type == 19 || m.type == 27;
         if (m.hasPos) {
             const bool moved = !v.hasPos || std::fabs(v.lat - m.lat) > 0.0002 || std::fabs(v.lon - m.lon) > 0.0002;
             v.hasPos = true; v.lat = m.lat; v.lon = m.lon;
+            v.lrPosition = m.type == 27;
             if (moved) {
                 v.track.push_back({(float)m.lat, (float)m.lon});
                 if (v.track.size() > kTrackCap) v.track.erase(v.track.begin());
             }
         }
         if (movement) {
-            v.sog = m.sog; v.cog = m.cog; v.heading = m.heading;
+            v.sog = m.sog; v.cog = m.cog;
+            if (m.type != 27) v.heading = m.heading;   // message 27 has no heading: the last one stays
             if (m.type <= 3) { v.hasRot = m.hasRot; v.rotDegMin = m.rotDegMin; v.navStatus = m.navStatus; }
             if (m.type == 27) v.navStatus = m.navStatus;
             if (m.type == 9) v.altitudeM = m.altitudeM;
@@ -284,20 +353,20 @@ struct AisReceiver::Impl {
             r.autoEmit = tnow;
             static const char* const cls[] = {"A", "B", "base", "aid", "SAR", "other"};
             automation::Event ev("ais.vessel");
-            ev.at(automation::wallNow(), "AIS", chan == 'B' ? 162.025e6 : 161.975e6);
+            ev.at(automation::wallNow(), "AIS", aisChannelHz(aisChannelIndex(chan)));
             ev.num("mmsi", m.mmsi).str("name", v.name).str("callsign", v.callsign).num("ship_type", v.shipType).num("lat", v.lat).num("lon", v.lon)
                 .num("sog_kt", v.sog).num("cog_deg", v.cog).num("nav_status", v.navStatus).str("class", cls[v.cls >= 0 && v.cls <= 5 ? v.cls : 5]).str("destination", v.destination);
             automation::emit(std::move(ev));
         }
     }
 
-    void onFrame(int c, const ais::Bits& bits, double snrDb, double cfoHz) {
+    void onFrame(int c, const ais::Bits& bits, double snrDb, double cfoHz, double startSec = -1, int layer = 0) {
         const double tnow = now();
+        const char chn = aisChannelLetter(c);
         if (bits.size() < 38) { t.blocksBad++; t.channelBad[c]++; return; }
         ais::AisMsg m;
         const bool decoded = ais::decodeMessage(bits, m);
-        if (!ais::acceptableAis(m, decoded)) { if (frameCb) frameCb(c ? 'B' : 'A', bits, tnow, snrDb, cfoHz); t.blocksBad++; t.channelBad[c]++; return; }   // a good FCS on something that is not an AIS message (#87)
-        const char chn = c ? 'B' : 'A';
+        if (!ais::acceptableAis(m, decoded)) { if (frameCb) frameCb(chn, bits, tnow, snrDb, cfoHz); t.blocksBad++; t.channelBad[c]++; return; }   // a good FCS on something that is not an AIS message (#87)
         t.blocksOk++; t.channelOk[c]++;
         t.typeCount[c][m.type >= 1 && m.type <= 27 ? m.type : 0]++;
         goodTimes[c].push_back(tnow);
@@ -311,7 +380,55 @@ struct AisReceiver::Impl {
         for (const std::string& s : sentences) nmea.push_back(s);
         if (bits.size() > 6 * 60) nmeaSeq = (nmeaSeq + 1) % 10;
         while (nmea.size() > kNmeaCap) nmea.pop_front();
-        if (m.mmsi) updateVessel(m, chn, tnow);
+        ch[c].dop.add(tnow, cfoHz);
+        if (layer == 1) t.recovered++;
+        if (layer >= 2) t.cancelled++;
+        // the time stamp of the reception (message 27 carries none)
+        if (timeBase == 0) timeBase = automation::wallNow() - tnow;
+        AisRxRecord rec;
+        rec.n = ++recN;
+        rec.timeSec = startSec >= 0 ? startSec : tnow;
+        rec.utc = timeBase + rec.timeSec;
+        rec.channel = chn; rec.type = m.type; rec.mmsi = m.mmsi;
+        rec.snrDb = (float)snrDb; rec.cfoHz = (float)cfoHz;
+        rec.hasPos = m.valid && m.hasPos; rec.lat = (float)m.lat; rec.lon = (float)m.lon;
+        rec.sog = m.sog; rec.cog = m.cog; rec.navStatus = m.navStatus; rec.posLatency = m.posLatency;
+        rec.layer = layer;
+        recent.push_back(rec);
+        while (recent.size() > 500) recent.pop_front();
+        if (m.mmsi) updateVessel(m, chn, tnow, rec.utc);
+    }
+
+    // satellite mode: the frequency candidates of a channel: the bursts heard lately, and (with the satellite's elements) the Doppler shift each
+    // ship heard with a position should have now. Clustered to 300 Hz, the most common first.
+    void refreshHints(double tnow) {
+        for (int c = 0; c < 4; c++) {
+            std::vector<double> v = ch[c].dop.recent(tnow, 30);
+            if (satSgp && timeBase > 0) {
+                const double utc = timeBase + tnow;
+                int used = 0;
+                for (const auto& kv : vessels) {
+                    const Rec& r = kv.second;
+                    if (!r.v.hasPos || tnow - r.lastHeard > 900 || used >= 300) continue;
+                    Observer o; o.latDeg = r.v.lat; o.lonDeg = r.v.lon;
+                    Look l;
+                    if (!lookAt(*satSgp, o, utc, l) || l.elDeg < -1) continue;
+                    v.push_back(dopplerHz(aisChannelHz(c), l.rangeRateKmS));
+                    used++;
+                }
+            }
+            std::sort(v.begin(), v.end());
+            std::vector<std::pair<int, double>> cl;   // count, centre
+            for (size_t i = 0; i < v.size();) {
+                size_t j = i; double s = 0;
+                while (j < v.size() && v[j] - v[i] < 300) { s += v[j]; j++; }
+                cl.push_back({(int)(j - i), s / (double)(j - i)});
+                i = j;
+            }
+            std::stable_sort(cl.begin(), cl.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+            hints[c].clear();
+            for (size_t i = 0; i < cl.size() && i < 6; i++) hints[c].push_back(cl[i].second);
+        }
     }
 
     // ---- bursts
@@ -327,9 +444,19 @@ struct AisReceiver::Impl {
         std::vector<cf32> seg((size_t)(e0 - s0));
         for (uint64_t i = s0; i < e0; i++) seg[(size_t)(i - s0)] = C.ring[(size_t)(i % kRing)];
         const size_t core0 = (size_t)(p.start > s0 ? p.start - s0 : 0), core1 = (size_t)(std::min(p.end, e0) - s0);
-        const AisBurstResult r = aisDecodeBurst(seg.data(), seg.size(), core0, core1, phy);
-        if (r.frames.empty()) {
-            if (r.bad > 0) { t.blocksBad++; t.channelBad[c]++; }
+        const double startSec = C.epoch + (double)p.start / kAisWorkRate;
+        AisCollisionResult cr;
+        if (sat) {
+            AisCollisionConfig cc;
+            cc.chanTaps = &h2;
+            cr = aisDecodeCollided(seg.data(), seg.size(), core0, core1, phy, hints[c], cc);
+        } else {
+            const AisBurstResult r = aisDecodeBurst(seg.data(), seg.size(), core0, core1, phy);
+            cr.bad = r.bad; cr.cfoHz = r.cfoHz;
+            for (const auto& f : r.frames) { AisFound a; a.payload = f; a.cfoHz = r.cfoHz; cr.frames.push_back(std::move(a)); }
+        }
+        if (cr.frames.empty()) {
+            if (cr.bad > 0) { t.blocksBad++; t.channelBad[c]++; }
             return;
         }
         // signal to noise ratio in 48 kHz: the burst power above the noise floor against the noise floor scaled from the filter's bandwidth
@@ -338,12 +465,15 @@ struct AisReceiver::Impl {
         size_t cnt = 0;
         for (size_t i = a; i < b; i++) { pw += std::norm(seg[i]); cnt++; }
         double snr = 0;
+        const double n48 = C.nf * kAisWorkRate / enbw;
         if (cnt > 10 && C.nfKnown) {
             const double sig = pw / (double)cnt - C.nf;
-            const double n48 = C.nf * kAisWorkRate / enbw;
             snr = sig > 0 ? 10 * std::log10(sig / n48) : -10;
         }
-        for (const auto& f : r.frames) onFrame(c, f, snr, r.cfoHz);
+        for (const auto& f : cr.frames) {
+            const double s = f.power > 0 && C.nfKnown && n48 > 0 ? 10 * std::log10(f.power / n48) : snr;   // a burst that was fitted: its own power
+            onFrame(c, f.payload, s, f.cfoHz, startSec, f.layer);
+        }
     }
 
     void chanSample(int c, cf32 x) {
@@ -399,7 +529,12 @@ struct AisReceiver::Impl {
     void publish() {
         const double tnow = now();
         lastNow = tnow;
-        for (int c = 0; c < 2; c++) {
+        t.channelMask = (fr[0].on ? 3 : 0) | (fr[1].on ? 12 : 0);
+        t.satellite = sat;
+        if (sat) refreshHints(tnow);
+        for (int c = 0; c < 4; c++) {
+            t.dopplerHz[c] = ch[c].dop.valid() ? (float)ch[c].dop.estimate(tnow) : 0.f;
+            t.dopplerRateHzS[c] = (float)ch[c].dop.rateHzS();
             while (!goodTimes[c].empty() && goodTimes[c].front() < tnow - 60) goodTimes[c].pop_front();
             const double span = std::max(5.0, std::min(60.0, tnow));
             t.burstsPerMin[c] = (float)((double)goodTimes[c].size() * 60.0 / span);
@@ -436,45 +571,52 @@ struct AisReceiver::Impl {
             for (auto& v : clean) if (!(std::fabs(v.real()) < 1e4f && std::fabs(v.imag()) < 1e4f)) v = cf32(0, 0);
             x = clean.data();
         }
-        const cf32* cur = x;
-        size_t cn = n;
-        if (offsetHz != 0) {
-            // the middle of the two channels goes to 0 Hz
-            mixBuf.resize(n);
-            const double w = -2 * kPi * offsetHz / fs;
-            const cf32 stp((float)std::cos(w), (float)std::sin(w));
-            cf32 ph((float)std::cos(offPhase), (float)std::sin(offPhase));
-            for (size_t i = 0; i < n; i++) {
-                mixBuf[i] = x[i] * ph;
-                ph *= stp;
-                if ((i & 1023) == 1023) ph /= std::abs(ph);
+        for (int p = 0; p < 2; p++) {
+            Front& F = fr[p];
+            if (!F.on) continue;
+            const cf32* cur = x;
+            size_t cn = n;
+            if (F.midHz != 0) {
+                // the middle of the pair's two channels goes to 0 Hz
+                F.mixBuf.resize(n);
+                const double w = -2 * kPi * F.midHz / fs;
+                const cf32 stp((float)std::cos(w), (float)std::sin(w));
+                cf32 ph((float)std::cos(F.offPhase), (float)std::sin(F.offPhase));
+                for (size_t i = 0; i < n; i++) {
+                    F.mixBuf[i] = x[i] * ph;
+                    ph *= stp;
+                    if ((i & 1023) == 1023) ph /= std::abs(ph);
+                }
+                F.offPhase = std::fmod(F.offPhase + w * (double)n, 2 * kPi);
+                cur = F.mixBuf.data();
             }
-            offPhase = std::fmod(offPhase + w * (double)n, 2 * kPi);
-            cur = mixBuf.data();
+            for (size_t s = 0; s < F.stages.size(); s++) {
+                std::vector<cf32>& dst = (s & 1) ? F.bufB : F.bufA;
+                dst.clear();
+                F.stages[s].process(cur, cn, dst);
+                cur = dst.data(); cn = dst.size();
+            }
+            if (!F.rsPass) {
+                F.o2.clear();
+                F.rs.process(cur, cn, F.o2);
+                cur = F.o2.data(); cn = F.o2.size();
+            }
+            for (int k = 0; k < 2; k++) {
+                const int c = 2 * p + k;
+                tmp.resize(cn);
+                for (size_t i = 0; i < cn; i++) tmp[i] = cur[i] * mixTab[k][(F.n96 + i) % 96];
+                o1.clear();
+                ch[c].dec.process(tmp.data(), cn, o1);
+                o3.clear();
+                ch[c].filt.process(o1.data(), o1.size(), o3);
+                for (const cf32& v : o3) chanSample(c, v);
+            }
+            F.n96 += cn;
         }
-        for (size_t s = 0; s < stages.size(); s++) {
-            std::vector<cf32>& dst = (s & 1) ? bufB : bufA;
-            dst.clear();
-            stages[s].process(cur, cn, dst);
-            cur = dst.data(); cn = dst.size();
-        }
-        if (!rsPass) {
-            o2.clear();
-            rs.process(cur, cn, o2);
-            cur = o2.data(); cn = o2.size();
-        }
-        for (int c = 0; c < 2; c++) {
-            tmp.resize(cn);
-            for (size_t i = 0; i < cn; i++) tmp[i] = cur[i] * mixTab[c][(n96 + i) % 96];
-            o1.clear();
-            ch[c].dec.process(tmp.data(), cn, o1);
-            o3.clear();
-            ch[c].filt.process(o1.data(), o1.size(), o3);
-            for (const cf32& v : o3) chanSample(c, v);
-        }
-        n96 += cn;
-        if (ch[0].total - pubMark >= kPublishSamples) {
-            pubMark = ch[0].total;
+        inSamples += n;
+        const uint64_t pubEvery = (uint64_t)std::llround(fs * (double)kPublishSamples / kAisWorkRate);
+        if (inSamples - pubMark >= pubEvery) {
+            pubMark = inSamples;
             publish();
         }
     }
@@ -490,7 +632,37 @@ void AisReceiver::configure(double inputRateHz) {
 void AisReceiver::setSignalOffset(double hz) {
     std::lock_guard<std::mutex> lk(p_->procMu);
     p_->offsetHz = hz;
-    p_->offPhase = 0;
+    p_->replace();
+    p_->fr[0].offPhase = p_->fr[1].offPhase = 0;
+}
+void AisReceiver::setCenterHz(double hz) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    p_->centreHz = hz;
+    p_->replace();
+}
+void AisReceiver::setChannelMask(int mask) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    p_->planMask = mask & 15;
+    p_->replace();
+}
+void AisReceiver::setSatelliteMode(bool on) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    if (p_->sat == on) return;
+    p_->sat = on;
+    if (p_->isReady) p_->designChannels();
+    for (auto& h : p_->hints) h.clear();
+}
+void AisReceiver::setSatelliteTle(const Tle* tle) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    p_->satSgp.reset();
+    if (!tle) return;
+    auto s = std::make_unique<Sgp4>();
+    if (s->init(*tle)) p_->satSgp = std::move(s);
+}
+void AisReceiver::setTimeBase(double unixSec) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    p_->timeBase = unixSec;
+    p_->timeBaseFixed = unixSec > 0;
 }
 bool AisReceiver::ready() const {
     std::lock_guard<std::mutex> lk(p_->procMu);
@@ -512,7 +684,7 @@ bool AisReceiver::telemetry(AisTelemetry& out, uint64_t lastSeq) {
 }
 void AisReceiver::clearResults() {
     std::lock_guard<std::mutex> lk(p_->procMu);
-    p_->vessels.clear(); p_->nmea.clear();
+    p_->vessels.clear(); p_->nmea.clear(); p_->recent.clear();
     p_->republish();
 }
 std::string AisReceiver::saveResults() const {

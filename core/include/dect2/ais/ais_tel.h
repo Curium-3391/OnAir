@@ -33,10 +33,32 @@ struct AisVessel {
     bool offPosition = false, virtualAid = false;
     int altitudeM = -1;              // search and rescue aircraft, -1 = not available
     int lastType = 0;                // message type of the last message
-    char channel = 'A';              // 'A' = AIS 1 (161.975 MHz), 'B' = AIS 2 (162.025 MHz) of the last message
+    char channel = 'A';              // of the last message: 'A' = AIS 1 (161.975 MHz), 'B' = AIS 2 (162.025 MHz), 'C' = channel 75 (156.775 MHz), 'D' = channel 76 (156.825 MHz)
+    bool longRange = false;          // has sent message 27 (the long-range broadcast of ITU-R M.1371-5): a "new-type" vessel
+    uint32_t longRangeMsgs = 0;      // message 27 received from it
+    bool lrPosition = false;         // the position shown came from a message 27 (1/10 minute resolution, about 185 m)
+    int posLatency = -1;             // message 27's GNSS position latency flag: 0 = under 5 s, 1 = 5 s or more, -1 = not received
+    double lastUtc = 0;              // UNIX time of the last reception (the receiver's time base plus the signal time), 0 = not known
     uint32_t messages = 0;           // messages received from this station
     float ageSec = 0;                // since the last message (last heard)
     std::vector<AisTrackPoint> track;   // recent positions, oldest first; the telemetry carries it for the most recently heard stations only
+};
+
+// One good message as it was received: the per-message time stamp the long-range and satellite views use (ITU-R M.1371-5 annex 4:
+// receivers of message 27 should time-stamp every reception, since the message itself carries no time).
+struct AisRxRecord {
+    uint64_t n = 0;                  // running number (grows by one per good message, never restarts): a reader takes the ones it has not seen
+    double utc = 0;                  // UNIX time of the burst's start (time base + signal time)
+    double timeSec = 0;              // signal time
+    char channel = 'A';              // 'A', 'B', 'C' (75) or 'D' (76)
+    int type = 0;
+    uint32_t mmsi = 0;
+    float snrDb = 0, cfoHz = 0;      // SNR in 48 kHz and the burst's frequency offset (the Doppler shift on a satellite receiver)
+    bool hasPos = false; float lat = 0, lon = 0;
+    float sog = -1, cog = -1;
+    int navStatus = -1;
+    int posLatency = -1;             // message 27 only
+    int layer = 0;                   // 0 decoded directly, 1 found on another frequency or part of the burst, 2+ after cancelling the stronger burst(s)
 };
 
 struct AisTelemetry {
@@ -52,17 +74,33 @@ struct AisTelemetry {
     // ---- this mode's own fields below
     double timeSec = 0;                  // signal time since the start (or since the last reset)
     uint64_t bursts = 0;                 // bursts that the power detector handed to the decoder
-    uint64_t typeCount[2][32] = {};      // good messages by channel (0 = A / AIS 1, 1 = B / AIS 2) and message type (index 0 = types above 27)
-    uint64_t channelOk[2] = {}, channelBad[2] = {};
-    float burstsPerMin[2] = {};          // good messages per minute on each channel, over the last 60 s (shorter at the start)
-    float levelDbfs[2] = {-120, -120};   // mean power in each channel's 48 kHz band
-    float noiseDbfs[2] = {-120, -120};   // noise floor in each channel
+    // the four channels: 0 = A / AIS 1 (161.975), 1 = B / AIS 2 (162.025), 2 = C / channel 75 (156.775), 3 = D / channel 76 (156.825 MHz)
+    uint64_t typeCount[4][32] = {};      // good messages by channel and message type (index 0 = types above 27)
+    uint64_t channelOk[4] = {}, channelBad[4] = {};
+    float burstsPerMin[4] = {};          // good messages per minute on each channel, over the last 60 s (shorter at the start)
+    float levelDbfs[4] = {-120, -120, -120, -120};   // mean power in each channel's 48 kHz band
+    float noiseDbfs[4] = {-120, -120, -120, -120};   // noise floor in each channel
+    int channelMask = 3;                 // the channels the capture covers (bit c = channel c)
+    bool satellite = false;              // satellite mode: wide Doppler filters, collision decoding
+    float dopplerHz[4] = {};             // tracked frequency offset of each channel's recent bursts (satellite mode), and its rate
+    float dopplerRateHzS[4] = {};
+    uint64_t recovered = 0;              // satellite mode: messages found on another frequency or part of a burst
+    uint64_t cancelled = 0;              // satellite mode: messages found after cancelling a stronger burst on top of them
+    uint32_t longRangeVessels = 0;       // stations that sent message 27
+    std::vector<AisRxRecord> recent;     // the last 500 good messages, oldest first
     uint32_t vesselCount = 0;            // stations in the table (the list below holds at most 300, the most recently heard)
     std::vector<AisVessel> vessels;      // most recently heard first
     std::vector<std::string> nmea;       // the last 50 good messages as !AIVDM sentences, newest last
 };
 
 // ITU-R M.1371-5 table 50 (ship and cargo type) in words
+// the four channels by index (as in AisTelemetry) and by the channel letter of AisVessel / AisRxRecord / the !AIVDM sentence
+inline int aisChannelIndex(char c) { return c == 'B' ? 1 : c == 'C' ? 2 : c == 'D' ? 3 : 0; }
+inline char aisChannelLetter(int i) { return "ABCD"[i & 3]; }
+inline double aisChannelHz(int i) { static const double f[4] = {161.975e6, 162.025e6, 156.775e6, 156.825e6}; return f[i & 3]; }
+inline const char* aisChannelLabel(int i) { static const char* const n[4] = {"1", "2", "75", "76"}; return n[i & 3]; }
+inline const char* aisChannelName(int i) { static const char* const n[4] = {"AIS 1 (87B)", "AIS 2 (88B)", "Long range 75", "Long range 76"}; return n[i & 3]; }
+
 inline const char* aisShipTypeText(int t) {
     if (t < 0 || t > 99) return "";
     static const char* const tens[10] = {"Not available", "Reserved", "Wing in ground", "Special", "High-speed craft",
