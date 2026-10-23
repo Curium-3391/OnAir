@@ -597,8 +597,7 @@ struct S2Rx::Impl {
         if (sfp) pil = false;
         L = frameLen(mc, md, rt, bs, sfp ? false : bp);
         lastHeaderL = L;
-        haveParams = true;
-    }
+        haveParams = true;    }
 
     // The soft detector where the noise is large against the spacing of the points. The DVB-S2 APSK constellations do without it (their MODCODs
     // run at a high Es/N0, where it costs time and gains nothing); the S2X ones run down to a few dB above the Es/N0 of QPSK 3/4, where hard
@@ -732,45 +731,48 @@ struct S2Rx::Impl {
         if (!dm.ok) return false;
         const int L = s2FrameSymbols(dm, h.pilots && !o.sfPil_.load());
         const bool inv = h.inverted;
-        auto zAt = [&](size_t i) { return inv ? std::conj(win[i]) : win[i]; };
-        if (h.firstPos + (size_t)L + 95 > n) return false;
+        auto zAt = [&](size_t i) { return inv ? std::conj(win[i]) : win[i]; };        if (h.firstPos + (size_t)L + 95 > n) return false;
         cf32 ref[90];
         s2PlHeader(h.modcod, h.shortFrame, h.pilots, ref);
         const double w0 = h.phi;
-        // header positions (the frame search may be a symbol off): the best coherent correlation of the 26 symbols of the SOF near each
-        size_t pq[2];
-        for (int t = 0; t < 2; t++) {
-            const long c = (long)h.firstPos + (long)t * L;
-            double bm = -1; long bq = c;
-            for (long d = -2; d <= 2; d++) {
-                const long q = c + d;
-                if (q < 0 || (size_t)q + 95 > n) continue;
-                cf32 acc(0, 0);
-                for (int k = 0; k < 26; k++) acc += zAt((size_t)q + (size_t)k) * std::polar(1.0f, (float)(-w0 * k)) * std::conj(ref[k]);
-                if (std::abs(acc) > bm) { bm = std::abs(acc); bq = q; }
-            }
-            pq[t] = (size_t)bq;
-        }
-        if (pq[1] - pq[0] != (size_t)L) { /* the two headers are not a frame apart: take the first and keep the length */ pq[1] = pq[0] + (size_t)L; }
         auto headerSum = [&](size_t q, double w) {
             cf32 acc(0, 0);
             for (int k = 0; k < 90; k++) acc += zAt(q + (size_t)k) * std::polar(1.0f, (float)(-w * k)) * std::conj(ref[k]);
             return acc;
         };
+        // header positions: the best coherent correlation of the 90 known symbols near each. The first is where the frame search put it (it may be
+        // a symbol or two off); the second is looked for up to 8 symbols either side of one frame later, because the symbol clock of the front end
+        // is still settling over the first frame and may have slipped a few symbols (QPSK 1/4 at the Es/N0 of table 13 lost every frame of a
+        // 5 s recording when only 2 were searched: the second header was not found and the frequency was never fixed)
+        size_t pq[2];
+        for (int t = 0; t < 2; t++) {
+            const long c = t == 0 ? (long)h.firstPos : (long)pq[0] + (long)L;
+            const long r = t == 0 ? 2 : 8;
+            double bm = -1; long bq = c;
+            for (long d = -r; d <= r; d++) {
+                const long q = c + d;
+                if (q < 0 || (size_t)q + 95 > n) continue;
+                const double a = std::abs(headerSum((size_t)q, w0));
+                if (a > bm) { bm = a; bq = q; }
+            }
+            pq[t] = (size_t)bq;
+        }
+        // the symbols between the two headers: one frame plus what the clock slipped
+        const int D = (int)(pq[1] - pq[0]);
         const cf32 s1 = headerSum(pq[0], w0), s2 = headerSum(pq[1], w0);
         if (std::abs(s1) < 90 * 0.15f || std::abs(s2) < 90 * 0.15f) return false;
         const double psi = std::arg(s2 * std::conj(s1));
         const double span = h.snrDb < 4.f ? 0.006 : 0.0045;
-        const double stepW = 2.0 * dect2::math::kPi / (double)L;
-        // the phase of the second header minus that of the first is the true frequency times L (the same local derotation is applied to both)
-        const int mmin = (int)std::ceil(((w0 - span) - psi / L) / stepW), mmax = (int)std::floor(((w0 + span) - psi / L) / stepW);
+        const double stepW = 2.0 * dect2::math::kPi / (double)D;
+        // the phase of the second header minus that of the first is the true frequency times D (the same local derotation is applied to both)
+        const int mmin = (int)std::ceil(((w0 - span) - psi / D) / stepW), mmax = (int)std::floor(((w0 + span) - psi / D) / stepW);
         std::vector<cf32> conjFrame;
         const cf32* frame = win + pq[0];
         if (inv) { conjFrame.resize((size_t)L); for (int i = 0; i < L; i++) conjFrame[(size_t)i] = std::conj(win[pq[0] + (size_t)i]); frame = conjFrame.data(); }
         double best = 2.0, second = 2.0, bestW = w0, bestTh = h.theta;
         std::vector<double> all;
         for (int mm = mmin; mm <= mmax; mm++) {
-            const double w = psi / L + mm * stepW;
+            const double w = psi / D + mm * stepW;
             const cf32 s = headerSum(pq[0], w);
             const double th = std::arg(s);
             const float gain = std::max(0.2f, std::min(3.f, std::abs(s) / 90.f));
@@ -780,9 +782,11 @@ struct S2Rx::Impl {
             else if (f < second) second = f;
         }
         if (all.empty()) return false;
-        // clear answer: far below the random level (0.5 for a bad frequency, with a spread of 0.5 / sqrt(checks)) and well below the runner-up
+        // clear answer: far below the random level (0.5 for a bad frequency, with a spread of 0.5 / sqrt(checks)) and well below the runner-up. The
+        // neighbours of the right frequency are not quite random (part of the frame is still right), so the runner-up is measured against the
+        // depth of the best: 8PSK 2/3 0.2 dB below table 13 gave 0.456 against 0.489 (sd 0.0034), a clear answer that a fixed 10 sd gap refused
         const double sd = 0.5 / std::sqrt((double)(dm.nldpc - dm.kldpc));
-        if (best > 0.5 - 10 * sd || second - best < 10 * sd) return false;
+        if (best > 0.5 - 10 * sd || second - best < std::max(6 * sd, 0.3 * (0.5 - best))) return false;
         out = h;
         out.pos = pq[0];
         out.phi = bestW;
@@ -1104,13 +1108,13 @@ struct S2Rx::Impl {
                 usable[i] = prepareFrame(jobs[i], d, llr, dlAll.data() + i * (size_t)d.nldpc) ? 1 : 0;
             }
             const LdpcCode& code = s2Ldpc(j0.rate, j0.sh);
-            const float alpha = s2LdpcAlpha(j0.rate);
+            const float alpha = s2LdpcAlpha(j0.mod, j0.rate, j0.sh);
             bool gpuDone = false;
             if (gpu) {
                 // unusable frames (wrong symbol count) are decoded as zeros and ignored
                 hardAll.resize(nb * (size_t)d.nldpc); okAll.assign(nb, 0); itAll.assign(nb, 0);
                 const auto t0 = std::chrono::steady_clock::now();
-                gpuDone = GpuLdpc::instance().decode(code, dlAll.data(), (int)nb, 50, hardAll.data(), okAll.data(), itAll.data(), alpha);
+                gpuDone = GpuLdpc::instance().decode(code, dlAll.data(), (int)nb, 50, hardAll.data(), okAll.data(), itAll.data(), alpha, true);
                 if (gpuDone) compute.report(true, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / (double)nb);
             }
             for (size_t i = 0; i < nb; i++) {
@@ -1126,8 +1130,10 @@ struct S2Rx::Impl {
                     dlv.assign(dl, dl + d.nldpc);
                     const auto t0 = std::chrono::steady_clock::now();
                     // the high code rates converge in a few iterations, where the 8-bit decoder is about twice as fast; the low rates need as many iterations
-                    // again with it, so they keep the float one
-                    ok = s2RateValue(j0.rate) >= 0.7 ? code.decodeFast8(dlv, 50, hard, &iters) : code.decodeFast(dlv, 50, hard, &iters, alpha);
+                    // again with it, so they keep the float one. Both with the two-minimum correction (the LLRs are in their true scale: s2Demap with
+                    // the noise measured on the known symbols). 32APSK and up keep the float decoder: their bits differ so much in reliability
+                    // that the 8-bit range (scaled to the mean) clips the weak ones, which cost 0.1 dB at 32APSK 4/5
+                    ok = s2RateValue(j0.rate) >= 0.7 && j0.mod <= k16apsk ? code.decodeFast8(dlv, 50, hard, &iters, alpha, true) : code.decodeFast(dlv, 50, hard, &iters, alpha, true);
                     if (!gpuDone) compute.report(false, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
                     hp = hard.data();
                 }
@@ -1147,6 +1153,8 @@ struct S2Rx::Impl {
     int isiFirst = -1;
     std::vector<uint8_t> outPk;
     bool roLow = false;
+    static constexpr int kRelocks = 3;
+    int relockLeft = kRelocks;               // searches again after locks that decode nothing (kept over begin(); a decoded frame refills it)
 
     void deposit(Result&& r) {
         std::lock_guard<std::mutex> lk(resMu);
@@ -1180,15 +1188,28 @@ struct S2Rx::Impl {
             statSyms = 0;
         }
         if (r.dummy) return;
+        bool relock = false;
         {
             std::lock_guard<std::mutex> lk(statMu);
             if (r.dropped) { st.fecBad++; st.dropped++; st.consecutiveBad++; }
             else if (r.ok) {
                 st.fecOk++; st.consecutiveBad = 0;
+                relockLeft = kRelocks;
                 st.ldpcIterAvg = st.ldpcIterAvg == 0 ? r.iters : 0.9 * st.ldpcIterAvg + 0.1 * r.iters;
                 st.ldpcOnGpu = r.gpu; if (r.gpu) st.ldpcGpuFrames++;
                 if (r.berPre >= 0) st.berPre = st.berPre < 0 ? r.berPre : 0.9 * st.berPre + 0.1 * r.berPre;
-            } else { st.fecBad++; st.consecutiveBad++; st.bchBad++; }
+            } else {
+                st.fecBad++; st.consecutiveBad++; st.bchBad++;
+                // The headers are read but not one frame has decoded since the lock: the carrier frequency the acquisition chose may be a whole
+                // number of cycles per frame off (the headers cannot tell), which no later frame would correct. Search again, a few times
+                // (a signal below the threshold of its MODCOD keeps its MER and constellation display between the tries).
+                // 16 frames: near the threshold the first few frames after a good lock fail while the loops settle, and a search then costs more
+                if (st.fecOk == 0 && st.consecutiveBad >= 16 && relockLeft > 0) { relockLeft--; relock = true; }
+            }
+        }
+        if (relock && o.tracking_.load()) {
+            log("DVB-S2: headers locked but no frame decoded: searching for the carrier again");
+            o.lost_ = true; o.tracking_ = false;
         }
         if (!r.ok) { haveCarry = false; carry.clear(); havePrevCrc = false; return; }
         S2BbHeader h;

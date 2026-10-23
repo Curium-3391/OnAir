@@ -18,6 +18,8 @@ float gSwitchWidth = 420;   // width of the mode selector as drawn (the guided t
 
 void selectMode(App& a, int fam, const char* subId) {
     if (txViewFlag()) { txSelectMode(a, fam, subId); return; }
+    if (int k = 0; autodetRow(subId, &k)) { autodetSelect(a, k); return; }   // "TV (auto)", "Digital voice (auto)"
+    autodetCancel(a);   // any other row: the automatic mode ends
     const int sub = subIndexOf(subId);
     if (fam == a.family && (sub == a.sub || !sub)) return;
     // Switch in one action: stop the old decoder before updating the mode, then
@@ -35,6 +37,7 @@ void selectMode(App& a, int fam, const char* subId) {
 }
 bool modeSelected(const App& a, const ModeDef& m) {
     if (txViewFlag()) return txModeHighlighted(m);
+    if (int k = 0; autodetRow(m.subId, &k)) return autodetActive(a, k);
     return m.family == a.family && (!m.subId || subIndexOf(m.subId) == a.sub);
 }
 bool modeMatches(const ModeDef& m, const char* q) {
