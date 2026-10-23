@@ -1,6 +1,7 @@
 // The app side of user-installed speech codecs (see speech_codec_ui.h and docs/CODECS.md).
 #include "speech_codec_ui.h"
 #include "../app.h"
+#include "dect2/tv/avsplus_dec.h"
 #include "../ui/scale.h"
 #include "../platform/platform.h"
 #include "dect2/codec/speech_codec.h"
@@ -252,7 +253,7 @@ void voiceCodecsWindow(App& a) {
     if (!a.voiceCodecsOpen) return;
     firstWindowSize(760 * gUi, 460 * gUi);
     if (!ImGui::Begin("Voice codecs", &a.voiceCodecsOpen)) { ImGui::End(); return; }
-    for (const char* id : {"ambe2", "ambe", "imbe"}) voiceCodecTick(id);
+    for (const char* id : {"ambe2", "ambe", "imbe", "tetrapol"}) voiceCodecTick(id);
     ImGui::PushTextWrapPos(0);
     ImGui::TextUnformatted("OnAir never ships a patented voice codec. Patented codecs are loaded at run time from a plug-in (or library) that you install yourself in the codecs folder; open codecs need nothing. Encrypted calls are never decoded. Check the patent and radio rules where you live.");
     ImGui::PopTextWrapPos();
@@ -316,6 +317,17 @@ void voiceCodecsWindow(App& a) {
         else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: %s", dect2::cdr::draFileNames().empty() ? "libonair_dra" : dect2::cdr::draFileNames().front().c_str());
         ImGui::SameLine();
         codecHelpButton(CodecHelp::Dra);
+    }
+    {   // the AVS+ video add-on (DTMB TV in China): an FFmpeg the user builds, not a speech codec, but installed the same way
+        const dect2::AvsPlusLibInfo li = dect2::avsPlusLibrary();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("AVS+ video (DTMB TV in China, patented, add-on only):");
+        ImGui::SameLine();
+        if (li.hasDecoder) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "add-on loaded: %s", li.path.c_str());
+        else if (li.found) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "found but not usable: %s", li.message.c_str());
+        else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: an FFmpeg libavcodec with AVS+");
+        ImGui::SameLine();
+        codecHelpButton(CodecHelp::AvsPlus);
     }
     ImGui::Spacing();
     ImGui::TextDisabled("Folders searched, in this order (the first one that has a plug-in wins)");

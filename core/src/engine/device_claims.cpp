@@ -1,4 +1,5 @@
 #include "dect2/engine/device_claims.h"
+#include "dect2/source/synth_group.h"
 #include <map>
 #include <mutex>
 
@@ -17,10 +18,15 @@ std::string deviceClaimKey(const DeviceInfo& d) {
 bool claimDevice(const DeviceInfo& d, int owner, int* holder) {
     const std::string k = deviceClaimKey(d);
     if (k.empty()) return true;
+    // a radio group holds its members too: none of them may be open elsewhere, and none can be opened while the group runs
+    std::vector<std::string> keys{k};
+    if (d.kind == DeviceInfo::Group) for (const auto& m : synthGroupMembers(d)) keys.push_back(deviceClaimKey(m));
     std::lock_guard<std::mutex> lk(gMu);
-    auto it = gHeld.find(k);
-    if (it != gHeld.end() && it->second != owner) { if (holder) *holder = it->second; return false; }
-    gHeld[k] = owner;
+    for (const auto& kk : keys) {
+        auto it = gHeld.find(kk);
+        if (it != gHeld.end() && it->second != owner) { if (holder) *holder = it->second; return false; }
+    }
+    for (const auto& kk : keys) gHeld[kk] = owner;
     return true;
 }
 

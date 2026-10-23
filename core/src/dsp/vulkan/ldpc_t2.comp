@@ -1,0 +1,115 @@
+#version 450
+// DVB-T2 / DVB-S2 LDPC (the 360-row quasi-cyclic codes of LdpcCode): layered normalised min-sum, one workgroup of 360 invocations per FEC
+// block, invocation m owns check m of every layer. A line-by-line port of the Metal kernel in gpu_ldpc.mm (the same operations in the same
+// order), so the three GPU backends give the same bits. Compiled to SPIR-V by tools/gen_vulkan_spirv.sh into ldpc_spirv.h.
+//
+// The posteriors live in a device buffer that the invocations of a workgroup share: `coherent` plus memoryBarrierBuffer() before every
+// barrier() makes one invocation's writes visible to the others. The check messages of invocation m are its own (no sharing).
+layout(local_size_x = 360, local_size_y = 1, local_size_z = 1) in;
+
+const int Z = 360;
+
+layout(push_constant) uniform P { int k, n, q, G, maxIter; float alpha; uint msgPer, postPer; } p;
+
+layout(std430, binding = 0) readonly buffer B0 { int lStart[]; };
+layout(std430, binding = 1) readonly buffer B1 { int cGrp[]; };
+layout(std430, binding = 2) readonly buffer B2 { int cSh[]; };
+layout(std430, binding = 3) readonly buffer B3 { uint mBase[]; };
+layout(std430, binding = 4) readonly buffer B4 { int cRank[]; };
+layout(std430, binding = 5) readonly buffer B5 { int layerR[]; };
+layout(std430, binding = 6) coherent buffer B6 { float post[]; };
+layout(std430, binding = 7) buffer B7 { float msg[]; };
+layout(std430, binding = 8) readonly buffer B8 { float llr[]; };
+layout(std430, binding = 9) writeonly buffer B9 { uint hard[]; };
+layout(std430, binding = 10) writeonly buffer B10 { int info[]; };
+
+shared int bad;
+
+int vidx(int j, int nc0, int c0, int r, int m) {
+    if (j < nc0) { int nn = m - cSh[c0 + j]; if (nn < 0) nn += Z; return cGrp[c0 + j] * Z + nn; }
+    const int pb = p.G * Z;
+    if (j == nc0) return pb + r * (Z + 1) + 1 + m;
+    return pb + (r > 0 ? (r - 1) * (Z + 1) + 1 + m : (p.q - 1) * (Z + 1) + m);
+}
+
+void syncPost() { memoryBarrierBuffer(); barrier(); }
+void syncShared() { memoryBarrierShared(); barrier(); }
+
+void main() {
+    const int m = int(gl_LocalInvocationID.x);
+    const uint blk = gl_WorkGroupID.x;
+    const uint pB = blk * p.postPer, mB = blk * p.msgPer, lB = blk * uint(p.n);
+    const int q = p.q, G = p.G, pb = G * Z;
+    for (int i = m; i < G * Z; i += Z) post[pB + uint(i)] = llr[lB + uint(i)];
+    for (int r = 0; r < q; r++) {
+        post[pB + uint(pb + r * (Z + 1) + 1 + m)] = llr[lB + uint(p.k + r + q * m)];
+        if (m == 0) post[pB + uint(pb + r * (Z + 1))] = 1e4;
+    }
+    for (uint i = uint(m); i < p.msgPer; i += uint(Z)) msg[mB + i] = 0.0;
+    syncPost();
+    int it = 0;
+    bool ok = false;
+    while (it < p.maxIter) {
+        for (int r = 0; r < q; r++) {
+            const int c0 = lStart[r], nc0 = lStart[r + 1] - c0, nc = nc0 + 2;
+            const uint mr = mB + mBase[r];
+            float min1 = 1e30, min2 = 1e30;
+            int idx1 = -1;
+            uint sg = 0u;
+            for (int j = 0; j < nc; j++) {
+                precise float x = post[pB + uint(vidx(j, nc0, c0, r, m))] - msg[mr + uint(j * Z + m)];
+                float a = abs(x);
+                sg ^= floatBitsToUint(x) & 0x80000000u;
+                if (a < min1) { min2 = min1; min1 = a; idx1 = j; }
+                else if (a < min2) min2 = a;
+            }
+            // A layer may reach the same variable group twice (a variable then has two edges in the layer, owned by different
+            // invocations). Every new message is computed from the posteriors as they were at the start of the layer, and the
+            // posterior increments are applied afterwards: unique edges at once, repeated ones one rank at a time.
+            const int R = layerR[r];
+            float dl[64];
+            for (int j = 0; j < nc; j++) {
+                const uint vi = pB + uint(vidx(j, nc0, c0, r, m));
+                precise float x = post[vi] - msg[mr + uint(j * Z + m)];
+                precise float mag = (idx1 == j ? min2 : min1) * p.alpha;
+                float nm = uintBitsToFloat(floatBitsToUint(mag) | (sg ^ (floatBitsToUint(x) & 0x80000000u)));
+                precise float d = nm - msg[mr + uint(j * Z + m)];
+                msg[mr + uint(j * Z + m)] = nm;
+                if (R == 0) { if (!(r == 0 && j == nc0 + 1 && m == 0)) { precise float s = post[vi] + d; post[vi] = s; } }   // the pad variable stays known
+                else dl[j] = d;
+            }
+            if (R > 0) {
+                syncPost();
+                for (int rk = 0; rk <= R; rk++) {
+                    for (int j = 0; j < nc; j++) {
+                        const int rank = j < nc0 ? cRank[c0 + j] : 0;
+                        if (rank != rk) continue;
+                        if (r == 0 && j == nc0 + 1 && m == 0) continue;
+                        const uint vi = pB + uint(vidx(j, nc0, c0, r, m));
+                        precise float s = post[vi] + dl[j];
+                        post[vi] = s;
+                    }
+                    syncPost();
+                }
+            }
+            syncPost();
+        }
+        it++;
+        if (m == 0) bad = 0;
+        syncShared();
+        for (int r = 0; r < q; r++) {
+            const int c0 = lStart[r], nc0 = lStart[r + 1] - c0, nc = nc0 + 2;
+            int par = 0;
+            for (int j = 0; j < nc; j++) par ^= post[pB + uint(vidx(j, nc0, c0, r, m))] < 0.0 ? 1 : 0;
+            if (par != 0) { atomicOr(bad, 1); break; }
+        }
+        syncShared();
+        ok = bad == 0;
+        syncShared();   // everyone has read `bad` before the next round may reset it
+        if (ok) break;
+    }
+    const uint hB = blk * uint(p.n);
+    for (int i = m; i < G * Z; i += Z) hard[hB + uint(i)] = post[pB + uint(i)] < 0.0 ? 1u : 0u;
+    for (int r = 0; r < q; r++) hard[hB + uint(p.k + r + q * m)] = post[pB + uint(pb + r * (Z + 1) + 1 + m)] < 0.0 ? 1u : 0u;
+    if (m == 0) { info[blk * 2u] = ok ? 1 : 0; info[blk * 2u + 1u] = it; }
+}

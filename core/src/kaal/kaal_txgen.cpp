@@ -4,6 +4,8 @@
 #include "dect2/kaal/kaal_codec3.h"
 #include "dect2/kaal/kaal_sweepid.h"
 #include "dect2/kaal/kaal_beacon.h"
+#include "dect2/kaal/kaal_v4.h"
+#include <memory>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -107,10 +109,85 @@ private:
     std::vector<int16_t> pcm_;
 };
 
+
+// Frame version 4 (docs/KAAL-NEXT.md): four slots in the 20 kHz channel. The microphone goes into the first kaal.v4voice slots (0 .. 4, default 1)
+// with the profile kaal.v4profile (1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s, default 2), coded by the slot codec (KAAL voice codec 4 unless
+// a test registered another, kaal_slots.h); the other slots, and a voice slot while the speaker is silent, carry the text (every 2 s) and fill. The beacon goes into the control channel.
+class KaalGenV4 : public TxGenerator {
+public:
+    KaalGenV4(double rate, std::function<int(float*, int)> pull) : rate_(rate), pull_(std::move(pull)) { tx_.configure(rate); }
+    ~KaalGenV4() override { for (auto* e : enc_) delete e; }
+    kaal::v4::FrameTx tx_;
+    std::string text_;
+    int voiceSlots_ = 0;
+    kaal::v4::Profile prof_ = kaal::v4::kV60;
+    kaal::v4::SlotVoiceEncoder* enc_[kaal::v4::kSlots] = {};
+    double sampleRate() const override { return rate_; }
+    void generate(cf32* out, size_t n) override {
+        size_t have = 0;
+        while (have < n) {
+            if (pos_ >= buf_.size()) { buf_.clear(); pos_ = 0; next(); }
+            const size_t k = std::min(n - have, buf_.size() - pos_);
+            std::copy(buf_.begin() + (long)pos_, buf_.begin() + (long)(pos_ + k), out + have);
+            have += k; pos_ += k;
+        }
+    }
+private:
+    void next() {
+        if (voiceSlots_ > 0) {
+            stereo_.assign((size_t)1920 * 2, 0.f);
+            if (pull_) pull_(stereo_.data(), 1920);
+            pcm_.clear();
+            mono_.process(stereo_.data(), 1920, pcm_);
+            pcm_.resize(kaal::v4::kPcmPerPayload, 0);
+            for (int s = 0; s < voiceSlots_; s++) {
+                uint8_t packed[40] = {};
+                if (enc_[s] && enc_[s]->encode(pcm_.data(), prof_, packed)) tx_.pushVoice(s, packed);
+            }
+        }
+        if (!text_.empty() && tx_.textQueuedBytes() == 0 && (sf_ % 50) == 0) tx_.queueText(text_);
+        sf_++;
+        tx_.superframe(buf_);
+    }
+    double rate_;
+    std::function<int(float*, int)> pull_;
+    Mono16 mono_;
+    std::vector<float> stereo_;
+    std::vector<int16_t> pcm_;
+    std::vector<cf32> buf_;
+    size_t pos_ = 0;
+    uint64_t sf_ = 0;
+};
+
 } // namespace
 
 std::unique_ptr<TxGenerator> makeKaalTxGenerator(const TxRequest& r, double rateHz, std::string& err) {
     if (rateHz < 48000.0 - 1) { err = "KAAL needs a transmit rate of at least 48 kHz"; return nullptr; }
+    if (r.o("kaal.frame", 3.0) >= 3.5) {   // frame version 4
+        auto g = std::make_unique<KaalGenV4>(rateHz, r.pullAudio);
+        std::string cs, gr, text;
+        double pw = 0;
+        if (!kaalBeaconFromRequest(r, cs, gr, pw, text, err)) return nullptr;
+        kaal::BeaconFields f;
+        f.callsign = cs; f.grid = gr; f.lat = r.lat; f.lon = r.lon; f.powerDbm = pw;
+        f.linkQuality = (int)r.o("kaal.linkQuality", 0);
+        f.frameType = 0;
+        if (kaal::encodeBeaconBits(f, "").empty()) { err = "KAAL: the beacon fields cannot be encoded (check the callsign, the grid and the position)"; return nullptr; }
+        if (r.o("kaal.beacon", 1) > 0.5) g->tx_.setBeacon(f);
+        g->text_ = r.text;   // version 4 has no 100-character limit: long texts go out in the data slots
+        const int pi = (int)std::lround(r.o("kaal.v4profile", 2.0));
+        if (pi < 1 || pi > 4) { err = "KAAL v4: the voice profile is 1 (8.0), 2 (6.0), 3 (4.8) or 4 (3.2 kbit/s)"; return nullptr; }
+        g->prof_ = (kaal::v4::Profile)pi;
+        const kaal::v4::SlotCodec* codec = kaal::v4::slotCodec();
+        g->voiceSlots_ = codec && (!codec->supports || codec->supports(g->prof_)) ? std::max(0, std::min(4, (int)std::lround(r.o("kaal.v4voice", 1.0)))) : 0;
+        for (int s = 0; s < g->voiceSlots_; s++) {
+            g->tx_.setSlotProfile(s, g->prof_);
+            g->tx_.setSlotCallsign(s, cs);
+            g->enc_[s] = codec->makeEncoder();
+        }
+        g->tx_.setDataRobust(r.o("kaal.v4robust", 0) > 0.5);
+        return g;
+    }
     auto g = std::make_unique<KaalGen>(rateHz, r.pullAudio);
     const int kb = (int)std::lround(r.o("kaal.bitrate", 16.0));
     if (!KaalCodec3::validBitrate(kb)) { err = "KAAL: the voice bitrate is 12, 16, 24 or 32 kbit/s"; return nullptr; }

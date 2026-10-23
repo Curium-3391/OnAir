@@ -26,6 +26,7 @@ looks for, the exact folders it searches, an **Open codecs folder** button (it m
 | Yaesu System Fusion (WIP) | AMBE+2 class (proprietary, DVSI) | a speech codec **plug-in with the id `ysf`** that you install yourself (see [Speech codec plug-ins](#speech-codec-plug-ins-voice-modes)); callsigns and data are shown without it, no sound |
 | TETRA | its own speech codec | nothing from you: it is not mbelib and not codec2 |
 | TETRA voice (unencrypted calls only) | TETRA ACELP | a **speech codec plug-in** `onair-codec-tetra` that you build yourself, for example around **mbelib-neo** (see [Speech codec plug-ins](#speech-codec-plug-ins-voice-modes)); the cell, network and call information work without it |
+| TETRAPOL voice (clear calls only) | RP-CELP (PAS 0001-7, patented) | a **speech codec plug-in** `onair-codec-tetrapol` that you install yourself (see [TETRAPOL voice](#tetrapol-voice-id-tetrapol)); cells, frame sync and the call table work without it |
 | Yaesu System Fusion (C4FM) voice | AMBE+2 (patented) | a **speech codec plug-in** with the codec id **`ysf`** (`onair-codec-ysf`) that you build yourself; callsigns, call mode and slow data work without it |
 | KA modes (KAAL, KAPP, KAFT, KAVB, KAIT, KAWS) | their own codecs (unpatented, written for OnAir) | nothing: nothing to install |
 | DAB, DRM, TV, FM | MP2, AAC, H.264 ... | nothing (FFmpeg is inside OnAir) |
@@ -277,8 +278,7 @@ DRA. These are Chinese patented codecs, and OnAir ships none of them: it plays w
 - AVS1 in its JiZhun profile: FFmpeg's `cavs` decoder plays it (the macOS and Windows downloads; the Linux packages carry a smaller
   FFmpeg without it).
 - AVS+ (the broadcast profile, 0x48): FFmpeg's `cavs` decoder refuses it ("only support JiZhun profile", FFmpeg 8 and 9). OnAir lists
-  the service as TV, plays its sound, and says in the player that there is no picture. There is no free AVS+ decoder to install at this
-  time.
+  the service as TV, plays its sound, and says in the player that there is no picture, unless you install the AVS+ add-on (below).
 - AVS2 and AVS3: FFmpeg decodes them only when it is built with libdavs2 or libuavs3d, which the FFmpeg in OnAir is not. Save the stream
   (Outputs: file or UDP) and play it with an FFmpeg build that has them (ffplay).
 - DRA sound: FFmpeg has no DRA decoder, so OnAir plays it through the same **DRA add-on** as CDR (see [DRA+ (CDR sound)](#dra-cdr-sound)). A DTMB service
@@ -288,6 +288,33 @@ DRA. These are Chinese patented codecs, and OnAir ships none of them: it plays w
   add-on to hear this service", with a **?** button to the install steps (also in Help > Voice codecs); a second sound track in another format plays.
   Status: tested with a synthetic stream and a stand-in add-on only; not tried on a real DTMB broadcast or with the real decoder. The stream type 0x14
   is from memory of the Chinese standard (GY/T 220.1) and not verified.
+
+**The AVS+ add-on (optional, you build it).** If you put `libavcodec` and `libavutil` (shared libraries) from an FFmpeg that has an AVS+ decoder
+into the codecs folder (or the folder in `DECT2_AVSPLUS_DIR`), OnAir loads them at run time (the same way as the AC-4 add-on, so the FFmpeg may
+be of another major version than OnAir's; libavcodec 59 to 64, FFmpeg 5 to 9, are accepted) and decodes the video packets of a stream whose sequence header says
+AVS+ (profile 0x48, PMT stream type 0x42) with it. The service list shows an **AVS+** badge on the video; without the add-on the TV panel says
+"install the AVS+ add-on to see the picture" with a **?** that opens the instructions, and the same row is on Help > Voice codecs. An add-on put
+into the folder while OnAir runs is picked up within about three seconds (or press **Look again**); the picture starts at the next sequence
+header. OnAir looks for a decoder named `cavs` in your library (set `DECT2_AVSPLUS_DECODER` if your build names it differently).
+
+*Where it comes from.* The only public source known to this project is <https://github.com/maliwen2015/ffmpeg_cavs_dra> (MIT; "patches FFmpeg to
+support AVS+ and DRA decoding"): a patch `ffmpeg-7.1.2_cavs_dra.patch` for FFmpeg 7.1.2. Its page has no build instructions (and ships
+`ffmpeg.zip` / `ffplay.zip` archives that OnAir neither downloads nor uses). Build it yourself with the ordinary FFmpeg steps:
+
+1. Get the FFmpeg 7.1.2 source (ffmpeg.org) and apply the patch from its top folder: `patch -p1 < ffmpeg-7.1.2_cavs_dra.patch`
+   (check the patch's own paths; use `-p0` if it was made without a prefix).
+2. Configure shared libraries only: `./configure --enable-shared --disable-static --disable-programs --disable-doc`, then `make -j4`.
+   Linux: gcc, make, nasm. macOS: Xcode command line tools and `brew install nasm`. Windows: MSYS2 (MinGW-w64 gcc, make, nasm), and add
+   `--arch=x86_64 --target-os=mingw32` if configure does not guess it.
+3. Take `libavcodec` and `libavutil` from the build (`libavcodec.62.dylib`-style names on macOS, `libavcodec.so.61` on Linux, `avcodec-61.dll`
+   on Windows) together with the libraries they depend on (`libswresample`, ...) and put them side by side in the codecs folder. Press
+   **Look again**.
+
+**Not verified.** Tested here with a stock decoder standing in for the add-on (loading, calling, picture times, hot pickup) and with a synthetic
+transport stream; **never with a real AVS+ broadcast or the real add-on**. Open points: whether the patched decoder is named `cavs`, whether its
+pictures are 4:2:0 8 bit (anything else is refused with a message), interlaced and aspect-ratio signalling (the stream's own aspect is used).
+Licences: the project is MIT and FFmpeg LGPL, so building it yourself is fine for copyright; AVS+ is covered by patents (check where you live).
+OnAir ships and downloads nothing of it.
 
 Details and the external-player route (save the TS / stream UDP, copy the VLC / mpv command): [AVSPLUS.md](AVSPLUS.md).
 
@@ -364,7 +391,7 @@ OnAir ships no AC-4 code, no FFmpeg patch and downloads nothing; the build scrip
 
 ## Speech codec plug-ins (voice modes)
 
-A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from the codecs folders (see "The OnAir codecs folders" above: your user folder first, then the extra folder,
+A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, TETRAPOL voice with the id `tetrapol`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from the codecs folders (see "The OnAir codecs folders" above: your user folder first, then the extra folder,
 `ONAIR_CODEC_DIR`, and the `codecs` folder next to the program): `onair-codec-<id>.dylib` / `.so` / `.dll` (user folder: macOS
 `~/Library/Application Support/OnAir/codecs/`, Linux `~/.local/share/onair/codecs/`, Windows `%LOCALAPPDATA%\OnAir\codecs\`). Without it the
 mode says "Codec not installed" and links here. The first time, OnAir shows a legal notice: you are responsible for following the laws
@@ -379,6 +406,29 @@ Yaesu's public specification, so the plug-in has to do that part itself.
 Recommended source for a TETRA plug-in: mbelib-neo (https://github.com/arancormonk/mbelib-neo), GPL-2.0-or-later. It has a TETRA full-rate speech decoder (`mbe_tetraDecodeFrame`) that takes the same 137 bytes, one bit per byte, B(1)..B(137), so a small wrapper exporting the four `onair_speech_*` functions is enough. Its authors have not cleared the patent status of the TETRA codec, so check that you may use it where you live. You build it yourself; OnAir does not include it.
 
 Yaesu Fusion voice (id `ysf`): OnAir decodes the C4FM frames, removes the channel coding and gives the plug-in the AMBE+2 voice bits of each frame through the same four `onair_speech_*` functions. The decoder behind it is yours to supply, for example from mbelib-neo (it handles IMBE, AMBE and AMBE+2). The same rules apply: you build it, OnAir does not include it, and a legal notice is shown once. Without the plug-in the mode shows the callsigns and data and says "Codec not installed".
+
+### TETRAPOL voice (id `tetrapol`)
+
+OnAir removes the TETRAPOL channel coding (PAS 0001-2 clause 6: the transmission differential, scrambling, UHF precoding, interleaving and the
+protected part's code) and calls `onair_speech_decode` once per 20 ms voice frame with **16 bytes**:
+
+| Bytes | Content |
+|---|---|
+| 0 .. 14 | the 120 RP-CELP bits of the frame, bit k (k = 0 .. 119) in byte k / 8 under the mask `0x80 >> (k % 8)` (most significant bit first). k = 0 .. 19 are `voice1` (the protected bits), k = 20 .. 119 `voice2`, in the order they are in the frame: the PAS 0001-7 bit numbering 0 .. 119 |
+| 15 | flags: bit 0 set when the frame is damaged (the CRC-3 of the protected part failed); the other bits are 0 |
+
+The plug-in answers with 160 samples of 8 kHz PCM (another rate is resampled). A damaged frame should be concealed (repeat or fade the last
+frame). The plug-in's own sample rate comes from `onair_speech_sample_rate`.
+
+**Only clear calls reach the plug-in.** A frame is handed over only when the call's own signalling, read in the clear on the same channel
+(`D_CALL_START` or `D_CALL_CONNECT`), carried a key reference with key index 0 (a clear call, PAS 0001-3-2). Encrypted calls (any other
+key index) and calls whose state OnAir did not hear (tuned in after the start) are never decoded and never reach the plug-in: no key is
+used, guessed or stored. Most TETRAPOL networks encrypt their traffic, so most calls stay silent and show "encrypted (not decoded)".
+
+**Listen to** (clear calls / nothing) and **Record calls** (one WAV per clear call in the recordings folder, the date and time in the file
+name, no group or channel number) are in the TETRAPOL panel. The call table is shown on the screen only; it is never saved, exported or
+logged. There is no free RP-CELP decoder that we know of, and OnAir does not include one; the panel's **Install helper** shows the exact file
+name it looks for and the codecs folder.
 
 ### AMBE+2, AMBE and IMBE plug-ins (DMR, NXDN, dPMR, D-STAR, P25)
 
@@ -407,7 +457,7 @@ channel at the dial frequency, one timeslot or one carrier.
 
 ## Nothing patented is bundled
 
-OnAir never includes, downloads or links a patented codec. That covers mbelib / mbelib-neo (IMBE, AMBE, AMBE+2 and the TETRA codec), the HD Radio HDC decoder (the patched FAAD2), DRA+, the AC-4 decoder and the Iridium and Inmarsat voice codecs: you build or install them yourself, they load from your user codecs folder, and the voice stays silent until you do. The **KA modes** (KAAL, KAPP, KAFT, KAVB, KAIT and KAWS) use their own codecs, written for OnAir and not covered by third-party patents as far as is known (KAAL voice uses its own MDCT codec, KAIT its own wavelet picture codec), so they need nothing from you. KAVB has no video or audio codec yet.
+OnAir never includes, downloads or links a patented codec. That covers mbelib / mbelib-neo (IMBE, AMBE, AMBE+2 and the TETRA codec), the HD Radio HDC decoder (the patched FAAD2), DRA+, the AC-4 decoder, the Iridium and Inmarsat voice codecs and the TETRAPOL RP-CELP codec: you build or install them yourself, they load from your user codecs folder, and the voice stays silent until you do. The **KA modes** (KAAL, KAPP, KAFT, KAVB, KAIT and KAWS) use their own codecs, written for OnAir and not covered by third-party patents as far as is known (KAAL voice uses its own MDCT codec, KAIT its own wavelet picture codec), so they need nothing from you. KAVB has no video or audio codec yet.
 
 ## Legal note
 

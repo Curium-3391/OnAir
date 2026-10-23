@@ -23,6 +23,7 @@
 #include "dect2/t2/t2rx.h"
 #include "dect2/net/nettuner.h"
 #include "dect2/net/netradio.h"
+#include "dect2/source/synth_group.h"
 #include "dect2/net/kiwisdr.h"
 #include "dect2/source/hamlib_rig.h"
 #include "dect2/source/rig_setup.h"
@@ -364,6 +365,7 @@ struct App {
     ImVec2 tgMin[8], tgMax[8];   // screen rectangles of the parts of the window the tour points at
     VideoTex video;
     float volume = 1.f;
+    int tetraSingle = 0;   // TETRA carrier choice: 0 search the span, 1 single carrier (one 25 kHz channel at the dial frequency); saved
     int tetraSlotMode = 0, tetraSlotNum = 1, tetraSlotId = 0;   // TETRA 'Listen to': 0 auto, 1 slot (tetraSlotNum 1..4), 2 talkgroup, 3 ISSI (tetraSlotId); saved
     bool muted = false, subsOn = true;
     int playReq = -1;
@@ -389,6 +391,13 @@ struct App {
     struct NetProbe { std::atomic<bool> done{false}; bool ok = false; std::string err; NetRadio radio; };
     std::shared_ptr<NetProbe> netAddProbe;   // a connection test running on a worker thread
     bool netAddOpen = false;
+    // radio groups (synthetic wideband, synth_group.h): prefs "synthGroups", listed by refreshDevices; the "Group radios" window
+    std::vector<SynthGroupDef> synthGroups;
+    bool groupOpen = false;
+    int groupEdit = -1;                   // the saved group being edited, -1 = a new one
+    char groupName[64] = "";
+    double groupCenterMhz = 100.0, groupSpanMhz = 8.0, groupRateMsps = 0;   // rate 0 = automatic
+    std::vector<int> groupPick;           // indices into devices, in frequency order (lowest slice first)
     int netAddType = NetRadio::RtlTcp;
     char netAddHost[128] = "";
     int netAddPort = 1234;
@@ -902,7 +911,7 @@ ImVec4 lossColour(const SampleLoss& l, ImVec4 normal = ImVec4(0.93f, 0.95f, 0.97
 void lossTooltip(const SampleLoss& l);
 // The "?" button next to the sound of a mode whose voice needs a codec OnAir does not ship (codec_help.cpp, docs/CODECS.md): found or not,
 // what it is, how to install it here, where to put it, a link to the full page and "Look again"
-enum class CodecHelp { Codec2, DmrAmbe, Hdc, Dra, AeroAmbe, IridiumAmbe, DstarAmbe, NxdnAmbe, DpmrAmbe, P25Imbe, Avs, Ac4 };
+enum class CodecHelp { Codec2, DmrAmbe, Hdc, Dra, AeroAmbe, IridiumAmbe, DstarAmbe, NxdnAmbe, DpmrAmbe, P25Imbe, Avs, DraTv, Ac4, AvsPlus };
 void codecHelpButton(CodecHelp c, const char* label = "?");   // label: the button's text ("?" by default)
 // Audio cleanup (audio_cleanup_ui.cpp): the button next to the volume that opens the pop-up (true when a setting changed), and the per-frame
 // hand-over of the settings of the mode's kind to the cleanup chain
@@ -954,7 +963,8 @@ int modeSlot(const App& a);                    // index of famFreq / famGain for
 int engineStd(const App& a);
 void refreshDevices(App& a);
 void kiwiFindWindow(App& a);    // the "Find KiwiSDR" window (toolbar_rig.cpp)
-void netRadioWindow(App& a);   // the "Add network radio" window (toolbar_rig.cpp)
+void netRadioWindow(App& a);
+void synthGroupWindow(App& a);   // the "Group radios" window: define, save and watch synthetic wideband groups (synth_group_ui.cpp)   // the "Add network radio" window (toolbar_rig.cpp)
 void hamlibRigWindow(App& a);  // the "Add Hamlib rig" window (toolbar_rig.cpp)
 void applyBandwidth(App& a);
 double halowWantedRateHz();       // Wi-Fi HaLow (halow/halow_ui.cpp): the radio rate the chosen receive width needs (4 / 20 Msps for Auto, else the width's own)

@@ -65,8 +65,16 @@ const FlexMode* flexModeForSpeed(int speed);
 uint32_t flexFiwData(int cycle, int frame);        // the frame information word (field value, first transmitted bit in bit 0) with its checksum
 bool flexFiwCheck(uint32_t f, int& cycle, int& frame);
 
+// The 4-bit check of the block information word, the vector words and the FIW: bits 0-3 set so that the nibbles of the 21 bits plus bit 20 sum to 0xF
+uint32_t flexWithCheck(uint32_t f);
+// Capcodes above kFlexLongCapBase go out as a long address (two address words and two vector words); the decoder's formula is
+// cap = w1 + ((w2 ^ 0x1FFFFF) << 15) + 0x1F9000 with w1 from 1 to 0x8000
+constexpr uint32_t kFlexLongCapBase = 0x1F9000;
+bool flexLongCap(uint32_t cap);
+void flexLongWords(uint32_t cap, uint32_t& w1, uint32_t& w2);
+
 struct FlexPage {
-    uint32_t cap = 0;                              // capcode, 1 to 1933000
+    uint32_t cap = 0;                              // capcode, 1 to 1933312 (short address) or above 2068480 (long address)
     int type = kPagerAlpha;                        // kPagerTone, kPagerNumeric or kPagerAlpha
     std::string text;
 };

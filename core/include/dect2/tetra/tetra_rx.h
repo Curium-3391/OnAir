@@ -65,7 +65,9 @@ public:
     // Which traffic slot is listened to (tetra_slots.h): Auto (the first clear voice), a slot 1..4, or the slot carrying a talkgroup / ISSI.
     // Encrypted and unknown-state slots stay undecoded whatever is chosen.
     void setVoiceSlot(const SlotSelect& s);
-    bool busy() const;                 // a block is captured or being searched (tools: feed a file only as fast as it is searched)
+    // Single carrier: only the 25 kHz channel at the dial frequency (setSignalOffset) is filtered out and decoded; the span is not searched.
+    // Off (default): the whole span is searched for carriers. The same call seen on two carriers of the span is played once either way.
+    bool busy() const;                // a block is captured or being searched (tools: feed a file only as fast as it is searched)
 
 private:
     struct Impl;
@@ -107,6 +109,7 @@ struct CarrierDecode {
                                                 // a passed burst of a timeslot other than voiceTn asked for is not handed to the sink
     const char* voiceStatus = "";                // text of the last traffic burst verdict (tetra_voice.h)
     int voiceTn = 0;                             // the timeslot whose clear traffic reached the sink (0: none)
+    int voiceDup = 0;                            // frames of the followed timeslot dropped because that air time had already been given to the sink
     int voiceGaps = 0;                           // frames of the followed timeslot given to the sink as silence (no clear burst, or lost between captures)
     std::vector<MacBlock> macs;
     int tsUsage[4] = {-1, -1, -1, -1};

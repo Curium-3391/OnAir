@@ -1,4 +1,4 @@
-// ISM sensors receiver: everyday 433.92 / 868 / 915 MHz devices (weather stations, tyre pressure sensors, remotes, energy and water
+// ISM sensors receiver: everyday 315 / 345 / 390 / 433.92 / 868 / 915 MHz devices (weather stations, tyre pressure sensors, remotes, energy and water
 // meters), the rtl_433 idea.
 //
 // The whole sample band is watched: short FFTs (128 us) against a noise floor kept per bin find bursts; a bin that stays up (a continuous

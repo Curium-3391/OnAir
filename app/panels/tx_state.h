@@ -98,6 +98,9 @@ struct TxUi {
     bool kaalBeacon = true;
     double kaalPower = 10;
     int kaalBitrate = 16;                    // voice codec 12 / 16 / 24 / 32 kbit/s
+    int kaalFrame = 3;                       // 3 = the v3 voice stream, 4 = frame version 4 (four slots, 20 kHz, docs/KAAL-NEXT.md)
+    int kaalV4Profile = 2;                   // v4 voice profile: 1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s
+    int kaalV4Voice = 1;                     // v4: slots that carry the microphone (0 .. 4)
     bool kaalLoaded = false;
     std::string kaalSaved;
     // KAIT: the profile (0 balanced, 1 robust, 2 quality, 3 direct); the callsign and the picture file are the shared fields above

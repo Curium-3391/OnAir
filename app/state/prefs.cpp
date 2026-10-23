@@ -93,6 +93,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagI("touchUi", AT(a.touchUi), false)), shared(scaled("touchScale", AT(a.touchScale), 100, 135, 1.0, 2, true)),
         num("tetraSlotMode", AT(a.tetraSlotMode), 0, 0, 3, true), num("tetraSlotNum", AT(a.tetraSlotNum), 1, 1, 4, true),
         num("tetraSlotId", AT(a.tetraSlotId), 0, 0, 16777215, true),
+        num("tetraSingle", AT(a.tetraSingle), 0, 0, 1, true),
         num("wfMap", AT(a.wf.map), -1, -1, (int)Waterfall::NumMaps - 1, true),
         flagB("wfAuto", AT(a.wf.autoTrack), false),
         real("wfGamma", AT(a.wf.gamma), 0.4, 2.5),
@@ -329,6 +330,7 @@ void saveSpectrumRanges(plat::Prefs& d, const App& a) {
 void loadPrefs(App& a) {
     plat::Prefs& d = plat::prefs();
     a.netRadios = netRadiosFromString(d.getS("netRadios", ""));
+    a.synthGroups = synthGroupsFromString(d.getS("synthGroups", ""));
     a.hamlibRigs = hamlibRigsFromString(d.getS("hamlibRigs", ""));
     {   // radios hidden from the list, one name per line
         a.hiddenRadios.clear();
@@ -387,6 +389,7 @@ void savePrefs(const App& a) {
     plat::Prefs& d = plat::prefs();
     if (a.rxId == 1) {
         d.setS("netRadios", netRadiosToString(a.netRadios));
+        d.setS("synthGroups", synthGroupsToString(a.synthGroups));
         d.setS("hamlibRigs", hamlibRigsToString(a.hamlibRigs));
         { std::string j; for (const auto& n : a.hiddenRadios) j += n + "\n"; d.setS("hiddenRadios", j); }
         d.setB("netDiscovery", networkDiscovery());

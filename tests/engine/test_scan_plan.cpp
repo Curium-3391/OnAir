@@ -19,6 +19,8 @@ int main() {
     CHECK(pick(rows, p) == (std::vector<int>{3}));
     p.scope = Scope::Range; p.loMhz = 101.5; p.hiMhz = 103;
     CHECK(pick(rows, p) == (std::vector<int>{2, 3}));
+    p.scope = Scope::Fast;
+    CHECK(pick(rows, p).empty());                                   // the FFT fast scan keeps its own list
     p.scope = Scope::Starred;
     CHECK(pick(rows, p) == (std::vector<int>{3}));
 
