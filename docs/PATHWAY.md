@@ -250,3 +250,6 @@ Tools > Calibrate frequency opens the existing selfcal dialog (radio_ui.cpp, dra
 ## 2026-10-22 Soapy hardening (soapy-gain-030)
 New pure helpers core/src/source/soapy_logic.h (range clamping, rate choice with a plain note, stage names/units, per-serial per-mode stage key, remote:driver and serial args, unique labels, hotplug diff, stream status, busy hint) + test_soapy_logic on fake tables. Source uses them: named gain stages, unsupported-rate note, in-use hint, duplicate radios told apart by serial, IqSource::statusNote() with overflow count. Not done: UI status-line display and per-serial/per-mode stage persistence (autogain files left alone), hotplug refresh wiring.
 
+## 2026-10-23 X-Midas BLUE files (bluefile-030)
+New core/src/source/bluefile.cpp: reader (types 1000/2000, S/C x B I L X O F D, EEEI/IEEE separately, keywords, truncated/damaged headers) and writer. Plugged into probeIqFile (open, library listing, wideband loader), the recorder format box ("X-Midas BLUE (.tmp)", recFormat 2) and TX-to-IQ-file (3 BLUE formats). Real/odd formats are copied to a temp cf32 for playback. Test test_bluefile (all type/endian round trips, hand headers, recorder, TX) passed on a standalone link; full build not run. recmgr (scheduler-030) not touched: add .tmp/.blue/.prm to its Kind::Iq list. Not tested on third-party files, see docs/IQ-FORMATS.md.
+

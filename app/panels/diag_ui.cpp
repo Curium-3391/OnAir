@@ -177,8 +177,8 @@ void recordUi(App& a) {
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
         const float sp = ImGui::CalcTextSize(" ").x;
         if (ImGui::SmallButton((std::string("    ") + tr("Record IQ")).c_str())) {
-            const FileFormat f = a.recFormat == 1 ? FileFormat::CF32 : FileFormat::CS8;
-            const std::string path = plat::dataDir() + "/recordings/" + a.engine.recordingName(f);
+            const FileFormat f = a.recFormat >= 1 ? FileFormat::CF32 : FileFormat::CS8;
+            const std::string path = plat::dataDir() + "/recordings/" + (a.recFormat == 2 ? blueRecordingName(a.engine.recordingName(f)) : a.engine.recordingName(f));
             std::string err;
             if (a.engine.startRecording(path, f, err)) a.recDonePath.clear();
             else a.engine.log("recording failed: " + err);
@@ -190,14 +190,15 @@ void recordUi(App& a) {
     }
     flowNext(6 * gUi);
     ImGui::BeginDisabled(rs.active);
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("8-bit").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);
-    if (ImGui::BeginCombo("##recfmt", a.recFormat == 1 ? "float" : "8-bit")) {
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("X-Midas BLUE").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);
+    if (ImGui::BeginCombo("##recfmt", a.recFormat == 2 ? "X-Midas BLUE" : a.recFormat == 1 ? "float" : "8-bit")) {
         if (ImGui::Selectable("8-bit", a.recFormat == 0)) { a.recFormat = 0; plat::prefs().setI("recFormat", 0); }
         if (ImGui::Selectable("float", a.recFormat == 1)) { a.recFormat = 1; plat::prefs().setI("recFormat", 1); }
+        if (ImGui::Selectable("X-Midas BLUE (.tmp)", a.recFormat == 2)) { a.recFormat = 2; plat::prefs().setI("recFormat", 2); }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("8-bit: 2 bytes per sample, small. Float: 8 bytes per sample, exact.");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("8-bit: 2 bytes per sample, small. Float: 8 bytes per sample, exact. X-Midas BLUE: float samples in a .tmp file with the rate and centre frequency in its header (for X-Midas, SigPlot and other BLUE tools).");
     flowNext(6 * gUi);
     ImGui::BeginDisabled(rs.active);
     if (ImGui::Checkbox("SigMF", &a.recSigmf)) { plat::prefs().setB("recSigmf", a.recSigmf); a.engine.setRecordSigmf(a.recSigmf); }

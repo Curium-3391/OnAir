@@ -1,5 +1,6 @@
 #include "dect2/wb/wb_source.h"
 #include "dect2/source/iq_file.h"
+#include "dect2/source/bluefile.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -218,7 +219,7 @@ bool isAudioExtension(const std::string& path) {
 
 bool isRawIqExtension(const std::string& path) {
     const std::string e = lowerExt(path);
-    static const char* k[] = {"cs8", "cu8", "cf32", "fc32", "cfile", "ci16", "cs16", "cu16", "sigmf", "sigmf-meta", "sigmf-data", "iq", "raw", "bin", "u8", "s8"};
+    static const char* k[] = {"cs8", "cu8", "cf32", "fc32", "cfile", "ci16", "cs16", "cu16", "sigmf", "sigmf-meta", "sigmf-data", "iq", "raw", "bin", "u8", "s8", "tmp", "prm", "blue", "bluefile"};
     for (const char* x : k) if (e == x) return true;
     return false;
 }
@@ -251,7 +252,7 @@ std::shared_ptr<Source> Source::open(const std::string& path, const LoadOptions&
     IqFileInfo info;
     std::string perr;
     const bool wavBig = ext == "wav" && size > 48ll * 1024 * 1024;
-    if (!audio && (ext == "sigmf-meta" || ext == "sigmf-data" || ext == "sigmf" || wavBig)) {
+    if (!audio && (ext == "sigmf-meta" || ext == "sigmf-data" || ext == "sigmf" || wavBig || blue::isBlueExtension(path))) {
         if (probeIqFile(path, info, perr)) {
             FILE* f = fopen(info.dataPath.c_str(), "rb");
             if (!f) { err = "cannot open the data file " + info.dataPath; return nullptr; }

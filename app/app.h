@@ -584,7 +584,7 @@ struct App {
     std::string monDev, monDev2; bool monOut2 = false; float monVol2 = 1.f; double monOffset = 0;
     bool monNet = false; int monPort = 7355; bool monBindAll = false, monWav = true;
     bool audioRecWasActive = false; int audioRecMode = 0; double audioRecFreq = 0; std::string audioRecDonePath;
-    int recFormat = 0;                  // IQ recording format: 0 = 8-bit, 1 = float (pref "recFormat")
+    int recFormat = 0;                  // IQ recording format: 0 = 8-bit, 1 = float, 2 = X-Midas BLUE .tmp with float samples (pref "recFormat")
     int tvBufMb = 256;                  // TV live buffer for Pause (pref "tvBufMb")
     int tvRecMin = 0, tvRecAtH = 0, tvRecAtM = 0;   // TV recording timer: stop after N minutes (0 = off), at a clock time
     bool tvRecAtOn = false, tvRecWasActive = false;

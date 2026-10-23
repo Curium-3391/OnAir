@@ -1,6 +1,7 @@
 // Transmit into an IQ file: see tx_iqfile.h.
 #include "dect2/tx/tx_iqfile.h"
 #include "dect2/source/iq_record.h"
+#include "dect2/source/bluefile.h"
 #include "dect2/files/files_proto.h"
 #include "dect2/common/u8file.h"
 #include <algorithm>
@@ -22,6 +23,9 @@ const char* iqFileFormatName(IqFileFormat f) {
     case IqFileFormat::SigmfCs8: return "SigMF ci8 (8-bit)";
     case IqFileFormat::RawCf32: return "Raw .cf32";
     case IqFileFormat::WavIq16: return "WAV, 2 channels (I and Q)";
+    case IqFileFormat::BlueCf32: return "X-Midas BLUE cf32 (float)";
+    case IqFileFormat::BlueCi16: return "X-Midas BLUE ci16 (16-bit)";
+    case IqFileFormat::BlueCs8: return "X-Midas BLUE ci8 (8-bit)";
     }
     return "";
 }
@@ -52,7 +56,9 @@ bool endsWith(const std::string& s, const char* e) {
     const size_t n = strlen(e);
     return s.size() >= n && s.compare(s.size() - n, n, e) == 0;
 }
-const char* extOf(IqFileFormat f) { return f == IqFileFormat::RawCf32 ? ".cf32" : f == IqFileFormat::WavIq16 ? ".wav" : ".sigmf-data"; }
+bool isBlue(IqFileFormat f) { return f == IqFileFormat::BlueCf32 || f == IqFileFormat::BlueCi16 || f == IqFileFormat::BlueCs8; }
+bool isSigmf(IqFileFormat f) { return f == IqFileFormat::SigmfCf32 || f == IqFileFormat::SigmfCi16 || f == IqFileFormat::SigmfCs8; }
+const char* extOf(IqFileFormat f) { return f == IqFileFormat::RawCf32 ? ".cf32" : f == IqFileFormat::WavIq16 ? ".wav" : isBlue(f) ? ".tmp" : ".sigmf-data"; }
 }
 
 std::string iqFilePath(const std::string& folderOrBase, const std::string& baseName, IqFileFormat f) {
@@ -63,9 +69,9 @@ std::string iqFilePath(const std::string& folderOrBase, const std::string& baseN
         if (!p.empty() && p.back() != '/' && p.back() != '\\') p += '/';
         p += baseName;
     } else if (p.empty()) p = baseName;
-    if (f != IqFileFormat::RawCf32 && f != IqFileFormat::WavIq16 && endsWith(p, ".sigmf-meta")) p.resize(p.size() - strlen(".sigmf-meta"));
+    if (isSigmf(f) && endsWith(p, ".sigmf-meta")) p.resize(p.size() - strlen(".sigmf-meta"));
     if (!endsWith(p, extOf(f))) {
-        if (f != IqFileFormat::RawCf32 && f != IqFileFormat::WavIq16 && endsWith(p, ".sigmf")) p.resize(p.size() - strlen(".sigmf"));
+        if (isSigmf(f) && endsWith(p, ".sigmf")) p.resize(p.size() - strlen(".sigmf"));
         p += extOf(f);
     }
     return p;
@@ -86,7 +92,7 @@ void wavHeader(unsigned char* h, uint32_t rate, uint64_t dataBytes) {
 }
 
 void IqFileTxSink::writeMeta(bool final) {
-    if (cfg_.format == IqFileFormat::RawCf32 || cfg_.format == IqFileFormat::WavIq16) return;
+    if (!isSigmf(cfg_.format)) return;
     std::string base = cfg_.path;
     if (endsWith(base, ".sigmf-data")) base.resize(base.size() - strlen(".sigmf-data"));
     const char* dt = cfg_.format == IqFileFormat::SigmfCi16 ? "ci16_le" : cfg_.format == IqFileFormat::SigmfCs8 ? "ci8_le" : "cf32_le";
@@ -109,6 +115,17 @@ bool IqFileTxSink::open(const TxTune& t, std::string& err) {
         const std::filesystem::path p = dect2::u8file(cfg_.path);
         if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path());
     } catch (const std::exception& e) { err = std::string("cannot create the folder: ") + e.what(); return false; }
+    if (isBlue(cfg_.format)) {
+        blue::WriteSpec ws;
+        ws.complex = true; ws.sampleRate = rate_; ws.centerHz = cfg_.centerHz; ws.description = cfg_.description;
+        ws.kind = cfg_.format == IqFileFormat::BlueCf32 ? 'F' : cfg_.format == IqFileFormat::BlueCi16 ? 'I' : 'B';
+        auto* w = new blue::Writer;
+        if (!w->open(cfg_.path, ws, err)) { delete w; return false; }
+        blue_ = w;
+        samples_ = 0; bytes_ = 512; started_ = false;
+        if (cfg_.counters) { cfg_.counters->samples = 0; cfg_.counters->bytes = bytes_.load(); cfg_.counters->rateHz = rate_; }
+        return true;
+    }
     FILE* f = dect2::u8fopen(cfg_.path, "wb");
     if (!f) { err = "cannot create " + cfg_.path + ": " + strerror(errno); return false; }
     setvbuf(f, nullptr, _IOFBF, 1 << 20);
@@ -127,6 +144,16 @@ bool IqFileTxSink::open(const TxTune& t, std::string& err) {
 }
 
 bool IqFileTxSink::write(const cf32* x, size_t n, std::string& err) {
+    if (blue_) {
+        if (n == 0) return true;
+        if (cfg_.paced && !started_) { t0_ = std::chrono::steady_clock::now(); started_ = true; }
+        if (!static_cast<blue::Writer*>(blue_)->write(x, n, err)) return false;
+        samples_ += n;
+        bytes_ += n * (cfg_.format == IqFileFormat::BlueCf32 ? 8 : cfg_.format == IqFileFormat::BlueCi16 ? 4 : 2);
+        if (cfg_.counters) { cfg_.counters->samples = samples_.load(); cfg_.counters->bytes = bytes_.load(); }
+        if (cfg_.paced) std::this_thread::sleep_until(t0_ + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>((double)samples_.load() / rate_)));
+        return true;
+    }
     FILE* f = (FILE*)f_;
     if (!f) { err = "the IQ file is closed"; return false; }
     if (n == 0) return true;
@@ -170,6 +197,7 @@ bool IqFileTxSink::write(const cf32* x, size_t n, std::string& err) {
 }
 
 void IqFileTxSink::close() {
+    if (blue_) { auto* w = static_cast<blue::Writer*>(blue_); blue_ = nullptr; std::string e; w->close(e); delete w; return; }
     FILE* f = (FILE*)f_;
     if (!f) return;
     f_ = nullptr;
