@@ -19,6 +19,7 @@ const PanelFlag kPanels[] = {
     {"frequencies", &App::freqOpen}, {"map", &App::mapOpen}, {"propagation", &App::propOpen}, {"rotator", &App::rotatorOpen}, {"feeds", &App::feedsOpen},
     {"watchlist", &App::watchlistOpen}, {"messages", &App::msgdbOpen}, {"protocol-lab", &App::protolabOpen}, {"mode-builder", &App::modeBuilderOpen}, {"signal-lab", &App::signallabOpen},
     {"automation", &App::automationOpen},
+    {"antenna-designer", &App::antdOpen},
 };
 
 std::string escapeField(const std::string& s) {

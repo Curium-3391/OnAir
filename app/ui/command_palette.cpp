@@ -32,6 +32,7 @@ const Panel kPanels[] = {
     {"Automations...", &App::automationOpen}, {"Plugins...", &App::pluginsOpen}, {"Memory...", &App::memoryOpen},
     {"Datasets...", &App::datasetsOpen}, {"Data packs...", &App::packsOpen}, {"Frequencies...", &App::freqOpen}, {"Map", &App::mapOpen}, {"Propagation...", &App::propOpen},
     {"Sweep scanner", &App::sweepOpen}, {"Station health", &App::stationHealthOpen}, {"Antenna rotator...", &App::rotatorOpen},
+    {"Antenna designer...", &App::antdOpen},
 };
 
 // every entry for this frame

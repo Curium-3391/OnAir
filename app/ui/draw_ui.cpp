@@ -230,6 +230,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     remoteApiTick(a);
     mapWindow(a);
     propagationWindow(a);
+    antennaDesignerWindow(a);
     rotatorTick(a);
     rotatorWindow(a);
 }
