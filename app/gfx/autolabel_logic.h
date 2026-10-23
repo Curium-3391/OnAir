@@ -25,6 +25,7 @@ struct Label {
     std::string text;      // the name
     std::string detail;    // shown when there is room (and in the tooltip): services of a mux, the radio text of a station ...
     std::string mode;      // the mode a click opens ("" = only tune); a Memory / Scanner mode key
+    double bwMhz = 0;      // the nominal bandwidth around mhz (0 = not known): a name whose band is in view stays, a bar shows the band
     int src = Band;
     float prio = 0;        // within a source: higher wins; the source's priority is added
 };
@@ -32,8 +33,9 @@ struct Label {
 // the labels, sorted by frequency
 class Store {
 public:
-    void clear() { v_.clear(); }
-    void add(Label l) { l.prio += srcPriority(l.src); v_.push_back(std::move(l)); }
+    void clear() { v_.clear(); maxBw_ = 0; }
+    double maxBw() const { return maxBw_; }
+    void add(Label l) { l.prio += srcPriority(l.src); maxBw_ = std::max(maxBw_, l.bwMhz); v_.push_back(std::move(l)); }
     void finish() { std::stable_sort(v_.begin(), v_.end(), [](const Label& a, const Label& b) { return a.mhz < b.mhz; }); }
     size_t size() const { return v_.size(); }
     const Label& at(size_t i) const { return v_[i]; }
@@ -46,18 +48,43 @@ public:
     }
 private:
     std::vector<Label> v_;
+    double maxBw_ = 0;
 };
 
-struct Placed { size_t idx = 0; float x0 = 0, x1 = 0, cx = 0; int row = 0; };
+// x0..x1: the box of the name; cx: the true x of the frequency (may be outside the plot); centreIn: cx is inside the plot (the pointer is drawn
+// there); otherwise side says which edge the band overlaps (-1 left, +1 right) and only a stub arrow is drawn. bar0..bar1 / barLane: the nominal
+// band under the names, on its own lane (-1: no bar).
+struct Placed { size_t idx = 0; float x0 = 0, x1 = 0, cx = 0; int row = 0; bool centreIn = true; int side = 0; float bar0 = 0, bar1 = 0; int barLane = -1; };
 
 struct View {
     double loMhz = 0, hiMhz = 0;   // the frequency range of the plot
-    float px0 = 0, px1 = 0;        // its left and right edge in pixels
+    float px0 = 0, px1 = 0;        // the part of it the names may use, in pixels (the plot minus the corner buttons, say)
+    float ax0 = 0, ax1 = 0;        // the pixels the span loMhz..hiMhz is drawn over: the whole plot rectangle (0,0: the same as px0..px1)
+    int maxBarLanes = 2;
     int maxRows = 3;
     float gap = 4.f;               // the smallest space between two names in a row
     float padX = 4.f;              // space inside a name's box, each side
     unsigned mask = kAllSources;
 };
+
+// the pixel of a frequency: the same for every pane that shows the span over the same pixels
+inline float xOf(const View& v, double mhz) {
+    const float a0 = v.ax1 > v.ax0 ? v.ax0 : v.px0, a1 = v.ax1 > v.ax0 ? v.ax1 : v.px1;
+    return (float)(a0 + (mhz - v.loMhz) / (v.hiMhz - v.loMhz) * (double)(a1 - a0));
+}
+
+// the labels to place: the frequency in view, or (nominal band known) the band overlapping the view
+inline std::vector<size_t> inView(const Store& s, const View& v) {
+    std::vector<size_t> o;
+    const double m = s.maxBw() * 0.5;
+    for (size_t i : s.inRange(v.loMhz - m, v.hiMhz + m, v.mask)) {
+        const Label& l = s.at(i);
+        const bool in = l.mhz >= v.loMhz && l.mhz <= v.hiMhz;
+        const bool band = l.bwMhz > 0 && l.mhz - l.bwMhz * 0.5 <= v.hiMhz && l.mhz + l.bwMhz * 0.5 >= v.loMhz;
+        if (in || band) o.push_back(i);
+    }
+    return o;
+}
 
 struct Result {
     std::vector<Placed> placed;    // sorted by x0
@@ -89,14 +116,15 @@ inline Result place(const Store& s, const std::vector<size_t>& order, const View
     Result r;
     r.candidates = order.size();
     r.detailed = detailed;
-    const double perPx = (v.hiMhz - v.loMhz) / std::max(1.0, (double)(v.px1 - v.px0));
     std::vector<std::vector<std::pair<float, float>>> rows((size_t)std::max(1, v.maxRows));
+    std::vector<std::vector<std::pair<float, float>>> lanes((size_t)std::max(0, v.maxBarLanes));
     for (size_t k : order) {
         const Label& l = s.at(k);
         const float w = width(l, detailed);
-        const float cx = (float)(v.px0 + (l.mhz - v.loMhz) / perPx);
+        const float cx = xOf(v, l.mhz);
+        const bool in = l.mhz >= v.loMhz && l.mhz <= v.hiMhz;
         float x0 = cx - w * 0.5f;
-        x0 = std::max(v.px0, std::min(x0, v.px1 - w));   // a name at the edge of the plot stays inside it
+        if (!in) x0 = std::max(v.px0, std::min(x0, v.px1 - w));   // only a name kept for its band is moved inside; one with its frequency in view is clipped at the edge, never dragged along
         const float x1 = x0 + w;
         int row = -1;
         for (size_t ri = 0; ri < rows.size() && row < 0; ri++) {
@@ -106,7 +134,19 @@ inline Result place(const Store& s, const std::vector<size_t>& order, const View
         }
         if (row < 0) { r.dropped++; continue; }
         rows[(size_t)row].push_back({x0, x1});
-        r.placed.push_back({k, x0, x1, cx, row});
+        Placed p{k, x0, x1, cx, row};
+        p.centreIn = in;
+        p.side = in ? 0 : (l.mhz < v.loMhz ? -1 : 1);
+        if (l.bwMhz > 0) {
+            float b0 = std::max(v.px0, xOf(v, l.mhz - l.bwMhz * 0.5)), b1 = std::min(v.px1, xOf(v, l.mhz + l.bwMhz * 0.5));
+            if (b1 - b0 >= 3.f)
+                for (size_t li = 0; li < lanes.size() && p.barLane < 0; li++) {
+                    bool free = true;
+                    for (const auto& q : lanes[li]) if (b0 < q.second + 2.f && b1 + 2.f > q.first) { free = false; break; }
+                    if (free) { lanes[li].push_back({b0, b1}); p.barLane = (int)li; p.bar0 = b0; p.bar1 = b1; }
+                }
+        }
+        r.placed.push_back(p);
     }
     std::sort(r.placed.begin(), r.placed.end(), [](const Placed& a, const Placed& b) { return a.x0 < b.x0; });
     return r;
@@ -119,7 +159,7 @@ inline Result layout(const Store& s, const View& v, const WidthFn& width) {
     Result empty;
     if (!(v.hiMhz > v.loMhz) || !(v.px1 > v.px0) || v.maxRows < 1) return empty;
     const double perPx = (v.hiMhz - v.loMhz) / (double)(v.px1 - v.px0);
-    std::vector<size_t> idx = mergeSame(s, s.inRange(v.loMhz, v.hiMhz, v.mask), std::max(0.002, perPx));
+    std::vector<size_t> idx = mergeSame(s, inView(s, v), std::max(0.002, perPx));
     std::stable_sort(idx.begin(), idx.end(), [&](size_t a, size_t b) { return s.at(a).prio > s.at(b).prio; });
     constexpr size_t kCap = 800;   // beyond what could ever fit: the strongest only (a raster of thousands of channels in a wide view)
     if (idx.size() > kCap) idx.resize(kCap);

@@ -2,6 +2,7 @@
 // thinning when the view is wide, the detail when there is room, the edges of the plot, and the hit test.
 #include "../../app/gfx/autolabel_logic.h"
 #include <cstdio>
+#include <string>
 
 static int failures = 0;
 #define CHECK(c, ...) do { if (!(c)) { failures++; std::printf("FAIL line %d: ", __LINE__); std::printf(__VA_ARGS__); std::printf("\n"); } } while (0)
@@ -117,14 +118,80 @@ int main() {
         CHECK(!r.detailed, "no detail when crowded");
         CHECK(!overlap(r), "no overlap");
     }
-    // the edges: a name at the edge of the plot is moved inside, never past it
+    // the edges: a name with its frequency in view is clipped by the plot (the box centred on the frequency), never moved
     {
         Store s;
         s.add(mk(90.0, "LEFTEDGE", Fm)); s.add(mk(110.0, "RIGHTEDGE", Fm)); s.add(mk(111.0, "OUTSIDE", Fm));
         s.finish();
         Result r = layout(s, view(90, 110), width);
         CHECK(r.placed.size() == 2, "the one outside the view is not placed");
-        for (const Placed& p : r.placed) CHECK(p.x0 >= 0 && p.x1 <= 1000, "inside the plot: %.0f..%.0f", p.x0, p.x1);
+        for (const Placed& p : r.placed) CHECK(std::fabs((p.x0 + p.x1) * 0.5f - p.cx) < 0.01f, "centred on its frequency: %.0f..%.0f", p.x0, p.x1);
+    }
+    // the edges, issue #230: a name whose frequency is in view is clipped at the edge, not dragged along
+    {
+        Store s;
+        s.add(mk(90.0, "LEFTEDGE", Fm));
+        s.finish();
+        Result r = layout(s, view(90, 110), width);
+        CHECK(r.placed.size() == 1 && r.placed[0].centreIn && std::fabs(r.placed[0].cx - 0.f) < 0.01f, "pointer at the true frequency");
+        CHECK(r.placed[0].x0 < 0, "box centred on the frequency, clipped by the plot: %.1f", r.placed[0].x0);
+        r = layout(s, view(90.5, 110), width);
+        CHECK(r.placed.empty(), "frequency left the view, no band: gone");
+    }
+    // the same x in two panes: the mapping uses the whole axis extent, the label area (px) only limits the boxes
+    {
+        Store s; s.add(mk(100.0, "MID", Fm)); s.add(mk(95.0, "Q", Fm)); s.finish();
+        View a = view(90, 110), b = view(90, 110);
+        a.ax0 = 0; a.ax1 = 1000;
+        b.ax0 = 0; b.ax1 = 1000; b.px1 = 904;   // the waterfall keeps room for its button on the right
+        Result ra = layout(s, a, width), rb = layout(s, b, width);
+        CHECK(ra.placed.size() == 2 && rb.placed.size() == 2, "both placed");
+        for (size_t i = 0; i < 2; i++) CHECK(std::fabs(ra.placed[i].cx - rb.placed[i].cx) < 0.001f, "same x in both panes: %.2f %.2f", ra.placed[i].cx, rb.placed[i].cx);
+        CHECK(std::fabs(ra.placed[1].cx - 500.f) < 0.01f && std::fabs(ra.placed[0].cx - 250.f) < 0.01f, "linear in the span: %.2f", ra.placed[0].cx);
+        // an offset axis (left margin 70 px, retina scale 2)
+        View c = view(90, 110); c.ax0 = 140; c.ax1 = 2140; c.px0 = 140; c.px1 = 2140;
+        Result rc = layout(s, c, width);
+        CHECK(std::fabs(rc.placed[1].cx - 1140.f) < 0.01f && std::fabs(xOf(c, 90) - 140.f) < 0.001f && std::fabs(xOf(c, 110) - 2140.f) < 0.001f, "offset and scale");
+        // a span shifted by a pan: the same frequency moves by the shift, linearly
+        View d = view(91, 111);
+        CHECK(std::fabs(xOf(d, 100.0) - 450.f) < 0.01f, "pan");
+    }
+    // a name with a nominal band stays while the band overlaps the view; its pointer stays at the centre (not drawn when out of view)
+    {
+        Store s;
+        Label l = mk(100.0, "DVB-T2 CH 26", Band); l.bwMhz = 8; s.add(l);
+        Label n = mk(100.0, "NOBAND", Fm); s.add(n);
+        s.finish();
+        Result r = layout(s, view(103, 110), width);   // band 96..104 overlaps 103..110, the centre is left of the view
+        CHECK(r.placed.size() == 1 && !r.placed[0].centreIn && r.placed[0].side == -1 && r.placed[0].x0 >= 0, "stub on the left edge, box inside");
+        CHECK(r.placed[0].bar0 >= 0 && r.placed[0].bar1 > r.placed[0].bar0 && r.placed[0].bar1 < 200.f, "bar clipped to the view: %.0f..%.0f", r.placed[0].bar0, r.placed[0].bar1);
+        r = layout(s, view(104.5, 110), width);
+        CHECK(r.placed.empty(), "band left the view: gone");
+        r = layout(s, view(90, 110), width);
+        CHECK(r.placed.size() == 2 && r.placed[0].centreIn && r.placed[1].centreIn, "both in view");
+        int bars = 0; for (const Placed& p : r.placed) bars += p.barLane >= 0;
+        CHECK(bars == 1, "only the one with a known band has a bar");
+        r = layout(s, view(110, 120), width);
+        CHECK(r.placed.empty(), "wholly right of the view");
+        Store t; Label u = mk(130.0, "RIGHT", Band); u.bwMhz = 8; t.add(u); t.finish();
+        r = layout(t, view(100, 127), width);   // 126..134 overlaps, centre right of the view
+        CHECK(r.placed.size() == 1 && r.placed[0].side == 1 && r.placed[0].x1 <= 1000, "stub on the right, box inside");
+    }
+    // bars go on separate lanes where they overlap
+    {
+        Store s;
+        for (int i = 0; i < 3; i++) { Label l = mk(100.0 + i * 0.5, ("B" + std::to_string(i)).c_str(), Band); l.bwMhz = 8; s.add(l); }
+        s.finish();
+        View v = view(90, 110); v.maxBarLanes = 2;
+        Result r = layout(s, v, width);
+        CHECK(r.placed.size() == 3, "three placed");
+        int lane[3] = {0, 0, 0}; int none = 0;
+        for (const Placed& p : r.placed) { if (p.barLane < 0) none++; else lane[p.barLane]++; }
+        CHECK(lane[0] == 1 && lane[1] == 1 && none == 1, "two lanes, one bar left out: %d %d %d", lane[0], lane[1], none);
+        for (size_t i = 0; i < r.placed.size(); i++) for (size_t j = i + 1; j < r.placed.size(); j++) {
+            const Placed &a = r.placed[i], &b = r.placed[j];
+            if (a.barLane >= 0 && a.barLane == b.barLane) CHECK(a.bar1 <= b.bar0 || b.bar1 <= a.bar0, "no bar overlap in a lane");
+        }
     }
     // many candidates: capped, still fast and without overlap
     {

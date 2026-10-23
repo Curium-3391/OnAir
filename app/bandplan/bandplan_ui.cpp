@@ -84,7 +84,7 @@ void bandPlanLabelSource(const App& a, std::vector<autolabel::Label>& out) {
         if (n == 0) {
             if (b.endHz <= b.startHz || b.name.empty()) continue;
             autolabel::Label l;
-            l.mhz = (b.startHz + b.endHz) / 2e6; l.text = b.name; l.detail = b.note; l.src = autolabel::Band; l.prio = -0.5f; l.mode = modeKey(b);
+            l.mhz = (b.startHz + b.endHz) / 2e6; l.text = b.name; l.detail = b.note; l.src = autolabel::Band; l.prio = -0.5f; l.mode = modeKey(b); l.bwMhz = (b.endHz - b.startHz) / 1e6;
             out.push_back(l);
             continue;
         }
@@ -98,7 +98,7 @@ void bandPlanLabelSource(const App& a, std::vector<autolabel::Label>& out) {
             else std::snprintf(t, sizeof t, "%s%s", b.service == "tv" ? "CH " : "", c.label.c_str());
             l.text = t;
             char d[160]; std::snprintf(d, sizeof d, "%s  %.3f MHz", b.name.c_str(), l.mhz);
-            l.detail = d; l.src = autolabel::Band; l.mode = mk;
+            l.detail = d; l.src = autolabel::Band; l.mode = mk; l.bwMhz = b.bandwidthHz > 0 ? b.bandwidthHz / 1e6 : 0;
             out.push_back(l);
         }
     }

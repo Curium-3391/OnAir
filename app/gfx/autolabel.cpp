@@ -206,15 +206,16 @@ void autoLabelsDraw(App& a, int plotId, ImVec2 plotMin, ImVec2 plotSize, double 
     if (plotId == 0) refresh(a);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImFont* font = ImGui::GetFont();
-    const float fs = ImGui::GetFontSize() * 0.86f, padX = 4 * gUi, rowH = fs + 4 * gUi, rowGap = 2 * gUi;
+    const float fs = ImGui::GetFontSize() * 0.86f, padX = 4 * gUi, rowH = fs + 4 * gUi, rowGap = 7 * gUi, triH = 5 * gUi, barH = 3 * gUi;   // rowGap holds the pointer triangle
     // below the axis title and the corner buttons (one text line), and left of the Waterfall button on the waterfall
     const float top = ImGui::GetTextLineHeight() + 8 * gUi, rightKeep = plotId ? 96 * gUi : 0;
     const int rows = std::max(1, std::min(3, (int)((plotSize.y * 0.3f - top) / (rowH + rowGap))));
     Slot& sl = gSlot[plotId ? 1 : 0];
     autolabel::View v;
     v.loMhz = loMhz; v.hiMhz = hiMhz; v.px0 = plotMin.x + 2 * gUi; v.px1 = plotMin.x + plotSize.x - 2 * gUi - rightKeep;
+    v.ax0 = plotMin.x; v.ax1 = plotMin.x + plotSize.x;   // the frequency axis spans the whole plot rectangle, as in the other pane
     v.maxRows = rows; v.gap = 4 * gUi; v.padX = padX; v.mask = (unsigned)a.specLabelMask;
-    const bool same = sl.valid && sl.rev == gStoreRev && sl.fs == fs && sl.v.loMhz == v.loMhz && sl.v.hiMhz == v.hiMhz && sl.v.px0 == v.px0 && sl.v.px1 == v.px1 &&
+    const bool same = sl.valid && sl.rev == gStoreRev && sl.fs == fs && sl.v.loMhz == v.loMhz && sl.v.hiMhz == v.hiMhz && sl.v.px0 == v.px0 && sl.v.px1 == v.px1 && sl.v.ax0 == v.ax0 && sl.v.ax1 == v.ax1 &&
                       sl.v.maxRows == v.maxRows && sl.v.mask == v.mask;
     if (!same) {
         sl.r = autolabel::layout(gStore, v, [&](const Label& l, bool detailed) { return font->CalcTextSizeA(fs, FLT_MAX, 0, shown(l, detailed).c_str()).x + 2 * padX + 3 * gUi; });
@@ -230,7 +231,8 @@ void autoLabelsDraw(App& a, int plotId, ImVec2 plotMin, ImVec2 plotSize, double 
     for (size_t i = 0; i < sl.r.placed.size(); i++) {
         const autolabel::Placed& p = sl.r.placed[i];
         const Label& l = gStore.at(p.idx);
-        const float yTop = y0 + p.row * (rowH + rowGap) + rowH;
+        if (!p.centreIn) continue;
+        const float yTop = y0 + p.row * (rowH + rowGap) + rowH + triH;
         dl->AddLine(ImVec2(p.cx, yTop), ImVec2(p.cx, plotMin.y + plotSize.y), srcColour(l.src, (int)i == hot ? 150 : plotId ? 34 : 46), 1.f);
     }
     for (size_t i = 0; i < sl.r.placed.size(); i++) {
@@ -238,9 +240,18 @@ void autoLabelsDraw(App& a, int plotId, ImVec2 plotMin, ImVec2 plotSize, double 
         const Label& l = gStore.at(p.idx);
         const float y = y0 + p.row * (rowH + rowGap);
         const bool h = (int)i == hot;
+        // the pointer: a triangle under the name with its tip at the frequency; a name kept for its band only has a stub arrow at the edge
+        if (p.centreIn) dl->AddTriangleFilled(ImVec2(p.cx - triH * 0.8f, y + rowH + 1), ImVec2(p.cx + triH * 0.8f, y + rowH + 1), ImVec2(p.cx, y + rowH + triH + 1), srcColour(l.src, 255));
+        else {
+            const float ex = p.side < 0 ? v.px0 - 2 * gUi : v.px1 + 2 * gUi, d = p.side < 0 ? 1.f : -1.f, ym = y + rowH + triH * 0.5f;
+            dl->AddTriangleFilled(ImVec2(ex, ym), ImVec2(ex + d * triH, ym - triH * 0.7f), ImVec2(ex + d * triH, ym + triH * 0.7f), srcColour(l.src, 200));
+        }
+        if (p.barLane >= 0) {   // the nominal band, on its own lane under the names
+            const float by = y0 + (float)sl.v.maxRows * (rowH + rowGap) + (float)p.barLane * (barH + 2 * gUi);
+            dl->AddRectFilled(ImVec2(p.bar0, by), ImVec2(p.bar1, by + barH), srcColour(l.src, 170));
+        }
         const int dim = l.src == autolabel::Band ? 175 : 235;
         dl->AddRectFilled(ImVec2(p.x0, y), ImVec2(p.x1, y + rowH), h ? IM_COL32(40, 46, 54, 245) : IM_COL32(14, 16, 20, 190), 3 * gUi);
-        dl->AddRectFilled(ImVec2(p.x0, y + 2 * gUi), ImVec2(p.x0 + 2 * gUi, y + rowH - 2 * gUi), srcColour(l.src, 255));
         if (h) dl->AddRect(ImVec2(p.x0, y), ImVec2(p.x1, y + rowH), srcColour(l.src, 220), 3 * gUi);
         dl->AddText(font, fs, ImVec2(p.x0 + padX + 3 * gUi, y + (rowH - fs) * 0.5f), IM_COL32(236, 238, 240, dim), shown(l, sl.r.detailed).c_str());
     }
