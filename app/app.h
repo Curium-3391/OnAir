@@ -435,6 +435,7 @@ struct App {
     bool dabMode = false;     // DAB / DAB+ (family 2)
     bool fmMode = false;      // FM radio (family 5)
     bool newUi = true;        // the new interface (ui2.cpp) instead of the classic one (View > Classic interface)
+    bool dockOn = false;      // View > Docking: the new interface's panels and floating windows dock into a layout (ui2_dock.cpp); off = floating as before
     struct FamGain { int lna = 32, vga = 34; bool amp = false, known = false; } famGain[kNumSlots];   // the radio gains remembered for each mode
     double famFreq[kNumSlots] = {};  // the frequency each of the modes added after FM was last tuned to (0 = never)
     std::string modeHidden, modeHiddenGroups, modeFavs;   // Mode > Modes shown...: the modes and groups left out of the lists, and the favourites, by name, separated by |
@@ -1184,6 +1185,13 @@ void wbDevDemod(int kind, double baud, bool runMeasure, bool runDemod);
 void mainTabs(App& a);          // the tab bar with the tabs that fit the current mode (main.cpp)
 void drawShell2(App& a, ImVec2 disp);   // ui2.cpp: the new interface (its parts: ui2_theme.cpp, ui2_widgets.cpp, ui2_shell.cpp, ui2_faces.cpp)
 void applyUiTheme(App& a);              // ui2.cpp: classic or new colours and shapes
+// ui2_dock.cpp: docking of the new interface (View > Docking; issue #242)
+bool dockActive(const App& a);          // docking is on and usable (new interface, touch interface off)
+void dockFrameBegin(App& a);            // before the interface is drawn: installs the window placement hook
+void dockFrameEnd(App& a);              // after every window: drop targets, docking on release, window order, shortcuts
+void dockDevSelfTest();                 // --dockselftest: scripted drag / keyboard / layout checks, then exit
+void dockDevTree(const char* text);     // --docktree: start with this layout (dock_tree.h text form)
+void dockRegisterIni();                 // once, before the first per-mode layout file is read: the dock layout is kept in that file
 // plots.cpp
 // The width of the channel the mode's receiver works with: the light band on the spectrum, its edges on the waterfall. DVB-T2 / DVB-T: the
 // measured or chosen raster width; FM: the channel filter; DTMB: 8 or 6 MHz; DVB-S/S2: symbol rate x (1 + roll-off) once it is known; the
