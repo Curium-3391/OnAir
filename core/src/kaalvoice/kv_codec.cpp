@@ -477,6 +477,8 @@ struct Decoder::Impl {
         if (enh) enh->output(y, n, k, afterLoss, lostBefore);
         side.sampleRate = P.fs;
         side.frameSamples = n;
+        side.subframes = P.S;   // the frame layout, also for comfort noise (which has no LPC of its own here)
+        side.subLen8 = P.L;
         side.enhanced = enh != nullptr;
         side.lostRun = lostRun;
         side.noiseDb = (float)(haveSid ? cur.resDb : (enh ? enh->noiseDb() : -100.0));

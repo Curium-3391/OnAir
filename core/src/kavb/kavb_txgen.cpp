@@ -23,8 +23,11 @@ constexpr size_t kFilePacketBytes = 1200;
 
 class KavbGen : public TxGenerator {
 public:
-    KavbGen(double rate, const KavbTxPlan& plan)
+    KavbGen(double rate, const KavbTxPlan& plan, double rampSec)
         : rate_(rate), plan_(plan), p_(kavb::profileOf(plan.profile, false)), tx_(plan.profile, false, true), pk_(p_, plan.fec) {
+        // the output stage fades the key-up in over out.rampMs (2 ms by default): the lead silence must cover it with room to spare,
+        // otherwise the fade lands on the first frame (one group of a file lost)
+        leadSyms_ = std::max(kLeadSilenceSyms, (int)std::ceil((std::max(0.0, rampSec) + 0.5e-3) * p_.symRate));
         rs_.configure(p_.symRate * kavb::kSps, rate);
         maxPay_ = std::min(kFilePacketBytes, pk_.maxPayload());
         idEveryFrames_ = std::max<long>(1, (long)std::lround(0.5 / kavb::frameSeconds(p_)));
@@ -116,7 +119,7 @@ private:
             for (size_t i = 0; i < e2 && i < comb.size() && i < pend_.size(); i++) comb[i] += pend_[i];
         } else {
             started_ = true;
-            emit(std::vector<kavb::cf>((size_t)(kLeadSilenceSyms * kavb::kSps), kavb::cf(0.f, 0.f)), false);
+            emit(std::vector<kavb::cf>((size_t)leadSyms_ * kavb::kSps, kavb::cf(0.f, 0.f)), false);
         }
         if (last) {
             emit(comb, true);
@@ -139,6 +142,7 @@ private:
     size_t maxPay_ = 1000, off_ = 0;
     uint16_t fileSeq_ = 0, idSeq_ = 0;
     bool sentId_ = false, started_ = false, done_ = false;
+    int leadSyms_ = kLeadSilenceSyms;
     long idAtFrame_ = 0, idEveryFrames_ = 100, framesOut_ = 0;
     std::vector<kavb::cf> pend_;
     std::vector<cf32> q_;
@@ -193,7 +197,7 @@ std::unique_ptr<TxGenerator> makeKavbTxGenerator(const TxRequest& r, double rate
         err = b;
         return nullptr;
     }
-    return std::make_unique<KavbGen>(rateHz, plan);
+    return std::make_unique<KavbGen>(rateHz, plan, r.o("out.rampMs", kTxDefaultRampMs) * 1e-3);
 }
 
 } // namespace dect2

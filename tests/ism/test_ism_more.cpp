@@ -132,12 +132,14 @@ int main() {
         for (int i = 0; i < 4; i++) { rem ^= b[i]; for (int k = 0; k < 8; k++) rem = (rem & 0x80) ? ((rem << 1) ^ 0x30) & 0xff : (rem << 1) & 0xff; }
         const int crc = (int)((rem >> 4) & 0xf), flags = 0x5;
         b[4] = (uint8_t)((flags << 4) | (crc ^ flags));
-        BitRow row = {0, 0};
+        BitRow row = {0, 0};   // the humidity nibbles are swapped on the wire (b[3]); the decoder swaps them back
         for (int i = 0; i < 40; i++) row.push_back((b[i >> 3] >> (7 - (i & 7))) & 1);
         std::vector<BitRow> rows(6, row);
         auto rs = ismDecode(ppm(rows, 500, 2000, 4000, 7000, 15));
         const IsmReading* r = find(rs, "Kedsum-TH");
-        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == 0x47, "Kedsum %zu", rs.size());
+        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == hum, "Kedsum %zu", rs.size());
+        std::vector<BitRow> bad(6, row); for (auto& x : bad) x[2 + 20] ^= 1;
+        CHECK(!find(ismDecode(ppm(bad, 500, 2000, 4000, 7000, 15)), "Kedsum-TH"), "Kedsum bad CRC");
     }
     // ---- GT-WT-02
     {
@@ -236,6 +238,8 @@ int main() {
         auto rs = ismDecode(ppm({row, row, row}, 500, 2000, 4000, 7000));
         const IsmReading* r = find(rs, "Springfield-Soil");
         CHECK(r && r->id == "60" && r->channel == 3 && std::fabs(fv(*r, "Temperature") - 21.5) < 0.01 && fv(*r, "Moisture") == 60, "Springfield %zu", rs.size());
+        BitRow bad = row; bad[13] ^= 1;
+        CHECK(!find(ismDecode(ppm({bad, bad, bad}, 500, 2000, 4000, 7000)), "Springfield-Soil"), "Springfield bad check");
     }
     // ---- Solight TE44
     {

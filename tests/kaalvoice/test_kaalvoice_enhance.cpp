@@ -12,7 +12,7 @@
 
 using namespace kvtest;
 
-static constexpr uint64_t kGoldenAll = 0x0ull, kGoldenPortable = 0x0ull;
+static constexpr uint64_t kGoldenAll = 0x1ull, kGoldenPortable = 0x1ull;
 
 namespace {
 bool finiteAndBounded(const std::vector<int16_t>& x) {
