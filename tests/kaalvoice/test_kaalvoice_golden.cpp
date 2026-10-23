@@ -10,7 +10,7 @@
 
 using namespace kvtest;
 
-static constexpr uint64_t kGoldenAll = 0x0ull, kGoldenPortable = 0x0ull;
+static constexpr uint64_t kGoldenAll = 0x66628670c66ef620ull, kGoldenPortable = 0x66628670c66ef620ull;
 
 int main() {
     golden::Dual d;

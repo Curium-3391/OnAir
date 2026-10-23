@@ -1,12 +1,13 @@
 // kaalvoice_bench: objective comparison of the KAAL voice codecs (KV4 profiles against the old KaalCodec3 / KaalCodec) on the repo's
-// speech sample and on synthetic speech, plus the real-time factor. No listening test: the numbers are SNR / spectral distances only.
+// speech sample and on synthetic speech, plus the real-time factor (CPU time of encode + decode per second of audio, one stream; the
+// old codecs' wrapper encodes three frames per frame, so their RTF is about 3x what a streaming encoder would need). No listening test: the numbers are SNR / spectral distances only.
 //
 //   kaalvoice_bench [--wav file.wav]... [--out dir] [--quick] [--lsfstats]
 // --out writes every decoded signal as a WAV next to the reference, --lsfstats prints the LSF statistics the quantiser is built on.
 #include "dect2/kaalvoice/kaal_voice.h"
 #include "dect2/kaalvoice/kaal_voice_eval.h"
 #include "../core/src/kaalvoice/kv_internal.h"
-#include <chrono>
+#include <ctime>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -25,7 +26,7 @@ std::vector<int16_t> run(FrameCodec& c, const std::vector<int16_t>& x, double* c
     std::vector<int16_t> y;
     std::vector<int16_t> frame((size_t)n), out((size_t)n);
     std::vector<uint8_t> bits;
-    const auto t0 = std::chrono::steady_clock::now();
+    const std::clock_t t0 = std::clock();   // process CPU time (wall time is useless on a loaded machine)
     const size_t total = x.size() + (size_t)inf.delaySamples + (size_t)n;
     for (size_t pos = 0; pos < total; pos += (size_t)n) {
         for (int i = 0; i < n; i++) frame[(size_t)i] = pos + i < x.size() ? x[pos + i] : 0;
@@ -33,7 +34,7 @@ std::vector<int16_t> run(FrameCodec& c, const std::vector<int16_t>& x, double* c
         c.decode(t, bits.empty() ? nullptr : bits.data(), bits.size(), out.data());
         y.insert(y.end(), out.begin(), out.end());
     }
-    *cpuSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    *cpuSec = (double)(std::clock() - t0) / CLOCKS_PER_SEC;
     return y;
 }
 

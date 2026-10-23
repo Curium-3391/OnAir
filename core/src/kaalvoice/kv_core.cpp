@@ -2,8 +2,6 @@
 #include "kv_core.h"
 #include <cmath>
 #include <cstring>
-#include <cstdio>
-#include <cstdlib>
 
 namespace dect2 {
 namespace kaalvoice {
@@ -80,14 +78,6 @@ bool makeProf(const Config& c, Prof& P, std::string* why, const Tier* ov) {
     for (int i = 0; i < kNTiers; i++)
         if (B20 >= kTiers[i].minBits20) t = &kTiers[i];
     if (ov) t = ov;
-    static Tier dbgT;   // DEBUG tuning override
-    if (getenv("KVT")) {
-        dbgT = *t;
-        int hbg, hbs, hbt;
-        sscanf(getenv("KVT"), "%d,%d,%d,%d,%d,%d,%d,%d,%d,%lf,%lf,%lf", &dbgT.L, &dbgT.lsfTotal, &dbgT.lagRes, &dbgT.lagDBits, &dbgT.gpBits, &dbgT.gcBits, &hbg, &hbs, &hbt, &dbgT.pfNum, &dbgT.pfDen, &dbgT.pfLtp);
-        dbgT.hb.gainBits = hbg; dbgT.hb.shapeMode = hbs; dbgT.hb.timeBits = hbt;
-        t = &dbgT;
-    }
     P = Prof();
     P.fs = c.sampleRate;
     P.frameMs = c.frameMs;
@@ -761,19 +751,6 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         }
         sq.gp = bgi;
         sq.gc = bgj;
-        if (getenv("KVDBG")) {   // DEBUG
-            static double sx = 0, sa = 0, sf = 0, sq2 = 0;
-            const double xx = dot(x, x, L);
-            const double ea = xx - xy * xy / yy;   // acb only, optimal gain
-            // joint optimal gains
-            const double det = yy * zz - yz * yz;
-            double gpo = 0, gco = 0;
-            if (det > 1e-9) { gpo = (xy * zz - xz * yz) / det; gco = (xz * yy - xy * yz) / det; }
-            const double ef = xx - 2 * gpo * xy - 2 * gco * xz + gpo * gpo * yy + 2 * gpo * gco * yz + gco * gco * zz;
-            sx += xx; sa += ea; sf += ef; sq2 += xx + be;
-            static int cnt = 0;
-            if (++cnt % 200 == 0) fprintf(stderr, "wSNR acb %.2f full %.2f quant %.2f | gpo %.2f gp %.2f gco %.1f gc %.1f\n", 10*std::log10(sx/sa), 10*std::log10(sx/sf), 10*std::log10(sx/sq2), gpo, gpLevel(P.gpBits,bgi), gco, gcv[bgj]);
-        }
         const double gp = gpLevel(P.gpBits, bgi), gc = gcv[bgj];
         for (int i = 3; i > 0; i--) st_.gcHist[i] = st_.gcHist[i - 1];
         st_.gcHist[0] = gcLevel(P.gcBits, bgj);
@@ -787,15 +764,6 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         }
         std::memcpy(exc + pos, u, sizeof(float) * (size_t)L);
         float w[80];
-        if (getenv("KVDBG")) {
-            float m[kP], sy[80];
-            std::memcpy(m, st_.syn, sizeof m);
-            iirA(aq[s], u, sy, L, m);
-            static double se = 0, sx = 0;
-            for (int n = 0; n < L; n++) { se += (frame[s * L + n] - sy[n]) * (frame[s * L + n] - sy[n]); sx += frame[s * L + n] * frame[s * L + n]; }
-            static int cnt = 0;
-            if (++cnt % 200 == 0) fprintf(stderr, "enc local SNR %.2f\n", 10 * std::log10(sx / se));
-        }
         cascade(aq[s], a1[s], a2[s], u, w, L, st_.syn, errIir_);
     }
     std::memmove(exc, exc + N, sizeof(float) * kExcHist);
