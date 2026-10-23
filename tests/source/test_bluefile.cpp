@@ -250,6 +250,18 @@ int main() {
         CHECK(cv.size() == 5000 * 8, "converted copy size");
         float v[2]; memcpy(v, cv.data() + 8 * 100, 8);
         CHECK(std::fabs(v[0] - signal(101)[100].real()) < 1e-6 && v[1] == 0.f, "converted real sample has Q = 0");
+#ifndef _WIN32
+        {   // the converted copy lives in a private per-user folder (0700) and is 0600, not loose in the shared temp folder
+            namespace fs2 = std::filesystem;
+            const fs2::path cp = f.dataPath;
+            CHECK(cp.parent_path() != fs2::temp_directory_path() && cp.parent_path().filename().string().rfind("onair-", 0) == 0, "converted copy is in a per-user folder");
+            std::error_code ec2;
+            const auto dp = fs2::status(cp.parent_path(), ec2).permissions();
+            const auto fp = fs2::status(cp, ec2).permissions();
+            CHECK((dp & (fs2::perms::group_all | fs2::perms::others_all)) == fs2::perms::none, "folder is private (0700)");
+            CHECK((fp & (fs2::perms::group_all | fs2::perms::others_all)) == fs2::perms::none, "copy is private (0600)");
+        }
+#endif
         CHECK(probeIqFile(P("rt_CD_be.tmp"), f, e) && f.converted, "probe complex double: converted");
         CHECK(probeIqFile(P("rt_CF_le.tmp"), f, e, false) && !f.converted, "listing probe does not convert");
         CHECK(probeIqFile(P("rt_SL_le.tmp"), f, e, false) && f.converted && f.dataPath == P("rt_SL_le.tmp"), "listing probe of a real file leaves the path");
