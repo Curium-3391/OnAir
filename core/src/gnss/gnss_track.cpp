@@ -174,13 +174,13 @@ void GnssTracker::epoch(const GnssBand& band, int N, double startIdx) {
             const double fe = std::atan(cross / (dot == 0 ? 1e-12 : dot)) / (2 * M_PI * Tn);
             // a weak signal (under 32 dB-Hz): the gain falls after the first 0.2 s (an average over a growing span), so the frequency
             // handed to the phase loop is within a few Hz, not the ~30 Hz rms a fixed gain leaves at 30 dB-Hz (the phase loop then slipped)
-            const bool weak = cnInit_ >= 50 && cn0Db_ < 32.0 && pullEpochs_ >= 200;
+            const bool weak = spec.msg == GnssMsgLnav && cnInit_ >= 50 && cn0Db_ < 32.0 && pullEpochs_ >= 200;
             fcar_ += (weak ? std::max(0.01, 24.0 / (double)pullEpochs_) : 0.12) * fe;
             fllErr_ += (fe - fllErr_) * 0.02;
         }
         pullEpochs_++;
         // frequency settled: try the phase lock loop (a weak signal after 0.6 s of the falling gain)
-        if (pullEpochs_ > 300 && std::fabs(fllErr_) < 10.0 && cnInit_ >= 50 && cn0Db_ > 24.0 && (cn0Db_ >= 32.0 || pullEpochs_ > 600)) {
+        if (pullEpochs_ > 300 && std::fabs(fllErr_) < 10.0 && cnInit_ >= 50 && cn0Db_ > 24.0 && (spec.msg != GnssMsgLnav || cn0Db_ >= 32.0 || pullEpochs_ > 600)) {
             locked_ = true; pllInt_ = 0; pllF0_ = fcar_; lockIdx_ = 0; locked_epochs_ = 0;
         } else if ((pullEpochs_ > 1500 && cnInit_ >= 50 && cn0Db_ < 24.0) || pullEpochs_ > 6000 || std::fabs(fcar_ - fcar0_) > 3000.0) {
             lost_ = true; pullInTimeout_ = true;
