@@ -116,6 +116,8 @@ fn stream_kind(st: i32) -> (&'static [u8], u8) {
         0x24 => (b"HEVC", KIND_VIDEO),
         0x81 => (b"AC-3", KIND_AUDIO),
         0x87 => (b"E-AC-3", KIND_AUDIO),
+        // DRA sound (GB/T 22726) in Chinese streams; the registration descriptor "DRA1" (below) names it too. Stream type from memory of GY/T 220.1, unchecked.
+        0x14 => (b"DRA", KIND_AUDIO),
         0x42 => (b"AVS", KIND_VIDEO),
         0xD2 => (b"AVS2", KIND_VIDEO),
         0xD4 => (b"AVS3", KIND_VIDEO),

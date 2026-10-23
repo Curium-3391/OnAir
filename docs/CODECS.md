@@ -281,7 +281,13 @@ DRA. These are Chinese patented codecs, and OnAir ships none of them: it plays w
   time.
 - AVS2 and AVS3: FFmpeg decodes them only when it is built with libdavs2 or libuavs3d, which the FFmpeg in OnAir is not. Save the stream
   (Outputs: file or UDP) and play it with an FFmpeg build that has them (ffplay).
-- DRA sound: FFmpeg has no DRA decoder. The player says "DRA audio: no decoder available"; a second sound track in another format plays.
+- DRA sound: FFmpeg has no DRA decoder, so OnAir plays it through the same **DRA add-on** as CDR (see [DRA+ (CDR sound)](#dra-cdr-sound)). A DTMB service
+  whose sound is DRA (stream type 0x14, or private data with the registration descriptor "DRA1") lists DRA in the **audio** box next to its language;
+  pick the language you want. With the add-on installed the player cuts the stream into DRA frames, feeds them to the add-on and plays the PCM in step
+  with the picture (the PES times drive the same clock as any other sound). Without it the player shows an amber notice, "DRA audio: install the DRA
+  add-on to hear this service", with a **?** button to the install steps (also in Help > Voice codecs); a second sound track in another format plays.
+  Status: tested with a synthetic stream and a stand-in add-on only; not tried on a real DTMB broadcast or with the real decoder. The stream type 0x14
+  is from memory of the Chinese standard (GY/T 220.1) and not verified.
 
 Details and the external-player route (save the TS / stream UDP, copy the VLC / mpv command): [AVSPLUS.md](AVSPLUS.md).
 

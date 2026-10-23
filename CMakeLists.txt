@@ -142,6 +142,7 @@ target_sources(dect2core PRIVATE core/src/presets/preset.cpp)   # per-mode prese
 file(READ ${ONAIR_ROOT}/data/bandplans/marine_vhf_channels.csv _mv_txt)
 file(CONFIGURE OUTPUT ${CMAKE_BINARY_DIR}/generated/marinevhf_data.inc CONTENT "static const char kMarineVhfData[] = R\"OnAirMV(${_mv_txt})OnAirMV\";\n" @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${ONAIR_ROOT}/data/bandplans/marine_vhf_channels.csv)
+target_sources(dect2core PRIVATE core/src/tv/tv_dra.cpp)   # DRA sound of TV services through the user-installed add-on
 target_include_directories(dect2core PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # the built-in frequency database: data/frequencies/*.tsv compiled in as text (freq_db.cpp parses them); a changed file configures again
 set(_fdb_inc "${CMAKE_BINARY_DIR}/generated/freqdb_data.inc")
@@ -1873,6 +1874,12 @@ if(DECT2_BUILD_TESTS)
                                  "FAKE_DRA_NOCREATE=\"$<TARGET_FILE:fake_onair_dra2>\"")
     endif()
   endforeach()
+  # DTMB / TV sound in DRA: PES -> frames -> the (fake) add-on, with the TS parser and FFmpeg's demuxer on a synthetic stream
+  add_executable(test_tv_dra tests/tv/test_tv_dra.cpp)
+  target_link_libraries(test_tv_dra PRIVATE dect2core)
+  add_dependencies(test_tv_dra ${_dra_fakes})
+  target_compile_definitions(test_tv_dra PRIVATE "FAKE_DRA_GOOD=\"$<TARGET_FILE:fake_onair_dra0>\"")
+  add_test(NAME tv_dra COMMAND test_tv_dra)
   if(TARGET test_eczas_wav)
     target_compile_definitions(test_eczas_wav PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
   endif()

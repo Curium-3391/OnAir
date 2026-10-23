@@ -200,6 +200,7 @@ private:
     bool hasSavableAudio() const { std::lock_guard<std::mutex> lk(mu_); return esPid_ >= 0; }
     private:
     std::atomic<bool> draAudio_{false};   // the selected service carries DRA sound (from the service list)
+    std::vector<AudioTrackInfo> draTracks_;   // its DRA audio streams (pid, language), guarded by mu_: played through the DRA add-on (tv_dra.h)
 };
 
 } // namespace dect2

@@ -104,11 +104,11 @@ Text textOf(CodecHelp c) {
                 true};
     case CodecHelp::Dra:
         return {"DRA+ (CDR sound)",
-                "CDR sound is coded with DRA+. OnAir does not include a DRA+ decoder: the codec's patent and licence status is unclear, and the decoder "
+                "CDR radio and many DTMB TV channels in China (the DRA sound track of a TV service) are coded with DRA / DRA+. OnAir does not include a DRA+ decoder: the codec's patent and licence status is unclear, and the decoder "
                 "OnAir was tested with was written by a third party (maliwen2015, github.com/maliwen2015/ffmpeg_cavs_dra, MIT as published there), "
                 "so it is an add-on you install yourself, like the HD Radio and voice codecs. Without it the CDR services, signal information and "
                 "data still work, and the raw sound can be saved to a .dra file. With the add-on (libonair_dra) in the codecs folder OnAir plays the "
-                "service you select. Whether you may use it depends on the patent and licence rules where you live: check them first.",
+                "service you select, radio or TV (a TV service with several sound tracks lists DRA in the audio box). Whether you may use it depends on the patent and licence rules where you live: check them first.",
 #if defined(__APPLE__)
                 "Build the add-on yourself (full steps in docs/CODECS.md; the OnAir source has tools/addons/dra):\n"
                 "  brew install cmake git python3\n  git clone https://github.com/adswill/OnAir && cd OnAir/tools/addons/dra\n"
@@ -203,11 +203,6 @@ Text textOf(CodecHelp c) {
                 "There is no free AVS+ decoder to install at this time. For AVS2 or AVS3, save the stream (Outputs: file or UDP) and play it "
                 "with an FFmpeg build that includes libdavs2 or libuavs3d (ffplay). Check the patent rules where you live first.",
                 false};
-    case CodecHelp::DraTv:
-        return {"DRA (TV sound in China)",
-                "Some DTMB channels in China send their sound as DRA, a Chinese patented audio codec. FFmpeg has no DRA decoder, so OnAir shows "
-                "the picture without that sound; a second sound track in another format (MPEG audio, AAC, AC-3) plays.",
-                "There is no free DRA decoder to install at this time.", false};
     case CodecHelp::Ac4:
         return {"AC-4 (ATSC 3.0 sound)",
                 "ATSC 3.0 in the US and South Korea (and some DVB services) send their sound as Dolby AC-4, a patented codec. The FFmpeg inside "
