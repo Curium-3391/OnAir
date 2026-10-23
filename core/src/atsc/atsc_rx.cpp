@@ -465,8 +465,13 @@ struct Core {
         auto pllUpdate = [&]() {
             float e = fastAtan2(pf.imag(), pf.real());
             e = std::max(-1.2f, std::min(1.2f, e));
+            // tracking gain of the pilot loop: 0.0035, and 0.0015 once the pilot has been steady for about 0.1 s. The phase jitter of the wider
+            // loop leaks the quadrature component into the levels and cost about 0.5 dB at the threshold (15.0 dB: 3.6 % bad packets at 0.0035,
+            // none at 0.0015), and the narrow one also copes better with oscillator phase noise (a 20 Hz Wiener linewidth at 25 dB: 20 % bad
+            // packets against 67 %); the wide one is needed to settle (a -1.5 dB echo at 8 us never locked with the narrow loop from the start)
             static const float kPa = getenv("ATSC_PA") ? (float)atof(getenv("ATSC_PA")) : 0.0035f;
-            const float alpha = tracking ? kPa * weakScale : 0.035f, beta = alpha * alpha / 4.0f / (tracking ? 1.0f : 4.0f);
+            static const float kPaN = getenv("ATSC_PAN") ? (float)atof(getenv("ATSC_PAN")) : 0.0015f;
+            const float alpha = tracking ? (goodRun > 600000 ? kPaN : kPa) * weakScale : 0.035f, beta = alpha * alpha / 4.0f / (tracking ? 1.0f : 4.0f);
             const float xa = kPllScale * alpha * e;       // phase correction, at most about 0.17 rad: a small-angle rotation is exact enough (renormalised below)
             ph *= cf32(1.f - 0.5f * xa * xa, -xa);
             const float xb = kPllScale * beta * e;
