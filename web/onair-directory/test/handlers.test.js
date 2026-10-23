@@ -34,6 +34,8 @@ function fakeDB() {
       else if (q.startsWith("SELECT * FROM servers WHERE id = ?1 AND expires_at")) { const s = t.servers.get(a[0]); r = s && s.expires_at > a[1] ? s : null; }
       else if (q.startsWith("SELECT 1 AS x FROM servers WHERE id")) r = t.servers.has(a[0]) ? { x: 1 } : null;
       else if (q.startsWith("INSERT INTO reports")) { t.reports.push({ n: ++t.n, server_id: a[0], reason: a[1], text: a[2], at: a[3] }); r = { meta: { changes: 1 } }; }
+      else if (q === "SELECT win FROM rl WHERE k = ?1 AND exp > ?2") { const row = t.rl.get(a[0]); r = row && row.exp > a[1] ? { win: row.win } : null; }
+      else if (q.startsWith("INSERT OR REPLACE INTO rl")) { t.rl.set(a[0], { win: a[1], n: 1, exp: a[2] }); r = { meta: { changes: 1 } }; }
       else if (q === "DELETE FROM servers WHERE id = ?1") r = { meta: { changes: t.servers.delete(a[0]) ? 1 : 0 } };
       else if (q.startsWith("INSERT OR REPLACE INTO blocks")) { t.blocks.push({ kind: a[0], value: a[1], note: a[2], at: a[3] }); r = { meta: { changes: 1 } }; }
       else if (q.startsWith("DELETE FROM servers WHERE host = ?1")) {
@@ -196,6 +198,20 @@ test("signed delete by the owner only", async () => {
   assert.equal((await post(env, "/api/v1/heartbeat", await del({ ts: NOW }, key))).status, 404);
 });
 
+test("a heartbeat captured before a delete cannot be replayed after it", async () => {
+  NOW = 1790000000;
+  const env = mkEnv();
+  await beat(env);
+  const captured = await signed({ action: "heartbeat", id: "srv-one-0001", pub: PUB, ts: NOW + 30, name: "n", url: "https://one.example.org:8073/", loc: "", freq: [], radio: "", cap: 0, users: 0, ver: "3.0", contact: "", desc: "", reach: 0, interval: 60 }, key);
+  NOW += 60;
+  const del = await signed({ action: "delete", id: "srv-one-0001", pub: PUB, ts: NOW }, key);
+  assert.equal((await post(env, "/api/v1/heartbeat", del)).status, 200);
+  NOW += 30;
+  const r = await post(env, "/api/v1/heartbeat", captured);
+  assert.equal(r.status, 409);
+  assert.equal((await (await get(env, "/api/v1/servers")).json()).count, 0);
+});
+
 test("reachability is opt-in and only boolean", async () => {
   NOW = 1790000000;
   const env = mkEnv();
@@ -270,4 +286,15 @@ test("admin: token required, removal, block list, reports", async () => {
   delete bare.ADMIN_TOKEN;
   const r = await handle(new Request("https://dir.test/api/v1/admin/reports", { headers: { authorization: "Bearer x" } }), bare, {}, deps());
   assert.equal(r.status, 404);
+});
+
+test("rate-limit keys are not a fixed hash of the address when IP_SALT is missing", async () => {
+  const env = mkEnv();
+  delete env.IP_SALT;
+  await post(env, "/api/v1/heartbeat", { not: "a record" }, "9.9.9.9");
+  const keys = [...env.DB.t.rl.keys()];
+  assert.ok(keys.length > 0);
+  const { sha256Hex } = await import("../src/crypto.js");
+  const fixed = (await sha256Hex("unsalted|9.9.9.9")).slice(0, 24);
+  assert.ok(keys.every((k) => !k.endsWith(fixed)), "key must not be sha256('unsalted|ip')");
 });

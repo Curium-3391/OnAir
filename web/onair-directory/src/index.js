@@ -26,9 +26,17 @@ async function hit(env, key, limit, windowSec, now) {
   ).bind(key, win, now + windowSec * 2).first();
   return (row ? row.n : 1) <= limit;
 }
+// Without the IP_SALT secret the hash must not be a fixed function of the address (a fixed one can be reversed over the whole IPv4 range from
+// the rows of the rl table): a random salt per Worker instance is used instead, so the rate limits still work but the keys mean nothing later.
+let fallbackSalt = null;
+function ipSalt(env) {
+  if (env.IP_SALT) return env.IP_SALT;
+  if (!fallbackSalt) fallbackSalt = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  return fallbackSalt;
+}
 async function ipKey(env, request) {
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  return (await sha256Hex((env.IP_SALT || "unsalted") + "|" + ip)).slice(0, 24);
+  return (await sha256Hex(ipSalt(env) + "|" + ip)).slice(0, 24);
 }
 
 // ---- DNS and the reachability probe ----------------------------------------------------------------------------------------------------
@@ -112,9 +120,17 @@ async function heartbeat(request, env, ctx, deps) {
   if (row && row.pub !== rec.pub) return err(403, "id is registered with another key");
   if (row && rec.ts <= row.last_ts) return err(409, "ts is not newer than the last accepted request");
 
+  // a signed delete leaves a 10-minute tombstone (the ts of the delete, kept in the rl table): a captured heartbeat replayed inside the 5-minute
+  // clock window cannot list the server again
+  if (!row && rec.action !== "delete") {
+    const tomb = await env.DB.prepare("SELECT win FROM rl WHERE k = ?1 AND exp > ?2").bind("tomb:" + rec.id, now).first();
+    if (tomb && rec.ts <= tomb.win) return err(409, "ts is not newer than the last accepted request");
+  }
+
   if (rec.action === "delete") {
     if (!row) return err(404, "not registered");
     await env.DB.prepare("DELETE FROM servers WHERE id = ?1").bind(rec.id).run();
+    await env.DB.prepare("INSERT OR REPLACE INTO rl(k, win, n, exp) VALUES(?1, ?2, 1, ?3)").bind("tomb:" + rec.id, rec.ts, now + 600).run();
     return json({ ok: true, deleted: true });
   }
 
