@@ -3,6 +3,7 @@
 (function () {
   "use strict";
   const L = window.OnAirLib;
+  const D = window.OnAirDecoders;
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
@@ -20,7 +21,7 @@
     spectrumOn: false, subs: [], step: store.get("step", 5000), palette: store.get("palette", "amber"),
     range: store.get("range", 70), floorAdj: store.get("floorAdj", 0),
     attempt: 0, retryTimer: 0, retryAt: 0, stopRetry: false, pendingTune: 0, lastTuneSent: 0, tuneTimer: 0,
-    rows: [], rowSeq: -1, audioSeq: -1, lost: 0, decoders: {}, decDirty: false, name: store.get("name", ""), invite: "", password: "",
+    rows: [], rowSeq: -1, audioSeq: -1, lost: 0, decoders: {}, views: {}, decDirty: false, name: store.get("name", ""), invite: "", password: "",
     bw: 0,
   };
   const bands = [
@@ -564,20 +565,29 @@
   }
   function toggleDecoder(d) {
     const idx = S.subs.findIndex((s) => s.decoder === d.kind);
-    if (idx >= 0) { const s = S.subs.splice(idx, 1)[0]; send(L.msg.unsubscribe(s.decoder, s.freq)); }
-    else { const s = { decoder: d.kind, freq: d.needs_freq ? S.freq : null }; S.subs.push(s); send(L.msg.subscribe(s.decoder, s.freq)); }
+    if (idx >= 0) { const s = S.subs.splice(idx, 1)[0]; send(L.msg.unsubscribe(s.decoder, s.freq)); dropViews(s.decoder); }
+    else { const s = { decoder: d.kind, freq: d.needs_freq ? Math.round(D.defaultFreq(d.kind, S.freq, S.cap)) : null }; S.subs.push(s); send(L.msg.subscribe(s.decoder, s.freq)); }
     renderDecoderButtons();
   }
   function renderDecoderButtons() {
     for (const b of $("decList").querySelectorAll("button")) b.setAttribute("aria-pressed", String(S.subs.some((s) => s.decoder === b.dataset.kind)));
   }
+  function dropViews(kind) { for (const k of Object.keys(S.views)) if (k === kind || k.startsWith(kind + "@")) { const v = S.views[k]; if (v.node.parentNode) v.node.parentNode.removeChild(v.node); delete S.views[k]; } for (const k of Object.keys(S.decoders)) if (k === kind || k.startsWith(kind + "@")) delete S.decoders[k]; }
   function onEvent(m) {
     if (typeof m.decoder !== "string") return;
-    S.decoders[m.decoder.slice(0, 64)] = m.data; S.decDirty = true;
+    const key = m.decoder.slice(0, 64);
+    if (D.validEvent(m.data)) {   // the v1 decoder events: every one goes to its view (pictures need all strips)
+      const sub = S.subs.find((x) => key === x.decoder || key.startsWith(x.decoder + "@"));
+      if (!sub) return;
+      const v = S.views[key] || (S.views[key] = new D.DecoderView(document, key, m.data.kind));
+      v.ingest(m.data); S.decDirty = true; return;
+    }
+    S.decoders[key] = m.data; S.decDirty = true;
   }
   function renderDecoders() {
     if (!S.decDirty || $("paneDec").hidden) return; S.decDirty = false;
     const out = $("decOut"); out.textContent = "";
+    for (const key of Object.keys(S.views)) { const v = S.views[key]; v.refresh(); out.appendChild(v.node); }
     for (const key of Object.keys(S.decoders)) {
       if (!S.subs.some((s) => key === s.decoder || key.startsWith(s.decoder + "@"))) continue;
       const sec = el("section"); sec.appendChild(el("h3", null, key));

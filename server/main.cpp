@@ -8,6 +8,7 @@
 #include "server_config.h"
 #include "server_host.h"
 #include "web/web_config.h"
+#include "web/web_decoders.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -181,6 +182,7 @@ int main(int argc, char** argv) {
         hub->setLog([](const std::string& l) { printf("onair-server: %s\n", l.c_str()); });
         hub->registerDecoder(onair_web::DecoderFactory{"host", "This server's receiver (its mode's results)", 0, false,
                                                        [&host](double) { return std::unique_ptr<onair_web::WebDecoder>(new HostDecoder(host)); }});
+        onair_web::registerWebDecoders(*hub);   // ADS-B, AIS, APRS, FT8 / FT4 / WSPR, SSTV, fax, Meteor, RDS, CW, RTTY (server/web/web_decoders.h)
         hub->start();
         host.setWebHub(hub.get());
         web.reset(new onair_web::WebServer(*hub));

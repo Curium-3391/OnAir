@@ -695,7 +695,16 @@ void WebHub::subscribe(const std::shared_ptr<Session>& sp, const ClientMsg& m) {
         if (!d->dec) { sendError(s, err::Busy, "the decoder could not be started"); return; }
         it = decs_.emplace(key, d).first;
     }
-    { std::lock_guard<std::mutex> dg(it->second->m); it->second->subs.insert(s.id); }
+    std::vector<std::string> snap;
+    {
+        std::lock_guard<std::mutex> dg(it->second->m);
+        it->second->subs.insert(s.id);
+        if (it->second->dec) it->second->dec->snapshot(snap);   // a late listener gets the current table / picture, not only what comes next
+    }
+    for (const auto& e : snap) {
+        if (e.size() > 65536) continue;
+        enqueue(s, OutMsg{"{\"type\":\"event\",\"decoder\":\"" + jsonEsc(key) + "\",\"data\":" + e + "}", false, 1});
+    }
     std::lock_guard<std::mutex> sg(s.m);
     s.subs.insert(key);
     s.lastAction = wallSeconds();

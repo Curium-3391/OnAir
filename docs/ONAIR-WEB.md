@@ -219,7 +219,21 @@ onair-web-load --rate 10e6 --users 0,8 --mode usb --no-spectrum
 
 ## Decoders
 
-Listeners subscribe to decoders by kind (`welcome.decoders` lists what the server offers and the policy allows). In this build there is one: **`host`**, the results of the server's own receiver (the mode chosen in the control page, as its telemetry JSON). The machinery for more is in place (`DecoderFactory` / `WebDecoder` in `server/web/web_hub.h`): a decoder gets its own slice of the capture at the rate it asks for, identical subscriptions (same kind, same kHz) share one instance, and its results go to every subscriber as `event` messages. Wiring the existing receivers (ADS-B, AIS, APRS, FT8 / FT4 / WSPR, SSTV, WEFAX, weather satellites) as web decoders is the next step; their policy classes are already in `web_policy.cpp`.
+Listeners subscribe to decoders by kind (`welcome.decoders` lists what the server offers and the policy allows; at most 4 a listener). Besides **`host`** (the results of the server's own receiver, as its telemetry JSON) the server offers the receivers below as shared web decoders (`server/web/web_decoders.cpp`; the result schema is in docs/ONAIR-WEB-PROTOCOL.md, "Decoder events"):
+
+| kind | what | needs |
+| --- | --- | --- |
+| `adsb` | aircraft list with positions | capture of at least 2 Msps around 1090 MHz |
+| `ais` | vessels | 250 kHz around 162 MHz |
+| `aprs` | APRS / AX.25 stations and frames (1200 and 9600 baud) | the channel, e.g. 144.800 MHz |
+| `ft8`, `ft4`, `wspr` | decodes (call, grid, SNR, time offset) | the dial frequency of the band (USB) |
+| `sstv`, `wefax`, `meteor` | pictures, sent to the listener as PNG strips, nothing kept on the host | the dial frequency; Meteor-M LRPT on 137.1 / 137.9 MHz |
+| `rds` | station name, radio text, programme type | the FM station's carrier |
+| `cw`, `rtty` | text (CW: every signal near the dial frequency) | the dial frequency |
+
+Each decoder gets its own slice of the capture at the rate it needs (2 Msps for ADS-B, 12 ksps for fax, 192 to 500 ksps for the others), and listeners who ask for the same kind on the same kHz share one instance and one slice. A listener picks the frequency itself (`freq_hz`); the decoder must lie in the capture (centre +- 48 % of the rate) and in its own band, so a server whose radio is tuned to 100 MHz cannot offer ADS-B (the subscribe is refused; the browser client starts ADS-B at 1090 MHz when the capture covers it). The same policy applies as to everything else: a data decoder is on unless the host turned it off (`web_decoders_off`), digital voice and pager decoders are not part of this build's list at all and stay off unless the host accepted the legal notice. The decoders only receive: the web code is built with `ONAIR_WEB_SESSION`, so no transmit function can be linked into it, and the decoders never see keys or write a file.
+
+CPU: a decoder counts as one of the `web_max_decoders` instances (8) and its slice and DSP are in the web DSP total that new listeners are refused above (`web_cpu_cap_pct`; a decoder is not charged to any one listener's `web_session_cpu_pct`); the decoders' own worker threads (FT8 / FT4 / WSPR decode a slot on a thread of their own) are not in the per-listener figures, so keep `web_max_decoders` low on a small machine (not measured: ADS-B at 2 Msps, Meteor and FT8 are the heavy ones, AIS, APRS, CW and the fax light). The browser client shows them in the Decoders tab: aircraft, vessel and APRS tables with a small map, the FT8 / FT4 / WSPR list, picture viewers (with "Save PNG" in the listener's browser), RDS, CW and RTTY text.
 
 ## The browser UI and the directory (extension points)
 
@@ -232,14 +246,14 @@ Listeners subscribe to decoders by kind (`welcome.decoders` lists what the serve
 * Not tried on a real radio, a real browser over the internet, a phone, a Raspberry Pi, or with a real certificate.
 * IPv4 only.
 * No browser UI in this build (the placeholder page); no Opus (no codec library in OnAir: ADPCM and PCM only).
-* Only the `host` decoder; per-listener ADS-B / AIS / APRS / FT8 / SSTV / WEFAX / satellite decoders are not wired yet.
+* The web decoders (ADS-B, AIS, APRS, FT8 / FT4 / WSPR, SSTV, fax, Meteor, RDS, CW, RTTY) are tested on synthetic signals and noise, not with a real radio or a real browser. NOAA APT, ACARS and the voice / pager decoders are not wired (no APT decoder exists in the program; voice and pager need the legal notice). A fax picture's rows are sent once, so a later slant correction does not reach listeners who already have them; pictures are drawn as they arrive, with no re-sync.
 * No S-meter while a listener has audio off (the receiver of a listener without audio is not run at all, which keeps waterfall-only listeners nearly free).
 * WFM is mono (no stereo decoder, no RDS for web listeners).
 * The admin user list and stats are JSON only (no admin page).
 
 ## Browser client (web/onair-web/)
 
-Files: `index.html`, `style.css`, `app.js` (UI and WebSocket), `onair-lib.js` (pure helpers: ADPCM decode, frame parsing, messages, frequency and bin mapping, zoom and pan, palettes, S-meter, result tables) and `onair-worklet.js` (audio jitter buffer, run in an AudioWorklet). Everything is served from the same origin (the server's content security policy allows nothing else). Tune by clicking a digit half, scrolling on the digits, arrow keys (Shift or Page Up/Down for 10 steps), or by clicking the spectrum; drag to pan, wheel or pinch to zoom (the zoomed slice is requested from the server as a finer spectrum span). Keys: 1 to 6 modes, M mute, + and - zoom. An invite link is `http://host:8073/#invite=TOKEN` (the token never reaches the server's logs). The notice banner shows the server's `notice` text from `/web/v1/info` when it sends one, else a generic one. The S-meter scale is relative to full scale (S9 = -66 dBFS), not calibrated.
+Files: `index.html`, `style.css`, `app.js` (UI and WebSocket), `onair-lib.js` (pure helpers: ADPCM decode, frame parsing, messages, frequency and bin mapping, zoom and pan, palettes, S-meter, result tables), `onair-decoders.js` (the Decoders tab: tables, the map, FT8 history, picture strips; pure helpers plus the DOM views) and `onair-worklet.js` (audio jitter buffer, run in an AudioWorklet). Everything is served from the same origin (the server's content security policy allows nothing else). Tune by clicking a digit half, scrolling on the digits, arrow keys (Shift or Page Up/Down for 10 steps), or by clicking the spectrum; drag to pan, wheel or pinch to zoom (the zoomed slice is requested from the server as a finer spectrum span). Keys: 1 to 6 modes, M mute, + and - zoom. An invite link is `http://host:8073/#invite=TOKEN` (the token never reaches the server's logs). The notice banner shows the server's `notice` text from `/web/v1/info` when it sends one, else a generic one. The S-meter scale is relative to full scale (S9 = -66 dBFS), not calibrated.
 
 Tests for the pure code (node built-ins only, not part of CMake): `node tests/web/run.js`.
 
