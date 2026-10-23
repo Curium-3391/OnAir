@@ -3,6 +3,7 @@
 #include "dect2/files/files_proto.h"
 #include "dect2/source/bluefile.h"
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +14,10 @@
 #include <map>
 #include <sstream>
 #include <vector>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include "dect2/common/str.h"
 #include "dect2/common/endian.h"
 
@@ -120,10 +125,50 @@ bool probeWav(const std::string& path, IqFileInfo& out, std::string& err) {
     return false;
 }
 
+// A folder for converted copies that only this user can enter: <temp>/onair-<uid>, mode 0700, owned by us, not a symlink. Another user on the
+// same machine can then neither pre-create the copy (data injection) nor plant a symlink (overwrite of a file we may write). Windows temp
+// folders are per user already. Empty path: no safe folder.
+static std::filesystem::path privateTempDir() {
+    std::error_code ec;
+    const std::filesystem::path base = std::filesystem::temp_directory_path(ec);
+    if (ec) return std::filesystem::path();
+#ifdef _WIN32
+    return base;
+#else
+    const std::filesystem::path dir = base / ("onair-" + std::to_string((unsigned long)getuid()));
+    if (mkdir(dir.c_str(), 0700) != 0 && errno != EEXIST) return std::filesystem::path();
+    struct stat st;
+    if (lstat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != getuid()) return std::filesystem::path();
+    if ((st.st_mode & 077) != 0 && chmod(dir.c_str(), 0700) != 0) return std::filesystem::path();
+    return dir;
+#endif
+}
+
+// Converts into a file with an unpredictable name (mkstemp: created O_EXCL, 0600) inside the private folder, then renames it to `target`.
+static bool convertPrivately(const std::string& src, const std::filesystem::path& dir, const std::filesystem::path& target, std::string& err) {
+#ifdef _WIN32
+    return blue::convertToCf32(src, target.string(), err);
+#else
+    std::string tmpl = (dir / "onair-blue-XXXXXX").string();
+    std::vector<char> buf(tmpl.begin(), tmpl.end());
+    buf.push_back(0);
+    const int fd = mkstemp(buf.data());
+    if (fd < 0) { err = "cannot create a private temporary file for the converted copy"; return false; }
+    fchmod(fd, 0600);
+    close(fd);
+    const std::string tmp = buf.data();
+    if (!blue::convertToCf32(src, tmp, err)) { std::remove(tmp.c_str()); return false; }
+    std::error_code ec;
+    std::filesystem::rename(tmp, target, ec);
+    if (ec) { std::remove(tmp.c_str()); err = "cannot place the converted copy"; return false; }
+    return true;
+#endif
+}
+
 bool probeBlue(const std::string& path, IqFileInfo& out, std::string& err, bool allowConvert) {
     blue::Info b;
     if (!blue::probe(path, b, err)) return false;
-    if (b.sampleRate <= 0) { err = "the BLUE file does not give a sample rate (xdelta): " + path; return false; }
+    if (!(b.sampleRate >= 1.0 && b.sampleRate <= 1e12)) { err = "the BLUE file does not give a sample rate (xdelta): " + path; return false; }
     IqFileInfo r;
     r.blue = true;
     r.sampleRate = b.sampleRate;
@@ -151,10 +196,18 @@ bool probeBlue(const std::string& path, IqFileInfo& out, std::string& err, bool 
     const uint64_t h = std::hash<std::string>{}(path) ^ ((uint64_t)stamp * 1099511628211ull) ^ (b.dataBytes * 31ull);
     char nm[64];
     snprintf(nm, sizeof nm, "onair-blue-%016llx.cf32", (unsigned long long)h);
-    const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec) / nm;
+    const std::filesystem::path dir = privateTempDir();
+    if (dir.empty()) { err = "no private temporary folder for the converted copy"; return false; }
+    const std::filesystem::path tmp = dir / nm;
     const std::string tmpS = tmp.string();
     const uint64_t want = b.samples * 8;
-    if (!(std::filesystem::exists(tmp, ec) && std::filesystem::file_size(tmp, ec) == want) && !blue::convertToCf32(path, tmpS, err)) return false;
+    bool reuse = false;
+    {   // reuse only a plain file of ours with the expected size (never a symlink)
+        std::error_code e2;
+        const auto st = std::filesystem::symlink_status(tmp, e2);
+        reuse = !e2 && std::filesystem::is_regular_file(st) && std::filesystem::file_size(tmp, e2) == want;
+    }
+    if (!reuse && !convertPrivately(path, dir, tmp, err)) return false;
     r.dataPath = tmpS;
     out = r;
     return true;
