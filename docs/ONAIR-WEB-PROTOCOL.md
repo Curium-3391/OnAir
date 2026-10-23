@@ -122,6 +122,44 @@ Error codes: `bad_json`, `bad_message`, `unknown_type`, `forbidden`, `out_of_ran
 
 The `host` decoder's `data` is `{"mode":"<the server's mode id>","telemetry":{...}}` with the receiver's telemetry (the same JSON as `/api/v1/telemetry` of the remote-control API). It is not sent while the server runs a digital voice or pager mode the host has not enabled for web listeners.
 
+## Decoder events (schema version 1)
+
+Besides `host`, the server can offer these decoders (`welcome.decoders` lists those the host has enabled; all need `freq_hz`). One instance serves everyone who subscribes to the same kind on the same kHz; the key in `event.decoder` is `kind@<kHz>k` (for example `adsb@1090000k`). The instance gets its own slice of the capture at the rate it needs (`rate` below), so the frequency must be inside the capture and inside the decoder's band (otherwise `subscribe` is answered with `out_of_range` or `busy`).
+
+| kind | frequency | slice rate | result |
+| --- | --- | --- | --- |
+| `adsb` | 1087 .. 1093 MHz | 2 Msps | aircraft list with positions |
+| `ais` | 161.9 .. 162.1 MHz (both channels 161.975 / 162.025 are decoded from a slice centred on 162.000) | 250 ksps | vessel list |
+| `aprs` | 29 .. 470 MHz (1200 and 9600 baud on the channel) | 192 ksps | stations and frames |
+| `ft8`, `ft4`, `wspr` | 0.1 .. 450 MHz, the dial frequency (USB) | 250 ksps | decodes |
+| `sstv` | 0.1 .. 450 MHz (USB below 30 MHz, narrow FM above) | 250 ksps | pictures |
+| `wefax` | 0.1 .. 30 MHz, the dial frequency (USB) | 12 ksps | picture |
+| `meteor` | 136 .. 138.5 MHz (Meteor-M LRPT) | 288 ksps | picture of one channel |
+| `rds` | 64 .. 110 MHz (the station's carrier) | 500 ksps | RDS text |
+| `cw` | 0.1 .. 450 MHz, skimmer around the dial frequency | 250 ksps | signals with text |
+| `rtty` | 0.1 .. 450 MHz, the dial frequency | 250 ksps | text |
+
+Digital voice and pager decoders are not part of this list: they stay off for web listeners unless the host accepted the legal notice (see docs/ONAIR-WEB.md, Safety). NOAA APT is not offered (the program has no APT decoder).
+
+Every `event.data` is one JSON object with `v` (1), `kind` and `type`; unknown fields must be ignored. Tables are complete snapshots (the client replaces what it had), at most once a second; a listener who subscribes late gets the current state at once. Numbers are plain JSON numbers; text is valid UTF-8 with control characters removed. An event is at most 64 KB; a longer table is cut (newest first).
+
+| `type` | kinds | fields |
+| --- | --- | --- |
+| `aircraft` | adsb | `state`, `msgs_per_s`, `snr_db`, `noise_dbfs`, `messages_ok`, `messages_bad`, `aircraft_count`, `with_position`, `aircraft[]`: `icao` (hex), `callsign`, `category`, `alt_ft`, `speed_kt`, `track_deg`, `vrate_fpm`, `lat`, `lon`, `squawk`, `ground`, `emergency`, `msgs`, `age_s`, `level_dbfs`, `trail` (up to 8 `[lat, lon]`); fields the aircraft has not sent are left out |
+| `vessels` | ais | `state`, `snr_db`, `messages_ok`, `messages_bad`, `vessel_count`, `vessels[]`: `mmsi`, `class`, `name`, `callsign`, `ship_type`, `ship_type_text`, `nav_status`, `nav_status_text`, `lat`, `lon`, `sog_kt`, `cog_deg`, `heading_deg`, `destination`, `imo`, `msgs`, `age_s` |
+| `packets` | aprs | `state`, `snr_db`, `frames_ok`, `frames_bad`, `frames_1200`, `frames_9600`, `frames[]` (the newest 30, newest last: `t`, `from`, `to`, `path`, `type`, `summary`, `baud`, `lat`, `lon`), `stations[]`: `call`, `symbol`, `last_heard_s`, `count`, `lat`, `lon`, `alt_m`, `course_deg`, `speed_kt`, `comment`, `object` |
+| `decodes` | ft8, ft4, wspr | `dial_hz`, `clock_err_s`, `clock_n`, `decodes[]` (the decodes since the last event, oldest first; a late subscriber gets the last 40 as one event): `slot_utc` (seconds since 1970), `snr_db`, `dt_s`, `audio_hz`, `rf_hz`, `msg`, `cq`, `call`, `grid`, `dbm` (WSPR) |
+| `rds` | rds | `state`, `carrier`, `stereo`, `snr_db`, `level_dbfs`, `sync`, `block_ok_pct`, `groups`, `pi`, `ps`, `radiotext`, `radiotext_complete`, `pty`, `callsign`, `tp`, `ta`, `music`, `rbds` |
+| `signals` | cw | `state`, `snr_db`, `window_hz`, `chars`, `signals[]`: `id`, `offset_hz`, `wpm`, `snr_db`, `locked`, `chars`, `text` (last 600 characters), `calls` |
+| `text` | rtty | `state`, `mark_hz`, `space_hz`, `baud`, `shift_hz`, `quality`, `chars`, `text` (last 2500 characters) |
+| `status` | sstv, wefax, meteor, any | free fields (`state`, `mode`, `lines`, ...); `state: "no_data"` with `why` when no samples reach the decoder for 4 s (the capture is too narrow for its rate) |
+| `image` | sstv, wefax, meteor | a strip of a picture, see below |
+| `image_end` | sstv, wefax, meteor | `id`, `rows`: the picture with this `id` is complete (sent only when the last strip did not already carry `final`) |
+
+**Pictures.** Nothing is stored on the server for a listener: rows go out as they are decoded, each row once, in strips. An `image` event has `id` (one number per picture; a new `id` starts a new picture), `label` (SSTV mode, fax IOC / LPM, ...), `w`, `h` (the canvas, `h` is the most the picture can have), `ch` (1 grey, 3 RGB), `y`, `rows` (the strip covers canvas rows `y .. y + rows - 1`), `png` (base64 of a PNG that is `pw` x `ph`), `preview`, `scale`, `final`. A normal strip is `w` x `rows` pixels, 8 bit grey or RGB, in a PNG with stored (uncompressed) deflate blocks. A listener who joins in the middle first gets one `preview` strip: rows `0 .. rows - 1` shrunk by the integer `scale` (so the PNG is `pw` x `ph`), which the client draws stretched over `w` x `rows`; strips that follow replace it with the real pixels. Rows the decoder never received (Meteor packets lost) are not sent and stay empty. Limits of this version: a row is never re-sent, so a fax picture whose slant correction changes later keeps the rows it already sent as they were; Meteor sends the channel (MSU-MR channel 1 .. 6) that has the most packets, chosen when the first strips arrive, and a strip is sent when all its packets arrived or three later strips exist.
+
+The `host` decoder is unchanged. A decoder on a frequency the capture no longer covers (the host retuned) stays subscribed and sends nothing until the capture covers it again.
+
 ## Binary frames
 
 Little endian. The first byte says what it is.

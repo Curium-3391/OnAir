@@ -106,3 +106,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); min-height: 28px; 
 .rangeinfo p.bad b { color: #d6675c; }
 .rangeinfo p.ok b { color: #60be8c; }
 .modes button:disabled { opacity: .35; }
+
+/* decoders (onair-decoders.js) */
+.decout .decview { border: 1px solid var(--edge); border-radius: var(--r); padding: 8px; background: var(--panel); }
+.decout .decview p { margin: 0 0 6px; }
+.decout canvas.decmap { width: 100%; max-width: 480px; height: auto; aspect-ratio: 8 / 5; background: var(--frame); border: 1px solid var(--edge); display: block; margin-bottom: 6px; }
+.decout canvas.decimg { max-width: 100%; height: auto; background: var(--frame); border: 1px solid var(--edge); display: block; margin-bottom: 6px; image-rendering: auto; }
+.decout .dectable { max-height: 260px; overflow: auto; }
+.decout pre { margin: 0 0 6px; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 220px; overflow: auto; }
