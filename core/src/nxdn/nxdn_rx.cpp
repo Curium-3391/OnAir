@@ -4,6 +4,7 @@
 #include "dect2/nxdn/nxdn_tel.h"
 #include "dect2/nxdn/nxdn_proto.h"
 #include "dect2/nxdn/nxdn_ambe.h"
+#include "dect2/voicekeys/voice_decrypt.h"
 #include "dect2/audio/audioout.h"
 #include "dect2/voice/voice_monitor.h"
 #include <algorithm>
@@ -238,6 +239,9 @@ struct NxdnReceiver::Impl {
     double statLast = -10; int statKey = -1;
     uint32_t callBer = 0, callBits = 0;
     std::unique_ptr<NxdnAmbe> ambe;
+    // User-supplied-key decryption of the current call (see voice_decrypt.h). Null unless the call is encrypted AND a key the user loaded
+    // matches it. The NXDN scrambler (15-bit LFSR) is publicly specified; DES/AES use the OFB keystream.
+    std::unique_ptr<voicekeys::Decryptor> dec;
     std::vector<float> aud8, pcmOut;
     float upPrev = 0;
     std::unique_ptr<AudioOut> audioOut;
@@ -379,6 +383,17 @@ struct NxdnReceiver::Impl {
         callBer = callBits = 0;
         if (late) tel.lateEntries++;
         ambe = tel.ambe ? std::make_unique<NxdnAmbe>() : nullptr;
+        // Match a user key to this call (never a search). Nothing is decrypted when the user loaded no matching key.
+        dec.reset();
+        if (cipher != 0) {
+            voicekeys::CallKeyInfo info;
+            info.protocol = voicekeys::Protocol::Nxdn;
+            info.keyId = key; info.talkgroup = type == 1 ? dst : -1; info.unitId = src;
+            auto look = voicekeys::lookupForCall(info, true, 72);
+            tel.now.decrypt = voicekeys::Decryptor::statusLine(look.status, look.keyName);
+            if (look.decryptor) dec = std::move(look.decryptor);
+            event("NXDN " + tel.now.decrypt);
+        }
     }
     void endCall(bool rel) {
         if (!tel.now.active) return;
@@ -468,19 +483,28 @@ struct NxdnReceiver::Impl {
         tel.now.voiceFrames++;
         tel.voiceFrames++;
         if (vtap) vtap(vb);
+        // Encrypted, and the user loaded a matching key: decrypt the voice bits (never a search). Without a key the call is listed as
+        // encrypted by the voice monitor and nothing is decoded.
+        const uint8_t* frame = vb;
+        uint8_t vbuf[72];
+        bool clear = tel.now.cipher == 0;
+        if (!clear && dec) {
+            std::memcpy(vbuf, vb, 72);
+            if (dec->decryptFrame(vbuf)) { frame = vbuf; clear = true; }   // false: unsupported algorithm
+        }
         voice::Monitor* mon = activeMonitor();
         if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
             voice::CallInfo ci;
             ci.src = tel.now.src > 0 ? (uint32_t)tel.now.src : 0; ci.dst = tel.now.dst > 0 ? (uint32_t)tel.now.dst : 0;
-            ci.group = tel.now.callType <= 1; ci.encrypted = tel.now.cipher != 0; ci.codecMissing = !ambe || !ambe->ok();
+            ci.group = tel.now.callType <= 1; ci.encrypted = !clear; ci.codecMissing = !ambe || !ambe->ok();
             ci.errorRate = callBits > 200 ? (float)callBer / callBits : -1.f;
             if (tel.now.ran >= 0) ci.access = "RAN " + std::to_string(tel.now.ran);
             if (mon->offer(ci) != voice::Verdict::Play) return;
             playing = ci;
         }
-        if (!ambe || !ambe->ok() || tel.now.cipher) return;
+        if (!ambe || !ambe->ok() || !clear) return;
         int16_t pcm[160];
-        ambe->decode(vb, pcm);
+        ambe->decode(frame, pcm);
         for (int16_t s : pcm) aud8.push_back(s / 32768.f);
         tel.voiceDecoded++;
         tel.now.voice = true;

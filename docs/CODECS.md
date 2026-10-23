@@ -377,7 +377,7 @@ Three more plug-in ids, one registry (`core/include/dect2/codec/codec_registry.h
 | `imbe` | P25 phase 1 (IMBE 7200x4400) | 23: the eight code words c0..c7, 23 bits each, row by row, MSB first (184 bits) |
 
 OnAir does the de-interleaving; the plug-in only has to expand the bits back into mbelib's `char fr[4][24]` (or `fr[8][23]`) and call `mbe_processAmbe3600x2450Frame` / `mbe_processAmbe3600x2400Frame` / `mbe_processImbe7200x4400Frame`, then return the 160 samples. A small reference wrapper is in `tools/codec-plugin-example/mbelib_wrapper.c` (compile it yourself against your own mbelib; no codec code is in this repository).
-If no plug-in is installed OnAir still loads a plain `libmbe` from the codecs folder as before; a plug-in wins when both exist. Encrypted calls are never decoded: DMR calls flagged private in their service options show `ENC` and play nothing.
+If no plug-in is installed OnAir still loads a plain `libmbe` from the codecs folder as before; a plug-in wins when both exist. Encrypted calls are not decoded by default: DMR calls flagged private in their service options show `ENC` and play nothing. You can decrypt a call **only with a key you import yourself** — OnAir has no automatic decrypter, key search or key recovery. See **[docs/KEYS.md](KEYS.md)** for the Keys window, the ciphers supported per protocol (P25 ADP/DES/AES and the NXDN scrambler are applied; DMR vendor privacy framing is not public and is not implemented), and how keys are stored encrypted at rest.
 DMR plays one time slot at a time: the **Listen to** box in the DMR panel chooses slot 1, slot 2 or the first slot heard.
 
 **Voice monitor.** Every digital voice mode (DMR, P25, NXDN, dPMR, D-STAR, Yaesu System Fusion, TETRA, M17) has the same strip at the top of its
