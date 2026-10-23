@@ -161,6 +161,41 @@ static void testRigctl() {
     CHECK(!q && h("q").empty() && q, "q quits without a reply");
     q = false;
     CHECK(h("\\chk_vfo") == "0\n" && h("+f") == "433920000\n", "chk_vfo, extended prefix answered plainly");
+    // an HTTP request line (a web page POSTing text/plain to the rigctl port) ends the connection and runs nothing
+    q = false;
+    const double before = r.hz;
+    CHECK(h("POST / HTTP/1.1").empty() && q && r.hz == before, "HTTP request line: hang up");
+    q = false;
+    CHECK(h("GET /x HTTP/1.0\r\n").empty() && q, "HTTP/1.0 request line: hang up");
+    q = false;
+    // header lines (a request that arrives without its request line in the same read) hang up too
+    for (const char* hdr : {"Host: 127.0.0.1:4532", "host:localhost", "Origin: http://evil.example", "Content-Type: text/plain", "Content-Length: 12"}) {
+        q = false;
+        CHECK(h(hdr).empty() && q && r.hz == before, "HTTP header line: hang up");
+    }
+    q = false;
+
+    // with a token: reads are open, changes need "\auth <token>" on the connection
+    RigctlSession sess1; sess1.required = true; sess1.token = "0123456789abcdef";
+    auto hs = [&](const std::string& l) { return rigctlHandle(l, r, q, sess1); };
+    const double hz0 = r.hz;
+    const std::string mode0 = r.mode;
+    CHECK(hs("f") != "RPRT -1\n" && hs("m") == mode0 + "\n" + std::to_string(r.pb) + "\n", "reads stay open");
+    CHECK(hs("F 100000000") == "RPRT -1\n" && r.hz == hz0, "F refused before auth");
+    CHECK(hs("M USB 2400") == "RPRT -1\n" && r.mode == mode0, "M refused before auth");
+    CHECK(hs("S 1 VFOB") == "RPRT -1\n" && hs("T 1") == "RPRT -1\n" && hs("T 0") == "RPRT 0\n", "S 1 and T 1 refused before auth, the no-op T 0 is fine");
+    CHECK(hs("\\auth wrong") == "RPRT -1\n" && hs("F 100000000") == "RPRT -1\n" && r.hz == hz0, "a wrong token does not open it");
+    CHECK(hs("\\auth 0123456789abcdef") == "RPRT 0\n" && hs("F 100000000") == "RPRT 0\n" && r.hz == 100000000, "the token opens changes");
+    // three wrong tokens hang up
+    RigctlSession s2; s2.required = true; s2.token = "0123456789abcdef";
+    q = false;
+    CHECK(rigctlHandle("\\auth a", r, q, s2) == "RPRT -1\n" && !q && rigctlHandle("\\auth b", r, q, s2) == "RPRT -1\n" && !q, "two wrong tokens");
+    CHECK(rigctlHandle("\\auth c", r, q, s2).empty() && q, "the third wrong token hangs up");
+    // required with no token (LAN without a token): nothing can authenticate
+    RigctlSession s3; s3.required = true;
+    q = false;
+    const double hz1 = r.hz;
+    CHECK(rigctlHandle("\\auth ", r, q, s3) == "RPRT -1\n" && rigctlHandle("\\auth x", r, q, s3) == "RPRT -1\n" && rigctlHandle("F 1000000", r, q, s3) == "RPRT -1\n" && r.hz == hz1, "no token set: changes always refused");
 }
 
 // ---------------------------------------------------------------- sockets
@@ -327,6 +362,36 @@ static void testRigctlServer() {
     CHECK(sockRecv(s2, b, sizeof b) <= 0, "q closes the connection");
     sockClose(s2);
     CHECK(srv.configure(RigctlConfig()) && srv.port() == 0, "off");
+
+    // a token set: changes need \auth first; an HTTP request (a web page POSTing to the port) is dropped and runs nothing
+    RigctlConfig ct; ct.on = true; ct.port = 0; ct.allowLan = true; ct.token = "0123456789abcdef";
+    CHECK(srv.configure(ct), "rigctl with a token listens");
+    r.hz = 145500000;
+    sock_t s3 = tcpConnect("127.0.0.1", srv.port(), 1000, err);
+    CHECK(s3 != kBadSock, "connect 3");
+    if (s3 == kBadSock) return;
+    sockRecvTimeout(s3, 1500);
+    auto ask3 = [&](const std::string& l) {
+        sockSendAll(s3, l.data(), l.size());
+        char b3[256];
+        const long long k = sockRecv(s3, b3, sizeof b3);
+        return k > 0 ? std::string(b3, (size_t)k) : std::string();
+    };
+    CHECK(ask3("f\n") == "145500000\n", "reads open with a token");
+    CHECK(ask3("F 100000000\n") == "RPRT -1\n" && r.hz == 145500000, "F refused without \\auth");
+    CHECK(ask3("\\auth 0123456789abcdef\n") == "RPRT 0\n" && ask3("F 100000000\n") == "RPRT 0\n" && r.hz == 100000000, "F after \\auth");
+    sockClose(s3);
+    sock_t s4 = tcpConnect("127.0.0.1", srv.port(), 1000, err);
+    CHECK(s4 != kBadSock, "connect 4");
+    if (s4 == kBadSock) return;
+    sockRecvTimeout(s4, 1500);
+    const std::string post = "POST / HTTP/1.1\r\nHost: 127.0.0.1:4532\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nF 145500000\n";
+    sockSendAll(s4, post.data(), post.size());
+    char b4[64];
+    CHECK(sockRecv(s4, b4, sizeof b4) <= 0, "an HTTP request: the connection is closed, nothing is sent back");
+    CHECK(r.hz == 100000000, "and nothing was executed");
+    sockClose(s4);
+    CHECK(srv.configure(RigctlConfig()) && srv.port() == 0, "off again");
 }
 
 static void testUdp() {

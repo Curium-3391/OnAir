@@ -96,5 +96,11 @@ public:
 // One line in, the reply out (already with its newlines). quit is set by q / Q. Never transmits: T 1 is refused (RPRT -11), T 0 and t answer "0".
 // Anything unknown: "RPRT -4"; a bad argument: "RPRT -1"; a line over 256 bytes: "RPRT -8".
 std::string rigctlHandle(const std::string& line, RigctlRadio& radio, bool& quit);
+// The per-connection state. required: the commands that change the radio (F M S T) need a prior "\auth <token>" on this connection (the reply
+// is "RPRT 0"); with an empty token nothing can authenticate, so they are always refused. Reads (f m t s l v) stay open. Three wrong tokens
+// hang up. A line that looks like an HTTP request line or an HTTP header (Host:, Origin:, Content-Type: ...) always hangs up: a web page
+// cannot talk to this port. The three-argument overload above is a session with required == false (no token), for the tests of the parser.
+struct RigctlSession { bool required = false; std::string token; bool authed = false; int badAuth = 0; };
+std::string rigctlHandle(const std::string& line, RigctlRadio& radio, bool& quit, RigctlSession& session);
 
 } // namespace dect2::apipol
