@@ -1,11 +1,21 @@
 // LRRP over IP: the parser against the real packets of the 2026-10-23 capture (161.600 MHz, TG 64250).
 #include "dect2/dmr/dmr_lrrp.h"
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <vector>
 using namespace dect2;
 static int fails = 0;
-#define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); printf("\n"); fails++; } } while (0)
+static void fail(const char* fmt, ...) {   // one printf with a constant format, as Codacy wants
+    char b[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    std::printf("FAIL: %s\n", b);
+    fails++;
+}
+#define CHECK(c, ...) do { if (!(c)) fail(__VA_ARGS__); } while (0)
 
 static std::vector<uint8_t> hex(const char* s) {
     std::vector<uint8_t> v;
