@@ -11,7 +11,8 @@ of the plan; the script prints the rows that do not, the channel range found, an
   python3 -I tools/check_bandplan_br.py planos_basicos.zip [--json data/bandplans/builtin.json]
 
 TV rows give the nominal channel centre; the plan's ISDB-Tb centres sit 1/7 MHz above it, so TV frequencies are
-compared within 200 kHz. Exit status 1 when a row does not fit. Two rows of the 2024-11-01 snapshot are typos in
+compared within 200 kHz. Exit status 1 when a row does not fit, a plan file is missing from the ZIP (found by
+name, in any folder, any case) or its CSV lacks the channel and frequency columns. Two rows of the 2024-11-01 snapshot are typos in
 Anatel's file and are only reported (KNOWN_TYPOS); any other odd row means the plan or the file changed.
 Stdlib only."""
 import argparse, csv, io, json, os, sys, zipfile
@@ -63,16 +64,20 @@ UNIT = {'hz': 1, 'khz': 1e3, 'mhz': 1e6, 'ghz': 1e9}
 CHECKS = [('PBFM.csv', 'fm'), ('PBOM.csv', 'am'), ('PBTVD.csv', 'tv')]
 
 z = zipfile.ZipFile(a.zip)
+members = {os.path.basename(n).lower(): n for n in z.namelist() if not n.endswith('/')}
 bad_total = 0
 print(f'{a.zip}')
 for info in z.infolist():
     print(f'  {info.filename:28s} {info.file_size:>10d} bytes  dated {"%04d-%02d-%02d %02d:%02d" % info.date_time[:5]}')
 for name, service in CHECKS:
-    if name not in z.namelist():
-        print(f'\n{name}: not in the ZIP'); continue
-    rows = list(csv.reader(io.TextIOWrapper(z.open(name), encoding='utf-8-sig'), delimiter=';'))
-    h, rows = rows[0], rows[1:]
+    member = members.get(name.lower())
+    if member is None:
+        print(f'\n{name}: not in the ZIP'); bad_total += 1; continue
+    rows = list(csv.reader(io.TextIOWrapper(z.open(member), encoding='utf-8-sig'), delimiter=';'))
+    h, rows = (rows[0], rows[1:]) if rows else ([], [])
     ic, iff, iu = col(h, 'Canal'), col(h, 'Frequência', 'Frequencia'), col(h, 'Medida')
+    if (ic is None and iff is None) or not rows:
+        print(f'\n{name}: no channel or frequency column, or no rows (columns: {";".join(h)})'); bad_total += 1; continue
     im = col(h, 'Município', 'Municipio')
     chans = channels(service)
     by_num = {n: (c, bn) for n, c, bn in chans if n is not None}
