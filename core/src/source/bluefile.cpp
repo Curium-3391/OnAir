@@ -1,5 +1,6 @@
 #include "dect2/source/bluefile.h"
 #include "dect2/common/u8file.h"
+#include "dect2/dsp/sample_convert.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -229,6 +230,15 @@ size_t Reader::read(cf32* dst, size_t n) {
         default: return (float)getF64(p, big);
         }
     };
+    // the common complex formats in their own loops (the same arithmetic: x / 128 and x / 32768 are exact as multiplications)
+    if (info_.complex && !big && ab == 2 * bs && info_.kind == 'B') { convertCs8(reinterpret_cast<const int8_t*>(raw_.data()), got, dst); return got; }
+    if (info_.complex && !big && ab == 2 * bs && info_.kind == 'F') { std::memcpy(dst, raw_.data(), got * sizeof(cf32)); return got; }
+    if (info_.complex && !big && ab == 2 * bs && info_.kind == 'I') {
+        s16_.resize(got * 2);
+        std::memcpy(s16_.data(), raw_.data(), got * 4);
+        convertCs16(s16_.data(), got, dst, 1.0f / 32768);
+        return got;
+    }
     for (size_t i = 0; i < got; i++) {
         const uint8_t* p = &raw_[i * ab];
         dst[i] = info_.complex ? cf32(scalar(p), scalar(p + bs)) : cf32(scalar(p), 0.f);

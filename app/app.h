@@ -989,6 +989,16 @@ double savedSampleRate(const App& a);
 void saveSampleRate(App& a, double hz);
 double modeMinSampleRate(const App& a);
 void sampleRateControl(App& a);
+bool lowerSampleRate(App& a, double& prevChoiceHz, double& newHz);   // toolbar_source.cpp: the next lower rate the radio offers for this mode (restarts the receiver); false when none
+void restoreSampleRate(App& a, double choiceHz);                     // and back to the earlier choice (0 = Auto)
+// meter_ui.cpp: the one signal indicator (No signal / Weak / Locked / Good) and the CPU meter's relief
+void signalBars(ImDrawList* dl, ImVec2 p, float h, int quality);   // 4 rising segments + the word is drawn by the caller
+void signalRow(App& a);                             // the indicator with its numbers, at the top of the Receiver tab
+float signalStripWidth(App& a);                     // the width the strip cell needs
+void signalStripCell(App& a, float x, float y, float h);   // drawn into the strip at x
+void cpuReliefTick(App& a, float cpuPct, int cores);   // once a second from the status strip
+bool cpuReliefStrip(App& a, float limitX);          // "Too slow" + Fix, or the choice made + Undo; false when nothing was drawn
+void cpuSparkDraw(ImDrawList* dl, ImVec2 p, ImVec2 size, ImU32 col, ImU32 edge, int cores);
 std::string biasContext(const App& a);   // the prefs key of the antenna power for this mode on this radio ("" = none)
 void loadBiasTee(App& a);
 void saveBiasTee(const App& a);   // toolbar_source.cpp: the "Sample rate" control under the frequency
@@ -1180,6 +1190,13 @@ void scannerControl(App& a, int what);                                  // 0 sto
 void scannerTuning(float squelchDb, double hangSec, double holdMaxSec, double prioritySec);
 void scanViewWindow(App& a);                                            // scan_view_ui.cpp: the merged Scanner view (a.scanViewOpen)
 void selectMode(App& a, int family, const char* subId = nullptr);
+// app/autodet/autodet_ui.cpp: the "TV (auto)" / "Digital voice (auto)" rows (subId "auto:tv" / "auto:voice")
+bool autodetRow(const char* subId, int* kind);   // true for such a row; kind: dect2::autodet::Capture::KindTv / KindVoice
+bool autodetActive(const App& a, int kind);
+void autodetSelect(App& a, int kind);            // what a click on the row does
+void autodetCancel(App& a);                      // another mode was picked
+void autodetTick(App& a);                        // every frame
+void autodetStatus(App& a);                      // its line at the top of the status bar
 void marineVhfJump(App& a, int channel, char suffix = 0);   // marinevhf_ui.cpp: open the Marine VHF mode on this channel (the DSC screen names one in a call)
 bool modeSelected(const App& a, const ModeDef& m);    // the row of the current mode
 const char* modeSearchBox();                          // a search box at the top of a mode drop-down (mode_select.cpp); returns the query
