@@ -117,7 +117,11 @@ bool T2Receiver::Impl::p2Hypothesis(bool ext, bool final) {
     // one flat n0 made 64-QAM L1-post of a frequency-selective channel (deep dips, echoes) fail its LDPC although the BPSK L1-pre was
     // fine. n0 measured on the pre cells is the mean of those per-cell variances, which fixes the common factor.
     L1Pre pre;
+    // (only on a weak signal, below 10 dB on the BPSK cells: on a strong one a block that min-sum cannot decode is damaged by the sync, not
+    // by noise, and its frame would not decode anyway)
+    t2L1SetSlowDecoder(!haveGoodL1 && n0 > 0.1f && trackFrames >= 4 && (!sroOn || sroN >= 3));   // (and not while the sync, the clock correction, still pull in)
     L1Result r = decodeL1Pre(preCells, n0, pre);
+    if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] L1-pre ext=%d: ok %d iters %d\n", (int)ext, (int)r.ok, r.ldpcIters);
     // A wrong carrier-mode hypothesis can still pass the L1-pre CRC (the first 1840 cells of the single P2 symbol of a 16K signal fall in
     // the same places in both layouts), but then the cells after them, the L1-post and the start of the PLP, are read from the wrong
     // carriers. The signalled BWT_EXT settles it: a pre that contradicts the hypothesis counts as a miss, so the other mode is tried.

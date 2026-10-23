@@ -341,6 +341,9 @@ std::vector<cf32> encodeL1Pre(const L1Pre& pre) {
     return out;
 }
 
+static thread_local bool tlSlowL1 = true;
+void t2L1SetSlowDecoder(bool on) { tlSlowL1 = on; }
+
 L1Result decodeL1Pre(const std::vector<cf32>& y, float n0, L1Pre& out) {
     L1Result r;
     if (y.size() < 1840) return r;
@@ -358,7 +361,7 @@ L1Result decodeL1Pre(const std::vector<cf32>& y, float n0, L1Pre& out) {
     // min-sum first (fast); when it does not converge, sum-product, which copes far better with the punctured and shortened bits (one
     // block per frame: the cost does not matter)
     bool ok = ldpcPre().decodeFast(llr, 100, hard, &r.ldpcIters, 0.8f);
-    if (!ok && !getenv("DECT2_T2_L1_MINSUM")) ok = ldpcPre().decodeBp(llr, 60, hard, &r.ldpcIters);
+    if (!ok && tlSlowL1 && !getenv("DECT2_T2_L1_MINSUM")) ok = ldpcPre().decodeBp(llr, 40, hard, &r.ldpcIters);
     (void)ok;
     std::vector<uint8_t> info(hard.begin(), hard.begin() + 168);
     uint32_t want = 0;
@@ -478,7 +481,7 @@ L1Result decodeL1Post(const std::vector<cf32>& y, float n0, const L1Pre& pre, in
     for (int n = 0; n < NBCH_PARITY; n++) llr[KBCH12 + n] = ls[k++] * sc;
     for (int n = 0; n < FRAME_SHORT - NBCH12; n++) if (!punct[n]) { if (k < ls.size()) llr[NBCH12 + n] = ls[k++] * sc; }
     std::vector<uint8_t> hard;
-    if (!ldpcPost().decodeFast(llr, 100, hard, &r.ldpcIters, 0.8f) && !getenv("DECT2_T2_L1_MINSUM")) ldpcPost().decodeBp(llr, 60, hard, &r.ldpcIters);
+    if (!ldpcPost().decodeFast(llr, 100, hard, &r.ldpcIters, 0.8f) && tlSlowL1 && !getenv("DECT2_T2_L1_MINSUM")) ldpcPost().decodeBp(llr, 40, hard, &r.ldpcIters);
     r.bchOk = bchCheck(hard, NBCH12);
     std::vector<uint8_t> bits;
     for (int n = 0; n < KBCH12; n++) if (!pad[n]) bits.push_back(hard[n]);

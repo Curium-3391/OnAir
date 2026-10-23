@@ -390,7 +390,7 @@ void T2Receiver::Impl::runDataStage() {
         }
         if (rc > 0 && nvc > 0) {
             rs /= (double)rc; nv /= nvc;
-            if (rs > 2.0 * nv) {
+            if (rs > 3.0 * nv) {
                 const int span = L - firstData;
                 const int minLen = std::max(2 * dy, 4);
                 segLen = std::max(minLen, std::min(span, (int)std::floor(span * std::pow(0.25 * nv / (rs - nv), 0.25))));
@@ -400,6 +400,9 @@ void T2Receiver::Impl::runDataStage() {
                     nSeg = (span + segLen - 1) / segLen;
                     if (nSeg < 2) { nSeg = 1; segLen = span; break; }
                     const double r2 = fitSegs(nSeg, segLen);
+                    // pieces that do not fit clearly better are only noisier (a still channel with deep notches: each piece averages
+                    // fewer pilots): one line then
+                    if (r2 > 0.6 * rs) { nSeg = 1; segLen = span; break; }
                     if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] channel over the frame: misfit of one line %.2f x noise, of %d pieces of %d symbols %.2f\n", rs / nv, nSeg, segLen, r2 / nv);
                     if (r2 <= 1.5 * nv || segLen <= minLen || it == 3) break;
                     segLen = std::max(minLen, (int)std::floor(segLen * std::pow(0.25 * nv / std::max(1e-12, r2 - nv), 0.25)));

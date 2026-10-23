@@ -71,7 +71,7 @@ void LdpcCode::encode(std::vector<uint8_t>& bits) const {
 
 bool LdpcCode::decodeBp(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters) const {
     const int E = chkStart_[m_];
-    std::vector<double> R(E, 0.0), L(llr.begin(), llr.end()), q;
+    std::vector<float> R(E, 0.f), L(llr.begin(), llr.end()), q;
     hard.assign(n_, 0);
     int it = 0;
     bool ok = false;
@@ -80,22 +80,22 @@ bool LdpcCode::decodeBp(const std::vector<float>& llr, int maxIter, std::vector<
             const int s = chkStart_[j], t = chkStart_[j + 1];
             q.resize((size_t)(t - s));
             // tanh rule with the product of all others obtained from the total product (zeros handled apart)
-            double prod = 1.0; int zeros = 0, zi = -1;
+            float prod = 1.f; int zeros = 0, zi = -1;
             for (int e = s; e < t; e++) {
-                const double v = L[(size_t)chkVar_[e]] - R[(size_t)e];
+                const float v = L[(size_t)chkVar_[e]] - R[(size_t)e];
                 q[(size_t)(e - s)] = v;
-                double th = std::tanh(0.5 * std::max(-40.0, std::min(40.0, v)));
-                if (std::fabs(th) < 1e-12) { zeros++; zi = e; continue; }
+                const float th = std::tanh(0.5f * std::max(-30.f, std::min(30.f, v)));
+                if (std::fabs(th) < 1e-7f) { zeros++; zi = e; continue; }
                 prod *= th;
             }
             for (int e = s; e < t; e++) {
-                const double v = q[(size_t)(e - s)];
-                double other;
+                const float v = q[(size_t)(e - s)];
+                float other;
                 if (zeros > 1) other = 0;
                 else if (zeros == 1) other = e == zi ? prod : 0;
-                else other = prod / std::tanh(0.5 * std::max(-40.0, std::min(40.0, v)));
-                other = std::max(-0.999999999999, std::min(0.999999999999, other));
-                const double r = 2.0 * std::atanh(other);
+                else other = prod / std::tanh(0.5f * std::max(-30.f, std::min(30.f, v)));
+                other = std::max(-0.9999999f, std::min(0.9999999f, other));
+                const float r = 2.f * std::atanh(other);
                 R[(size_t)e] = r;
                 L[(size_t)chkVar_[e]] = v + r;
             }

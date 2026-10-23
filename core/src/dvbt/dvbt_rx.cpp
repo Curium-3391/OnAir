@@ -264,7 +264,7 @@ struct DvbtReceiver::Impl {
         while (s < base + (int64_t)buf.size() - (int64_t)(6 * P)) s += P;
         while (s - P >= base + 16) s -= P;
         symStart = (double)s;
-        timingAcc = 0; timingDrift = 0; accPhi = accSlope = 0; rhoAvg = 0; lowRun = 0; tOff = 0; profN = 0;
+        timingAcc = 0; timingDrift = 0; accPhi = accSlope = 0; rhoAvg = 0; lowRun = 0; tOff = 0; profN = 0; plateauKnown = false;
         epsFrac = -std::arg(best.corr) / (2 * M_PI);   // c = sum y[n] conj(y[n+N]) has phase -2 pi eps
         back = std::min(G / 4, 24);
         fft = std::make_unique<Fft>(N);
@@ -395,12 +395,12 @@ struct DvbtReceiver::Impl {
                 // the TPS differential follow its known phase ramp) and carry on, without the hold and the checks that follow a sample loss.
                 // (a gap of whole symbols plus a few samples looks the same: the scattered pilots of the next good symbol tell, and only then
                 // does the full recovery run)
-                symStart += off; placedShift = off; edgeRun = 0; profN = 0; phaseCheck = true; phaseCheckLight = true;
+                symStart += off; placedShift = off; edgeRun = 0; phaseCheck = true; phaseCheckLight = true;
                 if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] timing peak moved by %d samples at sym %llu: window follows\n", off, (unsigned long long)absSym);
                 return true;
             }
             // under a strong echo the correlation has a flat top: the point tracked is as good as the best one
-            if (tOff != 0) {
+            if (tOff != 0 || plateauKnown) {
                 const int d0 = ((tOff % P) + P) % P;
                 const double e0 = en[(size_t)(d0 + G)] - en[(size_t)d0];
                 const double r0 = e0 > 1e-12 ? std::abs(cum[(size_t)(d0 + G)] - cum[(size_t)d0]) / e0 : 0.0;
@@ -458,11 +458,16 @@ struct DvbtReceiver::Impl {
     std::vector<double> prof;
     std::vector<cd> profCum;
     int profN = 0, profSkip = 0, placedShift = 0;
+    int64_t profRef = 0; uint64_t profRefSym = 0;
+    bool plateauKnown = false;    // the last profile showed a flat top (a strong echo): edge peaks and resync offsets on it mean nothing
     void placeWindow(int64_t s) {
         if (ceNoPlace) return;
         if (profSkip > 0) { profSkip--; return; }   // the previous symbol still sat at the old window
         const int R = 2 * G + G / 8;   // a strong echo up to G late puts the first path's rise up to 2 G before the tracked point
-        const int64_t c = s - (N + G) + tOff;   // the previous symbol's: all of its neighbourhood is in the buffer
+        // The previous symbol's neighbourhood (all of it is in the buffer), on a grid fixed in the input samples from the first symbol of
+        // the average: the window may move meanwhile (the timing loop, a small resync) without smearing what is averaged.
+        if (profN == 0) { profRef = s - (N + G) + tOff; profRefSym = absSym; }
+        const int64_t c = profRef + (int64_t)(absSym - profRefSym) * (N + G);
         if (c - R < base || c + R + G + N + 1 > end()) return;
         profCum.resize((size_t)(2 * R + G) + 1);
         profCum[0] = 0;
@@ -473,7 +478,7 @@ struct DvbtReceiver::Impl {
         prof.resize((size_t)(2 * R + 1), 0.0);
         if (profN == 0) std::fill(prof.begin(), prof.end(), 0.0);
         for (int d = 0; d <= 2 * R; d++) prof[(size_t)d] += std::abs(profCum[(size_t)(d + G)] - profCum[(size_t)d]);
-        if (++profN < 24) return;
+        if (++profN < (placements == 0 && !plateauKnown ? 12 : 24)) return;   // (the first answer sooner)
         profN = 0;
         int am = 0;
         for (int d = 1; d <= 2 * R; d++) if (prof[(size_t)d] > prof[(size_t)am]) am = d;
@@ -496,16 +501,17 @@ struct DvbtReceiver::Impl {
         const double dl = d - 1 + (b > a ? (lvl - a) / (b - a) : 1.0);
         const double x = dl + 0.75 * G - R;
         const int xi = (int)std::lround(x);
-        const int delta = tOff + xi;
+        const int delta = (int)(c + xi + (N + G) - s);   // the next symbol's start, from the earliest path of the previous one
         // One path: the rise is 0.75 G before the peak, and the window stays where the peak put it (as it always did). Only a top wider
         // than that (a strong echo) or a path before the peak moves it the first time.
         // Once moved, the point tracked wanders freely on the flat top: from then on the window follows the rise alone.
-        if (tOff == 0 && (double)am - dl < 0.75 * G + std::max(8, G / 16)) return;
+        plateauKnown = (double)am - dl >= 0.75 * G + std::max(8, G / 16);   // a top wider than one path's: a strong echo
+        if (tOff == 0 && !plateauKnown) return;
         if (std::abs(delta) < std::max(8, G / 32)) return;
         if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] earliest path's symbol starts %d samples from the tracked point (peak %d, rise %.0f, sym %llu): FFT window moved by %d\n", xi, am - R, dl - R, (unsigned long long)absSym, delta);
         // the move is known, so the channel estimate and the TPS differential carry over (they turn by its phase ramp, as for a step of the
         // timing loop)
-        symStart += delta; tOff = -xi; placements++; profSkip = 1; placedShift = delta;
+        symStart += delta; tOff -= delta; placements++; profSkip = 1; placedShift = delta;
         if (std::abs(delta) > G) {   // (cannot happen with a top at most G wide; kept as a guard) rebuild the channel estimate
             drainAll();
             accPhi = accSlope = 0;
@@ -589,7 +595,7 @@ struct DvbtReceiver::Impl {
         // symbol and everything decodes wrong. Same remedy.
         // (once the window is placed under a strong echo, an edge peak that stands barely above the centre is the flat top of its
         // correlation, not a jump; elsewhere a jump of a few hundred samples puts both on the slope, barely apart)
-        edgeRun = !collapsed && std::fabs(terr) >= 5.99 && (tOff == 0 || cpEdgeGain > 1.05) ? edgeRun + 1 : 0;
+        edgeRun = !collapsed && std::fabs(terr) >= 5.99 && ((tOff == 0 && !plateauKnown) || cpEdgeGain > 1.05) ? edgeRun + 1 : 0;
         if ((lowRun == 2 || edgeRun == 2) && tpsOk) {
             const double before = symStart;
             if (!resync(s, true)) { if (lowRun) lowRun = 1; else edgeRun = 1; return false; }   // more samples first; this symbol comes round again
@@ -628,8 +634,8 @@ struct DvbtReceiver::Impl {
         if (std::abs(winShift - placedShift) > 16) { winShift = 0; prevValid = false; }   // a skipped symbol: no valid previous one
         placedShift = 0;
         prevWin = s;
-        // (takes effect from the next symbol; an average over symbols with a timing jump among them says nothing: start it again)
-        if (collapsed || edgeRun > 0 || std::abs(winShift) > 2) profN = 0;
+        // (takes effect from the next symbol; an average over a collapsed symbol, samples perhaps lost, says nothing: start it again)
+        if (collapsed) profN = 0;
         else if (tpsOk && absSym % 2 == 0) placeWindow(s);
         transform(s);
         if (!intLocked) {

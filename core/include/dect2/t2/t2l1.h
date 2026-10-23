@@ -97,6 +97,9 @@ struct L1Result {
     bool crcOk = false;
 };
 // y: 1840 equalised cells; n0: noise variance per real dimension
+// When min-sum does not converge, try sum-product (slower, ~40 ms a block): on by default; the receiver turns it off for the thread once it
+// has a good L1 to reuse, so a weak signal does not make the decoder fall behind.
+void t2L1SetSlowDecoder(bool on);
 L1Result decodeL1Pre(const std::vector<cf32>& y, float n0, L1Pre& out);
 // n0v: optional noise variance per cell (equalised noise grows where the channel is faded); n0 is used when it is null.
 L1Result decodeL1Post(const std::vector<cf32>& y, float n0, const L1Pre& pre, int nP2, bool fefPresent, L1Post& out, const std::vector<float>* n0v = nullptr);
