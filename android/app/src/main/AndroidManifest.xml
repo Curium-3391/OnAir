@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- USB radios: optional, so the app installs on every phone. The USB agent adds the device filter and connectedDevice. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!-- rtl_tcp (localhost or the network) and SpyServer. No storage permission: files come through the system picker. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The receive session (ReceiverService): foreground service that plays the decoded audio, keeps the CPU and Wi-Fi awake. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Its notification (Android 13+ asks; the receiver runs without it too). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Not declared yet (ui/Permissions.kt): RECORD_AUDIO for audio-input modes, ACCESS_FINE_LOCATION for direction finding. -->
+
+    <application
+        android:name=".OnAirApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:extractNativeLibs="true"
+        android:theme="@style/Theme.OnAir">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".service.ReceiverService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Sharing the log and crash log (diag/CrashLog.kt): only cache/share/ is exposed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OnAir</string>
+
+    <!-- tabs -->
+    <string name="tab_receiver">Receiver</string>
+    <string name="tab_mode">Mode</string>
+    <string name="tab_results">Results</string>
+    <string name="tab_log">Log</string>
+
+    <!-- top bar -->
+    <string name="run">Run</string>
+    <string name="stop">Stop</string>
+    <string name="hz">Hz</string>
+    <string name="mhz">MHz</string>
+    <string name="enter_frequency">Frequency</string>
+    <string name="frequency_mhz">Frequency in MHz</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="state_off">Stopped</string>
+    <string name="state_starting">Starting</string>
+    <string name="state_searching">Searching</string>
+    <string name="state_converging">Converging</string>
+    <string name="state_locked">Locked</string>
+    <string name="snr_db">SNR %1$s dB</string>
+    <string name="spectrum_hint">Drag to tune, pinch to zoom</string>
+    <string name="spectrum_title">Spectrum</string>
+    <string name="waterfall_title">Waterfall</string>
+    <string name="not_running_hint">Pick a source and press run. The test signal needs no radio.</string>
+    <string name="native_missing">The receiver library did not load on this device.</string>
+
+    <!-- receiver tab -->
+    <string name="section_source">Source</string>
+    <string name="section_tuner">Tuner</string>
+    <string name="section_sound">Sound</string>
+    <string name="section_display">Display</string>
+    <string name="section_about">About</string>
+    <string name="source_synth">Test signal</string>
+    <string name="source_rtltcp">rtl_tcp</string>
+    <string name="source_spy">SpyServer</string>
+    <string name="source_file">IQ file</string>
+    <string name="source_synth_note">A built-in test signal for the selected mode. Nothing is received or transmitted: use it to try the app without a radio.</string>
+    <string name="host">Host</string>
+    <string name="port">Port</string>
+    <string name="rtltcp_hint">An RTL-SDR on USB is served to this app by a driver app on the same phone: install an rtl_tcp driver app (for example \"SDR driver\"), start it, then run here with host 127.0.0.1 and port 1234. It also works with an rtl_tcp server on your network.</string>
+    <string name="open_play_store">Play Store</string>
+    <string name="open_fdroid">F-Droid</string>
+    <string name="open_driver">Open driver</string>
+    <string name="driver_missing">The driver app is not installed.</string>
+    <string name="spy_hint">A SpyServer on your network (an Airspy or RTL-SDR shared by a PC or a Raspberry Pi).</string>
+    <string name="choose_file">Choose IQ file</string>
+    <string name="no_file">No file chosen</string>
+    <string name="file_format">Format</string>
+    <string name="file_rate">Sample rate (Msps)</string>
+    <string name="file_open_failed">The file could not be opened.</string>
+    <string name="file_hint">Raw recordings: .cu8, .cs8, .cf32 and similar. The format is guessed from the file name; set the sample rate the recording was made at.</string>
+    <string name="format_cs8">cs8 (signed 8 bit)</string>
+    <string name="format_cu8">cu8 (unsigned 8 bit)</string>
+    <string name="format_cf32">cf32 (float)</string>
+    <string name="format_ci16">ci16 (16 bit)</string>
+    <string name="format_cu16">cu16 (unsigned 16 bit)</string>
+    <string name="rate">Rate</string>
+    <string name="rate_auto">Auto</string>
+    <string name="gain">Gain</string>
+    <string name="gain_db">%1$s dB</string>
+    <string name="agc">AGC</string>
+    <string name="bias_tee">Bias-tee (antenna power)</string>
+    <string name="volume">Volume</string>
+    <string name="mute">Mute</string>
+    <string name="colours">Colours</string>
+    <string name="spectrum_range">Spectrum (dB)</string>
+    <string name="waterfall_range">Waterfall (dB)</string>
+    <string name="auto">Auto</string>
+    <string name="range_min">min dB</string>
+    <string name="range_max">max dB</string>
+    <string name="peak_hold">Peak hold</string>
+    <string name="dark_theme">Dark theme</string>
+    <string name="about_text">OnAir %1$s. Receive only: nothing is transmitted and nothing is sent to any server. The decoders are the ones of the OnAir desktop program.</string>
+    <string name="settings_setting_on">On</string>
+
+    <!-- mode tab -->
+    <string name="search_modes">Search modes</string>
+    <string name="needs_wide_radio">Needs a wider radio than this source gives (%1$s Msps or more)</string>
+    <string name="mode_range">%1$s to %2$s MHz</string>
+    <string name="selected_mode">Mode</string>
+
+    <!-- results tab -->
+    <string name="results_waiting">Waiting for the first report from the receiver.</string>
+    <string name="results_none">Nothing yet.</string>
+    <string name="results_clear">Clear</string>
+    <string name="results_rows">%1$d rows</string>
+    <string name="fm_station">Station</string>
+    <string name="fm_radiotext">Radio text</string>
+    <string name="fm_stereo">Stereo</string>
+    <string name="fm_mono">Mono</string>
+    <string name="fm_rds">RDS</string>
+    <string name="fm_rds_sync">in sync</string>
+    <string name="fm_rds_none">no sync</string>
+    <string name="fm_programme_type">Programme type</string>
+    <string name="fm_pi">PI code</string>
+    <string name="fm_force_mono">Mono switch is a desktop feature in this build</string>
+    <string name="general_demod">Demodulator</string>
+    <string name="general_squelch">Squelch</string>
+    <string name="general_squelch_auto">Auto</string>
+    <string name="general_squelch_level">Level (dBFS)</string>
+    <string name="general_open">open</string>
+    <string name="general_closed">closed</string>
+    <string name="general_audio">Audio</string>
+    <string name="general_level">Channel</string>
+    <string name="demod_nfm">NFM</string>
+    <string name="demod_wfm">WFM</string>
+    <string name="demod_am">AM</string>
+    <string name="demod_usb">USB</string>
+    <string name="demod_lsb">LSB</string>
+    <string name="demod_cw">CW</string>
+    <string name="mode_summary">Summary</string>
+
+    <!-- log tab -->
+    <string name="log_empty">The receiver has not said anything yet.</string>
+    <string name="previous_crash">A crash log from an earlier run is at %1$s</string>
+    <string name="log_error">Error: %1$s</string>
+    <!-- 0.3.0 architecture: service, engine, log viewer -->
+    <string name="state_stopping">Stopping</string>
+    <string name="state_receiving">Receiving</string>
+    <string name="channel_receiver">Receiver</string>
+    <string name="channel_receiver_desc">Shown while OnAir receives, with a button to stop.</string>
+    <string name="native_missing">The receiver library (libonair.so) did not load: this build has no decoders.</string>
+    <string name="engine_init_failed">Engine start-up failed: %1$s</string>
+    <string name="engine_call_failed">Receiver call %1$s failed: %2$s</string>
+    <string name="log_share">share</string>
+    <string name="log_clear">clear</string>
+    <string name="log_follow">follow</string>
+</resources>
