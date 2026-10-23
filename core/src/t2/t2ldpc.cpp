@@ -80,6 +80,76 @@ inline void apply(float* Lj, float* mj, const float* min1, const float* min2, co
         vst1q_f32(Lj + m, vsubq_f32(nm, old));   // posterior increment (a variable can appear twice in a layer)
     }
 }
+
+// One whole layer, a block of checks at a time, with their min-sum state (min1, min2, idx1, sign) kept in registers across the connections
+// instead of being loaded and stored once per connection, and the posterior update done right where the message is made. Every element
+// goes through exactly the operations of gather / accumulate / apply / scatter above, in the same order per element; only the order
+// between elements changes, and elements share nothing as long as no group appears twice in the layer (the caller checks: such a layer
+// takes the pass-per-connection path). So the decisions and iteration counts stay bit for bit those of decodeFast.
+struct LayerSrc { float* p; int shift; };   // the posterior values of one connection: check m reads p[(m - shift) mod Z]
+#ifndef DECT2_LDPC_V
+#define DECT2_LDPC_V 5
+#endif
+constexpr int kV = DECT2_LDPC_V, kBlk = 4 * kV;   // checks per block (Z = 360 is a multiple); kV independent vectors hide the latency of the min chain
+static_assert(Z % kBlk == 0, "block width");
+// the kBlk values p[(m0 + l - s) mod Z]: a plain pointer when they do not wrap, else copied into tmp
+inline float* blockPtr(const LayerSrc& c, int m0, float* tmp) {
+    int a = m0 - c.shift;
+    if (a < 0) a += Z;
+    if (a + kBlk <= Z) return c.p + a;
+    for (int l = 0; l < kBlk; l++) { int i = a + l; if (i >= Z) i -= Z; tmp[l] = c.p[i]; }
+    return nullptr;
+}
+template <bool kFirst>
+inline void layerBlocked(const LayerSrc* src, int nc, float* mr, float alpha) {
+    const float32x4_t al = vdupq_n_f32(alpha), big = vdupq_n_f32(1e30f);
+    const uint32x4_t signMask = vdupq_n_u32(0x80000000u);
+    float Lb[64 * kBlk];   // the variable-to-check messages of this block (nc <= 64: the caller checks)
+    for (int m0 = 0; m0 < Z; m0 += kBlk) {
+        float32x4_t m1[kV], m2[kV];
+        int32x4_t ix[kV];
+        uint32x4_t sg[kV];
+        for (int v = 0; v < kV; v++) { m1[v] = big; m2[v] = big; ix[v] = vdupq_n_s32(-1); sg[v] = vdupq_n_u32(0); }
+        for (int j = 0; j < nc; j++) {
+            float tmp[kBlk];
+            const float* sp = blockPtr(src[j], m0, tmp);
+            if (!sp) sp = tmp;
+            const float* mj = mr + (size_t)j * Z + m0;
+            const int32x4_t jv = vdupq_n_s32(j);
+            for (int v = 0; v < kV; v++) {
+                float32x4_t x = vld1q_f32(sp + 4 * v);
+                if (!kFirst) x = vsubq_f32(x, vld1q_f32(mj + 4 * v));
+                vst1q_f32(Lb + j * kBlk + 4 * v, x);
+                const float32x4_t a = vabsq_f32(x);
+                const uint32x4_t lt = vcltq_f32(a, m1[v]);
+                m2[v] = vbslq_f32(lt, m1[v], vminq_f32(m2[v], a)); ix[v] = vbslq_s32(lt, jv, ix[v]); m1[v] = vminq_f32(m1[v], a);
+                sg[v] = veorq_u32(sg[v], vandq_u32(vreinterpretq_u32_f32(x), signMask));
+            }
+        }
+        for (int j = 0; j < nc; j++) {
+            const int32x4_t jv = vdupq_n_s32(j);
+            float* mj = mr + (size_t)j * Z + m0;
+            float tmp[kBlk];
+            float* dp = blockPtr(src[j], m0, tmp);
+            float d[kBlk];
+            for (int v = 0; v < kV; v++) {
+                const float32x4_t x = vld1q_f32(Lb + j * kBlk + 4 * v);
+                const float32x4_t mag = vmulq_f32(vbslq_f32(vceqq_s32(ix[v], jv), m2[v], m1[v]), al);
+                const float32x4_t nm = vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(mag), veorq_u32(sg[v], vandq_u32(vreinterpretq_u32_f32(x), signMask))));
+                const float32x4_t old = kFirst ? vdupq_n_f32(0.f) : vld1q_f32(mj + 4 * v);
+                vst1q_f32(mj + 4 * v, nm);
+                const float32x4_t inc = vsubq_f32(nm, old);
+                if (dp) vst1q_f32(dp + 4 * v, vaddq_f32(vld1q_f32(dp + 4 * v), inc));
+                else vst1q_f32(d + 4 * v, inc);
+            }
+            if (!dp) {   // the block wraps around the group: element by element (the same single additions)
+                int a = m0 - src[j].shift;
+                if (a < 0) a += Z;
+                for (int l = 0; l < kBlk; l++) { int i = a + l; if (i >= Z) i -= Z; src[j].p[i] += d[l]; }
+            }
+        }
+    }
+}
 #endif
 
 struct Work {
@@ -87,7 +157,7 @@ struct Work {
     std::vector<int> idx1;
     std::vector<uint32_t> sg;
     std::vector<size_t> base;
-    std::vector<uint8_t> infS, parS;
+    std::vector<uint8_t> infS, parS, blockable;
 };
 Work& work() { static thread_local Work w; return w; }
 
@@ -112,6 +182,16 @@ DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& 
     w.min1.resize(Z); w.min2.resize(Z); w.idx1.resize(Z); w.sg.resize(Z);
     w.infS.resize((size_t)G * Z); w.parS.resize((size_t)q * Z);
     float* min1 = w.min1.data(); float* min2 = w.min2.data(); int* idx1 = w.idx1.data(); uint32_t* sg = w.sg.data();
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+    // the layers whose connections all reach different groups take the blocked path (layerBlocked)
+    w.blockable.assign((size_t)q, 0);
+    for (int r = 0; r < q && q > 1; r++) {
+        const auto& cn = layers[(size_t)r];
+        bool ok = cn.size() + 2 <= 64;
+        for (size_t a = 0; a < cn.size() && ok; a++) for (size_t b = a + 1; b < cn.size() && ok; b++) ok = cn[a].group != cn[b].group;
+        w.blockable[(size_t)r] = ok;
+    }
+#endif
     int it = 0;
     bool ok = false;
     for (; it < maxIter; it++) {
@@ -119,6 +199,19 @@ DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& 
         for (int r = 0; r < q; r++) {
             const auto& cn = layers[(size_t)r];
             const int nc = (int)cn.size() + 2;
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+            if (w.blockable[(size_t)r]) {
+                LayerSrc src[64];
+                for (size_t j = 0; j < cn.size(); j++) src[j] = {inf + (size_t)cn[j].group * Z, cn[j].shift};
+                src[cn.size()] = {P(r), 0};
+                src[cn.size() + 1] = {r > 0 ? P(r - 1) : P(q - 1) - 1, 0};
+                float* mr = w.msg.data() + w.base[(size_t)r];
+                if (first) layerBlocked<true>(src, nc, mr, alpha);
+                else layerBlocked<false>(src, nc, mr, alpha);
+                P(q - 1)[-1] = kBig;
+                continue;
+            }
+#endif
             if (w.L.size() < (size_t)nc * Z) w.L.resize((size_t)nc * Z);
             float* Lb = w.L.data();
             float* mr = w.msg.data() + w.base[(size_t)r];
