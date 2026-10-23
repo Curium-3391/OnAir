@@ -119,18 +119,27 @@ std::vector<MergedHit> mergeHits(const std::vector<Hit>& hits, double tolHz);   
 // ---------------------------------------------------------------- 5. pairing, tokens, rate limit
 using RandFn = std::function<void(uint8_t*, size_t)>;
 RandFn systemRandom();
-std::string newPairingCode(const RandFn& rnd);   // 12 digits, shown as "1234-5678-9012" by the UI; the code itself is digits only
+// The pairing secret: 20 random bytes (160 bits) as 32 base32 characters (A-Z, 2-7), shown by the UI in groups of 4 and as a QR code. It is NOT a
+// short typed PIN: the repository has no password-authenticated key exchange (no X25519 or SPAKE2 group primitive is exposed; the Ed25519 code is
+// not constant-time and has no DH), so a short code would be guessable offline from one recorded exchange. With 160 bits the HMAC proofs below
+// cannot be attacked offline. The user carries it to the other node by scanning the QR code, copy and paste, or typing 32 characters.
+std::string newPairingCode(const RandFn& rnd);
+std::string normalisePairingCode(const std::string& typed);   // removes spaces and dashes, upper-cases; empty when it is not 32 valid base32 characters
 
 // Responder = the node that will be controlled. Lines (all ASCII, <= 200 bytes):
 //   C: OAPAIR1 HELLO <32 hex nonce>      S: OAPAIR1 CHAL <32 hex nonce>
 //   C: OAPAIR1 PROOF <64 hex>            S: OAPAIR1 OK <64 hex server proof> <48 hex wrapped token>   or   OAPAIR1 ERR <reason>
 // proof = HMAC-SHA256(code, "C" nonceC nonceS). The code is never sent. A wrong proof counts; 3 wrong proofs lock the offer. The code works once.
-// Limit (honest): a passive listener on the LAN who records one exchange can try codes offline (12 digits ~ 40 bits); use the TLS channel when built.
+// Threat model: a passive or active attacker on the LAN sees nonces, proofs and the wrapped token but cannot test guesses offline because the code has
+// 160 bits. A fake responder cannot produce the server proof without the code, so the initiator detects it. An attacker who sees the screen or QR
+// code while it is shown can pair (show it only on the node being controlled; it expires after 2 minutes). The token is then a bearer secret on a
+// plain-text channel: later control traffic must use the TLS channel (repo TLS layer, DECT2_WITH_TLS) or be HMAC-signed with a key derived from the
+// token; that channel is NOT written yet. A short typed PIN would need a PAKE (SPAKE2/OPAQUE): the repo has no group primitive for it.
 class PairResponder {
 public:
     enum State { Idle, Offered, Challenged, Locked, Done };
     explicit PairResponder(RandFn rnd = systemRandom()) : rnd_(std::move(rnd)) {}
-    void offer(const std::string& code, int64_t nowMs, int64_t ttlMs = 120000);   // user pressed "Pair a node"; replaces any earlier offer
+    bool offer(const std::string& code, int64_t nowMs, int64_t ttlMs = 120000);   // user pressed "Pair a node"; replaces any earlier offer; false unless code came from newPairingCode / normalisePairingCode
     void cancel();
     std::string handle(const std::string& line, const std::string& peerKey, int64_t nowMs);   // reply line, never empty
     State state(int64_t nowMs);

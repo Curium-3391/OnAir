@@ -137,3 +137,7 @@ Tag v0.2.9 (9e6b74a6), merged into main (7fe4c99d with the wide-bank test fix). 
 
 ## 2026-10-23 LAN swarm (lan-swarm-030)
 Pure logic only, no sockets yet: core/include/dect2/net/swarm.h + core/src/net/swarm.cpp, tests/net/test_swarm.cpp (ctest swarm). Announce packet (strict text, 512 B, private source + same subnet only, 1 packet/s per source, 4 ids per address, spoof check), node table, merged results with node tags (kind + normalised content within 2 s), combined ADS-B/AIS track board, range splitting by capability and load with gaps reported, hit merging, pairing handshake (12-digit one-time code, HMAC-SHA256 proofs from mesh_crypto, 3 wrong proofs lock, token wrapped under the code), token book, control whitelist (no tx, no keys, no settings), token-bucket rate limit, memory merge (last write wins, tombstones, validation). Not done: UDP multicast sender/listener, TLS pairing channel, UI, wiring to engine/results. Known limit: a LAN sniffer can brute-force the code offline from one recorded exchange, so the real channel should be TLS.
+
+
+## 2026-10-23 LAN swarm part 2
+Pairing secret is now 160 bits (32 base32 chars) so a recorded exchange cannot be guessed offline; offer() refuses anything else. Added swarm_net.cpp (UDP multicast, TTL 1, private interfaces only, POSIX), app/panels/swarm_ui.cpp (View > LAN swarm, opt-in with preview), docs/LAN-SWARM.md with the NEEDS BUILD/TEST list. Nothing built or run in this step (battery rule); only swarm_net.cpp and swarm.cpp passed -fsyntax-only.

@@ -1,6 +1,7 @@
 // LAN swarm pure logic: announce parsing with hostile packets, node table rules, message de-duplication, range splitting, pairing handshake
 // (right code, wrong code, lockout, replay, other peers, malformed lines), tokens, rate limit and memory sync.
 #include "dect2/net/swarm.h"
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -188,8 +189,14 @@ static void testSplit() {
 static void testPairing() {
     auto rnd = fixedRandom(7);
     std::string code = newPairingCode(rnd);
-    CHECK(code.size() == 12, "code length");
-    for (char c : code) CHECK(c >= '0' && c <= '9', "digit");
+    CHECK(code.size() == 32 && normalisePairingCode(code) == code, "code is 32 base32 characters");
+    for (char c : code) CHECK((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7'), "base32 char");
+    CHECK(normalisePairingCode(code.substr(0, 4) + " - " + code.substr(4)) == code, "separators ignored");
+    CHECK(normalisePairingCode(code.substr(0, 31)).empty() && normalisePairingCode(code + "A").empty() && normalisePairingCode("1" + code.substr(1)).empty() &&
+          normalisePairingCode(code.substr(0, 31) + "!").empty() && normalisePairingCode("").empty(), "bad length / characters refused");
+    { std::string lower = code; for (char& c : lower) c = (char)tolower((unsigned char)c); CHECK(normalisePairingCode(lower) == code, "lower case typed"); }
+    { PairResponder rr; CHECK(!rr.offer("123456", 0) && !rr.offer(std::string(32, 'a'), 0) && !rr.offer(std::string(), 0), "short / unnormalised code refused as offer");
+      CHECK(rr.handle("OAPAIR1 HELLO 00112233445566778899aabbccddeeff", "p", 0) == "OAPAIR1 ERR not pairing", "nothing offered"); }
     CHECK(newPairingCode(systemRandom()) != newPairingCode(systemRandom()), "random codes differ");
     int64_t t = 1000;
     // good handshake
@@ -213,7 +220,7 @@ static void testPairing() {
     for (int k = 0; k < 3; k++) {
         PairInitiator bad(fixedRandom(50 + k));
         std::string c = r2.handle(bad.hello(), "evil", t);
-        std::string p = bad.handle(c, "000000000000");
+        std::string p = bad.handle(c, std::string(32, 'C'));
         std::string res = r2.handle(p, "evil", t);
         CHECK(res == "OAPAIR1 ERR bad proof", "bad proof %d: %s", k, res.c_str());
     }
@@ -243,7 +250,7 @@ static void testPairing() {
     // a fake server that does not know the code is detected by the initiator
     PairInitiator ic(fixedRandom(30));
     std::string h = ic.hello();
-    PairResponder fake(fixedRandom(8)); fake.offer("111111111111", t);
+    PairResponder fake(fixedRandom(8)); fake.offer(std::string(32, 'B'), t);
     std::string chal = fake.handle(h, "p", t), proof = ic.handle(chal, code);
     CHECK(fake.handle(proof, "p", t) == "OAPAIR1 ERR bad proof" && !ic.paired(), "wrong code -> no pairing");
     PairInitiator id(fixedRandom(31));

@@ -326,13 +326,28 @@ RandFn systemRandom() {
     };
 }
 std::string newPairingCode(const RandFn& rnd) {
+    static const char* b32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    uint8_t b[20];
+    rnd(b, 20);
     std::string s;
-    while (s.size() < 12) {
-        uint8_t b;
-        rnd(&b, 1);
-        if (b < 250) s.push_back((char)('0' + b % 10));
+    uint32_t acc = 0;
+    int bits = 0;
+    for (uint8_t x : b) {
+        acc = (acc << 8) | x; bits += 8;
+        while (bits >= 5) { s.push_back(b32[(acc >> (bits - 5)) & 31]); bits -= 5; }
     }
-    return s;
+    return s;   // 160 bits = exactly 32 characters
+}
+std::string normalisePairingCode(const std::string& typed) {
+    std::string o;
+    for (unsigned char c : typed) {
+        if (c == ' ' || c == '-') continue;
+        if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 32);
+        if (!((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7'))) return std::string();
+        o.push_back((char)c);
+        if (o.size() > 32) return std::string();
+    }
+    return o.size() == 32 ? o : std::string();
 }
 
 namespace {
@@ -358,9 +373,11 @@ std::string proofC(const std::string& code, const std::string& nc, const std::st
 }
 }   // namespace
 
-void PairResponder::offer(const std::string& code, int64_t now, int64_t ttl) {
+bool PairResponder::offer(const std::string& code, int64_t now, int64_t ttl) {
+    if (normalisePairingCode(code) != code) return false;
     st_ = Offered; code_ = code; expires_ = now + ttl; fails_ = 0;
     peer_.clear(); nc_.clear(); ns_.clear();
+    return true;
 }
 void PairResponder::cancel() { st_ = Idle; code_.clear(); peer_.clear(); nc_.clear(); ns_.clear(); }
 PairResponder::State PairResponder::state(int64_t now) {
