@@ -273,7 +273,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     GLFWwindow* window = createMainWindow(argc, argv);
-    if (!window) return 1;
+    if (!window) return 1;   // createMainWindow has already said why
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -282,7 +282,12 @@ int main(int argc, char** argv) {
     layoutCheckInstall();
 #endif
     gfx::Backend* gfxBackend = gfx::create(window);
-    if (!gfxBackend) { fprintf(stderr, "could not start the graphics back end\n"); return 1; }
+    if (!gfxBackend) {
+        fprintf(stderr, "could not start the graphics back end (%s)\n", gfx::levelName());
+        plat::showFatalError("OnAir", "OnAir could not start its graphics (the OpenGL functions it needs are missing or the shaders failed).\n\n"
+            "On a Raspberry Pi or another board with a Mesa driver, try:\nMESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 onair");
+        return 1;
+    }
     gGfx = gfxBackend;
 
     ImGuiIO& io = ImGui::GetIO();
