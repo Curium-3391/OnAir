@@ -314,6 +314,7 @@ void statusLine(App& a) {
             const double cpu = plat::processCpuSeconds();
             if (lastWall > 0) cpuPct = (cpu - lastCpu) / (wall - lastWall) * 100;
             lastCpu = cpu; lastWall = wall;
+            if (const char* fk = getenv("DECT2_FAKE_CPU")) cpuPct = atof(fk);   // dev: simulate a load (percent of one core) to see the "Too slow" warning
             cpuReliefTick(a, (float)cpuPct, (int)std::max(1u, std::thread::hardware_concurrency()));
         }
         gCpuPct = (float)cpuPct;
