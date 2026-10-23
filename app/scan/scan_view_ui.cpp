@@ -7,6 +7,7 @@
 #include "../app.h"
 #include "../memory/memory_ui.h"
 #include "../ui/ui_common.h"
+#include "fast_scan_ui.h"
 #include "scan_plan.h"
 #include <algorithm>
 #include <cstring>
@@ -54,7 +55,7 @@ void load() {
     if (v.loaded) return;
     v.loaded = true;
     plat::Prefs& p = plat::prefs();
-    v.scope = (int)std::max(0L, std::min(3L, p.getI("svScope", 0)));
+    v.scope = (int)std::max(0L, std::min(4L, p.getI("svScope", 0)));
     v.squelch = (float)p.getD("svSquelch", 8); v.dwell = p.getD("svDwell", 2); v.hold = p.getD("svHold", 0);
     v.resume = p.getD("svResume", 3); v.prioEvery = p.getD("svPrio", 5); v.stepKhz = p.getD("svStep", 25);
     v.lo = p.getD("svLo", 118); v.hi = p.getD("svHi", 137);
@@ -149,7 +150,27 @@ void openTonesMode(App& a) {
         if (std::strstr(kModes[i].name, "Tone decoders")) { selectMode(a, kModes[i].family, kModes[i].subId); return; }
 }
 
+void scopeCombo(bool& ch) {
+    ImGui::SetNextItemWidth(110 * gUi);
+    static const char* const kScope[5] = {N_("Scan all"), N_("Scan group"), N_("Scan range"), N_("Scan starred"), N_("Fast scan")};
+    if (ImGui::BeginCombo("##scope", tr(kScope[v.scope]))) {
+        for (int i = 0; i < 5; i++) if (ImGui::Selectable(tr(kScope[i]), i == v.scope)) { v.scope = i; ch = true; }
+        ImGui::EndCombo();
+    }
+}
+
 void controlBar(App& a, const ScanLive& l) {
+    if (v.scope == (int)scanplan::Scope::Fast) {   // the FFT fast scan: its own controls; the scope box stays so one can go back
+        bool c2 = false;
+        ImGui::BeginDisabled(fastscanui::running());
+        scopeCombo(c2);
+        ImGui::EndDisabled();
+        if (c2) savePrefsV();
+        if (!fastscanui::running() && l.running) scannerControl(a, 0);
+        fastscanui::controls(a);
+        return;
+    }
+    if (fastscanui::running()) fastscanui::stop();
     const bool run = l.running;
     if (ImGui::Button(tr(run ? "Stop" : "Start scan"))) { if (run) scannerControl(a, 0); else startScan(a); }
     ImGui::SameLine();
@@ -171,11 +192,7 @@ void controlBar(App& a, const ScanLive& l) {
     bool ch = false;
     ImGui::BeginDisabled(run);
     ImGui::SetNextItemWidth(110 * gUi);
-    static const char* const kScope[4] = {N_("Scan all"), N_("Scan group"), N_("Scan range"), N_("Scan starred")};
-    if (ImGui::BeginCombo("##scope", tr(kScope[v.scope]))) {
-        for (int i = 0; i < 4; i++) if (ImGui::Selectable(tr(kScope[i]), i == v.scope)) { v.scope = i; ch = true; }
-        ImGui::EndCombo();
-    }
+    scopeCombo(ch);
     if (v.scope == 1) {
         ImGui::SameLine(); ImGui::SetNextItemWidth(150 * gUi);
         if (ImGui::BeginCombo("##grp", v.group[0] ? v.group : tr("(pick a group)"))) {
@@ -298,7 +315,7 @@ void panel(App& a) {
     if (ImGui::Button(tr("Add current frequency"))) addCurrent(a);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Stores the frequency, mode and settings the receiver is on now as a new row"));
     ImGui::Separator();
-    table(a, l);
+    if (v.scope == (int)scanplan::Scope::Fast) fastscanui::body(a); else table(a, l);
     memui::editDialogs();
     ImGui::End();
 }

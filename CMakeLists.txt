@@ -135,6 +135,7 @@ target_sources(dect2core PRIVATE core/src/dsp/synth_wide.cpp)
 target_sources(dect2core PRIVATE core/src/source/synth_group.cpp)
 target_sources(dect2core PRIVATE core/src/t2/t2ldpc.cpp)
 target_sources(dect2core PRIVATE core/src/tv/avsplus_dec.cpp)
+target_sources(dect2core PRIVATE core/src/sweep/survey.cpp core/src/fastscan/floor.cpp core/src/fastscan/hits.cpp core/src/fastscan/plan.cpp core/src/fastscan/record.cpp core/src/fastscan/scanner.cpp core/src/fastscan/profile.cpp)
 target_sources(dect2core PRIVATE core/src/source/usb_fd.cpp core/src/source/usb_fd_io.cpp)   # radios opened by the platform and handed over as USB descriptors (Android): rtl_fd_shim.h
 # the built-in band plans: data/bandplans/builtin.json compiled in as text (bandplan.cpp parses it); a changed file configures again
 file(READ ${ONAIR_ROOT}/data/bandplans/builtin.json _bp_txt)
@@ -519,6 +520,7 @@ if(DECT2_BUILD_APP)
     third_party/imgui/backends/imgui_impl_glfw.cpp)
   set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/presets_app.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/mode_visibility.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/tv_hd.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/scan/scan_view_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_lists_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/panels/enhance_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/ui/learn.cpp app/ui/autogain_firstrun.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/modebuilder_ui.cpp app/panels/signallab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/audio_control_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp app/panels/backup_ui.cpp app/panels/scheduler_ui.cpp app/panels/recmgr_ui.cpp)
   list(APPEND APP_SOURCES app/ui/synth_group_ui.cpp)
+  list(APPEND APP_SOURCES app/scan/fast_scan_ui.cpp)
   list(APPEND APP_SOURCES app/map/contact_lines.cpp)   # contact lines on the QSO-mode maps
   foreach(m ${DECT2_MODES})   # app/<mode>/*.cpp: the screens of a mode added after FM
     file(GLOB DECT2_MODE_UI CONFIGURE_DEPENDS app/${m}/*.cpp)
@@ -807,6 +809,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_sweep tests/sweep/test_sweep.cpp)
   target_link_libraries(test_sweep PRIVATE dect2core)
   add_test(NAME sweep COMMAND test_sweep)
+  add_executable(test_fastscan tests/fastscan/test_fastscan.cpp)   # the fast wideband scanner: dynamic floor, hit tracker, planner, filterbank recorders, scan loop
+  target_link_libraries(test_fastscan PRIVATE dect2core)
+  add_test(NAME fastscan COMMAND test_fastscan)
   add_executable(test_survey tests/sweep/test_survey.cpp)
   target_link_libraries(test_survey PRIVATE dect2core)
   add_test(NAME survey COMMAND test_survey)
