@@ -57,6 +57,8 @@
 #include "dect2/edacs/edacs_tel.h"
 #include "dect2/milhf/milhf_engine.h"
 #include "dect2/sbas/sbas_engine.h"
+#include "dect2/argos/argos_tel.h"
+#include "dect2/sigfox/sigfox_tel.h"
 #include "dect2/dvbc/dvbc_tel.h"
 #include "dect2/orbcomm/orbcomm_tel.h"
 #include "dect2/uplink/uplink_tel.h"
@@ -264,6 +266,8 @@ struct RxTelemetry {
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)
     EdacsTelemetry edacs;       // valid when standard == 131 (EDACS control channel, engine standard 132)
     SbasTelemetry sbas;         // valid when standard == 151 (SBAS, family 150, engine standard 152)
+    ArgosTelemetry argos;       // valid when standard == 149 (Argos, engine standard 150)
+    SigfoxModeTelemetry sigfoxm;   // valid when standard == 150 (Sigfox, engine standard 151)
     MilhfTelemetry milhf;       // valid when standard == 146 (HF waveform ID, engine standard 147)
     DgpsTelemetry dgps;         // valid when standard == 122 (DGPS beacon, engine standard 122)
     struct Dvbt {                // DVB-T only: TPS parameters and the channel decoder's statistics

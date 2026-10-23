@@ -88,17 +88,17 @@ OnAir is a receiver first. It can also send test signals through a transmit-capa
 | **Broadcast radio** | 5 | DAB+, DRM (with its data services), HD Radio, CDR, and FM with RDS, a Mono switch for weak stations and a saved-station library |
 | **Aviation** | 16 | ADS-B with a live map, ASTERIX radar data from UDP or a file, Mode A/C squawks and altitudes, UAT, ACARS, VDL2 and VDL4, HFDL, airband, VOR / ILS / NDB, FLARM, drones |
 | **Maritime** | 5 | AIS, VDES, NAVTEX, DSC, weather fax |
-| **Satellite and navigation** | 12 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, COSPAS-SARSAT 406 MHz distress beacons |
+| **Satellite and navigation** | 13 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, COSPAS-SARSAT 406 MHz distress beacons, Argos platforms and downlink |
 | **Two-way radio** | 7 | DMR, P25 (with a trunking follower), NXDN, dPMR, TETRA, TETRAPOL, tone decoders (CTCSS, DCS, DTMF, selcall) |
-| **Satellite and navigation** | 14 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, SBAS corrections, COSPAS-SARSAT 406 MHz distress beacons, GOES / Meteosat DCS platform reports |
+| **Satellite and navigation** | 15 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, SBAS corrections, COSPAS-SARSAT 406 MHz distress beacons, GOES / Meteosat DCS platform reports, Argos platforms and downlink |
 | **Two-way radio** | 6 | DMR, P25, NXDN, dPMR, D-STAR, M17, TETRA, TETRAPOL |
 | **Cellular and rail** | 7 | LTE, 5G NR and NB-IoT cells, GSM-R, LBJ, KLW, TDCS |
 | **Pagers** | 3 | POCSAG, FLEX, Multitone |
-| **IoT and sensors** | 14 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+ |
+| **IoT and sensors** | 15 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+, Sigfox |
 | **Amateur** | 30 | FT8, FT4, WSPR, JS8Call, RTTY, PSK, MT63, FSQ, IFKP, SSTV, FreeDV, APRS, LoRa APRS, MeshCom and more |
 | **Weather and science** | 8 | Radiosondes, HRPT, SAME alerts, time signals, e-Czas, ionospheric sounders, radio astronomy, meteor scatter |
 | **Amateur** | 29 | FT8, FT4, WSPR, JS8Call, RTTY, PSK, MT63, ARDOP, SSTV, FreeDV, APRS, LoRa APRS, MeshCom and more |
-| **IoT and sensors** | 15 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, BLE tracker detector, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+ |
+| **IoT and sensors** | 16 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, BLE tracker detector, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+, Sigfox |
 | **Amateur** | 28 | FT8, FT4, WSPR, JS8Call, RTTY, PSK, MT63, SSTV, FreeDV, APRS, LoRa APRS, MeshCom and more |
 | **Weather and science** | 7 | Radiosondes, SAME alerts, time signals, ionospheric sounders, radio astronomy, meteor scatter |
 | **HF utility** | 4 | ALE, beacons, Datawell buoys, CODAR |
@@ -282,6 +282,8 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 - **Weather pictures:** **Meteor-M LRPT** (137.1 / 137.9 MHz, Doppler tracking, channels and colour composite), **GOES HRIT** (1694.1 MHz), **Elektro-L** HRIT / LRIT and GGAK, **HRPT / AHRPT** (MetOp, FY-3, retired NOAA). The L-band ones need a dish with an LNA at the feed.
 - **Inmarsat-C**, **Inmarsat Aero**, **Iridium** (bursts can be saved for iridium-toolkit), **Orbcomm**, **Globalstar** (activity monitor only; L-band 1610-1626.5 MHz terminal uplink, spread and encrypted; the S-band satellite downlink is not tuned), **QO-100** (beacon lock, narrowband and wideband transponders, DATV hand-over to DVB-S/S2) and **CubeSat telemetry** (AX.25 1200 / 9600 baud, AX100 modes, CCSDS Reed-Solomon, SatNOGS-style KISS out).
 
+- **Argos** (receive only; [details](docs/argos.md)): PTT uplink on 401.650 MHz (PTT-A2 bursts decoded to the 28 bit platform ID and the user data in hex, each platform's burst frequencies as its Doppler / drift curve; A3, ZE and Argos-4 bursts only listed, their specifications are not public) and the MetOp-B / -C downlink on 465.9875 MHz (carrier followed through the pass, measured Doppler against the pass planner's prediction, HDLC frames in hex).
+
 ### Two-way radio
 
 - **Tone decoders** (CTCSS, DCS, DTMF, five-tone, SELCAL and two-tone pages; [details](docs/tones.md)).
@@ -302,6 +304,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 
 - **ISM sensors** (433.92 / 868 / 915 MHz: weather stations, tyre pressure, meters, remotes, Z-Wave; S0 and S2 stay encrypted).
 - **Wireless M-Bus** (EN 13757-4 utility meters: S1, T1, C1 and R2 on 868 MHz, N1 on 169 MHz; manufacturer, ID, device type and the readings of unencrypted frames, encrypted payloads stay encrypted; [details](docs/wmbus.md)).
+- **Sigfox** (uplinks at 868.130 / 902.200 MHz and the other zones, 100 and 600 bit/s: device ID, message counter, payload hex, the three repetitions merged, CRC checked; the authentication code is never checked and nothing is decrypted; [details](docs/sigfox.md)).
 - **LoRaWAN** (EU868 / US915, all spreading factors; clear headers only, payloads stay encrypted), **Meshtastic** and **MeshCore** (nodes, map, chat, telemetry, exports), **LoRa (raw)** (plain point-to-point LoRa; hex and text frames, no decryption).
 - **Bluetooth LE** (advertising, never connects), **Zigbee / 802.15.4** (needs a fast radio), **Wi-Fi networks** (2.4 GHz beacons, passive), **Wi-Fi HaLow** (802.11ah sub-GHz beacons), **Z-Wave** (G.9959 R1 / R2 / R3, encrypted payloads stay encrypted), **Wi-SUN FAN** (smart meter and street light mesh, all regional band plans), **ANT+ sensors** and **DECT cordless phones** (base stations from beacons; calls are encrypted, no voice; Europe 1880-1900 MHz, US/Canada DECT 6.0 1920-1930 MHz, Brazil, Latin America and the US 900 MHz ISM band, see docs/DECT.md).
 - **NFC / RFID 13.56 MHz** (*in development*): ISO/IEC 14443 Type A and Type B and ISO/IEC 15693, receive only. Tag UIDs, ATQA / SAK / ATS, CRC checks and NDEF text / URI from Type 2 tags, with a frame log and a tag table. Needs an HF-capable receiver at a few Msps so the 847.5 kHz load-modulation subcarrier fits. An active reader can transmit through the TX gate (13.553-13.567 MHz ISM band only). Nothing is cloned and no encrypted content is decoded; pet microchips are 134.2 kHz, a different band. See docs/NFC.md.

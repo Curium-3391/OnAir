@@ -259,8 +259,8 @@ void sigfoxView(App& a) {
     const dect2::IsmTelemetry& t = a.rx.ism;
     const dect2::SigfoxTelemetry& sf = t.sigfox;
     ImGui::PushTextWrapPos(0);
-    ImGui::TextDisabled("Sigfox uplinks (ultra-narrowband DBPSK, 100 bit/s) within 192 kHz of the dial. Passive receive only: payloads are often encrypted by the "
-                        "application, and the authentication code and CRC are shown as received, not checked (the key is secret).");
+    ImGui::TextDisabled("Sigfox uplinks (ultra-narrowband DBPSK, 100 or 600 bit/s) within 192 kHz of the dial; the Sigfox mode shows more. Passive receive only: payloads are "
+                        "often encrypted by the application; the CRC is checked, the authentication code is shown as received, never checked (the key is secret).");
     ImGui::PopTextWrapPos();
     if (!sf.active) { ImGui::TextDisabled("the dial is not on a Sigfox band: use the Sigfox menu (868.130 / 902.200 / 920.800 MHz)"); return; }
     const float h = 110 * gUi, w = ImGui::GetContentRegionAvail().x;
