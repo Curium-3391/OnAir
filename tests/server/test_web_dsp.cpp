@@ -3,6 +3,7 @@
 #include "../../server/web/web_dsp.h"
 #include <cmath>
 #include <complex>
+#include <functional>
 #include <cstdio>
 #include <vector>
 using namespace onair_web;
