@@ -2,7 +2,7 @@
 
 OnAir Web turns `onair-server` (the headless server, docs/headless-server.md) into a WebSDR / KiwiSDR-style receiver for many people at once. Your SDR captures a wide piece of spectrum; everyone who opens your page gets their **own virtual receiver** inside that capture: their own frequency, mode (AM, NFM, WFM, USB, LSB, CW), passband, squelch, AGC and audio, their own zoomable waterfall, and the results of decoders they subscribe to. One radio, many listeners, nobody tunes anybody else away.
 
-Status: the server core is built and tested with synthetic signals and fake clients (loopback sockets, many simulated sessions). **Not tried with a real radio, real browsers over the internet, a Raspberry Pi, or a real certificate.** The polished browser interface is a separate piece of work: until it is installed the server shows a placeholder page, and any client that speaks docs/ONAIR-WEB-PROTOCOL.md works.
+Status: the server core is built and tested with synthetic signals and fake clients (loopback sockets, many simulated sessions). **Not tried with a real radio, real browsers over the internet, a Raspberry Pi, or a real certificate.** The browser interface is in `web/onair-web/` (vanilla JS, no build step, no internet needed; not yet tried in real browsers against a live server); without it the server shows a placeholder page, and any client that speaks docs/ONAIR-WEB-PROTOCOL.md works.
 
 ## How it works
 
@@ -185,3 +185,9 @@ Listeners subscribe to decoders by kind (`welcome.decoders` lists what the serve
 * No S-meter while a listener has audio off (the receiver of a listener without audio is not run at all, which keeps waterfall-only listeners nearly free).
 * WFM is mono (no stereo decoder, no RDS for web listeners).
 * The admin user list and stats are JSON only (no admin page).
+
+## Browser client (web/onair-web/)
+
+Files: `index.html`, `style.css`, `app.js` (UI and WebSocket), `onair-lib.js` (pure helpers: ADPCM decode, frame parsing, messages, frequency and bin mapping, zoom and pan, palettes, S-meter, result tables) and `onair-worklet.js` (audio jitter buffer, run in an AudioWorklet). Everything is served from the same origin (the server's content security policy allows nothing else). Tune by clicking a digit half, scrolling on the digits, arrow keys (Shift or Page Up/Down for 10 steps), or by clicking the spectrum; drag to pan, wheel or pinch to zoom (the zoomed slice is requested from the server as a finer spectrum span). Keys: 1 to 6 modes, M mute, + and - zoom. An invite link is `http://host:8073/#invite=TOKEN` (the token never reaches the server's logs). The notice banner shows the server's `notice` text from `/web/v1/info` when it sends one, else a generic one. The S-meter scale is relative to full scale (S9 = -66 dBFS), not calibrated.
+
+Tests for the pure code (node built-ins only, not part of CMake): `node tests/web/run.js`.
