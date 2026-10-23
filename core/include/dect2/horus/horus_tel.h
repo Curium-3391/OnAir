@@ -1,4 +1,4 @@
-// Project Horus receiver telemetry: RxTelemetry::horus, active standard 149 (family 148, engine standard 150), poll slot 149.
+// Project Horus receiver telemetry: RxTelemetry::horus, active standard 157 (family 156, engine standard 158), poll slot 157.
 #pragma once
 #include "dect2/horus/horus_modes.h"
 #include "dect2/horus/horus_proto.h"

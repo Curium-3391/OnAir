@@ -262,7 +262,7 @@ struct RxTelemetry {
     MacTelemetry mac;           // valid when standard == 48
     GsmrTelemetry gsmr;         // valid when standard == 40
     RailwayTelemetry klw, tdcs; // active standards 147 and 148
-    HorusTelemetry horus;       // active standard 149 (Project Horus balloons, family 148)
+    HorusTelemetry horus;       // active standard 157 (Project Horus balloons, family 156)
     LbjTelemetry lbj;           // valid when standard == 82 (LBJ, engine standard 83)
     ElLoranTelemetry eloran;    // valid when standard == 127 (eLoran / Loran-C, family 126)
     NfcTelemetry nfc;           // valid when standard == 149 (NFC / RFID 13.56 MHz, family 148, engine standard 150)

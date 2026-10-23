@@ -290,7 +290,7 @@ int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     case 82: return pollStd(rxLbj_, 82, t, seqs[76], &RxTelemetry::lbj);
     case railway::kKlwActiveStandard: return pollStd(rxKlw_, railway::kKlwActiveStandard, t, seqs[railway::kKlwActiveStandard], &RxTelemetry::klw);
     case railway::kTdcsActiveStandard: return pollStd(rxTdcs_, railway::kTdcsActiveStandard, t, seqs[railway::kTdcsActiveStandard], &RxTelemetry::tdcs);
-    case horus::kActiveStandard: return pollStd(rxHorus_, horus::kActiveStandard, t, seqs[horus::kActiveStandard], &RxTelemetry::horus);   // Horus (slot 149)
+    case horus::kActiveStandard: return pollStd(rxHorus_, horus::kActiveStandard, t, seqs[horus::kActiveStandard], &RxTelemetry::horus);   // Horus (slot 157)
     case 84: return pollStd(rxUat_, 84, t, seqs[78], &RxTelemetry::uat);
     case 83: return pollStd(rxVdl4_, 83, t, seqs[77], &RxTelemetry::vdl4);
     case 78: return pollStd(rxAnt_, 78, t, seqs[72], &RxTelemetry::ant);
