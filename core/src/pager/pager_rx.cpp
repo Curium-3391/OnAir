@@ -78,11 +78,11 @@ inline int popcount32(uint32_t v) { return dect2::bits::popcount(v); }
 
 // Soft-decision repair of a code word (Chase): when the BCH code cannot repair the hard decisions (more than two wrong bits), flip each
 // combination of up to three of the six least reliable bits and repair again. Of the code words found, the one whose changed bits are the
-// least reliable wins; it must differ from the hard decisions in at most four bits, all of them doubtful (below `doubt`; the hard decoder
-// alone accepts a quarter of random words, so a confident bit is never overruled). rel[k]: the reliability of transmitted bit k (bit 31 - k
-// of the word). Returns the word to hand on, which the plain repair then accepts (flipped where the search found the errors), or w unchanged.
-uint32_t chaseWord(uint32_t w, const float* rel, float doubt, int maxErr = 4, bool* rescued = nullptr) {
-    if (rescued) *rescued = false;
+// least reliable wins; it must differ from the hard decisions in at most four bits, all of them below `doubt` (the hard decoder alone
+// accepts a quarter of random words: where a wrong word does harm, a confident bit is never overruled). rel[k]: the reliability of
+// transmitted bit k (bit 31 - k of the word). Returns the word to hand on, which the plain repair then accepts (flipped where the search
+// found the errors), or w unchanged.
+uint32_t chaseWord(uint32_t w, const float* rel, float doubt, int maxErr = 4) {
     if (pager::correctWord(w).ok) return w;
     int idx[6];
     {
@@ -107,7 +107,6 @@ uint32_t chaseWord(uint32_t w, const float* rel, float doubt, int maxErr = 4, bo
         if (sure || m >= bestM) continue;
         bestM = m; bestW = w ^ flip;
     }
-    if (rescued) *rescued = bestW != w;
     return bestW;
 }
 
