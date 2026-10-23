@@ -408,7 +408,9 @@ static void testPolicySide() {
     const auto kinds = webDecoderKinds();
     CHECK(kinds.size() == 12, "twelve decoders (%zu)", kinds.size());
     for (const auto& k : kinds) {
-        CHECK(decoderClass(k) == DecoderClass::Data, "%s is a data decoder", k.c_str());
+        // CW and RTTY are class Other in the web policy: the web hub never registers them (the allow-list fails closed)
+        const bool other = (k == "cw" || k == "rtty");
+        CHECK(decoderClass(k) == (other ? DecoderClass::Other : DecoderClass::Data), "%s has the expected policy class", k.c_str());
         bool inCat = false;
         for (const auto& d : decoderCatalogue()) if (k == d.kind) inCat = true;
         CHECK(inCat, "%s is in the policy catalogue", k.c_str());
@@ -427,12 +429,15 @@ static void testPolicySide() {
     CHECK(!webDecoderFreqOk("ft8", NAN) && !webDecoderFreqOk("nothing", 14e6), "NaN and unknown kinds refused");
     WebHub h;
     const auto reg = registerWebDecoders(h);
-    CHECK(reg == kinds, "all registered, in order");
+    std::vector<std::string> dataKinds;
+    for (const auto& k : kinds) if (decoderClass(k) == DecoderClass::Data) dataKinds.push_back(k);
+    CHECK(reg == dataKinds && reg.size() == 10, "the data decoders are registered, in order (%zu)", reg.size());
     std::string c, w;
     AdmitRequest a; a.ip = "10.0.0.1";
     const int id = h.admit(a, c, w);
     const std::string wl = h.welcomeJson(id);
-    for (const auto& k : kinds) CHECK(wl.find("\"kind\":\"" + k + "\"") != std::string::npos, "welcome offers %s", k.c_str());
+    for (const auto& k : dataKinds) CHECK(wl.find("\"kind\":\"" + k + "\"") != std::string::npos, "welcome offers %s", k.c_str());
+    for (const char* k : {"\"cw\"", "\"rtty\""}) CHECK(wl.find(std::string("\"kind\":") + k) == std::string::npos, "welcome does not offer %s (not on the web allow-list)", k);
     for (const char* k : {"\"dmr\"", "\"pocsag\""}) CHECK(wl.find(std::string("\"kind\":") + k) == std::string::npos, "welcome does not offer %s", k);
     h.leave(id);
 }
@@ -453,6 +458,7 @@ static void testEveryDecoderOnNoise() {
     std::normal_distribution<float> nd(0.f, 0.01f);
     const double rate = 2.4e6;
     for (const auto& k : webDecoderKinds()) {
+        if (decoderClass(k) != DecoderClass::Data) continue;   // CW / RTTY are not registered with the hub
         double r, lo, hi;
         webDecoderSpec(k, r, lo, hi);
         const double f = k == "adsb" ? 1090e6 : k == "ais" ? 162.0e6 : k == "aprs" ? 144.8e6 : k == "meteor" ? 137.9e6 : k == "rds" ? 93.9e6 : k == "wefax" ? 7.88e6 : 14.074e6;
