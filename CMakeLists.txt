@@ -177,7 +177,7 @@ target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data pack
 # TLS for the remote-control API (headless server): OpenSSL, off by default so the packages need no extra library (docs/headless-server.md)
 option(DECT2_WITH_TLS "Serve the remote-control API over HTTPS / wss (links OpenSSL)" OFF)
 target_sources(dect2core PRIVATE core/src/net/tls_conn.cpp core/src/net/remote_json.cpp)
-target_sources(dect2core PRIVATE core/src/net/swarm.cpp core/src/net/swarm_net.cpp)   # LAN swarm: announce packets, merged results, range splitting, pairing handshake, memory sync
+target_sources(dect2core PRIVATE core/src/net/swarm.cpp core/src/net/swarm_net.cpp core/src/net/swarm_ctl.cpp)   # LAN swarm: announce packets, merged results, range splitting, pairing handshake, memory sync
 if(DECT2_WITH_TLS)
   find_package(OpenSSL REQUIRED)
   target_compile_definitions(dect2core PRIVATE DECT2_TLS)
@@ -1093,6 +1093,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_swarm tests/net/test_swarm.cpp)
   target_link_libraries(test_swarm PRIVATE dect2core)
   add_test(NAME swarm COMMAND test_swarm)
+  add_executable(test_swarm_ctl tests/net/test_swarm_ctl.cpp)
+  target_link_libraries(test_swarm_ctl PRIVATE dect2core)
+  add_test(NAME swarm_ctl COMMAND test_swarm_ctl)
   add_executable(test_server_host tests/server/test_server_host.cpp server/server_config.cpp server/server_host.cpp)
   target_link_libraries(test_server_host PRIVATE dect2core)
   target_compile_definitions(test_server_host PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")

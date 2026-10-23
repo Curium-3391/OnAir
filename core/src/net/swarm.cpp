@@ -484,6 +484,16 @@ bool TokenBook::authorise(const std::string& token, std::string* label) const {
     for (auto& e : t_) if (ctEqualStr(e.first, token) && token.size() >= 16 && !ok) { ok = true; if (label) *label = e.second; }
     return ok;
 }
+std::string keyIdOf(const std::string& token) {
+    uint8_t o[32];
+    hmac(token, "OACTL1 id", o);
+    return toHex(o, 8);
+}
+bool TokenBook::findByKeyId(const std::string& keyId, std::string& token, std::string* label) const {
+    bool ok = false;
+    for (auto& e : t_) if (!ok && ctEqualStr(keyIdOf(e.first), keyId)) { ok = true; token = e.first; if (label) *label = e.second; }
+    return ok;
+}
 bool controlAllowed(const std::string& c) {
     static const char* ok[] = {"status", "start", "stop", "set_frequency", "set_mode", "set_gain", "set_rate", "scan_slice"};
     for (const char* o : ok) if (c == o) return true;
