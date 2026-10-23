@@ -72,6 +72,18 @@ t2.ldpc 0.27, t2.demap 0.21, t2.resample 0.10, t2.chanest+eq 0.09, t2.measure+co
 
 `s2Demap` eight symbols at a time with the same arithmetic (bit-identical LLRs): 8PSK 23 -> 5 ns per symbol, 16APSK 28 -> 8, 32APSK 82 -> 36.
 
+### Behind time
+
+- DVB-T (pipelined): a decoder thread that cannot keep up drops the oldest symbols and starts again; the count is in
+  `RxTelemetry::dvbt.fecDropped` and the engine logs "this computer is too slow for the error correction (stages dvbt.demap, dvbt.viterbi,
+  dvbt.rs)" at most every 5 s. The queue is bounded (192 symbols), so it never grows without limit.
+- `bench_dvb` also prints the busiest thread: above 1.0 that thread cannot keep up even when the total fits in the cores.
+
+### Fixed on the way
+
+`dvbs::SymbolThread::push` (recordings, blocking mode) could wait for room forever: test_dvbs_rx2 hung for 900 s on pub/main's code
+on this machine and passes with the fix (a block goes in once the queue is empty, whatever its size).
+
 ## What is left (largest first, from the profiles)
 
 - DVB-S2 front end: S2Rx::fastRun, SymbolTimer, s2RefinePhase, PolyResampler.

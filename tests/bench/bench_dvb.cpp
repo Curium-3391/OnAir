@@ -34,7 +34,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <map>
 #include <sys/resource.h>
+#ifdef __APPLE__
+#include <mach/mach.h>
+#else
+#include <dirent.h>
+#include <unistd.h>
+#endif
 using namespace dect2;
 using Clock = std::chrono::steady_clock;
 
@@ -89,6 +96,40 @@ double processCpu() {
     return u.ru_utime.tv_sec + u.ru_stime.tv_sec + (u.ru_utime.tv_usec + u.ru_stime.tv_usec) * 1e-6;
 }
 
+// CPU seconds of every thread of the process, by a stable thread id
+std::map<uint64_t, double> threadCpu() {
+    std::map<uint64_t, double> m;
+#ifdef __APPLE__
+    thread_act_array_t th; mach_msg_type_number_t n = 0;
+    if (task_threads(mach_task_self(), &th, &n) != KERN_SUCCESS) return m;
+    for (mach_msg_type_number_t i = 0; i < n; i++) {
+        thread_basic_info_data_t bi; mach_msg_type_number_t c = THREAD_BASIC_INFO_COUNT;
+        thread_identifier_info_data_t ii; mach_msg_type_number_t ci = THREAD_IDENTIFIER_INFO_COUNT;
+        if (thread_info(th[i], THREAD_BASIC_INFO, (thread_info_t)&bi, &c) == KERN_SUCCESS &&
+            thread_info(th[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&ii, &ci) == KERN_SUCCESS)
+            m[ii.thread_id] = bi.user_time.seconds + bi.system_time.seconds + (bi.user_time.microseconds + bi.system_time.microseconds) * 1e-6;
+        mach_port_deallocate(mach_task_self(), th[i]);
+    }
+    vm_deallocate(mach_task_self(), (vm_address_t)th, n * sizeof(thread_t));
+#else
+    const long tck = sysconf(_SC_CLK_TCK);
+    if (DIR* d = opendir("/proc/self/task")) {
+        while (dirent* e = readdir(d)) {
+            if (e->d_name[0] == '.') continue;
+            char path[64]; snprintf(path, sizeof path, "/proc/self/task/%s/stat", e->d_name);
+            if (FILE* f = fopen(path, "r")) {
+                char buf[1024]; const size_t k = fread(buf, 1, sizeof buf - 1, f); buf[k] = 0; fclose(f);
+                const char* p = strrchr(buf, ')');
+                unsigned long ut = 0, st = 0;
+                if (p && sscanf(p + 2, "%*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &ut, &st) == 2) m[(uint64_t)atoll(e->d_name)] = (double)(ut + st) / tck;
+            }
+        }
+        closedir(d);
+    }
+#endif
+    return m;
+}
+
 // the test signal at `rate`, `secs` long, as interleaved 8-bit I/Q (scaled by 128 like a CS8 file)
 bool generate(const Case& c, double secs, std::vector<int8_t>& out) {
     setenv("DECT2_NOPACE", "1", 1);
@@ -134,7 +175,7 @@ bool generate(const Case& c, double secs, std::vector<int8_t>& out) {
 }
 
 struct Result {
-    double secs = 0, cpuAll = 0, cpuFeed = 0;
+    double secs = 0, cpuAll = 0, cpuFeed = 0, cpuBusiest = 0;   // busiest: the thread that used the most (the one that must keep up)
     uint64_t packets = 0, hash = 1469598103934665603ull;
     std::vector<std::pair<std::string, std::pair<double, uint64_t>>> stages;
 };
@@ -246,6 +287,7 @@ Result run(const Case& c, const std::vector<int8_t>& sig) {
     prof::stageProfReset();
     const size_t B = 1 << 16;   // a radio's block, as the engine hands them on
     std::vector<cf32> blk(B);
+    const std::map<uint64_t, double> th0 = threadCpu();
     const double c0 = processCpu();
     const uint64_t f0 = prof::threadCpuNs();
     uint64_t convNs = 0;
@@ -267,6 +309,10 @@ Result run(const Case& c, const std::vector<int8_t>& sig) {
         prev = now;
     }
     res.cpuAll = processCpu() - c0 - (double)convNs * 1e-9;
+    for (const auto& t : threadCpu()) {
+        const auto it = th0.find(t.first);
+        res.cpuBusiest = std::max(res.cpuBusiest, t.second - (it == th0.end() ? 0.0 : it->second));
+    }
     res.stages = prof::stageProfSnapshot();
     rx.destroy();
     res.packets = pk; res.hash = h;
@@ -302,7 +348,8 @@ int main(int argc, char** argv) {
         const Result r = run(c, sig);
         printf("\n== %s: %s\n", c.id.c_str(), c.what.c_str());
         printf("   %.2f s of signal, %llu TS packets, digest %016llx\n", r.secs, (unsigned long long)r.packets, (unsigned long long)r.hash);
-        printf("   CPU s per s of signal: all threads %.3f, feed thread %.3f%s\n", r.cpuAll / r.secs, r.cpuFeed / r.secs, r.cpuFeed / r.secs > 1 ? "  (TOO SLOW: the radio's ring would overflow)" : "");
+        printf("   CPU s per s of signal: all threads %.3f, feed thread %.3f, busiest thread %.3f%s\n", r.cpuAll / r.secs, r.cpuFeed / r.secs, r.cpuBusiest / r.secs,
+               r.cpuFeed / r.secs > 1 ? "  (TOO SLOW: the radio's ring would overflow)" : r.cpuBusiest / r.secs > 1 ? "  (TOO SLOW: a decoder thread falls behind)" : "");
         auto st = r.stages;
         st.erase(std::remove_if(st.begin(), st.end(), [](const auto& e) { return e.second.second == 0; }), st.end());
         std::sort(st.begin(), st.end(), [](const auto& a, const auto& b) { return a.second.first > b.second.first; });
@@ -312,8 +359,8 @@ int main(int argc, char** argv) {
         if (!st.empty()) printf("     %-24s %7.4f  %5.1f%%\n", "(not in a stage)", std::max(0.0, r.cpuAll - named) / r.secs, 100 * std::max(0.0, r.cpuAll - named) / std::max(1e-9, r.cpuAll));
         fflush(stdout);
         if (js) {
-            fprintf(js, "%s{\"id\":\"%s\",\"secs\":%.3f,\"cpu_all\":%.5f,\"cpu_feed\":%.5f,\"packets\":%llu,\"digest\":\"%016llx\",\"stages\":{", first ? "" : ",\n", c.id.c_str(), r.secs,
-                    r.cpuAll / r.secs, r.cpuFeed / r.secs, (unsigned long long)r.packets, (unsigned long long)r.hash);
+            fprintf(js, "%s{\"id\":\"%s\",\"secs\":%.3f,\"cpu_all\":%.5f,\"cpu_feed\":%.5f,\"cpu_busiest\":%.5f,\"packets\":%llu,\"digest\":\"%016llx\",\"stages\":{", first ? "" : ",\n", c.id.c_str(), r.secs,
+                    r.cpuAll / r.secs, r.cpuFeed / r.secs, r.cpuBusiest / r.secs, (unsigned long long)r.packets, (unsigned long long)r.hash);
             for (size_t i = 0; i < st.size(); i++) fprintf(js, "%s\"%s\":%.5f", i ? "," : "", st[i].first.c_str(), st[i].second.first / r.secs);
             fprintf(js, "}}");
             first = false;
