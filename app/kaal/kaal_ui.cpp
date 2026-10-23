@@ -61,6 +61,19 @@ void tab(App& a) {
     row("CFO", b);
     snprintf(b, sizeof b, "%.1f dB", (double)t.sweepDb);
     row("sweep level", b);
+    if (t.frameVersion == 4) {
+        row("frame", "version 4: four slots, chirp sync every 40 ms");
+        for (int i = 0; i < 4; i++) {
+            static const char* const kP[7] = {"idle", "voice 8.0k", "voice 6.0k", "voice 4.8k", "voice 3.2k", "data", "data (robust)"};
+            const int pr = t.v4Profile[i];
+            snprintf(b, sizeof b, "%s%s%s%s", pr >= 0 && pr < 7 ? kP[pr] : "?", t.v4Call[i].empty() ? "" : ", ", t.v4Call[i].c_str(), t.v4PlaySlot == i ? " (playing)" : "");
+            char k[16];
+            snprintf(k, sizeof k, "slot %d", i + 1);
+            row(k, b);
+        }
+        snprintf(b, sizeof b, "%llu", (unsigned long long)t.v4Texts);
+        row("texts", b);
+    }
     if (t.bitrateKbps) { snprintf(b, sizeof b, "%d kbit/s (read from the frame header)", t.bitrateKbps); row("voice codec", b); }
     row("sweep ID", t.sweepIdValid ? t.sweepId : std::string("not received yet (a full cycle takes 12 s)"));
 
@@ -138,11 +151,29 @@ void kaalPanel(TxUi& s, bool running) {
         s.kaalBeacon = p.getB("tx.kaal.beacon", true);
         s.kaalBitrate = (int)p.getD("tx.kaal.bitrate", 16);
         if (s.kaalBitrate != 12 && s.kaalBitrate != 16 && s.kaalBitrate != 24 && s.kaalBitrate != 32) s.kaalBitrate = 16;
+        s.kaalFrame = (int)p.getD("tx.kaal.frame", 3) == 4 ? 4 : 3;
+        s.kaalV4Profile = std::max(1, std::min(4, (int)p.getD("tx.kaal.v4profile", 2)));
+        s.kaalV4Voice = std::max(0, std::min(4, (int)p.getD("tx.kaal.v4voice", 1)));
     }
     ImGui::TextWrapped("%s", "KAAL: digital voice, 10 kHz wide (20 kHz at 24 and 32 kbit/s). The speech of the audio input below is coded and sent with the identity beacon. "
                               "Empty callsign and grid send the demo identity ONAIR / AA00aa. OnAir sets no limit on the frequency or the power.");
     ImGui::BeginDisabled(running);
     {
+        int fv = s.kaalFrame == 4 ? 1 : 0;
+        static const char* const kFrames[2] = {"v3: one voice stream (10 / 20 kHz)", "v4: four slots, voice + data, 20 kHz (new)"};
+        ImGui::SetNextItemWidth(330 * gUi);
+        if (ImGui::Combo("Frame", &fv, kFrames, 2)) s.kaalFrame = fv ? 4 : 3;
+    }
+    if (s.kaalFrame == 4) {
+        static const char* const kProf[4] = {"8.0 kbit/s per slot", "6.0 kbit/s per slot (default)", "4.8 kbit/s per slot (weak signals)", "3.2 kbit/s per slot (QPSK, most robust)"};
+        int pi = s.kaalV4Profile - 1;
+        ImGui::SetNextItemWidth(330 * gUi);
+        if (ImGui::Combo("Slot voice", &pi, kProf, 4)) s.kaalV4Profile = pi + 1;
+        ImGui::SetNextItemWidth(120 * gUi);
+        ImGui::SliderInt("Voice slots", &s.kaalV4Voice, 0, 4);
+        ImGui::TextDisabled("%s", "Slots without voice carry the text (any length) and data. The beacon goes in the control channel every 400 ms. "
+                                  "Voice needs the slot voice codec; until it is installed the v4 signal carries text and the beacon only.");
+    } else {
         static const int kRates[4] = {12, 16, 24, 32};
         static const char* const kNames[4] = {"12 kbit/s (real time, 8 ksym/s, most robust)", "16 kbit/s (real time, 8 ksym/s)", "24 kbit/s (real time, 16 ksym/s, 20 kHz wide)",
                                               "32 kbit/s (real time, 16 ksym/s, 20 kHz wide)"};
@@ -177,11 +208,13 @@ void kaalPanel(TxUi& s, bool running) {
     audioSourceRow(s, running);
 
     char sig[600];
-    snprintf(sig, sizeof sig, "%s|%s|%s|%.6f|%.6f|%.2f|%d|%d", s.callsign, s.grid, s.text, s.lat, s.lon, s.kaalPower, (int)s.kaalBeacon, s.kaalBitrate);
+    snprintf(sig, sizeof sig, "%s|%s|%s|%.6f|%.6f|%.2f|%d|%d|%d|%d|%d", s.callsign, s.grid, s.text, s.lat, s.lon, s.kaalPower, (int)s.kaalBeacon, s.kaalBitrate,
+             s.kaalFrame, s.kaalV4Profile, s.kaalV4Voice);
     if (s.kaalSaved != sig) {   // saved when something changed
         s.kaalSaved = sig;
         p.setS("tx.kaal.callsign", s.callsign); p.setS("tx.kaal.grid", s.grid); p.setS("tx.kaal.text", s.text);
         p.setD("tx.kaal.lat", s.lat); p.setD("tx.kaal.lon", s.lon); p.setD("tx.kaal.power", s.kaalPower); p.setB("tx.kaal.beacon", s.kaalBeacon); p.setD("tx.kaal.bitrate", s.kaalBitrate);
+        p.setD("tx.kaal.frame", s.kaalFrame); p.setD("tx.kaal.v4profile", s.kaalV4Profile); p.setD("tx.kaal.v4voice", s.kaalV4Voice);
     }
 }
 
