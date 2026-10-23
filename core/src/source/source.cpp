@@ -364,6 +364,20 @@ protected:
         };
         size_t got = rd();
         if (got == 0 && loop_) { fseek(f_, (long)off_, SEEK_SET); pos_ = off_; got = rd(); }
+        // the 8-bit formats in loops of their own (the same arithmetic; the format switch per sample kept the compiler from vectorising
+        // the conversion, a few percent of the whole app at 10 Msps)
+        if (fmt_ == FileFormat::CS8) {
+            const int8_t* s = reinterpret_cast<const int8_t*>(raw_.data());
+            float* o = reinterpret_cast<float*>(dst);
+            for (size_t i = 0; i < 2 * got; i++) o[i] = s[i] / 128.0f;
+            return got;
+        }
+        if (fmt_ == FileFormat::CU8) {
+            const uint8_t* s = raw_.data();
+            float* o = reinterpret_cast<float*>(dst);
+            for (size_t i = 0; i < 2 * got; i++) o[i] = (s[i] - 127.5f) / 127.5f;
+            return got;
+        }
         for (size_t i = 0; i < got; i++) {
             switch (fmt_) {
             case FileFormat::CS8: dst[i] = cf32((int8_t)raw_[2*i] / 128.0f, (int8_t)raw_[2*i+1] / 128.0f); break;

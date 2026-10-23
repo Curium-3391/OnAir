@@ -35,7 +35,10 @@ void Engine::feedSpectrum(const cf32* x, size_t n) {
     {
         std::lock_guard<std::mutex> lk(specQMu_);
         if (specQ_.size() >= 6) return;   // the display is statistical: when the spectrum thread is behind, skip a piece
-        specQ_.emplace_back(x, x + n);
+        std::vector<cf32> v;
+        if (!specFree_.empty()) { v = std::move(specFree_.back()); specFree_.pop_back(); }
+        v.assign(x, x + n);
+        specQ_.push_back(std::move(v));
     }
     specQCv_.notify_one();
 }
@@ -63,6 +66,7 @@ void Engine::spectrumLoop() {
         }
         analyzer_.feed(chunk.data(), chunk.size());
         tSpec_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count();
+        { std::lock_guard<std::mutex> lk(specQMu_); if (specFree_.size() < 8) specFree_.push_back(std::move(chunk)); }   // back for reuse
     }
 }
 
