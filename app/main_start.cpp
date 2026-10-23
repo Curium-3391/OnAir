@@ -161,6 +161,9 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--freq" && i + 1 < argc) app.freqMhz = atof(argv[++i]);
         if (std::string(argv[i]) == "--station" && i + 1 < argc) app.dabStation = atoi(argv[++i]);
         if (std::string(argv[i]) == "--constview" && i + 1 < argc) app.constView = atoi(argv[++i]);
+        if (std::string(argv[i]) == "--wf3d" && i + 1 < argc) {   // dev: the 3D waterfall at angle n (0-4, wf3d.h Preset) for a screenshot
+            app.wf.s3d.on = true; app.wf.s3d.preset = std::max(0, std::min((int)w3d::NumPresets - 1, atoi(argv[++i]))); app.wf.s3d.cam = w3d::preset(app.wf.s3d.preset);
+        }
         if (std::string(argv[i]) == "--synthgain") app.tune.synth.gainModel = true;
         if (std::string(argv[i]) == "--dvbt") { app.tune.synth.dvbt = true; app.tune.synth.snrDb = 28; }
         if (std::string(argv[i]) == "--t2only") app.stdMode = 1;
