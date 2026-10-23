@@ -122,6 +122,7 @@
 #include "dect2/elektro/elektro_rx.h"
 #include "dect2/lbj/lbj_rx.h"
 #include "dect2/railway/railway_rx.h"
+#include "dect2/horus/horus_rx.h"
 #include "dect2/dgps/dgps_engine.h"
 #include "dect2/eloran/eloran_engine.h"
 #include "dect2/nfc/nfc_engine.h"
@@ -488,6 +489,7 @@ public:
     DgpsReceiver& dgps() { return rxDgps_; }   // DGPS beacons: the station, the frames (telemetry through latestRx)
     RailwayReceiver& klw() { return rxKlw_; }
     RailwayReceiver& tdcs() { return rxTdcs_; }
+    HorusReceiver& horus() { return rxHorus_; }   // Project Horus balloons: tables, channels (telemetry through latestRx)
     LbjReceiver& lbj() { return rxLbj_; }   // LBJ railway warnings (telemetry through latestRx)
     Vdl4Receiver& vdl4() { return rxVdl4_; }   // VDL Mode 4 (telemetry through latestRx)
     UatReceiver& uat() { return rxUat_; }         // UAT 978 MHz ADS-B / FIS-B / TIS-B (telemetry through latestRx)
@@ -770,6 +772,7 @@ private:
     LbjReceiver rxLbj_;
     RailwayReceiver rxKlw_;
     RailwayReceiver rxTdcs_{railway::Protocol::Tdcs};
+    HorusReceiver rxHorus_;
     DgpsReceiver rxDgps_;
     ElLoranReceiver rxEloran_;
     NfcReceiver rxNfc_;

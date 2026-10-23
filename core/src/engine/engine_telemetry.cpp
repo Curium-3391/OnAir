@@ -198,6 +198,7 @@ int poll81(Rx& rx, RxTelemetry& t, uint64_t* seqs) {
 
 // The report of the receivers from DVB-S on (the first mode and the second, each with its own report numbers): 1 = a new one in t,
 // 0 = none new, -1 = a is not one of them
+static_assert(horus::kActiveStandard < Engine::kPollSeqSlots, "the Horus poll slot is its active standard");
 int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     if (wideOn_.load(std::memory_order_relaxed) && WideModes::supports(a)) return wide_.telemetry(a, t, wideSeq_[a & 255]) ? 1 : 0;
     t.wide.clear();
@@ -289,6 +290,7 @@ int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     case 82: return pollStd(rxLbj_, 82, t, seqs[76], &RxTelemetry::lbj);
     case railway::kKlwActiveStandard: return pollStd(rxKlw_, railway::kKlwActiveStandard, t, seqs[railway::kKlwActiveStandard], &RxTelemetry::klw);
     case railway::kTdcsActiveStandard: return pollStd(rxTdcs_, railway::kTdcsActiveStandard, t, seqs[railway::kTdcsActiveStandard], &RxTelemetry::tdcs);
+    case horus::kActiveStandard: return pollStd(rxHorus_, horus::kActiveStandard, t, seqs[horus::kActiveStandard], &RxTelemetry::horus);   // Horus (slot 149)
     case 84: return pollStd(rxUat_, 84, t, seqs[78], &RxTelemetry::uat);
     case 83: return pollStd(rxVdl4_, 83, t, seqs[77], &RxTelemetry::vdl4);
     case 78: return pollStd(rxAnt_, 78, t, seqs[72], &RxTelemetry::ant);

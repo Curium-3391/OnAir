@@ -156,6 +156,7 @@ void Engine::configureReceiver(int a, double r) {
     case 82: rxLbj_.configure(r); break;
     case railway::kKlwActiveStandard: rxKlw_.configure(r); break;
     case railway::kTdcsActiveStandard: rxTdcs_.configure(r); break;
+    case horus::kActiveStandard: rxHorus_.configure(r); break;
     case 121: rxDgps_.configure(r); break;
     case 127: rxEloran_.configure(r); break;
     case 149: rxNfc_.configure(r); break;
@@ -295,6 +296,7 @@ void Engine::placeReceiver(int a, double o, double centreHz, double dialHz, doub
     case 82: rxLbj_.setSignalOffset(o); rxLbj_.setCenterHz(centreHz); break;
     case railway::kKlwActiveStandard: rxKlw_.setSignalOffset(o); rxKlw_.setCenterHz(centreHz); break;
     case railway::kTdcsActiveStandard: rxTdcs_.setSignalOffset(o); rxTdcs_.setCenterHz(centreHz); break;
+    case horus::kActiveStandard: rxHorus_.setSignalOffset(o); rxHorus_.setCenterHz(dialHz); break;
     case 121: rxDgps_.setSignalOffset(o); rxDgps_.setCenterHz(centreHz); break;
     case 127: rxEloran_.setSignalOffset(o); rxEloran_.setCenterHz(centreHz); break;
     case 149: rxNfc_.setSignalOffset(o); rxNfc_.setCenterHz(centreHz); break;
