@@ -330,3 +330,103 @@ void viterbiRangeCpp(const int8_t* soft, size_t steps, std::vector<uint8_t>& bit
 void viterbiRange(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut) { viterbiRangeCpp(soft, steps, bits, metricOut); }
 } // namespace dect2::fecp
 #endif // C++ Viterbi
+
+// ------------------------------------------------------------------------------------------------------------------------------------------
+// 8-bit Viterbi, two runs side by side (fec_proto.h). States 16q..16q+15 in N[q]; new states j and j+32 come from old 2j and 2j+1 (vuzp
+// of two registers), with the butterfly metric M_j = sx_j a + sy_j b (|M| <= 62 for soft values within +-31). Saturating adds: a metric
+// that falls 128 below the best one sticks at the floor, which only happens to paths that cannot survive. Renormalised (best = 0) after
+// every second step: the best metric grows by at most 62 a step, so it never reaches the top of the range.
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+#include <arm_neon.h>
+namespace dect2::fecp {
+namespace {
+struct V8Tab {
+    int8_t sx[32], sy[32];
+    V8Tab() { for (int j = 0; j < 32; j++) { const unsigned r = (unsigned)(2 * j); sx[j] = __builtin_parity(r & 0x79) ? -1 : 1; sy[j] = __builtin_parity(r & 0x5B) ? -1 : 1; } }
+};
+const V8Tab& v8tab() { static V8Tab t; return t; }
+struct V8Run {
+    int8x16_t N[4];
+    uint64_t* dec = nullptr;
+    long off = 0;
+};
+inline __attribute__((always_inline)) void v8step(V8Run& r, const int8x16_t (&sx)[2], const int8x16_t (&sy)[2], uint8x16_t wt, int8_t a, int8_t b, uint64_t* dec) {
+    const int8x16_t va = vdupq_n_s8(a), vb = vdupq_n_s8(b);
+    int8x16_t nn[4];
+    uint8x16_t lo[2], hi[2];
+    for (int g = 0; g < 2; g++) {
+        const int8x16_t M = vmlaq_s8(vmulq_s8(sx[g], va), sy[g], vb);
+        const int8x16_t A = vuzp1q_s8(r.N[2 * g], r.N[2 * g + 1]), B = vuzp2q_s8(r.N[2 * g], r.N[2 * g + 1]);
+        const int8x16_t p0 = vqaddq_s8(A, M), p1 = vqsubq_s8(B, M), r0 = vqsubq_s8(A, M), r1 = vqaddq_s8(B, M);
+        nn[g] = vmaxq_s8(p0, p1); nn[2 + g] = vmaxq_s8(r0, r1);
+        lo[g] = vcgtq_s8(p1, p0); hi[g] = vcgtq_s8(r1, r0);
+    }
+    // decision bit of state s -> bit s of the step's word (weights 1..128 per group of eight lanes, three pairwise sums)
+    uint8x16_t d = vpaddq_u8(vpaddq_u8(vandq_u8(lo[0], wt), vandq_u8(lo[1], wt)), vpaddq_u8(vandq_u8(hi[0], wt), vandq_u8(hi[1], wt)));
+    d = vpaddq_u8(d, d);
+    vst1q_lane_u64(dec, vreinterpretq_u64_u8(d), 0);
+    for (int q = 0; q < 4; q++) r.N[q] = nn[q];
+}
+inline void v8renorm(V8Run& r) {
+    const int8_t top = vmaxvq_s8(vmaxq_s8(vmaxq_s8(r.N[0], r.N[1]), vmaxq_s8(r.N[2], r.N[3])));
+    r.off += top;
+    const int8x16_t m = vdupq_n_s8(top);
+    for (int q = 0; q < 4; q++) r.N[q] = vqsubq_s8(r.N[q], m);
+}
+void v8finish(V8Run& r, size_t steps, std::vector<uint8_t>& bits, long* metric) {
+    int8_t pm[64];
+    for (int q = 0; q < 4; q++) vst1q_s8(pm + 16 * q, r.N[q]);
+    int state = 0, bm = pm[0];
+    for (int s = 1; s < 64; s++) if (pm[s] > bm) { bm = pm[s]; state = s; }
+    bits.assign(steps, 0);
+    for (size_t t = steps; t-- > 0;) {
+        bits[t] = (uint8_t)(state >> 5);
+        state = ((state & 31) << 1) | (int)((r.dec[t] >> state) & 1);
+    }
+    if (metric) *metric = r.off + bm;
+}
+}   // namespace
+
+bool viterbi8x2Available() { return true; }
+
+void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB) {
+    if (!b) nb = 0;
+    const V8Tab& T = v8tab();
+    const int8x16_t sx[2] = {vld1q_s8(T.sx), vld1q_s8(T.sx + 16)}, sy[2] = {vld1q_s8(T.sy), vld1q_s8(T.sy + 16)};
+    static const uint8_t w8[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+    const uint8x16_t wt = vld1q_u8(w8);
+    static thread_local std::vector<uint64_t> dA, dB;
+    if (dA.size() < na) dA.resize(na);
+    if (dB.size() < nb) dB.resize(nb);
+    V8Run A, B;
+    for (int q = 0; q < 4; q++) { A.N[q] = vdupq_n_s8(0); B.N[q] = A.N[q]; }
+    A.dec = dA.data(); B.dec = dB.data();
+    const size_t both = std::min(na, nb) & ~(size_t)1;
+    size_t t = 0;
+    for (; t < both; t += 2) {   // two steps of each run, interleaved, then both renormalised
+        v8step(A, sx, sy, wt, a[2 * t], a[2 * t + 1], A.dec + t);
+        v8step(B, sx, sy, wt, b[2 * t], b[2 * t + 1], B.dec + t);
+        v8step(A, sx, sy, wt, a[2 * t + 2], a[2 * t + 3], A.dec + t + 1);
+        v8step(B, sx, sy, wt, b[2 * t + 2], b[2 * t + 3], B.dec + t + 1);
+        v8renorm(A); v8renorm(B);
+    }
+    auto rest = [&](V8Run& r, const int8_t* s, size_t n, size_t from) {   // the longer run on its own (renormalised after every second step)
+        for (size_t k = from; k < n; k++) {
+            v8step(r, sx, sy, wt, s[2 * k], s[2 * k + 1], r.dec + k);
+            if ((k - from) & 1) v8renorm(r);
+        }
+    };
+    rest(A, a, na, t);
+    v8finish(A, na, bitsA, metricA);
+    if (nb) { rest(B, b, nb, t); v8finish(B, nb, bitsB, metricB); }
+}
+}   // namespace dect2::fecp
+#else
+namespace dect2::fecp {
+bool viterbi8x2Available() { return false; }
+void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB) {
+    viterbiRange(a, na, bitsA, metricA);   // (no NEON: callers check viterbi8x2Available() and scale for viterbiRange instead)
+    if (b) viterbiRange(b, nb, bitsB, metricB);
+}
+}   // namespace dect2::fecp
+#endif

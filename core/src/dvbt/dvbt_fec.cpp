@@ -1,5 +1,8 @@
 #include "dect2/dvbt/dvbt_fec.h"
 #include "dect2/common/stage_prof.h"
+#include "dect2/fec/fec_proto.h"
+#include "dect2/dsp/gpu_viterbi.h"
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -75,8 +78,21 @@ void FecDecoder::process(bool) {
         for (size_t i = n8; i < n; i++) mean += std::fabs(p[i]);
     }
     mean /= (double)llrQueue_.size();
-    const float scale = (float)(std::min(40.0, 22.0 / std::max(1e-6, mean)));
-    llrScale_ = scale;
+    llrScale_ = (float)(std::min(40.0, 22.0 / std::max(1e-6, mean)));
+    // The 8-bit Viterbi (NEON) takes soft values within +-31 scaled to a mean of 14 (at that scale its bit error rate is the 16-bit decoder's,
+    // tests/fec/test_viterbi8_ber.cpp); the exact decoder elsewhere keeps the mean of 22 within +-127.
+    // the GPU decodes with the exact decoder's arithmetic (its soft values: the 16-bit scaling); the CPU with the 8-bit one where it has it
+    static const bool noGpu = getenv("DECT2_NOGPU") != nullptr;
+    const bool gpu = computeMode_ != 0 && !noGpu && GpuViterbi::instance().available();
+    const bool fast8 = !gpu && fecp::viterbi8x2Available();
+    auto viterbi = [&](const std::vector<int8_t>& in, std::vector<uint8_t>& out, long* m) {
+        if (gpu && GpuViterbi::instance().decode(in, out, m)) { st_.viterbiOnGpu = true; return; }
+        st_.viterbiOnGpu = false;
+        Viterbi::decode(in, out, 4, m, fast8);   // (a GPU that fails: the exact CPU decoder, which takes the same soft values)
+    };
+    const double target = fast8 ? 14.0 : 22.0;
+    const float scale = fast8 ? (float)(std::min(40.0 * 14.0 / 22.0, 14.0 / std::max(1e-6, mean))) : llrScale_;
+    const int limit = fast8 ? fecp::kViterbi8Max : 127;
 
     static thread_local std::vector<int8_t> soft, window;   // work buffers kept with the decoder thread (hundreds of kB per block)
     static thread_local std::vector<uint8_t> dec;
@@ -86,11 +102,11 @@ void FecDecoder::process(bool) {
         for (int ph = 0; ph < k; ph++) {
             std::vector<int8_t> s;
             DECT2_STAGE_VAR(dp, "dvbt.depuncture");
-            Viterbi::depuncture(llrQueue_.data(), llrQueue_.size(), rate, ph, s, scale);
+            Viterbi::depuncture(llrQueue_.data(), llrQueue_.size(), rate, ph, s, scale, limit);
             dp.stop();
             std::vector<uint8_t> b;
             long metric = 0;
-            Viterbi::decode(s, b, 4, &metric);
+            viterbi(s, b, &metric);
             if (ph == 0 || metric > bestMetric) { bestMetric = metric; bestPhase = ph; }
             if (k == 1) break;
         }
@@ -98,7 +114,7 @@ void FecDecoder::process(bool) {
         st_.phaseLocked = true;
     }
     DECT2_STAGE_VAR(dp, "dvbt.depuncture");
-    Viterbi::depuncture(llrQueue_.data(), llrQueue_.size(), rate, st_.punctPhase, soft, scale);
+    Viterbi::depuncture(llrQueue_.data(), llrQueue_.size(), rate, st_.punctPhase, soft, scale, limit);
     // each block starts at a symbol boundary and every symbol holds a whole number of puncture periods, so the phase repeats
     const size_t L = 192;
     window.assign(carry_.begin(), carry_.end());
@@ -106,9 +122,9 @@ void FecDecoder::process(bool) {
     const size_t steps = window.size() / 2;
     long metric = 0;
     dp.stop();
-    Viterbi::decode(window, dec, 4, &metric);
+    viterbi(window, dec, &metric);
     DECT2_STAGE("dvbt.rs");
-    st_.viterbiMargin = steps ? (double)metric / (double)(steps * 2 * 22) : 0;
+    st_.viterbiMargin = steps ? (double)metric / ((double)steps * 2 * target) : 0;
     const size_t fromStep = carry_.empty() ? 0 : L;                 // history steps were emitted before
     const size_t toStep = steps > L ? steps - L : 0;                // the tail is not yet reliable
     if (toStep > fromStep) bits_.insert(bits_.end(), dec.begin() + fromStep, dec.begin() + toStep);

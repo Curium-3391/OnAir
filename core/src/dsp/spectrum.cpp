@@ -1,6 +1,7 @@
 #include "dect2/dsp/spectrum.h"
 #include "dect2/dsp/dsp_compat.h"
 #include <algorithm>
+#include <cstdlib>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -42,10 +43,12 @@ struct SpectrumAnalyzer::Impl {
     uint32_t hist[64] = {};
     uint64_t seq = 0;
     std::atomic<bool> transform{true};
+    size_t maxBlocks = kMaxBlocksPerFrame;   // setMaxBlocksPerFrame()
     std::mutex mu;   // the worker thread feeds, the analysis thread takes frames and resets
 };
 
 SpectrumAnalyzer::SpectrumAnalyzer(size_t fftSize) : p_(new Impl), n_(fftSize) {
+    if (const char* e = getenv("DECT2_SPEC_BLOCKS")) p_->maxBlocks = (size_t)std::max(1, std::min(64, atoi(e)));   // dev / measurements
     p_->log2n = (int)std::lround(std::log2((double)n_));
     p_->window.resize(n_);
     hannWindowNorm(p_->window.data(), (int)n_);
@@ -112,7 +115,7 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
     s.count += n;
 
     // display doesn't need every block
-    if (!s.transform || s.blocks >= kMaxBlocksPerFrame) { s.pending.clear(); return; }
+    if (!s.transform || s.blocks >= s.maxBlocks) { s.pending.clear(); return; }
     // One block: window into split re/im, FFT, add the power. Whole blocks are read straight from the caller's samples; only a partial
     // block at the end is copied (and completed by the next call): the old code copied every sample into a queue and erased the front.
     auto block = [&](const cf32* b) {
@@ -133,11 +136,12 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
         block(s.pending.data());
         s.pending.clear();
     }
-    while (left >= n_ && s.blocks < kMaxBlocksPerFrame) { block(src); src += n_; left -= n_; }
-    if (s.blocks < kMaxBlocksPerFrame && left) s.pending.assign(src, src + left);
+    while (left >= n_ && s.blocks < s.maxBlocks) { block(src); src += n_; left -= n_; }
+    if (s.blocks < s.maxBlocks && left) s.pending.assign(src, src + left);
 }
 
 void SpectrumAnalyzer::setTransform(bool on) { p_->transform = on; }
+void SpectrumAnalyzer::setMaxBlocksPerFrame(int n) { std::lock_guard<std::mutex> lk(p_->mu); p_->maxBlocks = (size_t)std::max(1, std::min(64, n)); }
 
 size_t SpectrumAnalyzer::autoSize(double fs) {
     size_t n = 8192;

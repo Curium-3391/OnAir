@@ -313,7 +313,7 @@ static void toolbarStartStop(App& a, bool running) {
     memoryQuickBar(a);        // the starred memories in one row
 }
 
-// the LDPC decoder backend: CPU, GPU or Auto (DVB-T2 and ATSC 3.0)
+// the decoding backend: CPU, GPU or Auto (the DVB-T2 / ATSC 3.0 LDPC and the DVB-T Viterbi)
 static void toolbarCompute(App& a, bool vertical, bool running) {
     if (!vertical) vSeparator();
     {
@@ -334,7 +334,8 @@ static void toolbarCompute(App& a, bool vertical, bool running) {
         }
         if (ImGui::IsItemHovered()) {
             const char* gpuName = GpuLdpc::instance().deviceName();
-            ImGui::SetTooltip("LDPC decoding backend.\n"
+            ImGui::SetTooltip("Use the GPU for decoding (Auto, recommended): the DVB-T2 / ATSC 3.0 LDPC and the DVB-T Viterbi.\n"
+                "Now: %s on the %s.\n"
 #ifdef __APPLE__
                 "CPU: NEON on all cores. GPU: Metal compute.\n"
                 "Auto: the GPU when there is one, the CPU otherwise.\n"
@@ -343,7 +344,7 @@ static void toolbarCompute(App& a, bool vertical, bool running) {
                 "Auto: the GPU when a discrete graphics card is found, otherwise the CPU\n"
                 "first and the GPU if it falls behind real time.\n"
 #endif
-                "Graphics: %s", a.rx.gpuAvailable ? gpuName : "none usable");
+                "Graphics: %s", a.rx.standard == 1 ? "the Viterbi (DVB-T)" : "the LDPC (DVB-T2)", gpuNow ? "GPU" : "CPU", a.rx.gpuAvailable ? gpuName : "none usable");
         }
     }
 }
@@ -449,7 +450,7 @@ void toolbarParts(App& a, int mask, bool vertical) {
 
     if (!a.newUi) toolbarStartStop(a, running);   // the new interface has its Start button in the side rail
 
-    if ((mask & TbDecoder) && (a.family == 0 || a.family == 3)) toolbarCompute(a, vertical, running);   // the LDPC decoder is used by DVB-T2 and ATSC 3.0 only
+    if ((mask & TbDecoder) && (a.family == 0 || a.family == 3)) toolbarCompute(a, vertical, running);   // DVB-T2 / ATSC 3.0 (LDPC) and DVB-T (Viterbi)
     if ((mask & TbDecoder) && a.family == 0) toolbarStandard(a, vertical);   // the other families have one standard each: nothing to choose
 
     if ((mask & TbDecoder) && mu && mu->decoder) {

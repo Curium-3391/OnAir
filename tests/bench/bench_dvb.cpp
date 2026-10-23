@@ -1,7 +1,7 @@
 // DVB family cost per stage: each TV standard's built-in test signal, at the radio rate a user runs it at, straight through its receiver
 // (no Engine, no pacing), with the per-stage CPU accounting of dect2/common/stage_prof.h switched on.
 //
-//   bench_dvb [--case id[,id..]] [--seconds N] [--pipelined] [--list] [--json path]
+//   bench_dvb [--case id[,id..]] [--seconds N] [--pipelined] [--gpu] [--list] [--json path]
 //
 // For every case it prints CPU seconds per second of signal: the whole process (all threads), the thread that calls feed() (the one that
 // must keep up with the radio: above 1.0 the ring overflows), and every stage the receiver names, with its share. The signal is generated
@@ -47,6 +47,7 @@ using Clock = std::chrono::steady_clock;
 
 namespace {
 
+bool gGpu = false;         // --gpu: the T2 LDPC and the DVB-T Viterbi on the GPU where there is one (default: the CPU decoders)
 bool gPipelined = false;   // --pipelined: the receivers' live-radio threading (DvbtReceiver / T2Receiver::setPipelined)
 
 struct Case {
@@ -198,7 +199,7 @@ Rx makeRx(const Case& c, std::function<void(const uint8_t*, size_t)> ts) {
         auto blocks = std::make_shared<std::pair<long, long>>(0, 0);
         bb->setSink([ts](const uint8_t* pkt) { ts(pkt, 1); });
         rx->configure(rate, c.bwMhz);
-        rx->setComputeMode(0);   // the CPU decoder (the GPU one is measured by tests/dsp)
+        rx->setComputeMode(gGpu ? 2 : 0);   // the CPU decoder unless --gpu
         if (gPipelined) rx->setPipelined(true);
         rx->setPlpCallback([bb, blocks](const PlpResult& p) {
             DECT2_STAGE("ts.out");
@@ -221,6 +222,7 @@ Rx makeRx(const Case& c, std::function<void(const uint8_t*, size_t)> ts) {
     }
     case 2: {
         auto rx = std::make_shared<DvbtReceiver>();
+        rx->setComputeMode(gGpu ? 2 : 0);   // the CPU Viterbi unless --gpu
         rx->configure(rate, c.bwMhz);
         if (gPipelined) rx->setPipelined(true, true);
         rx->setPacketCallback(tsCb);
@@ -332,8 +334,9 @@ int main(int argc, char** argv) {
         } else if (!strcmp(argv[i], "--seconds") && i + 1 < argc) secs = atof(argv[++i]);
         else if (!strcmp(argv[i], "--json") && i + 1 < argc) jsonPath = argv[++i];
         else if (!strcmp(argv[i], "--pipelined")) gPipelined = true;
+        else if (!strcmp(argv[i], "--gpu")) gGpu = true;
         else if (!strcmp(argv[i], "--list")) { for (auto& c : cases()) printf("%-14s %s\n", c.id.c_str(), c.what.c_str()); return 0; }
-        else { fprintf(stderr, "usage: bench_dvb [--case id[,id..]] [--seconds N] [--pipelined] [--list] [--json path]\n"); return 2; }
+        else { fprintf(stderr, "usage: bench_dvb [--case id[,id..]] [--seconds N] [--pipelined] [--gpu] [--list] [--json path]\n"); return 2; }
     }
     prof::stageProfEnable(true);
     FILE* js = jsonPath ? fopen(jsonPath, "w") : nullptr;

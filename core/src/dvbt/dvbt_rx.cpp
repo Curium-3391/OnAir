@@ -1,5 +1,6 @@
 #include "dect2/dvbt/dvbt_rx.h"
 #include "dect2/dvbt/dvbt_fec.h"
+#include "dect2/dsp/gpu_viterbi.h"
 #include "dect2/common/stage_pipeline.h"
 #include "dect2/common/stage_prof.h"
 #include "dect2/channels/chan_locate.h"
@@ -41,14 +42,15 @@ struct DvbtReceiver::Impl {
     // Off (no cost) until the clock is measurably off. Local to this receiver; a shared clock_correct.h can replace it.
     // Merged (a radio rate that has to be resampled anyway, 10 Msps for 8 MHz): one ExactResampler takes the radio's samples straight to the native
     // rate and the clock correction only steers its step, instead of the rational resampler followed by a second, near-unity resampler: one
-    // filter per sample instead of two (36 taps instead of 32 + 32 once the clock is corrected, which with a real radio is all the time).
+    // filter per sample instead of two (32 taps instead of 32 + 32 once the clock is corrected, which with a real radio is all the time).
     struct ClockCorrector {
         ExactResampler rs;
         bool on = false;
         bool merged = false;
         double nominal = 1.0;   // merged: input samples per output sample at the nominal rates
         std::vector<cf32> out;
-        void setMerged(double inRate, double outRate) { merged = rs.configure(inRate, outRate, 16) && !rs.passthrough(); nominal = rs.step(); }
+        // 14 lobes: 32 taps at 10 -> 9.14 Msps (a whole number of 8-tap blocks; worst in-band error -42 dB, at the band-edge carriers only)
+        void setMerged(double inRate, double outRate) { merged = rs.configure(inRate, outRate, 14) && !rs.passthrough(); nominal = rs.step(); }
         double ppm() const { return merged ? (rs.step() / nominal - 1.0) * 1e6 : on ? (rs.step() - 1.0) * 1e6 : 0.0; }
         void reset() { on = false; out.clear(); if (merged) { rs.reset(); rs.setStep(nominal); } }
         // the samples run fast by rel (positive: more samples than nominal): take that much more input per output sample
@@ -97,6 +99,7 @@ struct DvbtReceiver::Impl {
     std::vector<float> fre, fim;   // transform() works on these split arrays
     std::atomic<int> detect{0};
     std::atomic<bool> lpReq{false};
+    std::atomic<int> computeMode{2};
     int agreeCount = 0, agreeMode = -1, agreeGi = -1;
     std::vector<double> acqCumR, acqCumI, acqEn, acqRr, acqF;   // scratch of acquire()
     uint64_t searchSamples = 0;   // samples the acquisition has gone through without finding a signal (reduced search rate after 2 s)
@@ -891,11 +894,13 @@ struct DvbtReceiver::Impl {
             const cf32* __restrict yp = yD.data();
             cf32* __restrict ep = eq.data();
             float* __restrict np = n0.data();
-            const double s2 = sigma2;
+            // one reciprocal per carrier for the cell and its noise (instead of two float and one double division; the values move in
+            // the last bits, the decoded stream does not)
+            const float s2h = (float)(0.5 * sigma2);
             for (int i = 0; i < Nd; i++) {
-                const float g2 = std::max(1e-9f, std::norm(hp[i]));
-                ep[i] = yp[i] * std::conj(hp[i]) / g2;
-                np[i] = (float)(s2 / (2.0 * g2));
+                const float r = 1.f / std::max(1e-9f, std::norm(hp[i]));
+                ep[i] = yp[i] * std::conj(hp[i]) * r;
+                np[i] = s2h * r;
             }
         }
         est.stop();
@@ -970,6 +975,7 @@ struct DvbtReceiver::Impl {
         fecSeqIn = j.seq + 1;
         fec.configure(j.prm);
         if (j.lp != fec.lowPriority()) fec.setLowPriority(j.lp);
+        fec.setComputeMode(computeMode.load(std::memory_order_relaxed));
         fec.pushSymbol(j.eq.data(), j.n0.data(), j.symIdx);
         streamSecs += j.secs;
         fec.takePackets(pktBuf);
@@ -1041,6 +1047,9 @@ struct DvbtReceiver::Impl {
         t.dvbt.viterbiMargin = fs.viterbiMargin; t.dvbt.punctPhase = fs.punctPhase; t.dvbt.secSinceTps = secSinceTps;
         t.dvbt.symbolIdx = tpsOk ? (int)((absSym - frameStartAbs) % 68) : -1;
         t.dvbt.fecDropped = fecDrops.load();
+        t.dvbt.viterbiOnGpu = fs.viterbiOnGpu;
+        t.plpOnGpu = fs.viterbiOnGpu;   // (the field the T2 status shows for its LDPC: "which device decodes")
+        t.gpuAvailable = GpuViterbi::instance().available(); t.computeMode = computeMode.load();
         t.blocksOk = fs.rsClean + fs.rsCorrected; t.blocksBad = fs.rsFailed;
         t.plpValid = tpsOk; t.plpFrames = fs.packets;
         t.plpMerDb = snrDb;
@@ -1071,7 +1080,8 @@ void DvbtReceiver::configure(double inputRateHz, double bandwidthMhz) {
     if (I.decimate) { I.clk.setMerged(inputRateHz, I.fn); I.clk.reset(); }
 }
 
-void DvbtReceiver::setLowPriority(bool lp) { p_->lpReq = lp; }   // applied with the next symbol, on the thread that decodes
+void DvbtReceiver::setLowPriority(bool lp) { p_->lpReq = lp; }
+void DvbtReceiver::setComputeMode(int m) { p_->computeMode = m; }   // applied with the next symbol, on the thread that decodes
 
 void DvbtReceiver::setPipelined(bool on, bool blocking) {
     Impl& I = *p_;

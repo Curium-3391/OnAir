@@ -113,9 +113,11 @@ class Viterbi {
 public:
     // Decodes a stream of depunctured soft values. Output is one decoded bit per byte.
     // `soft` holds pairs (x, y) per trellis step with 0 for punctured positions.
-    static void decode(const std::vector<int8_t>& soft, std::vector<uint8_t>& bits, int threads = 4, long* pathMetric = nullptr);
-    // Depuncture LLRs (floats, > 0 = bit 0) for a code rate; `phase` rotates the puncturing pattern.
-    static void depuncture(const float* llr, size_t n, int rate, int phase, std::vector<int8_t>& soft, float scale);
+    // fast8: the 8-bit two-run decoder (fecp::viterbiRange8x2, soft values within +-fecp::kViterbi8Max) where it exists, else the exact one.
+    static void decode(const std::vector<int8_t>& soft, std::vector<uint8_t>& bits, int threads = 4, long* pathMetric = nullptr, bool fast8 = false);
+    // Depuncture LLRs (floats, > 0 = bit 0) for a code rate; `phase` rotates the puncturing pattern. llr * scale is rounded and limited
+    // to +-limit (127: the full int8 range, as the exact decoder takes it).
+    static void depuncture(const float* llr, size_t n, int rate, int phase, std::vector<int8_t>& soft, float scale, int limit = 127);
 };
 
 // Reed-Solomon (204,188,t=8): returns the number of corrected bytes, or -1 if uncorrectable

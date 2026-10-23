@@ -34,6 +34,10 @@ public:
     void feed(const cf32* x, size_t n);
     bool takeFrame(SpectrumFrame& out); // false if nothing accumulated
     void setTransform(bool on);         // off = stats only
+    // At most this many FFT blocks are averaged into a frame (16 by default; DECT2_SPEC_BLOCKS sets the start value). The rest of the
+    // samples between two frames only go into the level statistics: at 10 Msps with 32768 bins the default transforms every sample
+    // (30 frames a second), 4 transforms a quarter of them, for a noisier but much cheaper display when the CPU is tight.
+    void setMaxBlocksPerFrame(int n);
     void resize(size_t fftSize);        // power of two, 1024..kMaxFft: a new transform size (drops the accumulated data)
     void reset();                       // forget accumulated data (after retuning)
 

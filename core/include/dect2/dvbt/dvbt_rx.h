@@ -16,6 +16,8 @@ public:
     void reset();
     // Hierarchical multiplexes: deliver the low-priority stream instead of the high-priority one (no effect otherwise)
     void setLowPriority(bool lp);
+    // Where the Viterbi runs: 0 CPU, 1 GPU, 2 automatic (the GPU when the computer has one; the default). Applied with the next symbol.
+    void setComputeMode(int m);
     void feed(const cf32* x, size_t n);
     // For live radios: the error correction (demapping, Viterbi, Reed-Solomon) runs on its own thread behind a bounded queue, and feed() returns
     // once the symbols are equalised; the packets follow on that thread, in order. Off (the default) feed() is synchronous: file sources and
