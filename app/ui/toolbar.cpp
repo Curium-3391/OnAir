@@ -511,6 +511,10 @@ void tuneDecode(App& a, double absMhz) {
     savePrefsSoon(a);
 }
 
+double settingsRetuneCentreHz(const App& a) {
+    return a.engine.running() && a.engine.decodeShiftHz() != 0 ? a.tune.centerHz : a.freqMhz * 1e6;
+}
+
 void spectrumTune(App& a, double absMhz) {
     if (a.tuningMode == 1) {
         if (a.fmMode) { a.freqMhz = std::round(std::max(0.0, dialMhzFromAbs(a, absMhz)) * 10.0) / 10.0; tuneDecode(a, absMhz); }

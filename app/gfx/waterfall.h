@@ -55,7 +55,11 @@ struct Waterfall {
     float rowTau = 0.15f;                     // the rows' time constant (seconds; 0: each row its own frame)
     std::vector<float> rowAvg, rowPow;
     double lastOfferT = 0;
-    float rowsPerSec = 0;    // 0: one row per spectrum frame (about 30 a second); else this many rows a second, each the highest level of the frames in between
+    bool rowAverage = false; // slow rows: the average of the frames in between instead of the highest level (#237)
+    bool clockLabels = false;// the time scale shows the clock time of the rows instead of "seconds ago" (#237)
+    int accN = 0;            // frames summed into acc (rowAverage)
+    std::vector<float> accOut;
+    float rowsPerSec = 0;    // 0: one row per spectrum frame (about 30 a second); else this many rows a second (down to one a minute), each the highest level of the frames in between
     bool paused = false;     // no new rows: the picture stays and can be scrolled back
     double nextRowT = 0;
     double trackT = 0;
@@ -71,7 +75,7 @@ struct Waterfall {
         nStamps++;
         pushT = t;
     }
-    bool slow() const { return rowsPerSec > 0.05f && rowsPerSec < 28.f; }   // rows come at a set, slower pace
+    bool slow() const { return rowsPerSec > 0.001f && rowsPerSec < 28.f; }   // rows come at a set, slower pace
     bool timeKnown() const { return nStamps >= 128 || slow(); }
     void setRate(float r) { rowsPerSec = r; nStamps = 0; nextRowT = 0; accEmpty = true; rowDt = slow() ? 1.0 / r : 1.0 / 30; }
 
@@ -134,13 +138,20 @@ struct Waterfall {
         }
         lastOfferT = now;
         if (slow()) {   // the highest level of every bin since the last row, so a short burst is not missed
-            if (acc.size() != dbfs.size() || accEmpty) { acc.assign(d, d + dbfs.size()); accEmpty = false; }
+            if (acc.size() != dbfs.size() || accEmpty) { acc.assign(d, d + dbfs.size()); accEmpty = false; accN = 1; }
+            else if (rowAverage) { for (size_t i = 0; i < dbfs.size(); i++) acc[i] += d[i]; accN++; }
             else for (size_t i = 0; i < dbfs.size(); i++) acc[i] = std::max(acc[i], d[i]);
             if (now < nextRowT) return false;
             const double dt = 1.0 / rowsPerSec;
             nextRowT = now - nextRowT > dt ? now + dt : nextRowT + dt;
             accEmpty = true;
             d = acc.data();
+            if (rowAverage && accN > 1) {
+                accOut.resize(acc.size());
+                const float k = 1.f / (float)accN;
+                for (size_t i = 0; i < acc.size(); i++) accOut[i] = acc[i] * k;
+                d = accOut.data();
+            }
             extra = 0;
         }
         for (int i = 0; i <= extra; i++) writeFrom(d, dbfs.size());

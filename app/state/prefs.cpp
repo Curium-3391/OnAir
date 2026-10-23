@@ -98,6 +98,7 @@ const std::vector<PrefKey>& keyTable() {
         num("wfMap3", AT(a.wf.map), cmap::NavyHeat, -1, (int)Waterfall::NumMaps - 1, true),   // 3.0: a new key, everyone starts on Navy heat (the old looks set their own maps)
         flagB("wfAutoFloor", AT(a.wf.autoTrack), true),   // new key with the floor-anchored range (3.0): everyone starts on auto
         flagB("specAutoDb", AT(a.specAutoDb), true), flagB("specPerHz", AT(a.specPerHz), true),
+        flagB("wfAvg", AT(a.wf.rowAverage), false, false, true), flagB("wfClock", AT(a.wf.clockLabels), false, false, true),
         real("wfGamma", AT(a.wf.gamma), 0.4, 2.5),
         real("wfBright", AT(a.wf.brightness), -0.5, 0.5), real("wfContrast", AT(a.wf.contrast), 0.25, 4),
         num("wfDetailAuto", AT(a.wf.detail), -1, -1, Waterfall::kMaxCols, true), flagB("wfPerMode", AT(a.wfPerMode), false, false, true),
