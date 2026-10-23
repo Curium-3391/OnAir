@@ -26,6 +26,7 @@ looks for, the exact folders it searches, an **Open codecs folder** button (it m
 | Yaesu System Fusion (WIP) | AMBE+2 class (proprietary, DVSI) | a speech codec **plug-in with the id `ysf`** that you install yourself (see [Speech codec plug-ins](#speech-codec-plug-ins-voice-modes)); callsigns and data are shown without it, no sound |
 | TETRA | its own speech codec | nothing from you: it is not mbelib and not codec2 |
 | TETRA voice (unencrypted calls only) | TETRA ACELP | a **speech codec plug-in** `onair-codec-tetra` that you build yourself, for example around **mbelib-neo** (see [Speech codec plug-ins](#speech-codec-plug-ins-voice-modes)); the cell, network and call information work without it |
+| TETRAPOL voice (clear calls only) | RP-CELP (PAS 0001-7, patented) | a **speech codec plug-in** `onair-codec-tetrapol` that you install yourself (see [TETRAPOL voice](#tetrapol-voice-id-tetrapol)); cells, frame sync and the call table work without it |
 | Yaesu System Fusion (C4FM) voice | AMBE+2 (patented) | a **speech codec plug-in** with the codec id **`ysf`** (`onair-codec-ysf`) that you build yourself; callsigns, call mode and slow data work without it |
 | KA modes (KAAL, KAPP, KAFT, KAVB, KAIT, KAWS) | their own codecs (unpatented, written for OnAir) | nothing: nothing to install |
 | DAB, DRM, TV, FM | MP2, AAC, H.264 ... | nothing (FFmpeg is inside OnAir) |
@@ -337,7 +338,7 @@ OnAir ships no AC-4 code, no FFmpeg patch and downloads nothing; the build scrip
 
 ## Speech codec plug-ins (voice modes)
 
-A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from your user folder, never from
+A voice mode that needs a speech codec OnAir does not ship (TETRA voice with the id `tetra`, TETRAPOL voice with the id `tetrapol`, Yaesu Fusion voice with the id `ysf`, later Iridium voice) loads it from your user folder, never from
 the program: `onair-codec-<id>.dylib` / `.so` / `.dll` in the codecs folder under the app data folder (macOS
 `~/Library/Application Support/OnAir/codecs/`, Linux `~/.local/share/onair/codecs/`, Windows `%LOCALAPPDATA%\OnAir\codecs\`). Without it the
 mode says "Codec not installed" and links here. The first time, OnAir shows a legal notice: you are responsible for following the laws
@@ -352,6 +353,29 @@ Yaesu's public specification, so the plug-in has to do that part itself.
 Recommended source for a TETRA plug-in: mbelib-neo (https://github.com/arancormonk/mbelib-neo), GPL-2.0-or-later. It has a TETRA full-rate speech decoder (`mbe_tetraDecodeFrame`) that takes the same 137 bytes, one bit per byte, B(1)..B(137), so a small wrapper exporting the four `onair_speech_*` functions is enough. Its authors have not cleared the patent status of the TETRA codec, so check that you may use it where you live. You build it yourself; OnAir does not include it.
 
 Yaesu Fusion voice (id `ysf`): OnAir decodes the C4FM frames, removes the channel coding and gives the plug-in the AMBE+2 voice bits of each frame through the same four `onair_speech_*` functions. The decoder behind it is yours to supply, for example from mbelib-neo (it handles IMBE, AMBE and AMBE+2). The same rules apply: you build it, OnAir does not include it, and a legal notice is shown once. Without the plug-in the mode shows the callsigns and data and says "Codec not installed".
+
+### TETRAPOL voice (id `tetrapol`)
+
+OnAir removes the TETRAPOL channel coding (PAS 0001-2 clause 6: the transmission differential, scrambling, UHF precoding, interleaving and the
+protected part's code) and calls `onair_speech_decode` once per 20 ms voice frame with **16 bytes**:
+
+| Bytes | Content |
+|---|---|
+| 0 .. 14 | the 120 RP-CELP bits of the frame, bit k (k = 0 .. 119) in byte k / 8 under the mask `0x80 >> (k % 8)` (most significant bit first). k = 0 .. 19 are `voice1` (the protected bits), k = 20 .. 119 `voice2`, in the order they are in the frame: the PAS 0001-7 bit numbering 0 .. 119 |
+| 15 | flags: bit 0 set when the frame is damaged (the CRC-3 of the protected part failed); the other bits are 0 |
+
+The plug-in answers with 160 samples of 8 kHz PCM (another rate is resampled). A damaged frame should be concealed (repeat or fade the last
+frame). The plug-in's own sample rate comes from `onair_speech_sample_rate`.
+
+**Only clear calls reach the plug-in.** A frame is handed over only when the call's own signalling, read in the clear on the same channel
+(`D_CALL_START` or `D_CALL_CONNECT`), carried a key reference with key index 0 (a clear call, PAS 0001-3-2). Encrypted calls (any other
+key index) and calls whose state OnAir did not hear (tuned in after the start) are never decoded and never reach the plug-in: no key is
+used, guessed or stored. Most TETRAPOL networks encrypt their traffic, so most calls stay silent and show "encrypted (not decoded)".
+
+**Listen to** (clear calls / nothing) and **Record calls** (one WAV per clear call in the recordings folder, the date and time in the file
+name, no group or channel number) are in the TETRAPOL panel. The call table is shown on the screen only; it is never saved, exported or
+logged. There is no free RP-CELP decoder that we know of, and OnAir does not include one; the panel's **Install helper** shows the exact file
+name it looks for and the codecs folder.
 
 ### AMBE+2, AMBE and IMBE plug-ins (DMR, NXDN, dPMR, D-STAR, P25)
 
@@ -371,7 +395,7 @@ DMR plays one time slot at a time: the **Listen to** box in the DMR panel choose
 
 ## Nothing patented is bundled
 
-OnAir never includes, downloads or links a patented codec. That covers mbelib / mbelib-neo (IMBE, AMBE, AMBE+2 and the TETRA codec), the HD Radio HDC decoder (the patched FAAD2), DRA+, the AC-4 decoder and the Iridium and Inmarsat voice codecs: you build or install them yourself, they load from your user codecs folder, and the voice stays silent until you do. The **KA modes** (KAAL, KAPP, KAFT, KAVB, KAIT and KAWS) use their own codecs, written for OnAir and not covered by third-party patents as far as is known (KAAL voice uses its own MDCT codec, KAIT its own wavelet picture codec), so they need nothing from you. KAVB has no video or audio codec yet.
+OnAir never includes, downloads or links a patented codec. That covers mbelib / mbelib-neo (IMBE, AMBE, AMBE+2 and the TETRA codec), the HD Radio HDC decoder (the patched FAAD2), DRA+, the AC-4 decoder, the Iridium and Inmarsat voice codecs and the TETRAPOL RP-CELP codec: you build or install them yourself, they load from your user codecs folder, and the voice stays silent until you do. The **KA modes** (KAAL, KAPP, KAFT, KAVB, KAIT and KAWS) use their own codecs, written for OnAir and not covered by third-party patents as far as is known (KAAL voice uses its own MDCT codec, KAIT its own wavelet picture codec), so they need nothing from you. KAVB has no video or audio codec yet.
 
 ## Legal note
 

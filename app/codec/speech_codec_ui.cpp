@@ -175,7 +175,7 @@ void voiceCodecsWindow(App& a) {
     if (!a.voiceCodecsOpen) return;
     ImGui::SetNextWindowSize(ImVec2(760 * gUi, 460 * gUi), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Voice codecs", &a.voiceCodecsOpen)) { ImGui::End(); return; }
-    for (const char* id : {"ambe2", "ambe", "imbe"}) voiceCodecTick(id);
+    for (const char* id : {"ambe2", "ambe", "imbe", "tetrapol"}) voiceCodecTick(id);
     ImGui::PushTextWrapPos(0);
     ImGui::TextUnformatted("OnAir never ships a patented voice codec. Patented codecs are loaded at run time from a plug-in (or library) that you install yourself in the codecs folder; open codecs need nothing. Encrypted calls are never decoded. Check the patent and radio rules where you live.");
     ImGui::PopTextWrapPos();
