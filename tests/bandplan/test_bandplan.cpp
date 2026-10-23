@@ -73,7 +73,15 @@ int main() {
       const Band* fm = B(p, "fm", "FM broadcast");
       CHECK(fm && nearBy(fm->startHz, 76e6) && nearBy(fm->endHz, 95e6), "Japan FM is 76-95 MHz"); }
     { const Plan* p = P(reg, "br");
-      ch(B(p, "tv", "VHF TV"), 7, 177142857, "br"); ch(B(p, "tv", "UHF TV"), 14, 473142857, "br"); ch(B(p, "tv", "UHF TV"), 51, 695142857, "br"); }
+      ch(B(p, "tv", "VHF TV"), 7, 177142857, "br"); ch(B(p, "tv", "UHF TV"), 14, 473142857, "br"); ch(B(p, "tv", "UHF TV"), 51, 695142857, "br");
+      // amateur bands from Anatel Ato 926/2024 Tabela I, not the US 47 CFR 97 limits
+      const Band* h70 = B(p, "ham", "70 cm");
+      CHECK(h70 && nearBy(h70->startHz, 430e6) && nearBy(h70->endHz, 440e6), "Brazil 70 cm is 430-440 MHz");
+      const Band* h60 = B(p, "ham", "60 m");
+      CHECK(h60 && nearBy(h60->startHz, 5351.5e3) && nearBy(h60->endHz, 5366.5e3), "Brazil 60 m is 5351.5-5366.5 kHz");
+      const Band* h33 = B(p, "ham", "33 cm"); const Band* h33u = B(p, "ham", "33 cm (upper)");
+      CHECK(h33 && h33u && nearBy(h33->endHz, 907.5e6) && nearBy(h33u->startHz, 915e6) && !h33->contains(910e6) && !h33u->contains(910e6), "Brazil 33 cm skips 907.5-915 MHz");
+      CHECK(B(p, "ham", "2200 m") && B(p, "ham", "630 m") && B(p, "ham", "1.25 m"), "Brazil has the 2200 m, 630 m and 1.25 m bands"); }
     { const Plan* p = P(reg, "au");
       const Band* v = B(p, "tv", "VHF TV");
       Channel c;

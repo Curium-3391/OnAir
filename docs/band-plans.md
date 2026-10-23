@@ -20,7 +20,7 @@ Source of truth: `data/bandplans/builtin.json`, compiled into the program (no ne
 | USA, Canada | ATSC ch 2-36, 6 MHz (VHF 2-4, 5-6, 7-13, UHF 14-36) | ch 200-300, 87.9-107.9, 200 kHz | none | MW 540-1700, 10 kHz | 25 kHz | Region 2 | FRS / GMRS, MURS, CB (USA) |
 | Australia | VHF ch 6-12 with 9A, UHF ch 28-51, 7 MHz | 87.5-108 | Band III | MW 531-1701, 9 kHz | 25 kHz | own plan | |
 | Japan | UHF ch 13-52, 6 MHz ISDB-T | 76-95 | none | MW 9 kHz | 25 kHz | core | |
-| Brazil | ISDB-Tb VHF 7-13, UHF 14-51 | ch 200-300 | none | MW 10 kHz | 25 kHz | Region 2 | |
+| Brazil | ISDB-Tb VHF 7-13, UHF 14-51 | ch 200-300 | none | MW 10 kHz | 25 kHz | Anatel (2200 m to 5 cm) | |
 | China | DTMB DS6-12, DS13-24, DS25-48, 8 MHz | 87-108 | none | MW 9 kHz | 25 kHz | VHF / UHF only | |
 | India, New Zealand, UAE / Gulf, South Africa | CCIR raster (8 MHz UHF), see below | 87.5-108 (NZ 88-108) | none | MW, LW (Gulf, South Africa) | 25 kHz | varies | |
 | Europe (CEPT generic) | as Germany | | | | | | the fallback for Hungarian and unknown European setups |
@@ -42,7 +42,7 @@ These are marked **Not fully verified** in the picker; the reason is in each pla
 
 Left out on purpose because the plan is not known well enough: Italy's own band III channel names (A-H2), Japan's VHF ISDB-T table, China's low VHF (DS1-5), Hungary, Russia and others (there is the generic European plan). In Europe the 470-694 MHz raster (ch 21-48) is the one left to broadcasting by EU Decision 2017/899; individual countries use fewer channels, and a few still have terrestrial TV in band III. UK, Germany, France, Spain and others keep DAB in band III.
 
-Sources used: ITU Radio Regulations Article 5 and Appendix 18, ITU-R BT.470, the Geneva 1975 and GE84 regional agreements, CEPT ERC Rec 70-03 and ECC/DEC/(15)05, ETSI EN 300 401 (DAB blocks), ICAO Annex 10, US 47 CFR 73 / 95 / 97, ARIB STD-B31, ABNT NBR 15601, ACMA plans, and the Wikipedia channel tables for the national lists. Every band in the file carries its own `source`.
+Sources used: ITU Radio Regulations Article 5 and Appendix 18, ITU-R BT.470, the Geneva 1975 and GE84 regional agreements, CEPT ERC Rec 70-03 and ECC/DEC/(15)05, ETSI EN 300 401 (DAB blocks), ICAO Annex 10, US 47 CFR 73 / 95 / 97, ARIB STD-B31, ABNT NBR 15601, Anatel Ato 926/2024 (Brazilian amateur bands), ACMA plans, and the Wikipedia channel tables for the national lists. Every band in the file carries its own `source`.
 
 ## Import and export
 
