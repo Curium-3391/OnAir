@@ -2,6 +2,7 @@
 // the ADC-bits table and the options of the selected source (test signal, IQ file, sound card, Hamlib rig).
 // Split from toolbar.cpp; shared declarations are in app.h and toolbar_internal.h.
 #include "../app.h"
+#include "../gfx/file_vfo.h"
 #include "ui_common.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/source/antenna_ports.h"
@@ -33,13 +34,15 @@ int adcBitsFor(const DeviceInfo& d, double rateHz) {
 // gives every rate the modes ask for, a SoapySDR radio lists its rates once it has been opened.
 // A .sigmf-meta / .sigmf-data / two-channel .wav says its own rate, centre frequency, sample format and where the samples start.
 static void applyIqFileInfo(App& a, const std::string& path) {
-    a.file.offsetBytes = 0; a.file.endBytes = 0; a.file.bigEndian = false;
+    a.file.offsetBytes = 0; a.file.endBytes = 0; a.file.bigEndian = false; a.file.centreHz = 0;
     IqFileInfo info; std::string err;
     if (!probeIqFile(path, info, err)) { if (!err.empty()) { a.engine.log(err); a.file.path.clear(); } return; }
     a.file.path = info.dataPath; a.file.format = info.format; a.file.bigEndian = info.bigEndian;
     a.file.offsetBytes = info.offsetBytes; a.file.endBytes = info.endBytes;
     if (info.sampleRate > 0) a.file.sampleRate = info.sampleRate;
+    const double nameCentre = info.centerHz > 0 ? 0.0 : filevfo::guessCentreHz(path);   // a header without a frequency: the name may carry it
     if (info.centerHz > 0) a.freqMhz = info.centerHz / 1e6;
+    else if (nameCentre > 0) a.freqMhz = nameCentre / 1e6;
     a.engine.log("IQ file: " + std::to_string(info.sampleRate / 1e6) + " Msps, " + std::to_string(info.centerHz / 1e6) + " MHz" + (info.description.empty() ? "" : ", " + info.description));
 }
 
@@ -71,6 +74,7 @@ void startReceiver(App& a) {
     if (a.scanner.progress().running && a.devices[a.devIdx].isRadio()) { a.engine.log("a scan is using the radio: stop the scan first"); return; }
     const bool isFile = a.devices[a.devIdx].kind == DeviceInfo::File;
     a.tune.centerHz = a.freqMhz * 1e6;
+    fileStartPrep(a);   // a recording keeps its centre; the frequency box is the tune box (VFO)
     applyBandwidth(a);
     if (isFile && a.file.offsetBytes == 0) { const double r = guessSampleRate(a.file.path); if (r > 0) a.file.sampleRate = r; } // the name says the rate (a SigMF / WAV file says it itself)
     if (isFile && a.file.path.empty()) a.engine.log("choose an IQ file first");
@@ -298,6 +302,52 @@ static void synthSourceOptions(App& a, bool running) {
     if (ch && running) a.engine.retune(a.tune);
 }
 
+// "File info": the recording's true centre frequency, rate and format, for a file whose header lacks them (a raw .cs8 / .cu8 / .cf32 has none), with
+// auto-detect from the SigMF / BLUE / WAV header or the name. The tune box moves across the whole recorded span around this centre (file_vfo.h).
+static void fileInfoPopup(App& a) {
+    if (ImGui::SmallButton(tr("File info"))) { a.fileInfoOpen = true; ImGui::OpenPopup("##fileinfo"); }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The centre frequency and the rate of the recording. The spectrum stays on the centre; the tune box moves across the recorded band."));
+    if (!ImGui::BeginPopup("##fileinfo")) { a.fileInfoOpen = false; return; }
+    static double centre = 0, msps = 0;
+    static bool primed = false;
+    if (a.fileInfoOpen) { centre = fileCentreMhz(a); msps = a.file.sampleRate / 1e6; a.fileInfoOpen = false; primed = true; }
+    if (!primed) { centre = fileCentreMhz(a); msps = a.file.sampleRate / 1e6; primed = true; }
+    ImGui::TextDisabled("%s", tr("Centre frequency (MHz)"));
+    ImGui::SetNextItemWidth(150 * gUi);
+    ImGui::InputDouble("##ficentre", &centre, 0, 0, "%.6f");
+    if (ImGui::IsItemDeactivatedAfterEdit() && centre > 0) fileSetCentre(a, centre);
+    ImGui::TextDisabled("%s", tr("Sample rate (Msps)"));
+    ImGui::SetNextItemWidth(150 * gUi);
+    ImGui::InputDouble("##firate", &msps, 0, 0, "%.4f");
+    const char* fm[] = {"cs8", "cu8", "cf32", "ci16", "cu16"};
+    int fi = (int)a.file.format;
+    ImGui::SetNextItemWidth(150 * gUi);
+    if (ImGui::Combo("##fiformat", &fi, fm, 5)) a.file.format = (FileFormat)fi;
+    if (ImGui::Button(tr("Auto-detect"))) {
+        const std::string p = a.file.path;
+        a.file.format = guessFormat(p);
+        const double r = guessSampleRate(p); if (r > 0) a.file.sampleRate = r;
+        const double c = filevfo::guessCentreHz(p);
+        applyIqFileInfo(a, p);   // the header, when there is one, wins over the name
+        if (a.file.centreHz <= 0 && c > 0 && !a.engine.running()) a.freqMhz = c / 1e6;
+        if (c > 0 && a.engine.running()) fileSetCentre(a, c);
+        centre = fileCentreMhz(a); msps = a.file.sampleRate / 1e6;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Reads the rate, format and centre from the SigMF / BLUE / WAV header, else from the file name (for example 100.5MHz_2Msps)."));
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Apply"))) {
+        if (msps > 0) a.file.sampleRate = msps * 1e6;
+        if (centre > 0) fileSetCentre(a, centre);
+        if (a.engine.running()) startReceiver(a);   // the rate and the format are read when the file is opened
+        ImGui::CloseCurrentPopup();
+    }
+    bool nt = a.engine.dcNotch();
+    if (ImGui::Checkbox(tr("Ignore DC spike"), &nt)) { a.engine.setDcNotch(nt); savePrefs(a); }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("A notch at the recording's centre in front of the demodulator: the SDR's own DC spike / LO leakage does not reach the signal. The spectrum still shows the spike."));
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 // an IQ file: Open, the shown path, sample format, rate and loop
 static void fileSourceOptions(App& a) {
     ImGui::TextDisabled("%s", tr("file"));
@@ -324,6 +374,8 @@ static void fileSourceOptions(App& a) {
     if (ImGui::InputDouble("##frate", &msps, 0, 0, "%.4f Msps")) a.file.sampleRate = msps * 1e6;
     flowNext();
     ImGui::Checkbox(tr("loop"), &a.file.loop);
+    flowNext();
+    fileInfoPopup(a);
     flowEnd();
 }
 
@@ -467,6 +519,7 @@ void sourceOptions(App& a) {
     const bool isHamlib = a.devices[a.devIdx].kind == DeviceInfo::Hamlib;
     if (a.devices[a.devIdx].kind == DeviceInfo::Synthetic) synthSourceOptions(a, running);
     if (isFile && !running) fileSourceOptions(a);
+    else if (isFile) { ImGui::TextDisabled("%s", tr("file")); ImGui::SameLine(); fileInfoPopup(a); flowEnd(); }
     if (isHamlib) hamlibSourceNote();
     if (isAudio || isHamlib) audioSourceOptions(a, running);
 }

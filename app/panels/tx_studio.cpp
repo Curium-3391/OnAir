@@ -516,7 +516,7 @@ bool openInDecoder(App& a, Studio& s, const std::string& dataPath, const std::st
     for (int i = 0; i < (int)a.devices.size(); i++) if (a.devices[(size_t)i].kind == DeviceInfo::File) { fileIdx = i; break; }
     if (fileIdx < 0) { s.saveMsg = tr("No IQ file source in this build."); return false; }
     IqFileInfo info; std::string err;
-    a.file.offsetBytes = 0; a.file.endBytes = 0; a.file.bigEndian = false;
+    a.file.offsetBytes = 0; a.file.endBytes = 0; a.file.bigEndian = false; a.file.centreHz = 0;
     if (probeIqFile(metaPath, info, err)) {
         a.file.path = info.dataPath; a.file.format = info.format; a.file.offsetBytes = info.offsetBytes; a.file.endBytes = info.endBytes;
         if (info.sampleRate > 0) a.file.sampleRate = info.sampleRate;

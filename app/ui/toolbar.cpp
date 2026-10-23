@@ -461,7 +461,10 @@ void toolbarParts(App& a, int mask, bool vertical) {
 
     if (running && a.devices[a.devIdx].kind == DeviceInfo::Hamlib) hamlibFollowRig(a);   // the rig's knob moves the frequency box
     else if (!running) a.hamlibRigSeq = 0;
-    if (retune && running) {
+    if (retune && running && !a.second.drawing && fileVfoActive(a)) {   // a recording: the typed / stepped frequency is the tune box
+        fileSetVfo(a, a.freqMhz);
+        a.peak.clear();
+    } else if (retune && running) {
         const tunedrag::TunerRetune rt = tunedrag::tunerRetune(a.tune.centerHz, a.engine.captureCentreHz(), a.engine.decodeShiftHz(), a.freqMhz * 1e6);
         if (rt.clearShift) a.engine.setDecodeShiftHz(0);   // a new frequency: the radio goes there, the old click shift no longer applies
         const bool moved = std::fabs(a.tune.centerHz - rt.dialHz) > 1;
@@ -496,6 +499,7 @@ void tuneDecode(App& a, double absMhz) {
 }
 
 void spectrumTune(App& a, double absMhz) {
+    if (!a.second.drawing && a.family != 55 && fileVfoActive(a)) { fileSetVfo(a, absMhz); return; }   // a recording: the tune box moves, the spectrum stays
     if (a.tuningMode == 1) {
         if (a.fmMode) { a.freqMhz = std::round(std::max(0.0, dialMhzFromAbs(a, absMhz)) * 10.0) / 10.0; tuneDecode(a, absMhz); }
         else tuneDecode(a, absMhz);
