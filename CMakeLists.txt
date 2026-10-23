@@ -2263,7 +2263,10 @@ endif()
 # Windows (MinGW-w64) cross build: the static FFmpeg of the Windows prefix needs clock_gettime64 and nanosleep64, which an older MinGW runtime lacks.
 # Weak shims are compiled directly into every executable (a shim inside libdect2core.a is never pulled out of the archive by the linker).
 if(MINGW)
-  get_directory_property(_onair_tgts BUILDSYSTEM_TARGETS)
+  get_property(_onair_tgts DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+  if(TARGET dect2core)
+    target_sources(dect2core INTERFACE ${ONAIR_ROOT}/core/src/platform/mingw_time64.c)   # every program that links the core gets the shims
+  endif()
   foreach(_t IN LISTS _onair_tgts)
     get_target_property(_ty ${_t} TYPE)
     if(_ty STREQUAL "EXECUTABLE")
