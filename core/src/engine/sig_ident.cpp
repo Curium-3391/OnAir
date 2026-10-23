@@ -1737,6 +1737,8 @@ struct Capture::Impl {
     size_t maxN = 12;
     std::vector<Found> found;
     uint64_t seqAll = 0;
+    bool keep = false;             // keepSamples(): the last single capture stays for Signal Lab
+    Kept kept;
 };
 
 Capture::Capture() : p_(new Impl) {
@@ -1769,9 +1771,10 @@ Capture::Capture() : p_(new Impl) {
                     fl.push_back(std::move(fd));
                 }
             } else r = identify(x.data(), x.size(), rate, o);
-            x.clear(); x.shrink_to_fit();
             lk.lock();
             if (g != m.gen) continue;   // restarted meanwhile
+            if (!all && m.keep) { m.kept.x = std::move(x); m.kept.rateHz = rate; m.kept.centreOffHz = c; m.kept.widthHz = wd; m.kept.rfHz = rf; m.kept.seq++; }
+            x.clear(); x.shrink_to_fit();
             if (all) { m.found = std::move(fl); m.seqAll++; }
             else { m.res = std::move(r); m.seq++; }
             m.state = 3;
@@ -1839,6 +1842,18 @@ bool Capture::result(Result& out, uint64_t& seq) const {
     return true;
 }
 double Capture::regionCentre() const { std::lock_guard<std::mutex> lk(p_->mu); return p_->cOff; }
+void Capture::keepSamples(bool on) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    p_->keep = on;
+    if (!on) { p_->kept.x.clear(); p_->kept.x.shrink_to_fit(); }
+}
+uint64_t Capture::keptSeq() const { std::lock_guard<std::mutex> lk(p_->mu); return p_->kept.x.empty() ? 0 : p_->kept.seq; }
+bool Capture::keptSamples(Kept& out, uint64_t& seq) const {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (p_->kept.x.empty() || p_->kept.seq == seq) return false;
+    out = p_->kept; seq = p_->kept.seq;
+    return true;
+}
 
 } // namespace sigid
 } // namespace dect2
