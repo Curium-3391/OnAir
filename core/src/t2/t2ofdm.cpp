@@ -58,6 +58,19 @@ void GridInterpolator::build(int S, double cutoff) {
     }
 }
 
+// w_n = e^{j step n} by the double-precision recurrence (renormalised every 256 steps), as floats; rebuilt only when step or count change
+void GridInterpolator::phasors(double step, int count, double& cachedStep, std::vector<cf32>& w) {
+    if (step == cachedStep && (int)w.size() == count) return;
+    cachedStep = step;
+    w.resize((size_t)count);
+    std::complex<double> z(1, 0), zs(std::cos(step), std::sin(step));
+    for (int n = 0; n < count; n++) {
+        w[(size_t)n] = cf32((float)z.real(), (float)z.imag());
+        z *= zs;
+        if ((n & 255) == 255) z /= std::abs(z);
+    }
+}
+
 void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, double tau0, std::vector<cf32>& H, double cutoff) {
     cutoff = std::min(1.0, std::max(0.05, cutoff));
     if (S != S_ || std::fabs(cutoff - cut_) > 1e-9) build(S, cutoff);
@@ -66,15 +79,15 @@ void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, d
     const int pad = smoothHalf_ + kHalf + 2;
     const int Mp = M + 2 * pad;
     pre_.assign(Mp, 0.f); pim_.assign(Mp, 0.f);
-    // pre-rotation (delay centring) with a double-precision phasor recurrence
+    // pre-rotation (delay centring) with a double-precision phasor recurrence. The phasors depend only on the step and the count, which stay the
+    // same from symbol to symbol while the timing does: they are kept (the same float values the recurrence gave) and only rebuilt on a change.
     {
         const double step = 2 * M_PI * (double)S * tau0 / N;
-        std::complex<double> w(1, 0), ws(std::cos(step), std::sin(step));
+        phasors(step, M, preStep_, preW_);
+        const cf32* pw = preW_.data();
         for (int n = 0; n < M; n++) {
-            cf32 v = grid[n] * cf32((float)w.real(), (float)w.imag());
+            cf32 v = grid[n] * pw[n];
             pre_[pad + n] = v.real(); pim_[pad + n] = v.imag();
-            w *= ws;
-            if ((n & 255) == 255) w /= std::abs(w);
         }
     }
     // odd reflection about both edges keeps linear trends intact
@@ -115,12 +128,9 @@ void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, d
     H.resize(K);
     {
         const double step = -2 * M_PI * tau0 / N;
-        std::complex<double> w(1, 0), ws(std::cos(step), std::sin(step));
-        for (int k = 0; k < K; k++) {
-            H[k] = cf32(ore_[k], oim_[k]) * cf32((float)w.real(), (float)w.imag());
-            w *= ws;
-            if ((k & 255) == 255) w /= std::abs(w);
-        }
+        phasors(step, K, postStep_, postW_);
+        const cf32* pw = postW_.data();
+        for (int k = 0; k < K; k++) H[k] = cf32(ore_[k], oim_[k]) * pw[k];
     }
 }
 

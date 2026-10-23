@@ -24,6 +24,10 @@ private:
     std::vector<float> smooth_;              // grid smoothing kernel (reversed)
     void build(int S, double cutoff);
     std::vector<float> pre_, pim_, sre_, sim_, ore_, oim_;
+    // the delay-centring phasors of the last call (they only change with the timing)
+    double preStep_ = 0, postStep_ = 0;
+    std::vector<cf32> preW_, postW_;
+    static void phasors(double step, int count, double& cachedStep, std::vector<cf32>& w);
 };
 
 // Delay extent of the channel: samples (relative to the main path) where the power-delay profile is significant.
