@@ -105,3 +105,23 @@ output is reported as "skipped" (receiver wiring in the harness needs a look) in
 output on its clean test signal: the harness wiring needs a look, probably `setCenterHz`/scene) and `mesh` (heavy, `--heavy`). Regenerate with the workflow
 (`update_baseline`). Known harness limits: the sample clock uses a 4-point cubic (a fraction of a dB loss at the band edge of critically sampled OFDM);
 multipath delays are rounded to whole samples; lock time has the 50 ms poll resolution (T2 and other threaded decoders also lag by their queue).
+
+## DVB-T / DVB-T2 / DVB-C detail sweeps
+
+`sens_dvb` (tests/dvbt/sens_dvb.cpp) and `sens_dvbc` (tests/dvbc/sens_dvbc.cpp) sweep one parameter set of these receivers with more
+channels than the shared harness: static TU6, a 0 dB echo at 0.9 of the guard (`--chan echo0`, `SENS_ECHO=frac:dB` for others), TU6 or
+Rician with Doppler (`--doppler`), carrier and clock offsets. C/N is in the occupied band (the K carriers). A trial passes when the stream
+is clean from 100 ms after the first good packet (T2: from the frame after the first good one), so these thresholds are laxer than the
+standards' BER points. `SENS_VERBOSE=1` prints the receiver's state, the data MER and the impulse response.
+
+```
+build/sens_dvb t 1 3 2 1 --snr 14:19:0.5 --trials 6                   # DVB-T 8K GI 1/4 64-QAM 2/3, AWGN
+build/sens_dvb t 0 3 1 0 --chan tu6 --doppler 100 --snr 16:28:2       # 2K 16-QAM 1/2, TU6 at 100 Hz
+build/sens_dvb t2 1 2 1 2 2 --snr 12:18:0.5                           # T2 8K GI 1/8 PP2 64-QAM 2/3
+build/sens_dvbc 2 --snr 22:28:1                                       # DVB-C 64-QAM (Es/N0)
+```
+
+Reference figures (perfect channel estimation, from the standards' own tables). EN 300 744 V1.6.2 Table A.1, C/N for BER 2e-4 after
+Viterbi, AWGN: QPSK 1/2 3.5, 16-QAM 1/2 9.3, 16-QAM 2/3 11.4, 64-QAM 2/3 16.7, 64-QAM 3/4 18.2 dB. TS 102 831 V1.2.1 Table 44, raw
+(C/N)0 for BER 1e-7 after LDPC (64800 bits), AWGN, no pilots: QPSK 1/2 1.0, 16-QAM 1/2 6.0, 64-QAM 2/3 13.5, 256-QAM 2/3 17.8 dB, plus
+0.29-0.53 dB for the pilots (Table 46; 8K PP2 0.39). L1-pre decodes at -4 dB (TS 102 831 clause 14.7).

@@ -1,4 +1,4 @@
-// DVB-C threshold and time-to-lock sweep (not a ctest: run by hand, see docs/SENSITIVITY-DVB.md).
+// DVB-C threshold and time-to-lock sweep (not a ctest: run by hand, see docs/SENSITIVITY.md, DVB section).
 //   sens_dvbc <qam 0..4 = 16..256> [--snr a:b:step] [--trials n] [--seconds s] [--cfo Hz] [--ppm x] [--echo dB] [--rs symbol rate]
 // SNR is Es/N0 of the test transmitter (dvbc::Signal). A trial passes when the stream locks within the first half of the signal and no packet
 // is damaged from 200 ms after the first one. Time to lock: seconds of signal to the first packet, the receiver measuring the symbol rate and

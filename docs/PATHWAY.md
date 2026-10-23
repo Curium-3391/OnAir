@@ -481,3 +481,14 @@ The native USRP driver had no TX path at all (RX only, makeNativeTxSink knew onl
 
 ## 2026-10-23 One signal indicator, CPU sparkline, one-click fix (ui-clean-meter-030)
 Clean / Compact fonts were already in Settings (default stays Current; checked by screenshots). New: one signal indicator for every mode (4-segment bar + No signal / Weak / Locked / Good, colour-blind safe, in the status strip and at the top of the Receiver tab; adapter app/ui/meter_ui.cpp maps lock / SNR / MER / mode meters / ADC level, no DSP changed), a 30 s CPU sparkline in the strip's CPU cell (process CPU through plat::processCpuSeconds, app/platform/proc_cpu.cpp), a "Too slow" warning (CPU > 85% of the cores or receiver behind, 3 s on / 5 s off) with a Fix button (waterfall rate, then spectrum FFT, then sample rate; plain-words message, Undo). No spectrum 3D view exists, so that step is skipped. Pure rules in app/ui/meter_logic.h, tests/app/test_meter_logic.cpp.
+
+## 2026-10-23 DVB-T / T2 / C decoding: lower thresholds, mobile, strong echoes (dec-dvbt-030)
+DVB-T: scattered pilots averaged over time (gain from the measured noise and channel change), delay window narrowed to the measured spread,
+symbols decoded 8 late with a cubic through each grid point's pilots (time interpolation), acquisition peak tested against the median, FFT
+window from the rise of the CP correlation under a flat top (0 dB echo), the delay window follows the phase ramp (it folded paths after the
+window moved). sens_dvb (C/N in band): 2K QPSK 1/2 4.5 -> 3.5, 16-QAM 1/2 10.0 -> 9.0, 64-QAM 2/3 2K/8K 17.5 -> 16.0, 8K 64-QAM 3/4 GI 1/32
+19.0 -> 17.0, TU6 static 21 -> 19, +50 kHz +30 ppm 12.5 -> 10.5 dB; TU6 Doppler limit 2K 40 -> 100 Hz, 8K up to 30 Hz; 0 dB echo at 0.9 G:
+never decoded -> clean from 18 dB. T2: the frame's channel cut into pieces under Doppler (5 -> 20 Hz at 20 dB), delaySpan noise floor from
+the search range (L1 cells 3 dB cleaner at 4 dB), L1 sum-product fallback on weak signals: QPSK 1/2 5.0 -> 3.5-4.0 dB. Shared harness (quick):
+dvbt awgn 17 -> 16, tu6 23 -> 18; dvbt2 tu6 none -> 20 dB. Checked against EN 300 744 Table A.1 and TS 102 831 Tables 44/46 (docs/SENSITIVITY.md).
+Left: T2 data path ~1.5 dB from TS 102 831 on QPSK, DVB-T 8K above 30 Hz Doppler, DVB-C ~1 dB from theory (64-QAM 24 dB Es/N0, lock 0.16 s).
