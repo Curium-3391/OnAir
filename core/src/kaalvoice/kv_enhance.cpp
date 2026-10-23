@@ -10,7 +10,7 @@ namespace detail {
 namespace {
 // minBits20, gn, gd, ltp, tilt, fill, bwe, restoreDb. Tuned with the objective proxies (docs/KAAL-ENHANCE.md section 4) on the
 // repo's speech sample and synthetic voices seeds 11..14, 21, 77; the tests check held-out seeds.
-EnhTier kEnhTiers[] = {
+const EnhTier kEnhTiers[] = {
     {0,   0.55, 0.72, 0.50, 0.45, 0.30, 0.30, 2.0},   // 3.2
     {80,  0.55, 0.71, 0.45, 0.45, 0.00, 0.30, 1.0},   // 4.8
     {110, 0.55, 0.70, 0.40, 0.45, 0.00, 0.30, 0.8},   // 6.0
@@ -28,8 +28,6 @@ double dotf(const float* a, const float* b, int n) {
     return s;
 }
 }  // namespace
-
-EnhTier* enhTierTable(int* n) { if (n) *n = kNEnhTiers; return kEnhTiers; }
 
 const EnhTier& enhTierOf(const Prof& P) {
     const int b = bits20(P);

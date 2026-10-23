@@ -28,7 +28,6 @@ struct EnhTier {
     double restoreDb;    // energy restoration: level the waveform-matching gains lose on average (low band, dB)
 };
 const EnhTier& enhTierOf(const Prof& P);
-EnhTier* enhTierTable(int* n);   // the tier table (the tuning tool changes it; read once per Enhancer)
 
 class Enhancer {
 public:
