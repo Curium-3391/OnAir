@@ -363,7 +363,7 @@ void LorawanReceiver::setLogCallback(std::function<void(const std::string&)> cb)
 
 ModeTuning lorawanTuning() {
     ModeTuning t;
-    t.stdMode = 162; t.id = "lorawanwide"; t.name = "LoRaWAN (all channels)";
+    t.stdMode = 202; t.id = "lorawanwide"; t.name = "LoRaWAN (all channels)";
     t.minMhz = 137; t.maxMhz = 2500;
     t.defMhz = 868.3;                // EU868: the three join channels and the five extra ones around it
     t.sampleRate = 4000000;          // 4 Msps: all eight EU868 channels, a quarter of the US915 channels

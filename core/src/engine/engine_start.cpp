@@ -223,6 +223,10 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxDji_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);   // the bands and frequencies of the signals
         rxCube_.setDialHz(dev.kind != DeviceInfo::File ? tune.centerHz : 0.0);   // names frames after the satellite table
         rxLr_.setSignalOffset(o);
+        rxLw_.setSignalOffset(o);
+        rxLw_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
+        rxLs_.setSignalOffset(o);
+        rxLs_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxWs_.setSignalOffset(o);
         rxEcz_.setSignalOffset(o);
         rxFpv_.setSignalOffset(o);
@@ -484,6 +488,10 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxZb_.setLogCallback([this](const std::string& s) { log(s); });
     rxLr_.configure(rate_);
     rxLr_.setLogCallback([this](const std::string& s) { log(s); });
+    rxLw_.configure(rate_);
+    rxLw_.setLogCallback([this](const std::string& s) { log(s); });
+    rxLs_.configure(rate_);
+    rxLs_.setLogCallback([this](const std::string& s) { log(s); });
     rxWs_.configure(rate_);
     rxWs_.setLogCallback([this](const std::string& s) { log(s); });
     rxFpv_.configure(rate_);

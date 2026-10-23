@@ -88,6 +88,8 @@
 #include "dect2/dect/dect_tel.h"
 #include "dect2/multitone/multitone_tel.h"
 #include "dect2/loraraw/loraraw_tel.h"
+#include "dect2/lorawan/lorawan_tel.h"
+#include "dect2/lorasat/lorasat_tel.h"
 #include "dect2/wisun/wisun_tel.h"
 #include "dect2/zwave/zwave_tel.h"
 #include "dect2/eczas/eczas_tel.h"
@@ -204,6 +206,8 @@ struct RxTelemetry {
     NbiotTelemetry nbiot;     // valid when standard == 70 (NB-IoT cells)
     ZigbeeTelemetry zigbee;   // valid when standard == 66 (Zigbee / 802.15.4)
     LoraRawTelemetry loraraw; // valid when standard == 72 (LoRa raw)
+    LorawanTelemetry lorawan; // valid when standard == 201 (LoRaWAN all channels, family 200, engine standard 202)
+    LoraSatTelemetry lorasat; // valid when standard == 202 (LoRa satellites, family 201, engine standard 203)
     ZwaveTelemetry zwave;     // valid when standard == 99 (Z-Wave)
     WisunTelemetry wisun;     // valid when standard == 85 (Wi-SUN FAN)
     FpvTelemetry fpv;         // valid when standard == 102 (analog FPV video)

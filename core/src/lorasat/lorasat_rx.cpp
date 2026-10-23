@@ -267,7 +267,7 @@ void LoraSatReceiver::setLogCallback(std::function<void(const std::string&)> cb)
 
 ModeTuning loraSatTuning() {
     ModeTuning t;
-    t.stdMode = 163; t.id = "lorasat"; t.name = "LoRa satellites";
+    t.stdMode = 203; t.id = "lorasat"; t.name = "LoRa satellites";
     t.minMhz = 137; t.maxMhz = 1000;
     t.defMhz = 436.8;                // the FOSSA Systems pico-satellites (uncertain: see lorasat_presets.h)
     t.sampleRate = 2000000;
