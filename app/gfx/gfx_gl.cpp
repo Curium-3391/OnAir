@@ -1,6 +1,7 @@
-// OpenGL 3.2 core back end (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
+// OpenGL 3.2 core back end (falls back to 3.1 and 3.0 where the driver offers no more, see gl_level.h) (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
 #include "gfx.h"
 #include "render_caps.h"
+#include "gl_level.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #define GLFW_INCLUDE_NONE
@@ -122,14 +123,14 @@ struct GlImage : Image {
     }
 };
 
-const char* kVert = R"(#version 150
+const char* kVert = R"(
 void main() {
     vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
 // NV12 -> RGB, same maths as the Metal kernel (limited/full range, BT.601/709, optional comb removal for interlaced pictures)
-const char* kFrag = R"(#version 150
+const char* kFrag = R"(
 uniform sampler2D Y;
 uniform sampler2D UV;
 uniform vec3 prm;     // x: BT.709, y: full range, z: deinterlace
@@ -155,7 +156,12 @@ void main() {
 }
 )";
 
-GLuint compile(GLenum type, const char* src) {
+int gLevel = 0;   // index into kGlLevels: set by setLevel() before the windows are created
+
+GLuint compile(GLenum type, const char* body) {
+    static char text[4096];
+    glShaderText(text, sizeof text, gLevel, body);
+    const char* src = text;
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
     glCompileShader(s);
@@ -287,11 +293,20 @@ struct GlBackend : Backend {
 
 } // namespace
 
+int levelCount() { return kGlLevelCount; }
+int level() { return gLevel; }
+void setLevel(int l) { gLevel = l < 0 ? 0 : l >= kGlLevelCount ? kGlLevelCount - 1 : l; }
+const char* levelName() {
+    static const char* n[] = {"OpenGL 3.2 core", "OpenGL 3.1", "OpenGL 3.0"};
+    return n[gLevel];
+}
+
 void windowHints() {
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    const GlLevel& l = glLevel(gLevel);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, l.major);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, l.minor);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, l.core ? GLFW_OPENGL_CORE_PROFILE : GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, l.core ? GLFW_TRUE : GLFW_FALSE);
 }
 
 #if defined(__linux__)
@@ -312,7 +327,7 @@ Backend* create(GLFWwindow* window) {
 #endif
     if (!loadGl()) return nullptr;
     rcaps::detect((const char*)glGetString(RENDERER));
-    if (!ImGui_ImplOpenGL3_Init("#version 150")) return nullptr;
+    if (!ImGui_ImplOpenGL3_Init(glLevel(gLevel).glsl)) return nullptr;
     return new GlBackend(window);
 }
 

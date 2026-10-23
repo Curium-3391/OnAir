@@ -36,7 +36,7 @@ struct SynthGroupDef {
 struct SlicePlan {
     bool ok = false;
     std::string why;                         // when !ok, or a note (span limited by too few radios / too slow a rate)
-    synth::SynthCfg cfg;
+    synthwide::SynthCfg cfg;
     std::vector<double> sliceOffsetHz;       // per member
     double overlapHz = 0, spanHz = 0, maxSpanHz = 0, outRateHz = 0;
 };
@@ -82,7 +82,7 @@ struct SynthGroupStatus {
     std::string name;
     double outRateHz = 0, spanHz = 0, overlapHz = 0, childRateHz = 0;
     std::vector<SynthMemberStatus> members;
-    std::vector<synth::PairStatus> seams;   // between member i and i+1
+    std::vector<synthwide::PairStatus> seams;   // between member i and i+1
     std::string usbWarning;
 };
 bool synthGroupStatus(const std::string& name, SynthGroupStatus& out);
@@ -131,7 +131,7 @@ private:
     TuneSettings tune_;
     IqRing* out_ = nullptr;
     mutable std::mutex mu_;               // the stitcher, the children's state, tune_
-    synth::SynthWideband sw_;
+    synthwide::SynthWideband sw_;
     std::thread th_;
     std::atomic<bool> run_{false};
     std::string usbWarn_;

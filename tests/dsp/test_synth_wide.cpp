@@ -9,7 +9,7 @@
 #include <random>
 #include <vector>
 using namespace dect2;
-using namespace dect2::synth;
+using namespace dect2::synthwide;
 #include "../common/test_util.h"
 
 static const double kPi = 3.14159265358979323846;
