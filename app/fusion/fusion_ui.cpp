@@ -1,6 +1,7 @@
 // Yaesu System Fusion screens (work in progress): lock, frame counts, call mode, source / destination callsigns, repeater, the slow data
 // text and the state of the speech codec plug-in. The voice needs a codec that the user installs (codec id "ysf", docs/CODECS.md).
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
 #include "codec/speech_codec_ui.h"
 #include "dect2/fusion/fusion_rx.h"
 #include <cstdio>
@@ -63,6 +64,15 @@ void codecBlock(App& a) {
 }
 
 void tab(App& a) {
+    {   // the voice monitor's strip, the same in every voice mode
+        const dect2::FusionTelemetry& t = a.rx.fusion;
+        voiceui::Link l;
+        l.live = live(a); l.locked = l.live && t.dataValid; l.codecName = "AMBE+2 (Yaesu)"; l.codecId = "ysf";
+        l.codecReady = S.codecGiven;
+        const double tot = (double)t.dchOk + (double)t.dchBad;
+        l.errorRate = l.locked && tot > 20 ? (float)(t.dchBad / tot) : -1.f;   // the frames whose data channel failed its check
+        voiceui::strip(a, "ysf", "Yaesu System Fusion", l);
+    }
     if (!live(a)) {
         ImGui::TextDisabled("%s", a.engine.running() ? "starting" : "tune to a Yaesu Fusion channel (2 m or 70 cm, 12.5 kHz) and start the receiver");
         codecBlock(a);

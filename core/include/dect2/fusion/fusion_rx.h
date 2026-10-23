@@ -21,6 +21,7 @@
 #include <string>
 
 namespace dect2 {
+namespace voice { class Monitor; }
 
 struct FusionTelemetry {
     uint64_t seq = 0;
@@ -74,6 +75,7 @@ public:
     void setVolume(float v);
     void setMuted(bool m);
     void setSilent(bool s);                                        // decode but do not open the sound device
+    void setVoiceMonitor(voice::Monitor* m);   // the monitor that picks and records the call (voice_monitor.h); default voice::monitor("ysf") while not silent
     void setAudioTap(std::function<void(const float* x, size_t n, int sampleRate)> cb);   // tests: the decoded voice
 
 private:

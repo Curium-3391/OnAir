@@ -2,6 +2,8 @@
 // positions on a map (the ADS-B map underneath, as for APRS and M17), the calling-channel presets, and a "?" about the mbelib library the
 // voice needs (docs/CODECS.md).
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
+#include "dect2/codec/codec_registry.h"
 #include "dect2/codec/codec_registry.h"
 #include "../codec/speech_codec_ui.h"
 #include "ui/ui_common.h"
@@ -208,6 +210,14 @@ void tick(App& a) {
 
 void tab(App& a) {
     load();
+    {   // the voice monitor's strip, the same in every voice mode
+        const dect2::DstarTelemetry& t = a.rx.dstar;
+        voiceui::Link l;
+        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "AMBE"; l.codecId = "ambe";
+        l.codecReady = t.ambe || dect2::codec::pluginLoaded("ambe");
+        l.errorRate = l.locked ? t.berPct / 100.f : -1.f;
+        voiceui::strip(a, "dstar", "D-STAR", l);
+    }
     subNav("dstarv", S.view, {"Now", "Calls", "Messages", "Map"});
     if (S.view == 0) nowView(a); else if (S.view == 1) callsView(a); else if (S.view == 2) messageView(a); else mapView(a);
 }

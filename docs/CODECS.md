@@ -380,6 +380,15 @@ OnAir does the de-interleaving; the plug-in only has to expand the bits back int
 If no plug-in is installed OnAir still loads a plain `libmbe` from the codecs folder as before; a plug-in wins when both exist. Encrypted calls are never decoded: DMR calls flagged private in their service options show `ENC` and play nothing.
 DMR plays one time slot at a time: the **Listen to** box in the DMR panel chooses slot 1, slot 2 or the first slot heard.
 
+**Voice monitor.** Every digital voice mode (DMR, P25, NXDN, dPMR, D-STAR, Yaesu System Fusion, TETRA, M17) has the same strip at the top of its
+tab: locked / searching, codec ready / missing (with an **Install codec...** button that opens the helper above), encrypted, hold and recording,
+and a now-talking card with the talkgroup, the source, the colour code / NAC / RAN, the slot and an error meter, with **Hold** and **Mute**.
+**Help > Voice monitor** (or the strip's button) opens the calls, a searchable call history, the allow / mute / priority lists, names for
+talkgroups, hold, the hang time, the mode's own volume, a squelch on the bit error rate, the output device and per-call recording (a WAV and a
+JSON file of the details per call, in the app data folder's `voice-recordings`). One call is played at a time per mode, so a call sent on two
+slots or carriers is heard once. Encrypted calls are listed and never decoded or recorded. TETRA can also be told to decode only the 25 kHz
+channel at the dial frequency, one timeslot or one carrier.
+
 **Install helper.** The DMR panel (and the **?** button of NXDN, dPMR, D-STAR and P25) shows whether the plug-in is loaded (with its path) or not found (with the exact file name for your OS), the codecs folder, and three buttons: **Open codecs folder** (made if missing), **Build steps** (this page) and **Rescan for plug-in** (looks again without a restart). OnAir downloads nothing for you. Upstream mbelib: <https://github.com/lwvmobile/mbelib>.
 
 ## Nothing patented is bundled

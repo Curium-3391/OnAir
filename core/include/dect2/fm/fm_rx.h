@@ -23,7 +23,11 @@ public:
     void setVolume(float v);                             // 0 .. 1
     void setMuted(bool m);
     void setMono(bool on);                               // force mono: the 19 kHz pilot and the stereo decoder are ignored (less noise on a weak station); off = stereo when the pilot is locked
-    void setDeemphasis(double microseconds);             // 50 (Europe, Middle East, most of the world) or 75 (Americas, South Korea)
+    void setDeemphasis(double microseconds);             // 50 (Europe, Middle East, most of the world) or 75 (Americas, South Korea); 0: off
+    // Issue #213 (any thread): 0 auto (stereo when the pilot is locked), 1 mono (as setMono(true)), 2 stereo whenever a pilot is there at all
+    void setStereoMode(int mode);
+    void setAudioBandwidth(int hz);                      // 0 or >= 15000: full; else a 4th order low pass at hz (12000, 8000, 5000), after the tone
+    void setSquelch(float snrDb);                        // mute the sound while the SNR measure is below this (0: off), 2 dB hysteresis
     // Audio tone for the broadcast sound (after de-emphasis, 48 kHz): bass and treble shelves -6 .. +6 dB, and Warm (a -3 dB high shelf above
     // 6 kHz, on top of the treble). All zero and Warm off leaves the audio untouched (any thread).
     void setTone(int bassDb, int trebleDb, bool warm);

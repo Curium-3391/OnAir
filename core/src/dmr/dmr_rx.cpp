@@ -4,6 +4,7 @@
 #include "dect2/dmr/dmr_dsp.h"
 #include "dect2/dmr/dmr_ambe.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include "dect2/dsp/exact_resampler.h"
 #include "dect2/dsp/fftutil.h"
 #include "dmr_link.h"
@@ -162,18 +163,41 @@ struct DmrReceiver::Impl {
     float upPrev = 0;
     std::unique_ptr<AudioOut> audioOut;
 
+    // The voice monitor (voice_monitor.h) chooses which call is played: one at a time per mode, the user's mute / allow / priority lists,
+    // hold, squelch. A silent receiver (a wide-capture carrier not listened to, a test) asks none unless one was set (setVoiceMonitor).
+    voice::Monitor* monSet = nullptr;
+    voice::CallInfo playing;                 // the call whose voice is in aud8
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("dmr"); }
+
     void voiceBurstAudio(int slot, const Bits& vs) {
         const int s = slot == 2 ? 1 : 0;
         const int want = listenSlot.load();               // 0 the first slot heard, 1 or 2 only that slot
         if (want != 0 && want != slot) return;
+        voice::Monitor* mon = activeMonitor();
+        voice::CallInfo ci;
+        if (mon) {
+            const Link::VoiceCtx v = link.slotContext(slot);
+            ci.src = v.src; ci.dst = v.dst; ci.group = v.kind != 1; ci.slot = slot; ci.emergency = v.emergency; ci.errorRate = v.ber; ci.alias = v.alias;
+            if (v.kind == 2) ci.dst = 0xFFFFFF;
+            if (v.cc >= 0) ci.access = "CC " + std::to_string(v.cc);
+        }
         // an encrypted call is never decoded: no vocoder, no sound (the call log shows ENC)
-        if (link.slotEncrypted(slot)) { encryptedSkipped++; return; }
+        if (link.slotEncrypted(slot)) { encryptedSkipped++; if (mon) { ci.encrypted = true; mon->offer(ci); } return; }
         voiceTick++;
-        // a slot is dead after 8 voice bursts of either slot (about 240 ms: each slot sends one burst per 60 ms) without one of its own
-        if (audioSlot >= 0 && audioSlot != s && voiceTick - lastTick[audioSlot] > 8) audioSlot = -1;
-        lastTick[s] = voiceTick;
-        if (audioSlot < 0) audioSlot = s;
-        if (audioSlot != s) return;
+        if (mon) {
+            if (!ambeOk) ambeOk = dmrAmbeAvailable(&ambePath);
+            ci.codecMissing = !ambeOk;
+            if (mon->offer(ci) != voice::Verdict::Play) return;
+            audioSlot = s;
+            lastTick[s] = voiceTick;
+            playing = ci;
+        } else {
+            // a slot is dead after 8 voice bursts of either slot (about 240 ms: each slot sends one burst per 60 ms) without one of its own
+            if (audioSlot >= 0 && audioSlot != s && voiceTick - lastTick[audioSlot] > 8) audioSlot = -1;
+            lastTick[s] = voiceTick;
+            if (audioSlot < 0) audioSlot = s;
+            if (audioSlot != s) return;
+        }
         if (!ambeOk) { ambeOk = dmrAmbeAvailable(&ambePath); if (!ambeOk) return; }
         if (!ambe[s] || !ambe[s]->ok()) ambe[s] = std::make_unique<DmrAmbe>();   // again after a codec plug-in was installed while running
         if (!ambe[s]->ok()) return;
@@ -186,6 +210,8 @@ struct DmrReceiver::Impl {
     // 8 kHz mono -> 48 kHz stereo (linear interpolation), to the tap and the sound device
     void flushAudio() {
         if (aud8.empty()) return;
+        voice::Monitor* mon = activeMonitor();
+        if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on), at the codec's rate
         pcmOut.clear(); tapL.clear();
         for (float v : aud8) {
             for (int k = 1; k <= 6; k++) { const float o = upPrev + (v - upPrev) * k / 6.f; tapL.push_back(o); pcmOut.push_back(o); pcmOut.push_back(o); }
@@ -195,9 +221,9 @@ struct DmrReceiver::Impl {
         std::function<void(const float*, const float*, size_t)> t;
         { std::lock_guard<std::mutex> lk(cbMu); t = tap; }
         if (t) t(tapL.data(), tapL.data(), tapL.size());
-        if (silent.load()) return;
-        if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-        audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+        if (silent.load() || !mon) return;
+        voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+        audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
         if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
         audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
     }
@@ -551,6 +577,7 @@ void DmrReceiver::setLogCallback(std::function<void(const std::string&)> cb) { s
 void DmrReceiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void DmrReceiver::setMuted(bool m) { p_->muted = m; }
 void DmrReceiver::setSilent(bool s) { p_->silent = s; }
+void DmrReceiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void DmrReceiver::setListenSlot(int s) { p_->listenSlot = s == 1 || s == 2 ? s : 0; }
 uint64_t DmrReceiver::encryptedBurstsSkipped() const { return p_->encryptedSkipped; }
 void DmrReceiver::setAudioTap(std::function<void(const float*, const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->cbMu); p_->tap = std::move(cb); }

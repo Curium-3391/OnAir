@@ -135,11 +135,14 @@ struct Biquad {
 // one-pole de-emphasis (bilinear transform of 1 / (1 + s*tau))
 struct DeEmphasis {
     double b0 = 1, a1 = 0, x1 = 0, y1 = 0;
+    bool off = false;   // 0 us: no de-emphasis (a station without pre-emphasis, or the user's choice)
     void configure(double tauUs, double fs) {
-        const double k = 2 * fs * tauUs * 1e-6;
+        off = tauUs <= 0;
+        const double k = 2 * fs * std::max(tauUs, 1.0) * 1e-6;
         b0 = 1 / (1 + k); a1 = (1 - k) / (1 + k);
     }
     float process(float x) {
+        if (off) return x;
         const double y = b0 * (x + x1) - a1 * y1;
         x1 = x; y1 = y;
         return (float)y;
@@ -350,6 +353,23 @@ struct FmReceiver::Impl {
     std::atomic<int> rdsRegion{kRdsAuto};       // setRdsRegion(): RDS (Europe) or RBDS (US) names; Auto decides from the tuned frequency
     std::atomic<double> tunedMhz{0};
     std::atomic<bool> forceMono{false};
+    // issue #213: stereo choice (0 auto, 1 mono, 2 stereo whenever a pilot is there), audio bandwidth (0 full, else a 4th order low pass in Hz),
+    // squelch (dB of the SNR measure, 0 off; 2 dB hysteresis, 10 ms ramps)
+    std::atomic<int> stereoMode{0};
+    std::atomic<int> audioBwHz{0};
+    std::atomic<float> squelchDb{0.f};
+    float lastSnr = 60.f, sqGain = 1.f;
+    bool sqOpen = true;
+    int bwSet = 0;
+    struct Biquad {
+        double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+        void lowpass(double fc, double q, double fs) {
+            const double w = 2 * kPi * fc / fs, c = std::cos(w), al = std::sin(w) / (2 * q), a0 = 1 + al;
+            b0 = (1 - c) / 2 / a0; b1 = (1 - c) / a0; b2 = b0; a1 = -2 * c / a0; a2 = (1 - al) / a0; z1 = z2 = 0;
+        }
+        float process(float x) { const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return (float)y; }
+    };
+    Biquad bwF[2][2];   // [channel][section]
     std::atomic<int> toneBass{0}, toneTreble{0};   // setTone(): the requested tone; the audio thread reconfigures tone when they change
     std::atomic<bool> toneWarm{false};
     FmTone tone;
@@ -631,7 +651,9 @@ struct FmReceiver::Impl {
         lpD.process(dIn.data(), n, dOut);
         const size_t na = std::min(mOut.size(), dOut.size());
         lr.resize(na);
-        const float target = (pilotLock && !forceMono.load(std::memory_order_relaxed)) ? 1.f : 0.f;
+        const int sm = stereoMode.load(std::memory_order_relaxed);
+        const bool pilotThere = pilotLock || (sm == 2 && 2 * pI > 0.006);   // forced stereo: a weak pilot is enough
+        const float target = (pilotThere && !forceMono.load(std::memory_order_relaxed)) ? 1.f : 0.f;
         for (size_t i = 0; i < na; i++) {
             stereoBlend += (target - stereoBlend) * 0.002f;
             const float m = mOut[i], d = dOut[i] * stereoBlend;
@@ -650,6 +672,27 @@ struct FmReceiver::Impl {
                     toneBassSet = tb; toneTrebleSet = tt; toneWarmSet = tw;
                 }
                 tone.process(outL.data(), outR.data(), lr48.size());
+            }
+            {   // the audio bandwidth: off (full) by default
+                const int bw = audioBwHz.load(std::memory_order_relaxed);
+                if (bw != bwSet) {
+                    bwSet = bw;
+                    if (bw > 0) for (auto& ch : bwF) { ch[0].lowpass(bw, 0.5412, kAudioRate); ch[1].lowpass(bw, 1.3066, kAudioRate); }   // Butterworth, 4th order
+                }
+                if (bwSet > 0) for (size_t i = 0; i < lr48.size(); i++) {
+                    outL[i] = bwF[0][1].process(bwF[0][0].process(outL[i]));
+                    outR[i] = bwF[1][1].process(bwF[1][0].process(outR[i]));
+                }
+            }
+            {   // the squelch: the SNR of the last report against the threshold, with hysteresis; the gain ramps over 10 ms
+                const float thr = squelchDb.load(std::memory_order_relaxed);
+                if (thr <= 0) sqOpen = true;
+                else sqOpen = sqOpen ? lastSnr >= thr - 2.f : lastSnr >= thr;
+                const float want = sqOpen ? 1.f : 0.f, step = 1.f / (0.01f * kAudioRate);
+                if (want != 1.f || sqGain != 1.f) for (size_t i = 0; i < lr48.size(); i++) {
+                    sqGain = want > sqGain ? std::min(want, sqGain + step) : std::max(want, sqGain - step);
+                    outL[i] *= sqGain; outR[i] *= sqGain;
+                }
             }
             for (size_t i = 0; i < lr48.size(); i++) { inter[2 * i] = outL[i]; inter[2 * i + 1] = outR[i]; }
             if (audio && !lr48.empty()) {
@@ -743,7 +786,7 @@ struct FmReceiver::Impl {
         t.cfoHz += tuneHz;
         t.devKhz = (float)(peakMpx * 75.0);
         t.levelDbfs = pwN ? (float)(10 * std::log10(std::max(pwSum / pwN, 1e-12))) : -120.f;
-        t.stereo = pilotLock && stereoBlend > 0.5f && !forceMono.load(std::memory_order_relaxed);
+        t.stereo = (pilotLock || stereoMode.load() == 2) && stereoBlend > 0.5f && !forceMono.load(std::memory_order_relaxed);
         t.pilotPct = pilotLock ? (float)(200 * pI) : 0.f;
         t.rdsSync = rds.synced;
         t.rdsBlockOkPct = rds.okPct;
@@ -760,6 +803,8 @@ struct FmReceiver::Impl {
         if (pwN && envSum > 0) cv = std::sqrt(std::max(0.0, pwSum / pwN / ((envSum / pwN) * (envSum / pwN)) - 1));
         t.carrier = cv < 0.4;
         if (!t.carrier) { t.snrDb = 0; snr = 0; }
+        lastSnr = snr;   // the squelch's measure (same thread as the audio)
+        t.squelched = !sqOpen;
         t.state = !t.carrier ? 0 : snr >= 20 ? 2 : snr >= 10 ? 1 : 0;
         // nothing receivable for two seconds: look for the station again (a new recording, a retune that did not reset)
         unlockedSecs = t.state == 0 ? unlockedSecs + (double)sincePubN / inRate : 0;
@@ -804,7 +849,10 @@ void FmReceiver::setTone(int bassDb, int trebleDb, bool warm) {
     p_->toneTreble = std::max(-6, std::min(6, trebleDb));
     p_->toneWarm = warm;
 }
-void FmReceiver::setMono(bool on) { p_->forceMono = on; }
+void FmReceiver::setMono(bool on) { p_->forceMono = on; p_->stereoMode = on ? 1 : 0; }
+void FmReceiver::setStereoMode(int mode) { const int m = mode >= 0 && mode <= 2 ? mode : 0; p_->stereoMode = m; p_->forceMono = m == 1; }
+void FmReceiver::setAudioBandwidth(int hz) { p_->audioBwHz = hz <= 0 || hz >= 15000 ? 0 : std::max(2000, hz); }
+void FmReceiver::setSquelch(float snrDb) { p_->squelchDb = std::max(0.f, std::min(60.f, snrDb)); }
 void FmReceiver::setStationFinder(bool on) { p_->autoFind = on; }
 
 void FmReceiver::setChannelWidth(double hz) {

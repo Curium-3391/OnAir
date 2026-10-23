@@ -21,6 +21,7 @@
 #include <string>
 
 namespace dect2 {
+namespace voice { class Monitor; }
 
 struct DpmrTelemetry;   // dpmr_tel.h
 
@@ -48,6 +49,7 @@ public:
     void setVolume(float v);
     void setMuted(bool m);
     void setSilent(bool s);
+    void setVoiceMonitor(voice::Monitor* m);   // the monitor that picks and records the call (voice_monitor.h); default voice::monitor("dpmr") while not silent
     void setAudioTap(std::function<void(const float* x, size_t n)> cb);
     void setVoiceTap(std::function<void(const uint8_t bits[72])> cb);
 

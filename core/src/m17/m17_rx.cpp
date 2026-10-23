@@ -5,6 +5,7 @@
 #include "dect2/m17/m17_proto.h"
 #include "dect2/m17/m17_codec2.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -62,6 +63,9 @@ struct M17Receiver::Impl {
     std::atomic<int> canFilter{-1};
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false}, silent{false};
+    voice::Monitor* monSet = nullptr;   // setVoiceMonitor; else voice::monitor("m17") while not silent
+    voice::CallInfo playing;            // the call whose voice is in aud8
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("m17"); }
     M17Telemetry pub;
 
     double rate = 0, offset = 0;
@@ -500,6 +504,8 @@ struct M17Receiver::Impl {
             }
             const int can = canFilter.load();
             if ((dt == 2 || dt == 3) && (can < 0 || can == m17::typeCan(type))) voice(pl, dt == 3 ? 1600 : 3200, fn);
+        } else if (typeKnown && (m17::typeData(type) == 2 || m17::typeData(type) == 3)) {
+            if (voice::Monitor* mon = activeMonitor()) { voice::CallInfo ci = callInfo(); ci.encrypted = true; mon->offer(ci); }   // listed, never decoded
         }
         lastFnSeen = fn;
         if (fnw & 0x8000) { for (auto& q : paths) q.locked = false; endTx(); }
@@ -541,7 +547,21 @@ struct M17Receiver::Impl {
 
     // ------------------------------------------------------------ voice
 
+    voice::CallInfo callInfo() const {
+        voice::CallInfo ci;
+        ci.srcText = tel.now.src; ci.dstText = tel.now.dst; ci.group = true;
+        if (tel.now.can >= 0) ci.access = "CAN " + std::to_string(tel.now.can);
+        return ci;
+    }
+
     void voice(const uint8_t pl[16], int rateBps, int fn) {
+        voice::Monitor* mon = activeMonitor();
+        if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
+            voice::CallInfo ci = callInfo();
+            ci.codecMissing = !tel.codec2;
+            if (mon->offer(ci) != voice::Verdict::Play) { lastFnSeen = -1; return; }
+            playing = ci;
+        }
         if (!tel.codec2) return;
         if (!c2 || c2Rate != rateBps) { c2 = std::make_unique<M17Codec2>(rateBps); c2Rate = rateBps; }
         if (!c2->ok()) return;
@@ -565,14 +585,16 @@ struct M17Receiver::Impl {
         if (aud8.empty()) return;
         if (tapReq.exchange(false)) { std::lock_guard<std::mutex> lk(mu); tap = tapSet; }
         if (tap) tap(aud8.data(), aud8.size());
-        if (!silent.load()) {
+        voice::Monitor* mon = activeMonitor();
+        if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on)
+        if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
                 for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
                 upPrev = s;
             }
-            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+            audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
             if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
             audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
         }
@@ -656,6 +678,7 @@ void M17Receiver::setCanFilter(int can) { p_->canFilter = can < 0 ? -1 : std::mi
 void M17Receiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void M17Receiver::setMuted(bool m) { p_->muted = m; }
 void M17Receiver::setSilent(bool s) { p_->silent = s; }
+void M17Receiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void M17Receiver::setAudioTap(std::function<void(const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tapSet = std::move(cb); p_->tapReq = true; }
 
 ModeTuning m17Tuning() {

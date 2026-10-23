@@ -148,7 +148,14 @@ void fmHistory(App& a) {
             lastVol = a.volume; lastMute = a.muted; lastScan = a.fmScan.running;
         }
     }
-    { static int lastMono = -1; const int mono = a.fmMono ? 1 : 0; if (a.fmMode && (mono != lastMono || (a.engine.running() && !wasRunning))) { a.engine.fm().setMono(a.fmMono); lastMono = mono; } }
+    {   // the stereo choice (an old saved Mono reads as mode 1), the audio bandwidth and the squelch (issue #213)
+        static int lastStereo = -1, lastBw = -1, lastSq = -1;
+        const int sm = a.fmStereo ? a.fmStereo : a.fmMono ? 1 : 0;
+        const bool push = a.engine.running() && !wasRunning;
+        if (a.fmMode && (sm != lastStereo || push)) { a.engine.fm().setStereoMode(sm); lastStereo = sm; }
+        if (a.fmMode && (a.fmAudioBw != lastBw || push)) { a.engine.fm().setAudioBandwidth(a.fmAudioBw); lastBw = a.fmAudioBw; }
+        if (a.fmMode && (a.fmSquelch != lastSq || push)) { a.engine.fm().setSquelch((float)a.fmSquelch); lastSq = a.fmSquelch; }
+    }
     if (a.fmMode && (a.fmDeemph != lastDe || (a.engine.running() && !wasRunning))) { a.engine.fm().setDeemphasis(a.fmDeemph); lastDe = a.fmDeemph; }
     {   // the tone control: pushed when a control changes (the key is unique for the values in range)
         static int lastTone = INT_MIN;
@@ -349,22 +356,42 @@ void fmRadioPanel(App& a) {
         }
         ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Speaker, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("Stereo"); ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::BeginCombo("##fmmono", a.fmMono ? "Mono" : "Auto (stereo when the pilot is locked)")) {
-            if (ImGui::Selectable("Auto (stereo when the pilot is locked)", !a.fmMono)) { a.fmMono = false; savePrefs(a); }
-            if (ImGui::Selectable("Mono", a.fmMono)) { a.fmMono = true; savePrefs(a); }
-            ImGui::EndCombo();
+        {
+            const char* sn[3] = {"Auto (stereo when the pilot is locked)", "Mono", "Stereo (also on a weak pilot)"};
+            const int sm = a.fmStereo ? a.fmStereo : a.fmMono ? 1 : 0;
+            if (ImGui::BeginCombo("##fmmono", sn[sm])) {
+                for (int i = 0; i < 3; i++) if (ImGui::Selectable(sn[i], sm == i)) { a.fmStereo = i; a.fmMono = i == 1; savePrefs(a); }
+                ImGui::EndCombo();
+            }
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mono ignores the stereo part of the signal. On a weak station the stereo part carries most of the hiss, so mono sounds cleaner.");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mono ignores the stereo part of the signal. On a weak station the stereo part carries most of the hiss, so mono sounds cleaner.\nStereo decodes the stereo part as soon as a pilot is there, even one too weak for Auto.");
         ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Sliders, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("De-emphasis"); ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);
         // a narrow list: the region in brackets goes first ("50 us"), the box keeps the value
-        const std::string de = fitCaption(a.fmDeemph == 75 ? "75 us (Americas)" : "50 us (Europe, Middle East)", ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 2 * ImGui::GetStyle().FramePadding.x);
+        const std::string de = fitCaption(a.fmDeemph == 75 ? "75 us (Americas)" : a.fmDeemph == 0 ? "Off" : "50 us (Europe, Middle East)", ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 2 * ImGui::GetStyle().FramePadding.x);
         if (ImGui::BeginCombo("##fmde", de.c_str())) {
             if (ImGui::Selectable("50 us (Europe, Middle East)", a.fmDeemph == 50)) { a.fmDeemph = 50; savePrefs(a); }
             if (ImGui::Selectable("75 us (Americas, South Korea)", a.fmDeemph == 75)) { a.fmDeemph = 75; savePrefs(a); }
+            if (ImGui::Selectable("Off (bright, for testing)", a.fmDeemph == 0)) { a.fmDeemph = 0; savePrefs(a); }
             ImGui::EndCombo();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The treble boost the station adds before sending. Wrong setting: dull (75 on a 50 station) or harsh (the other way round) sound.");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The treble boost the station adds before sending. Wrong setting: dull (75 on a 50 station) or harsh (the other way round) sound.\nOff: no de-emphasis, very bright on a broadcast station.");
+        ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Sliders, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("Bandwidth"); ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
+        {
+            const int bws[4] = {0, 12000, 8000, 5000};
+            const char* bwn[4] = {"Full (15 kHz)", "12 kHz", "8 kHz (softer)", "5 kHz (speech, weak stations)"};
+            int bi = 0; for (int i = 0; i < 4; i++) if (a.fmAudioBw == bws[i]) bi = i;
+            if (ImGui::BeginCombo("##fmbw", bwn[bi])) {
+                for (int i = 0; i < 4; i++) if (ImGui::Selectable(bwn[i], bi == i)) { a.fmAudioBw = bws[i]; savePrefs(a); }
+                ImGui::EndCombo();
+            }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The highest audio frequency kept. Narrower is less sharp and hides hiss on a weak station; full keeps all the treble.");
+        ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Sliders, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("Squelch"); ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderInt("##fmsq", &a.fmSquelch, 0, 40, a.fmSquelch == 0 ? "off" : "below %d dB SNR")) savePrefs(a);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The sound is muted while the signal to noise ratio is below this: no loud hiss between stations or when a station fades.");
         // the tone control, off at 0 dB: bass and treble shelves, and Warm (a gentle cut above 6 kHz for a sharp-sounding station)
         ImGui::TableNextRow(); ImGui::TableNextColumn(); iconInline(Ic::Sliders, iconDim(), 0.9f); ImGui::SameLine(0, 5 * gUi); ImGui::TextDisabled("Bass"); ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-1);

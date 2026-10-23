@@ -5,6 +5,7 @@
 #include "dect2/nxdn/nxdn_proto.h"
 #include "dect2/nxdn/nxdn_ambe.h"
 #include "dect2/audio/audioout.h"
+#include "dect2/voice/voice_monitor.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -53,6 +54,9 @@ struct NxdnReceiver::Impl {
     std::atomic<bool> tapReq{false};
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false}, silent{false};
+    voice::Monitor* monSet = nullptr;   // setVoiceMonitor; else voice::monitor("nxdn") while not silent
+    voice::CallInfo playing;            // the call whose voice is in aud8
+    voice::Monitor* activeMonitor() { return monSet ? monSet : silent.load() ? nullptr : &voice::monitor("nxdn"); }
     NxdnTelemetry pub, tel;
 
     double rate = 0, offset = 0;
@@ -464,6 +468,16 @@ struct NxdnReceiver::Impl {
         tel.now.voiceFrames++;
         tel.voiceFrames++;
         if (vtap) vtap(vb);
+        voice::Monitor* mon = activeMonitor();
+        if (mon) {   // the voice monitor (voice_monitor.h) lists the call and says whether it is played
+            voice::CallInfo ci;
+            ci.src = tel.now.src > 0 ? (uint32_t)tel.now.src : 0; ci.dst = tel.now.dst > 0 ? (uint32_t)tel.now.dst : 0;
+            ci.group = tel.now.callType <= 1; ci.encrypted = tel.now.cipher != 0; ci.codecMissing = !ambe || !ambe->ok();
+            ci.errorRate = callBits > 200 ? (float)callBer / callBits : -1.f;
+            if (tel.now.ran >= 0) ci.access = "RAN " + std::to_string(tel.now.ran);
+            if (mon->offer(ci) != voice::Verdict::Play) return;
+            playing = ci;
+        }
         if (!ambe || !ambe->ok() || tel.now.cipher) return;
         int16_t pcm[160];
         ambe->decode(vb, pcm);
@@ -476,14 +490,16 @@ struct NxdnReceiver::Impl {
     void flushAudio() {
         if (aud8.empty()) return;
         if (tap) tap(aud8.data(), aud8.size());
-        if (!silent.load()) {
+        voice::Monitor* mon = activeMonitor();
+        if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on)
+        if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
                 for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
                 upPrev = s;
             }
-            if (!audioOut) { audioOut = std::make_unique<AudioOut>(); audioOut->start(48000); audioOut->setStartThreshold(48000 / 5); }
-            audioOut->setVolume(volume.load()); audioOut->setMuted(muted.load());
+            voice::ensureOutput(audioOut, *mon);   // on the mode's output device
+            audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());
             if (audioOut->bufferedFrames() > 48000 * 3 / 2) audioOut->flush();
             audioOut->write(pcmOut.data(), (int)(pcmOut.size() / 2));
         }
@@ -601,6 +617,7 @@ void NxdnReceiver::setLogCallback(std::function<void(const std::string&)> cb) { 
 void NxdnReceiver::setVolume(float v) { p_->volume = std::max(0.f, std::min(1.f, v)); }
 void NxdnReceiver::setMuted(bool m) { p_->muted = m; }
 void NxdnReceiver::setSilent(bool s) { p_->silent = s; }
+void NxdnReceiver::setVoiceMonitor(voice::Monitor* m) { p_->monSet = m; }
 void NxdnReceiver::setAudioTap(std::function<void(const float*, size_t)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->tapSet = std::move(cb); p_->tapReq = true; }
 void NxdnReceiver::setVoiceTap(std::function<void(const uint8_t bits[72])> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->vtapSet = std::move(cb); p_->tapReq = true; }
 

@@ -1,6 +1,7 @@
 // NXDN screens: the current call (unit id, talkgroup, call type, encryption, voice), the call log (voice, status and short data), the
 // decoded control messages, the site information, and a "?" about the mbelib library the voice needs (docs/CODECS.md).
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
 #include "dect2/codec/codec_registry.h"
 #include "../codec/speech_codec_ui.h"
 #include "dect2/nxdn/nxdn_ambe.h"
@@ -152,6 +153,14 @@ void tick(App& a) {
 }
 
 void tab(App& a) {
+    {   // the voice monitor's strip, the same in every voice mode
+        const dect2::NxdnTelemetry& t = a.rx.nxdn;
+        voiceui::Link l;
+        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "AMBE+2"; l.codecId = "ambe2";
+        l.codecReady = t.ambe || dect2::codec::pluginLoaded("ambe2");
+        l.errorRate = l.locked ? t.berPct / 100.f : -1.f;
+        voiceui::strip(a, "nxdn", "NXDN", l);
+    }
     subNav("nxdnv", S.view, {"Now", "Calls", "Messages", "Site"});
     if (S.view == 0) nowView(a); else if (S.view == 1) callsView(a); else if (S.view == 2) messageView(a); else siteView(a);
 }

@@ -2,6 +2,8 @@
 // packets), the trunking system (site, adjacent sites, channel identifiers), the talkgroups with their activity, the decoded control
 // messages, and a "?" about the mbelib library the voice needs (docs/CODECS.md). Receive only; encrypted calls are only reported.
 #include "app.h"
+#include "voice/voice_monitor_ui.h"
+#include "dect2/codec/codec_registry.h"
 #include "dect2/codec/codec_registry.h"
 #include "../codec/speech_codec_ui.h"
 #include "dect2/p25/p25_imbe.h"
@@ -426,6 +428,14 @@ void tick(App& a) {
 }
 
 void tab(App& a) {
+    {   // the voice monitor's strip, the same in every voice mode
+        const dect2::P25Telemetry& t = a.rx.p25;
+        voiceui::Link l;
+        l.live = live(a); l.locked = l.live && t.state >= 1; l.codecName = "IMBE"; l.codecId = "imbe";
+        l.codecReady = t.imbe || dect2::codec::pluginLoaded("imbe");
+        l.errorRate = l.locked ? t.berPct / 100.f : -1.f;
+        voiceui::strip(a, "p25", "P25", l);
+    }
     subNav("p25v", S.view, {"Now", "Calls", "Trunking", "Talkgroups", "Messages", "Follow"});
     if (S.view == 0) nowView(a); else if (S.view == 1) callsView(a); else if (S.view == 2) trunkingView(a); else if (S.view == 3) talkgroupView(a); else if (S.view == 4) messageView(a); else followView(a);
 }
