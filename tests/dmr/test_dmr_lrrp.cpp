@@ -50,6 +50,12 @@ int main() {
         CHECK(!loc.hasFix, "151: has a fix");
         CHECK(loc.resultCode == 16, "151: result %d", loc.resultCode);
     }
+    // an empty document: a valid IPv4/UDP/LRRP header with no position and no result
+    {
+        std::vector<uint8_t> d = hex("4500001E00000000401100000C0000970D00FAFA0FA10FA1000A00000D00");
+        DmrLocation loc;
+        CHECK(!parseDmrLrrp(d.data(), d.size(), loc), "empty document parsed as LRRP");
+    }
     // not an IP packet
     {
         std::vector<uint8_t> d(60, 0x00);

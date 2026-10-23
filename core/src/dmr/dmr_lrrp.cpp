@@ -86,6 +86,7 @@ bool parseDmrLrrp(const uint8_t* data, size_t size, DmrLocation& out) {
     if (!uintvar(p, end, docLen)) return false;
     const uint8_t* docEnd = p + docLen;
     if (docEnd > end) docEnd = end;
+    bool hasResult = false;
     while (p < docEnd) {
         uint32_t tok = 0;
         if (!uintvar(p, docEnd, tok)) break;
@@ -111,11 +112,12 @@ bool parseDmrLrrp(const uint8_t* data, size_t size, DmrLocation& out) {
             uint32_t code = 0;
             if (!uintvar(p, docEnd, code)) break;
             out.resultCode = (int)code;
+            hasResult = true;
         } else {
             break;                    // an unknown token: keep what we already read
         }
     }
-    return true;   // a valid IPv4/UDP/LRRP document (a fix or a NoFix status)
+    return out.hasFix || hasResult;   // a fix or a NoFix status; anything else is not an LRRP report
 }
 
 } // namespace dect2
