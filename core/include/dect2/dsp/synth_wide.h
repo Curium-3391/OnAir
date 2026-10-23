@@ -1,4 +1,4 @@
-// "Synthetic wideband": 2-4 ordinary narrow radios (RTL-SDRs, mixed types), each tuned to an adjacent slice with overlap and all at the same nominal
+// "Synthetic wideband": 2-5 ordinary narrow radios (RTL-SDRs, mixed types), each tuned to an adjacent slice with overlap and all at the same nominal
 // sample rate, are stitched into ONE wide complex stream (rate = M * fs/N). Pure DSP, no hardware; the app feeds each radio's blocks to push().
 //
 //   per radio: FracResampler (clock drift ppm + frequency offset removed, closed loop) -> ring
@@ -8,10 +8,15 @@
 //   coarse frequency offset: cross-correlation of the two overlap power spectra (integer bins); fine: phase advance of the cross-spectrum per hop
 //   delay (fractional samples) + constant phase: peak of the transform of the accumulated cross-spectrum; gain: power ratio
 //   clock drift: slope of the measured delay over time, fed back into the resampler (so it also follows temperature drift)
+//   phase tracking (SynthCfg::trackPhase): every hop the relative phase of each neighbour pair is measured again on that hop's own overlap and
+//   filtered by a two-state Kalman filter (phase, phase step per hop); the stitch of the same hop uses it, so there is no prediction lag. This
+//   follows the free-running radios' phase wander down to what moves inside one frame (hop N/2 samples; keep N small: 1024 at 2.4 Msps).
 // COHERENCE: the stitched stream is amplitude/frequency/time aligned and phase-continuous across the seams as far as the measurement holds, but the
-// radios' oscillators are free-running: the phase relation between slices wanders (phase noise, residual ppm). Suits: spectrum/waterfall, FM/AM/NFM,
-// narrow digital voice, scanning, anything inside one slice or tolerating a slowly varying seam. Not for: modes whose carrier spans a seam and is
-// phase-sensitive (OFDM across a seam, DVB-T/T2, ATSC, wide PSK/QAM), direction finding/beamforming (needs a shared clock: KrakenSDR hub), GNSS.
+// radios' oscillators are free-running: the phase relation between slices wanders (phase noise, residual ppm). The per-hop tracking removes most of
+// it when the overlap holds a signal both radios hear (a broadcast multiplex does; empty noise does not). Suits: spectrum/waterfall, FM/AM/NFM,
+// narrow digital voice, scanning, anything inside one slice or tolerating a slowly varying seam. Wide OFDM across seams (DVB-T) works in simulation
+// with phase tracking up to 16-QAM with free-running dongles and up to 64-QAM with a shared clock (docs/SYNTH-WIDEBAND.md has the measured numbers).
+// Not for: direction finding/beamforming (needs a true shared clock and calibration: KrakenSDR), GNSS.
 #pragma once
 #include "dect2/common/ring.h"
 #include "dect2/dsp/fftutil.h"
@@ -50,14 +55,18 @@ private:
 };
 
 // ---- the stitcher ----
+constexpr int kSynthMaxSlices = 5;
+
 struct SynthCfg {
-    int slices = 2;            // 2..4 radios
+    int slices = 2;            // 2..kSynthMaxSlices radios
     double fs = 2.4e6;         // the radios' common nominal sample rate
     int n = 4096;              // slice FFT (power of 2)
     int stepBins = 2400;       // slice spacing in bins (even); centre spacing = stepBins * fs / n
     double usable = 0.8;       // fraction of fs per slice that is trusted (the converter rolls off at the edge)
     int alignFrames = 32;      // hops accumulated per alignment solve
     double maxOffsetHz = 40e3; // coarse search range of the radios' frequency error
+    bool trackPhase = true;    // per-hop phase tracking of every seam (see the top of this file)
+    double trackLinewidthHz = 60; // the phase wander the tracker expects between two radios (sum of their Lorentzian linewidths); sets its process noise
 };
 
 struct PairStatus {
@@ -66,6 +75,8 @@ struct PairStatus {
     double gainDb = 0;         // slice b relative to a
     double delaySamples = 0;
     double confidence = 0;     // 0..1, how coherent the common signal is in the overlap
+    bool tracking = false;     // the per-hop phase tracker of this seam is running
+    double trackRmsDeg = 0;    // rms of the tracker's per-hop phase corrections (how much the seam phase moves from hop to hop)
 };
 struct SliceStatus {
     bool alive = true;
@@ -77,7 +88,7 @@ struct SliceStatus {
 
 class SynthWideband {
 public:
-    // false on a bad configuration (overlap < 64 bins, odd step, n not a power of 2, slices outside 2..4)
+    // false on a bad configuration (overlap < 64 bins, odd step, n not a power of 2, slices outside 2..kSynthMaxSlices)
     bool configure(const SynthCfg& c);
     const SynthCfg& cfg() const { return c_; }
     double outRate() const { return (double)m_ * c_.fs / c_.n; }
@@ -93,6 +104,11 @@ public:
     SliceStatus slice(int i) const { return sl_[i]; }
     // averaged power spectrum of the wide stream (dB rel. full scale, M bins, negative frequencies first)
     std::vector<float> spectrumDb() const;
+    // start the alignment again from nothing (frequency, delay, drift, gain, phase): the "recalibrate" button, or after a radio was retuned
+    void recalibrate();
+    // centre of slice i in the wide stream (Hz from the wide stream's centre) and the overlap width: where the seams are (DVB-T per-segment phase)
+    double sliceCentreHz(int i) const { return (i - 0.5 * (c_.slices - 1)) * c_.stepBins * c_.fs / c_.n; }
+    double overlapHz() const { return ov_ * c_.fs / c_.n; }
 
 private:
     struct Radio {
@@ -105,10 +121,18 @@ private:
         std::vector<cf32> spec;          // current frame spectrum (n bins, centre in the middle)
     };
     struct Acc {
-        std::vector<cf32> cross, rows; std::vector<float> pa, pb;   // rows: per-hop cross products, frames x W
-        int frames = 0;
-        void clear(int w) { cross.assign(w, cf32(0, 0)); pa.assign(w, 0.f); pb.assign(w, 0.f); rows.clear(); frames = 0; }
+        std::vector<cf32> cross, rows, crossT; std::vector<float> pa, pb;   // rows: per-hop cross products, frames x W; crossT: with the tracked phase removed
+        int frames = 0, trkFrames = 0;
+        void clear(int w) { cross.assign(w, cf32(0, 0)); crossT.assign(w, cf32(0, 0)); pa.assign(w, 0.f); pb.assign(w, 0.f); rows.clear(); frames = 0; trkFrames = 0; }
     };
+    struct Track {                       // per pair: Kalman filter of the seam phase (rad at overlap bin 0, delay slope removed)
+        bool init = false;
+        double phi = 0, w = 0;           // phase, phase step per hop
+        double p00 = 1, p01 = 0, p11 = 1;
+        double delay = 0;                // the pair's delay the measurement removes (from the last solve)
+        double sq = 0; int nsq = 0;      // running sum of squared corrections (trackRmsDeg)
+    };
+    void trackHop();
     void rebuildWeights();
     void run();
     bool haveFrame(int i) const;
@@ -121,6 +145,7 @@ private:
     int m_ = 0, usableBins_ = 0, ov_ = 0;
     std::vector<Radio> r_;
     std::vector<Acc> acc_;
+    std::vector<Track> trk_;
     std::vector<PairStatus> pairs_;
     std::vector<SliceStatus> sl_;
     std::vector<double> amp_, ph_, tau_;     // per slice correction relative to slice 0: amp * exp(j(ph + 2 pi tau w / n)), w = wide bin
