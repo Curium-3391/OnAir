@@ -1,0 +1,7 @@
+OurAirports data (public domain)
+
+data/airports/airports.tsv is built by tools/gen_airports.py from the OurAirports CSV files (https://ourairports.com/data/),
+which the project publishes as public domain. The header of the data file records the SHA-256 of both source files.
+
+This text restates what OnAir's own notes say (THIRD_PARTY.md, data/airports/airports.tsv). It is not a legal text;
+check https://ourairports.com/data/ for the current statement.

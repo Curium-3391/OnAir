@@ -1,0 +1,495 @@
+version = 1
+SPDX-PackageName = "OnAir"
+SPDX-PackageSupplier = "Kristijonas Adomaitis"
+SPDX-PackageDownloadLocation = "https://github.com/adswill/OnAir"
+
+# Licence and copyright for every file in this repository, kept in one place so that no source file has to be edited
+# (see docs/PROVENANCE.md). Rules:
+#  - Later [[annotations]] win over earlier ones (REUSE spec 3.x).
+#  - precedence = "closest": a licence or copyright notice inside a file wins over the entry here, so files with their own
+#    SPDX tags (for example android/gradlew) and the headers added later by tools/release/add_spdx.py stay as written.
+#  - Third-party text is taken from the file headers and the licence files in each directory (third_party/*, THIRD_PARTY.md).
+#    Where a licence could not be established it says LicenseRef-Unknown and the file is listed in docs/PROVENANCE.md.
+#  - tools/release/check_spdx.py checks that every tracked file is covered (no network).
+
+# ---------------------------------------------------------------- OnAir's own work (default)
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The GPL text itself is FSF's, copied verbatim.
+[[annotations]]
+path = "LICENSE"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>"
+SPDX-License-Identifier = "LicenseRef-FSF-GPL-verbatim"
+
+# ---------------------------------------------------------------- name and logo: all rights reserved
+[[annotations]]
+path = [
+  "assets/branding/**",
+  "packaging/icons/**",
+  "packaging/windows/OnAir.ico",
+  "packaging/windows/header.bmp",
+  "packaging/windows/welcome.bmp",
+  "android/app/src/main/res/drawable/ic_launcher*.xml",
+  "android/app/src/main/res/drawable/ic_notification.xml",
+  "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+  "web/**/apple-touch-icon.png",
+  "web/**/favicon.png",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis. All rights reserved."
+SPDX-License-Identifier = "LicenseRef-OnAir-Logo"
+
+# The branding notes are text written by the owner, under the project licence.
+[[annotations]]
+path = "assets/branding/README.md"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# ---------------------------------------------------------------- plug-in SDK (public domain by design, docs/plugins.md)
+[[annotations]]
+path = [
+  "sdk/include/**",
+  "sdk/examples/**",
+  "sdk/rust/**",
+  "sdk/cmake/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "sdk/template/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "MIT"
+
+# ---------------------------------------------------------------- data files
+# data/frequencies, data/bandplans/*.json|csv, data/modes: compiled from public regulations and standards, text written for
+# OnAir (docs/frequency-db.md, docs/band-plans.md): the project licence applies (default entry).
+[[annotations]]
+path = "data/airports/airports.tsv"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "OurAirports contributors (David Megginson), https://ourairports.com/data/",
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors (selection and conversion by tools/gen_airports.py)",
+]
+SPDX-License-Identifier = "LicenseRef-OurAirports-PD"
+
+# ---------------------------------------------------------------- fonts
+[[annotations]]
+path = [
+  "third_party/fonts/*.ttf",
+  "android/app/src/main/res/font/inter_*.ttf",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = [
+  "third_party/fonts/JetBrainsMono-*.ttf",
+  "android/app/src/main/res/font/jetbrains_mono_*.ttf",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)"
+SPDX-License-Identifier = "OFL-1.1"
+
+# Deflate-compressed subsets of the four fonts above (tools/gen_typo_fonts.py).
+[[annotations]]
+path = "app/ui/typo_fonts.inc"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+  "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)",
+]
+SPDX-License-Identifier = "OFL-1.1"
+
+# ---------------------------------------------------------------- third_party/ (vendored, own licences)
+[[annotations]]
+path = "third_party/imgui/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2014-2025 Omar Cornut and Dear ImGui contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "third_party/imgui/imstb_*.h"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2017 Sean Barrett and contributors (stb)"
+SPDX-License-Identifier = "MIT OR Unlicense"
+
+[[annotations]]
+path = "third_party/imgui/backends/imgui_impl_opengl3_loader.h"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "imgl3w authors (https://github.com/dearimgui/gl3w_stripped)",
+  "Copyright 2013-2020 The Khronos Group Inc.",
+]
+SPDX-License-Identifier = "Unlicense AND MIT"
+
+[[annotations]]
+path = "third_party/miniaudio/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2026 David Reid"
+SPDX-License-Identifier = "MIT-0"   # the file offers "public domain or MIT-0"; MIT-0 is the one with a standard text
+
+[[annotations]]
+path = "third_party/sqlite/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "The SQLite authors (D. Richard Hipp and contributors); the author disclaims copyright"
+SPDX-License-Identifier = "blessing"
+
+[[annotations]]
+path = "third_party/lua/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 1994-2026 Lua.org, PUC-Rio"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "third_party/whisper/**"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2023-2026 The ggml authors",
+  "Copyright 2024 Mozilla Foundation (ggml-cpu/llamafile/sgemm.cpp)",
+  "Copyright (c) 2023 Jeffrey Quesnelle and Bowen Peng (YaRN)",
+]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "third_party/rnnoise/**"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2017 Mozilla",
+  "Copyright (c) 2007-2017 Jean-Marc Valin",
+  "Copyright (c) 2005-2017 Xiph.Org Foundation",
+  "Copyright (c) 2003-2004 Mark Borgerding",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+# codec2: the directory COPYING is LGPL-2.1; the files say "version 2.1, as published by the FSF" (no "or later").
+[[annotations]]
+path = "third_party/codec2/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) David Rowe and codec2 contributors"
+SPDX-License-Identifier = "LGPL-2.1-only"
+
+[[annotations]]
+path = [
+  "third_party/codec2/src/_kiss_fft_guts.h",
+  "third_party/codec2/src/kiss_fft.c",
+  "third_party/codec2/src/kiss_fftr.c",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2003-2010 Mark Borgerding"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+  "third_party/codec2/src/lpcnet_freq.c",
+  "third_party/codec2/src/lpcnet_freq.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2017-2018 Mozilla"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "third_party/codec2/src/optparse.h"
+precedence = "closest"
+SPDX-FileCopyrightText = "optparse authors (public domain dedication in the file)"
+SPDX-License-Identifier = "Unlicense"
+
+# codec2's varicode.c names "GNU General Public License version 2.1", which does not exist; the directory COPYING is LGPL-2.1.
+# Not guessed: the owner decides (docs/PROVENANCE.md, "Open points").
+[[annotations]]
+path = "third_party/codec2/src/varicode.c"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) David Rowe"
+SPDX-License-Identifier = "LicenseRef-Unknown"
+
+# uat_fec: Oliver Jowett's dump978 files (GPL-2.0-or-later) and Phil Karn's Reed-Solomon library ("LGPL", no version stated).
+[[annotations]]
+path = [
+  "third_party/uat_fec/fec.c",
+  "third_party/uat_fec/fec.h",
+  "third_party/uat_fec/uat.h",
+  "third_party/uat_fec_wrapper.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2015, Oliver Jowett <oliver@mutability.co.uk>"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = [
+  "third_party/uat_fec/char.h",
+  "third_party/uat_fec/rs.h",
+  "third_party/uat_fec/rs-common.h",
+  "third_party/uat_fec/init_rs.h",
+  "third_party/uat_fec/init_rs_char.c",
+  "third_party/uat_fec/decode_rs.h",
+  "third_party/uat_fec/decode_rs_char.c",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2002-2004 Phil Karn, KA9Q"
+SPDX-License-Identifier = "LicenseRef-Karn-LGPL"
+
+[[annotations]]
+path = "third_party/sddc_fx3/SDDC_FX3.img"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2017-2020 Oscar Steila ik1xpv (ExtIO_sddc, SDDC_Driver)",
+  "Cypress/Infineon EZ-USB FX3 SDK object code (terms not in the repository)",
+]
+SPDX-License-Identifier = "LicenseRef-Unknown"
+
+[[annotations]]
+path = [
+  "third_party/sddc_fx3/LICENSE-SDDC_Driver.txt",
+  "third_party/sddc_fx3/README-OnAir.md",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2017-2020 Oscar Steila ik1xpv"
+SPDX-License-Identifier = "MIT"
+
+# OnAir's own notes inside the vendored directories.
+[[annotations]]
+path = [
+  "third_party/*/README-OnAir.md",
+  "third_party/sqlite/README.md",
+  "third_party/fonts/README.md",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# ---------------------------------------------------------------- other people's code or tables inside OnAir's own directories
+# One entry per project in THIRD_PARTY.md "ported / adapted / translated" rows. The original holder line is kept next to ours.
+
+# DecSAT by Arclamp (CasualArclamp), GPL-3.0-or-later: the DVB-S parity work (0.2.8), CCSDS, DVB-CID/RCS/DSM-CC/SI tables, the TV sat beacon
+# decoder. The directories also hold OnAir-written files; the Arclamp line is added to the whole set until the owner narrows it.
+[[annotations]]
+path = [
+  "core/src/dvbs/**",
+  "core/include/dect2/dvbs/**",
+  "core/src/ccsds/**",
+  "core/include/dect2/ccsds/**",
+  "core/src/satbeacon/**",
+  "core/include/dect2/satbeacon/**",
+  "core/src/tv/dsmcc.cpp",
+  "core/src/tv/rcs.cpp",
+  "core/src/tv/si_tables.cpp",
+  "core/src/tv/ts_data.cpp",
+  "core/include/dect2/tv/dsmcc.h",
+  "core/include/dect2/tv/rcs.h",
+  "core/include/dect2/tv/si_tables.h",
+  "core/include/dect2/tv/ts_data.h",
+  "app/dvbs/dvbs_ui.cpp",
+  "app/satbeacon/**",
+  "tests/dvbs/**",
+  "tests/ccsds/**",
+  "tests/satbeacon/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Copyright (C) Arclamp (DecSAT, https://github.com/CasualArclamp/DecSAT)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# etisnoop FIG analyser (GPL-3.0-or-later)
+[[annotations]]
+path = [
+  "core/src/dab/dab_fig*",
+  "core/include/dect2/dab/dab_fig.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Copyright (C) 2014 CSP Innovazione nelle ICT s.c.a r.l.",
+  "Copyright (C) 2018 Matthias P. Braendli",
+  "Copyright (C) 2015 Data Path",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# nrsc5 (Theori and contributors; THIRD_PARTY.md says GPL-3.0-or-later, the file headers say GPL-3.0: owner to confirm)
+[[annotations]]
+path = [
+  "core/src/hdr/hdr_fec.cpp",
+  "core/src/hdr/hdr_l2*",
+  "core/src/hdr/hdr_phy.cpp",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "nrsc5 authors (Theori, Clayton Smith and contributors, https://github.com/theori-io/nrsc5)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# e-Czas by sp5wwp (GPL-3.0, no "or later" stated)
+[[annotations]]
+path = [
+  "core/src/eczas/eczas_rx.cpp",
+  "core/include/dect2/eczas/eczas_rx.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "sp5wwp (e-Czas, https://github.com/sp5wwp/e-Czas)",
+]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# railair-terminal by frank-1225 (GPL-3.0-or-later), Chinese railway messages; MIT parts from CRRD (Alex L Manstein)
+[[annotations]]
+path = [
+  "core/include/dect2/railway/railway_proto.h",
+  "core/src/lbj/lbj_proto.cpp",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "frank-1225 (railair-terminal, https://github.com/frank-1225/railair-terminal)",
+  "Copyright (c) 2020 Alex L Manstein (CRRD, MIT)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# dump978 uat_decode.c by Oliver Jowett (GPL-2.0-or-later) and its Rust port
+[[annotations]]
+path = [
+  "core/src/uat/uat_decode.c",
+  "core/include/dect2/uat/uat_decode_c.h",
+  "rust/onair_uat/src/downlink.rs",
+  "rust/onair_uat/src/uplink.rs",
+  "rust/onair_uat/src/lib.rs",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Copyright 2015, Oliver Jowett <oliver@mutability.co.uk>",
+]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# librtlsdr (RTL-SDR Blog fork 1.3.6, osmocom rtl-sdr), translated to Rust
+[[annotations]]
+path = [
+  "rust/onair_usb/src/rtl.rs",
+  "rust/onair_usb/src/r82xx.rs",
+  "rust/onair_usb/src/e4k.rs",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Copyright (C) 2012-2014 Steve Markgraf",
+  "Copyright (C) 2012 Dimitri Stolnikov",
+  "Copyright (C) 2013 Mauro Carvalho Chehab (r82xx)",
+  "Copyright (C) 2011-2012 Harald Welte, 2012 Sylvain Munaut, 2012 Hoernchen (e4k)",
+]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# welle.io EBU Latin table (GPL-2.0-or-later), checked against ODR-PadEnc; glibc iso_6937 table (LGPL-2.1-or-later)
+[[annotations]]
+path = [
+  "core/src/common/text_charset.cpp",
+  "rust/onair_dvbsi/src/tables.rs",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Albrecht Lohofener and welle.io contributors",
+  "GNU C Library authors (iso_6937 table)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later AND LGPL-2.1-or-later"
+
+# gr-dvbt2 tables (GPL-3.0)
+[[annotations]]
+path = "core/src/t2/t2_tables.cpp"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "gr-dvbt2 authors",
+]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# WSJT-X tables and algorithms (GPL-3.0), fldigi tables (GPL; THIRD_PARTY.md: keyboard modes GPL-3.0, MT63 GPL-3.0-or-later)
+[[annotations]]
+path = [
+  "core/src/hfdig/hfdig_jt4.cpp",
+  "core/src/hfdig/hfdig_q65_tables.cpp",
+  "core/src/hfdig/hfdig_wsjt_tables.cpp",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Joe Taylor K1JT and the WSJT Development Group (WSJT-X)",
+]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = [
+  "core/src/hfdig/hfdig_kbd_tables.cpp",
+  "core/src/hfdig/hfdig_kbd_tables.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "W1HKJ, Dave Freese and fldigi contributors",
+]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "core/src/mt63/mt63_proto.cpp"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "Pawel Jalocha SP9VRC (MT63 modem), W1HKJ, Dave Freese and fldigi contributors",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# DTMB tables from dtmb-sdr (MIT)
+[[annotations]]
+path = [
+  "core/src/dtmb/dtmb_defs.cpp",
+  "core/src/dtmb/dtmb_ldpc_tables.cpp",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "ningzichun and dtmb-sdr contributors (https://github.com/ningzichun/dtmb-sdr)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later AND MIT"
+
+# AAC window and scale-factor values copied from FFmpeg libavcodec/aactab.c by a script (LGPL-2.1-or-later)
+[[annotations]]
+path = "core/src/drm/drm_aactab.cpp"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors",
+  "FFmpeg developers (libavcodec/aactab.c)",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later AND LGPL-2.1-or-later"
+
+# ---------------------------------------------------------------- recordings of unknown origin
+[[annotations]]
+path = "voice_listen/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright holder of the spoken test phrase: not recorded in the repository"
+SPDX-License-Identifier = "LicenseRef-Unknown"
+
+[[annotations]]
+path = "voice_listen/LISTEN.txt"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Gradle wrapper (Apache-2.0, the gradlew script carries its own SPDX tag)
+[[annotations]]
+path = [
+  "android/gradlew",
+  "android/gradle/wrapper/gradle-wrapper.jar",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) the original Gradle authors"
+SPDX-License-Identifier = "Apache-2.0"

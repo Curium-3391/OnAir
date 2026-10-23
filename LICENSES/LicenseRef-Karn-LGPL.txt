@@ -1,0 +1,10 @@
+Phil Karn's Reed-Solomon library (libfec) as vendored in third_party/uat_fec
+
+Copyright 2002-2004 Phil Karn, KA9Q
+
+The files say, in their own headers (third_party/uat_fec/rs.h, char.h, rs-common.h, init_rs.h):
+
+    May be used under the terms of the GNU Lesser General Public License (LGPL)
+
+The version of the LGPL is not stated in the files. The text of the LGPL 2.1 is in LICENSES/LGPL-2.1-only.txt for reference;
+which version applies is an open point (docs/PROVENANCE.md).

@@ -1,0 +1,5 @@
+Licence not established
+
+Files annotated with this identifier in REUSE.toml have a licence or copyright holder that could not be established from the
+repository. They are listed in docs/PROVENANCE.md under "Open points". Until the owner decides, treat them as "all rights
+reserved by their authors" for anything beyond running the program as built from this repository.
