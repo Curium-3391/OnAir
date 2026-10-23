@@ -223,6 +223,9 @@ std::vector<DeviceInfo> listHackrfDevices(std::string& err);
 // Every other radio that SoapySDR knows (Airspy, SDRplay, RTL-SDR, PlutoSDR, LimeSDR, BladeRF, USRP, ...). Empty when built without SoapySDR.
 std::vector<DeviceInfo> listSoapyDevices(std::string& err);
 bool soapySupported();
+// A SoapySDR radio that is not enumerated (a SoapyRemote server the user added) is listed with its ranges unknown (gain 0..0) until it is
+// opened; after a start this fills them from what the radio reported (rate, gain, frequency, settings). True when something changed (#228).
+bool soapyLearnRanges(DeviceInfo& d);
 // Radios driven by their own libraries when those are installed: RTL-SDR, Airspy, BladeRF, LimeSDR, PlutoSDR, USRP, SDRplay (experimental).
 std::vector<DeviceInfo> listNativeDevices(std::string& err);
 std::unique_ptr<IqSource> makeNativeSource(const DeviceInfo& d);

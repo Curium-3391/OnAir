@@ -807,6 +807,31 @@ DeviceInfo soapyDeviceFor(const std::string& args, const std::string& board, con
     return d;
 }
 
+bool soapyLearnRanges(DeviceInfo& d) {
+    if (d.kind != DeviceInfo::Soapy) return false;
+    std::lock_guard<std::mutex> lk(gRangesMu);
+    const auto it = gRanges.find(rangesKey(d.serial, deviceArgs(d.soapyArgs)));
+    if (it == gRanges.end()) return false;
+    const SoapyRanges& r = it->second;
+    if (!(r.gainMax > r.gainMin) && !(r.maxRate > 0)) return false;
+    bool ch = false;
+    auto set = [&](double& f, double v) { if (v != 0 && f != v) { f = v; ch = true; } };
+    set(d.minRateHz, r.minRate); set(d.maxRateHz, r.maxRate);
+    if (r.gainMax > r.gainMin && (d.gainMinDb != r.gainMin || d.gainMaxDb != r.gainMax)) { d.gainMinDb = r.gainMin; d.gainMaxDb = r.gainMax; ch = true; }
+    set(d.minFreqHz, r.minFreq); set(d.maxFreqHz, r.maxFreq);
+    if (ch) {
+        d.rateRanges = r.rates;
+        d.hasBiasTee = !r.biasKey.empty();
+        // the radio's own settings (RF gain stage, gain elements ...) after the ones the listing put first (ppm), without doubling any
+        for (const RadioSetting& s : r.settings) {
+            bool have = false;
+            for (const RadioSetting& o : d.settings) have |= o.key == s.key;
+            if (!have) d.settings.push_back(s);
+        }
+    }
+    return ch;
+}
+
 std::unique_ptr<IqSource> makeSoapySource(const DeviceInfo& d) { return std::make_unique<SoapySource>(d.soapyArgs, rangesKey(d.serial, deviceArgs(d.soapyArgs))); }
 std::unique_ptr<TxSink> makeSoapyTxSink(const DeviceInfo& d) { return std::make_unique<SoapyTx>(d.soapyArgs, rangesKey(d.serial, deviceArgs(d.soapyArgs))); }
 

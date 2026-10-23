@@ -580,6 +580,7 @@ std::unique_ptr<IqSource> makeSoapySource(const DeviceInfo& d);
 #else
 bool soapySupported() { return false; }
 std::vector<DeviceInfo> listSoapyDevices(std::string&) { return {}; }
+bool soapyLearnRanges(DeviceInfo&) { return false; }
 #endif
 
 static std::atomic<bool> gNetDiscovery{false};
