@@ -362,3 +362,5 @@ HD checkbox next to the channel picker (greyed out until an HD counterpart exist
 
 2026-10-22 (mode-drmplus-030): audit only, no code. DRM30 modes A-D and DRM+ (mode E, 100 kHz, 4/16-QAM, SDC 4-QAM, generator, tests/drm/test_drm_modee.cpp) are already in core/src/drm and auto-detected inside the one DRM entry. HD Radio FM (MP1/MP3) and AM (MA1 hybrid, MA3 all-digital: P1, P3, PIDS, L2, AAS, HDC via user-installed FAAD2 plug-in) are already in core/src/hdr with generator and tests/hdr/test_hdr_am.cpp. Per the one-entry-per-protocol rule they stay as DRM and HD Radio families; no new mode numbers used. Nothing added; still unverified without real signals: DRM+ unequal error protection, HD AM on-air.
 
+## 2026-10-23: fix-wf-click-030 (Discord: waterfall shifts when you click a signal)
+Cause: the waterfall history was drawn against the current radio centre, so after a click-retune old rows sat at the wrong frequency. Fixed by the spectrum-revamp-030 alignment (Waterfall::follow shifts rows on retune); added: follow also while paused, and a retune alignment test (tone column vs new axis, with/without tune offset, band jump clears) in tests/app/test_spec_axis.cpp.
