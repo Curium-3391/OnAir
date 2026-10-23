@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <type_traits>
 using namespace onair_web;
@@ -118,7 +119,11 @@ static void testDefaults() {
     bool made;
     WebSettings s = loadWebSettings(cf, made);
     CHECK(s.server.bind == "127.0.0.1" && !s.logIp && !s.directory.on && !s.server.adminLan && !s.server.plainInternet, "safe defaults: loopback, no IP logging, no directory, no admin from the network");
-    CHECK(makeDirectoryHeartbeat() == nullptr, "no directory module in this build");
+    {   // the directory heartbeat is built in but refuses to start (and so sends nothing) without a URL, a key place and the host's confirmation
+        std::unique_ptr<DirectoryHeartbeat> d(makeDirectoryHeartbeat());
+        std::string err;
+        CHECK(d && !d->start(s.directory, [] { return std::string("{}"); }, err) && !err.empty(), "directory refuses to start by default");
+    }
 }
 
 int main() {

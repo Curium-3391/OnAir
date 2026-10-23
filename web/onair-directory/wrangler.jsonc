@@ -1,0 +1,19 @@
+{
+  // OnAir directory Worker. Not deployed by any script in this repo: the owner follows docs/ONAIR-DIRECTORY.md.
+  "name": "onair-directory",
+  "main": "src/index.js",
+  "compatibility_date": "2026-05-03",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    // replace database_id with the id `wrangler d1 create onair-directory` prints
+    { "binding": "DB", "database_name": "onair-directory", "database_id": "REPLACE-WITH-D1-ID" }
+  ],
+  "triggers": { "crons": ["17 * * * *"] },
+  "vars": { "MAX_SERVERS": "2000" },
+  // secrets (never in this file): wrangler secret put ADMIN_TOKEN ; wrangler secret put IP_SALT
+  "observability": { "enabled": true }
+}

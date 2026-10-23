@@ -91,7 +91,7 @@ The radio's centre frequency and rate are what the listeners can tune inside: se
 | `web_allow_range`, `web_block_range`, `web_range_preset`, `web_range_action` | | which frequencies listeners may tune and see; see Frequency ranges below |
 | `web_decoders_off` | | data decoders turned off for listeners |
 | `web_decoders_on`, `web_legal_ack` | | voice / pager decoders turned on, and the version of the legal notice the host accepted (set by the admin API; see Safety) |
-| `web_directory`, `web_directory_url`, `web_public_url` | 0 | the server directory heartbeat (extension point, not in this build) |
+| `web_directory`, `web_directory_url`, `web_public_url`, `web_directory_*` | 0 | list this server in a public directory with a signed heartbeat; off by default, shows exactly what is sent first and needs `web_directory_ack` (docs/ONAIR-DIRECTORY.md) |
 
 Failed logins (wrong password or invite, wrong admin token) from one address: after 5 within a minute that address is refused for a minute. Every wrong answer comes after 300 ms.
 
@@ -224,7 +224,7 @@ Listeners subscribe to decoders by kind (`welcome.decoders` lists what the serve
 ## The browser UI and the directory (extension points)
 
 * **Browser UI.** Static files in `web/onair-web/` (or `web_root`) are served at `/`: `index.html` and whatever it loads from the same origin (scripts, styles, images, WebAssembly). Only plain file names are served (letters, digits, `.`, `-`, `_`), never dot files or anything outside the folder, at most 16 MB a file. The page talks to `/web/v1/ws` (docs/ONAIR-WEB-PROTOCOL.md) and may read `/web/v1/info` before connecting.
-* **Directory.** `server/web/web_directory.h` is the place for an optional heartbeat that lists the server in a public directory of OnAir Web servers (`web_directory=1`, `web_directory_url`, `web_public_url`). It is off by default and not built in yet; when it is, it may send only the public `/web/v1/info` JSON and the public URL.
+* **Directory.** `server/web/web_directory*.cpp` is the optional heartbeat that lists the server in a public directory of OnAir Web servers (Worker and page in `web/onair-directory/`). It is off by default, HTTPS only, signed with an Ed25519 key made on first start, and sends nothing until the host has read the exact JSON it prints and confirmed it with `web_directory_ack`. It sends name, address, coarse location, coverage and the number of users, never a listener's address or activity. Details: docs/ONAIR-DIRECTORY.md.
 
 ## Not done yet / known limits
 
