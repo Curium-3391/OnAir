@@ -138,6 +138,7 @@ fun RadioScreen(vm: ReceiverViewModel, pickFile: () -> Unit, modifier: Modifier 
                     Spacer(Modifier.height(4.dp))
                     Label(stringResource(R.string.file_hint))
                 }
+                else -> {}   // USB, network list and sound card: chosen in the rows above, their settings are in the USB and network radio sections
             }
         }
 
