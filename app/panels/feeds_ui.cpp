@@ -6,7 +6,7 @@
 #include <ctime>
 
 namespace {
-const char* kKeys[dect2::kNumFeeds] = {"feedSbs", "feedBeast", "feedAis", "feedAprsIs", "feedKiss", "feedAcars", "feedVdl2", "feedGnss", "feedBle", "feedLora", "feedMqtt"};
+const char* kKeys[dect2::kNumFeeds] = {"feedSbs", "feedBeast", "feedAis", "feedAprsIs", "feedKiss", "feedAcars", "feedVdl2", "feedGnss", "feedBle", "feedLora"};
 
 void apply(App& a) {
     dect2::Feeds::get().configure(a.feeds);
@@ -103,10 +103,6 @@ void loadFeedPrefs(App& a) {
     c.aprsCall = d.getS("feedAprsCall", ""); c.aprsPass = d.getS("feedAprsPass", "");
     c.aprsServer = d.getS("feedAprsServer", c.aprsServer); c.aprsServerPort = (int)d.getI("feedAprsServerPort", c.aprsServerPort);
     c.stationId = d.getS("feedStationId", c.stationId);
-    c.mqttHost = d.getS("feedMqttHost", ""); c.mqttPort = (int)d.getI("feedMqttPort", c.mqttPort);
-    c.mqttUser = d.getS("feedMqttUser", ""); c.mqttPass = d.getS("feedMqttPassword", "");   // a secret setting (backup.h: isSecretPrefKey)
-    c.mqttTopic = d.getS("feedMqttTopic", c.mqttTopic);
-    c.mqttIsm = d.getB("feedMqttIsm", c.mqttIsm); c.mqttAdsb = d.getB("feedMqttAdsb", c.mqttAdsb); c.mqttAis = d.getB("feedMqttAis", c.mqttAis);
     dect2::PskReporterConfig& r = a.pskr;
     r.on = d.getB("pskrOn", false); r.call = d.getS("pskrCall", ""); r.locator = d.getS("pskrLocator", ""); r.antenna = d.getS("pskrAntenna", "");
     if (r.on) dect2::PskReporter::get().configure(r);
@@ -159,8 +155,6 @@ void saveFeedPrefs(const App& a) {
     d.setS("feedAprsCall", c.aprsCall); d.setS("feedAprsPass", c.aprsPass);
     d.setS("feedAprsServer", c.aprsServer); d.setI("feedAprsServerPort", c.aprsServerPort);
     d.setS("feedStationId", c.stationId);
-    d.setS("feedMqttHost", c.mqttHost); d.setI("feedMqttPort", c.mqttPort); d.setS("feedMqttUser", c.mqttUser); d.setS("feedMqttPassword", c.mqttPass);
-    d.setS("feedMqttTopic", c.mqttTopic); d.setB("feedMqttIsm", c.mqttIsm); d.setB("feedMqttAdsb", c.mqttAdsb); d.setB("feedMqttAis", c.mqttAis);
     d.setI("feedTgtCount", (long)c.targets.size());
     for (size_t i = 0; i < c.targets.size(); i++) {
         const std::string k = "feedTgt" + std::to_string(i);
@@ -266,23 +260,6 @@ void feedsWindow(App& a) {
     ImGui::PushTextWrapPos(460 * gUi);
     ImGui::TextDisabled("%s", tr("JSON lines (one object a line) unless GNSS, which is NMEA. Off until you turn a feed on. Only modes that already have structured messages are sent."));
     ImGui::PopTextWrapPos();
-
-    typo::separatorText(tr("MQTT (Home Assistant, Node-RED, ...)"));
-    ImGui::PushID("mqtt");
-    changed |= ImGui::Checkbox(tr("Publish to an MQTT broker"), &c.on[dect2::kFeedMqtt]);
-    ImGui::SameLine(); changed |= textField("##host", c.mqttHost, 0, 160);
-    ImGui::SameLine(); changed |= portField(N_("Port"), c.mqttPort);
-    changed |= textField(N_("User"), c.mqttUser, 0, 120);
-    ImGui::SameLine(); changed |= textField(N_("Password"), c.mqttPass, ImGuiInputTextFlags_Password, 120);
-    ImGui::SameLine(); changed |= textField(N_("Topic"), c.mqttTopic, 0, 100);
-    changed |= ImGui::Checkbox(tr("ISM sensors"), &c.mqttIsm);
-    ImGui::SameLine(); changed |= ImGui::Checkbox(tr("ADS-B frames"), &c.mqttAdsb);
-    ImGui::SameLine(); changed |= ImGui::Checkbox(tr("AIS sentences"), &c.mqttAis);
-    statusLine(dect2::kFeedMqtt, false);
-    ImGui::PushTextWrapPos(460 * gUi);
-    ImGui::TextDisabled("%s", tr("MQTT 3.1.1 without TLS: use it on your own network. Topics: <topic>/ism/<model>/<id>, <topic>/adsb/<hex>, <topic>/ais; one JSON object each. The password is kept with the other secrets (left out of plain backups)."));
-    ImGui::PopTextWrapPos();
-    ImGui::PopID();
 
     typo::separatorText(tr("PSK Reporter"));
     ImGui::SameLine(); ImGui::TextDisabled("(?)");

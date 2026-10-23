@@ -101,11 +101,6 @@ struct Feeds::Impl {
     std::string isPending, isRecv, isKey;
     double isRetryAt = 0;
     bool isVerified = false, isAnswered = false;
-    // MQTT client (thread's own)
-    sock_t mq = kBadSock;
-    std::string mqPending, mqRecv, mqKey;
-    double mqRetryAt = 0, mqLastSend = 0;
-    bool mqConnected = false;
 
     static bool isServer(int id) { return id == kFeedSbs || id == kFeedBeast || id == kFeedKiss; }
     static bool isUdp(int id) {
@@ -181,55 +176,6 @@ struct Feeds::Impl {
         if (udp[id].s != kBadSock) sockClose(udp[id].s);
         udp[id].s = kBadSock; udp[id].host.clear(); udp[id].port = 0;
     }
-    void closeMq(bool polite) {
-        if (mq != kBadSock) { if (polite && mqConnected) sendSome(mq, feedfmt::mqttDisconnect()); sockClose(mq); }
-        mq = kBadSock; mqPending.clear(); mqRecv.clear(); mqConnected = false;
-    }
-    void serviceMq(double now) {
-        FeedStatus& S = st[kFeedMqtt];
-        if (!live.on[kFeedMqtt]) { S.state = "off"; return; }
-        if (live.mqttHost.empty()) { S.state = "needs a broker address"; return; }
-        if (mq == kBadSock) {
-            if (now < mqRetryAt) { S.state = "waiting to connect again"; return; }
-            std::string err;
-            S.state = "connecting to " + live.mqttHost;
-            sock_t s = tcpConnect(live.mqttHost, live.mqttPort, 3000, err);
-            if (s == kBadSock) { S.lastError = err; mqRetryAt = now + 30; S.state = "waiting to connect again"; return; }
-            sockSetNonBlocking(s, true);
-            noSigPipe(s);
-            mq = s;
-            mqPending = feedfmt::mqttConnect(live.mqttClientId, live.mqttUser, live.mqttPass, 60);
-            mqLastSend = now;
-            S.lastError.clear();
-        }
-        const int r = drain(mq, &mqRecv);
-        while (mqRecv.size() >= 2) {   // CONNACK (20 02 00 rc), PINGRESP (D0 00); anything else is skipped by its length
-            const uint8_t t = (uint8_t)mqRecv[0];
-            size_t len = 0, i = 1; int shift = 0; bool done = false;
-            while (i < mqRecv.size() && i < 5) { const uint8_t b = (uint8_t)mqRecv[i++]; len |= (size_t)(b & 0x7F) << shift; shift += 7; if (!(b & 0x80)) { done = true; break; } }
-            if (!done || mqRecv.size() < i + len) break;
-            if ((t >> 4) == 2 && len >= 2) {
-                const uint8_t rc = (uint8_t)mqRecv[i + 1];
-                if (rc == 0) mqConnected = true;
-                else {
-                    static const char* const why[] = {"", "protocol version refused", "client id refused", "server unavailable", "user name or password refused", "not authorised"};
-                    S.lastError = std::string("the broker refused the connection: ") + (rc < 6 ? why[rc] : "unknown reason");
-                    closeMq(false); mqRetryAt = now + 60; S.state = "waiting to connect again";
-                    return;
-                }
-            }
-            mqRecv.erase(0, i + len);
-        }
-        if (mqRecv.size() > 65536) mqRecv.clear();
-        bool dead = r < 0;
-        if (!dead && mqConnected && now - mqLastSend > 30 && mqPending.empty()) { mqPending = feedfmt::mqttPingReq(); }
-        if (!dead && !mqPending.empty()) {
-            const long long k = sendSome(mq, mqPending);
-            if (k < 0) dead = true; else if (k > 0) { mqPending.erase(0, (size_t)k); mqLastSend = now; }
-        }
-        if (dead) { closeMq(false); S.lastError = "the broker closed the connection"; mqRetryAt = now + 10; S.state = "waiting to connect again"; return; }
-        S.state = mqConnected ? "connected to " + live.mqttHost + ":" + std::to_string(live.mqttPort) : "logging in to " + live.mqttHost;
-    }
     void closeIs() {
         if (is != kBadSock) sockClose(is);
         is = kBadSock; isPending.clear(); isRecv.clear(); isVerified = isAnswered = false;
@@ -243,8 +189,6 @@ struct Feeds::Impl {
         }
         const std::string key = live.on[kFeedAprsIs] ? live.aprsCall + "\n" + live.aprsPass + "\n" + live.aprsServer + ":" + std::to_string(live.aprsServerPort) : "";
         if (key != isKey) { closeIs(); isKey = key; isRetryAt = 0; st[kFeedAprsIs].lastError.clear(); }
-        const std::string mk = live.on[kFeedMqtt] ? live.mqttHost + ":" + std::to_string(live.mqttPort) + "\n" + live.mqttUser + "\n" + live.mqttPass + "\n" + live.mqttClientId : "";
-        if (mk != mqKey) { closeMq(true); mqKey = mk; mqRetryAt = 0; st[kFeedMqtt].lastError.clear(); }
     }
 
     void serviceServers(double now) {
@@ -336,10 +280,6 @@ struct Feeds::Impl {
                 st[id].dropped++;
                 if (!wouldBlock()) st[id].lastError = "send failed: " + lastSockError();
             } else st[id].sent++;
-        } else if (id == kFeedMqtt) {
-            if (mq == kBadSock || !mqConnected || mqPending.size() > 256 * 1024) { st[id].dropped++; return; }
-            mqPending += it.data;
-            st[id].sent++;
         } else if (id == kFeedAprsIs) {
             if (is == kBadSock || !isAnswered || !isVerified || isPending.size() > 65536) { st[id].dropped++; return; }
             isPending += it.data;
@@ -363,16 +303,11 @@ struct Feeds::Impl {
             if (dirty) apply(now);
             serviceServers(now);
             serviceIs(now);
-            serviceMq(now);
             for (const Item& it : batch) deliver(it);
             if (!batch.empty()) serviceServers(now);   // send what just arrived
             if (!batch.empty() && is != kBadSock && !isPending.empty()) {
                 const long long k = sendSome(is, isPending);
                 if (k > 0) isPending.erase(0, (size_t)k);
-            }
-            if (!batch.empty() && mq != kBadSock && !mqPending.empty()) {
-                const long long k = sendSome(mq, mqPending);
-                if (k > 0) { mqPending.erase(0, (size_t)k); mqLastSend = now; }
             }
             for (int id = 0; id < kNumFeeds; id++) {
                 FeedStatus& S = st[id];
@@ -383,16 +318,13 @@ struct Feeds::Impl {
                 } else if (isUdp(id)) {
                     S.active = udp[id].s != kBadSock;
                     S.state = !live.on[id] ? "off" : S.active ? "sending to " + udp[id].host + ":" + std::to_string(udp[id].port) + " (UDP)" : "not sending";
-                } else if (id == kFeedMqtt) {
-                    S.active = mq != kBadSock && mqConnected;
-                    S.clients = mq != kBadSock ? 1 : 0;
                 } else {
                     S.active = is != kBadSock && isVerified;
                     S.clients = is != kBadSock ? 1 : 0;
                 }
             }
             {
-                bool busy = !isPending.empty() || (is != kBadSock && !isVerified) || !mqPending.empty() || (mq != kBadSock && !mqConnected);
+                bool busy = !isPending.empty() || (is != kBadSock && !isVerified);
                 for (int id = 0; id < kNumFeeds && !busy; id++) if (isServer(id) && !srv[id].clients.empty()) busy = true;
                 waitMs = busy ? 40 : 250;
             }
@@ -401,8 +333,6 @@ struct Feeds::Impl {
         }
         for (int id = 0; id < kNumFeeds; id++) { closeServer(id); closeUdp(id); }
         closeIs();
-        closeMq(true);
-        mqKey.clear();
         isKey.clear();
     }
 };
@@ -424,25 +354,13 @@ void Feeds::configure(const FeedConfig& c) {
     Impl& I = *impl_;
     bool any = false;
     for (int id = 0; id < kNumFeeds; id++) {
-        const bool on = c.on[id] && (id != kFeedAprsIs || !c.aprsCall.empty()) && (id != kFeedMqtt || !c.mqttHost.empty());
+        const bool on = c.on[id] && (id != kFeedAprsIs || !c.aprsCall.empty());
         want_[id].store(on, std::memory_order_relaxed);
         any = any || c.on[id];
     }
-    const bool mq = want_[kFeedMqtt].load(std::memory_order_relaxed);
-    mqttIsm_.store(mq && c.mqttIsm); mqttAdsb_.store(mq && c.mqttAdsb); mqttAis_.store(mq && c.mqttAis);
-    FeedConfig cc = c;
-    if (cc.mqttClientId.empty()) {   // one random id for this run of the program
-        static const std::string rid = [] {
-            uint64_t x = (uint64_t)std::chrono::steady_clock::now().time_since_epoch().count() ^ (uint64_t)(uintptr_t)&rid;
-            x ^= x >> 33; x *= 0xff51afd7ed558ccdull; x ^= x >> 33;
-            char b[32]; snprintf(b, sizeof b, "onair-%08x", (unsigned)(x & 0xFFFFFFFFu));
-            return std::string(b);
-        }();
-        cc.mqttClientId = rid;
-    }
     {
         std::lock_guard<std::mutex> lk(I.mu);
-        I.cfg = cc;
+        I.cfg = c;
         I.cfgDirty = true;
         I.quit = false;
     }
@@ -468,7 +386,6 @@ void Feeds::stop() {
     FeedTargets::get().stop();
     Impl& I = *impl_;
     for (auto& w : want_) w.store(false);
-    mqttIsm_.store(false); mqttAdsb_.store(false); mqttAis_.store(false);
     {
         std::lock_guard<std::mutex> lk(I.mu);
         I.quit = true;
@@ -509,25 +426,11 @@ void Feeds::adsb(const FeedAdsbFrame& f) {
         std::string l = feedfmt::sbsLine(f, ms);
         if (!l.empty()) push(kFeedSbs, std::move(l));
     }
-    if (mqttAdsb_.load(std::memory_order_relaxed)) {
-        char hx[8];
-        snprintf(hx, sizeof hx, "%06X", f.icao & 0xFFFFFF);
-        mqtt(std::string("adsb/") + hx, feedfmt::adsbJson(f));
-    }
-}
-
-void Feeds::mqtt(const std::string& subtopic, const std::string& json) {
-    if (!want_[kFeedMqtt].load(std::memory_order_relaxed)) return;
-    std::string topic;
-    { std::lock_guard<std::mutex> lk(impl_->mu); topic = impl_->cfg.mqttTopic; }
-    if (topic.empty()) topic = "onair";
-    push(kFeedMqtt, feedfmt::mqttPublish(topic + "/" + subtopic, json));
 }
 
 void Feeds::ais(const std::vector<std::string>& sentences) {
     if (!wantAis()) return;
     FeedTargets::get().ais(sentences);
-    if (mqttAis_.load(std::memory_order_relaxed)) for (const std::string& s : sentences) mqtt("ais", "{\"nmea\":\"" + feedfmt::jsonEscape(s) + "\"}");
     if (!want_[kFeedAis].load(std::memory_order_relaxed)) return;
     for (const std::string& s : sentences) push(kFeedAis, s + "\r\n");
 }

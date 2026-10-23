@@ -1,50 +1,16 @@
 // ISM sensors receiver. See ism_rx.h.
 #include "dect2/ism/ism_rx.h"
-#include "dect2/net/feeds.h"
 #include "dect2/results/results_io.h"
 #include "dect2/ism/ism_tel.h"
 #include "dect2/ism/ism_sigfox.h"
 #include "dect2/dsp/fftutil.h"
 #include <algorithm>
-#include <cctype>
 #include <atomic>
 #include <cmath>
 #include <ctime>
 #include <mutex>
 
 namespace dect2 {
-
-// MQTT: <topic>/ism/<model>/<id>[-<channel>], and a JSON object in rtl_433's style (field names in lower case, the unit appended: temperature_C)
-static std::string ismMqttTopic(const IsmReading& r) {
-    std::string id = r.id.empty() ? "0" : r.id;
-    if (!r.channelName.empty()) id += "-" + r.channelName;
-    else if (r.channel >= 0) id += "-" + std::to_string(r.channel);
-    return "ism/" + feedfmt::mqttTopicPart(r.model) + "/" + feedfmt::mqttTopicPart(id);
-}
-static std::string ismMqttJson(const IsmReading& r, double freqHz, float rssi, float snr) {
-    auto key = [](const std::string& n, const std::string& u) {
-        std::string k;
-        for (char c : n) k += (c == ' ' || c == '-' || c == '(' || c == ')' || c == '/') ? '_' : (char)std::tolower((unsigned char)c);
-        while (!k.empty() && k.back() == '_') k.pop_back();
-        if (!u.empty()) { k += '_'; for (char c : u) if (std::isalnum((unsigned char)c)) k += c; else if (c == '%') k += "pct"; }
-        return k;
-    };
-    char b[64];
-    std::string o = "{\"model\":\"" + feedfmt::jsonEscape(r.model) + "\",\"kind\":\"" + feedfmt::jsonEscape(r.kind) + "\",\"id\":\"" + feedfmt::jsonEscape(r.id) + "\"";
-    if (!r.channelName.empty()) o += ",\"channel\":\"" + feedfmt::jsonEscape(r.channelName) + "\"";
-    else if (r.channel >= 0) o += ",\"channel\":" + std::to_string(r.channel);
-    if (r.battery >= 0) o += std::string(",\"battery_ok\":") + (r.battery ? "1" : "0");
-    if (!r.mic.empty()) o += ",\"mic\":\"" + feedfmt::jsonEscape(r.mic) + "\"";
-    for (const IsmField& f : r.fields) {
-        o += ",\"" + feedfmt::jsonEscape(key(f.name, f.unit)) + "\":";
-        if (!f.text.empty()) o += "\"" + feedfmt::jsonEscape(f.text) + "\"";
-        else if (std::isfinite(f.value)) { snprintf(b, sizeof b, "%.*f", std::max(0, std::min(6, f.decimals)), f.value); o += b; }
-        else o += "null";
-    }
-    snprintf(b, sizeof b, ",\"freq_mhz\":%.3f,\"rssi_db\":%.1f,\"snr_db\":%.1f}", freqHz / 1e6, rssi, snr);
-    return o + b;
-}
-
 
 namespace {
 constexpr double kFrameSec = 128e-6;     // detection FFT length
@@ -460,7 +426,6 @@ struct IsmReceiver::Impl {
         }
         for (auto& rd0 : rs) {
             if (tap) tap(rd0, fAbs);
-            if (Feeds::get().wantIsm()) Feeds::get().mqtt(ismMqttTopic(rd0), ismMqttJson(rd0, fAbs, rssi, snr));   // MQTT, off unless the user turned it on
             IsmDevice* d = nullptr;
             size_t di = 0;
             for (size_t i = 0; i < tel.devices.size(); i++) {

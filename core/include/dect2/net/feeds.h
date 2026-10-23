@@ -20,7 +20,7 @@
 
 namespace dect2 {
 
-enum FeedId { kFeedSbs, kFeedBeast, kFeedAis, kFeedAprsIs, kFeedKiss, kFeedAcars, kFeedVdl2, kFeedGnss, kFeedBle, kFeedLora, kFeedMqtt, kNumFeeds };
+enum FeedId { kFeedSbs, kFeedBeast, kFeedAis, kFeedAprsIs, kFeedKiss, kFeedAcars, kFeedVdl2, kFeedGnss, kFeedBle, kFeedLora, kNumFeeds };
 
 struct FeedConfig {
     bool on[kNumFeeds] = {};
@@ -36,12 +36,6 @@ struct FeedConfig {
     std::string aprsServer = "rotate.aprs2.net"; int aprsServerPort = 14580;
     std::vector<FeedTarget> targets;                           // outbound aggregator targets (feed_targets.h), each off until enabled
     std::string stationId = "OnAir";                           // station_id in the ACARS / VDL2 JSON
-    // MQTT (3.1.1, QoS 0, plain TCP): off until the user turns it on and names a broker; the password is a secret setting (backup.h rules)
-    std::string mqttHost; int mqttPort = 1883;
-    std::string mqttUser, mqttPass;
-    std::string mqttTopic = "onair";                           // topics: <topic>/ism/<model>/<id>, <topic>/adsb/<hex>, <topic>/ais
-    std::string mqttClientId;                                  // empty: onair-<random>
-    bool mqttIsm = true, mqttAdsb = false, mqttAis = false;    // what is published (ADS-B and AIS are busy: off by default)
 };
 
 struct FeedStatus {
@@ -89,13 +83,6 @@ std::string gnssGga(const GnssFix& f);
 std::string bleJson(const std::string& mac, const std::string& name, float rssi);
 // kind: "lora", "meshtastic", "meshcore", "lorawan", ... extra: more JSON object fields without braces (may be empty)
 std::string loraJson(const char* kind, const std::string& hex, float snrDb, double freqHz, int sf, const std::string& extra);
-// MQTT 3.1.1 packets (QoS 0 only)
-std::string mqttConnect(const std::string& clientId, const std::string& user, const std::string& pass, int keepAliveSec);
-std::string mqttPublish(const std::string& topic, const std::string& payload);
-std::string mqttPingReq();
-std::string mqttDisconnect();
-std::string mqttTopicPart(const std::string& s);   // one topic level: '/', '+', '#', spaces and control characters become '_'
-std::string adsbJson(const FeedAdsbFrame& f);       // {"hex":..,"df":..,"raw":..,"level_dbfs":..[,"lat":..,"lon":..]}
 } // namespace feedfmt
 
 class Feeds {
@@ -108,8 +95,8 @@ public:
     void stop();                             // closes everything (configure() starts again)
 
     // what the decoders call; cheap when the feed is off
-    bool wantAdsb() const { return FeedTargets::get().wantAdsb() || want_[kFeedSbs].load(std::memory_order_relaxed) || want_[kFeedBeast].load(std::memory_order_relaxed) || mqttAdsb_.load(std::memory_order_relaxed); }
-    bool wantAis() const { return want_[kFeedAis].load(std::memory_order_relaxed) || FeedTargets::get().wantAis() || mqttAis_.load(std::memory_order_relaxed); }
+    bool wantAdsb() const { return FeedTargets::get().wantAdsb() || want_[kFeedSbs].load(std::memory_order_relaxed) || want_[kFeedBeast].load(std::memory_order_relaxed); }
+    bool wantAis() const { return want_[kFeedAis].load(std::memory_order_relaxed) || FeedTargets::get().wantAis(); }
     bool wantAprs() const { return want_[kFeedAprsIs].load(std::memory_order_relaxed) || want_[kFeedKiss].load(std::memory_order_relaxed); }
     bool wantKiss() const { return want_[kFeedKiss].load(std::memory_order_relaxed); }
     bool wantAcars() const { return want_[kFeedAcars].load(std::memory_order_relaxed); }
@@ -117,8 +104,6 @@ public:
     bool wantGnss() const { return want_[kFeedGnss].load(std::memory_order_relaxed); }
     bool wantBle() const { return want_[kFeedBle].load(std::memory_order_relaxed); }
     bool wantLora() const { return want_[kFeedLora].load(std::memory_order_relaxed); }
-    bool wantMqtt() const { return want_[kFeedMqtt].load(std::memory_order_relaxed); }
-    bool wantIsm() const { return mqttIsm_.load(std::memory_order_relaxed); }   // ISM readings (MQTT only)
     void adsb(const FeedAdsbFrame& f);
     void ais(const std::vector<std::string>& sentences);
     void aprs(const std::vector<uint8_t>& ax25NoFcs, const std::string& from, const std::string& to, const std::string& path, const std::string& info, bool uiF0);
@@ -128,14 +113,12 @@ public:
     void gnss(const GnssFix& f);
     void ble(const std::string& mac, const std::string& name, float rssi);
     void lora(const char* kind, const std::string& hex, float snrDb, double freqHz, int sf, const std::string& extra = {});
-    void mqtt(const std::string& subtopic, const std::string& json);   // publish under the configured topic (MQTT only)
 
     struct Impl;
 private:
     Feeds();
     void push(int id, std::string&& payload);
     std::atomic<bool> want_[kNumFeeds];
-    std::atomic<bool> mqttIsm_{false}, mqttAdsb_{false}, mqttAis_{false};
     std::unique_ptr<Impl> impl_;
 };
 

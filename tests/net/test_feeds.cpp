@@ -269,62 +269,7 @@ static void testLoopback() {
     for (sock_t s : {sbs, beast, kiss, aisRx, acarsRx, gnssRx, bleRx, loraRx}) sockClose(s);
 }
 
-// MQTT: the packets byte for byte (MQTT 3.1.1, sections 3.1 and 3.3), then a broker on localhost that answers CONNECT and receives a PUBLISH
-static void testMqtt() {
-    const std::string c = feedfmt::mqttConnect("onair-1", "u", "p", 60);
-    const std::string want("\x10\x19\x00\x04MQTT\x04\xC2\x00\x3C\x00\x07onair-1\x00\x01u\x00\x01p", 27);
-    CHECK(c == want, "CONNECT packet (%zu bytes)", c.size());
-    const std::string a = feedfmt::mqttConnect("x", "", "", 30);
-    CHECK(a.size() == 15 && (uint8_t)a[9] == 0x02, "CONNECT without login: flags %02X", a.size() > 9 ? (uint8_t)a[9] : 0);
-    const std::string p = feedfmt::mqttPublish("a/b", "hi");
-    CHECK(p == std::string("\x30\x07\x00\x03" "a/bhi", 9), "PUBLISH packet");
-    const std::string big = feedfmt::mqttPublish("t", std::string(200, 'x'));
-    CHECK((uint8_t)big[1] == ((203 & 0x7F) | 0x80) && (uint8_t)big[2] == 1 && big.size() == 206, "two-byte remaining length");
-    CHECK(feedfmt::mqttTopicPart("LaCrosse TX/141+#") == "LaCrosse_TX_141__", "topic level: %s", feedfmt::mqttTopicPart("LaCrosse TX/141+#").c_str());
-    FeedAdsbFrame f = frameOf("8D4840D6202CC371C32CE0576098");
-    CHECK(feedfmt::adsbJson(f).rfind("{\"hex\":\"4840D6\",\"df\":17,\"raw\":\"8D4840D6202CC371C32CE0576098\"", 0) == 0, "ADS-B JSON: %s", feedfmt::adsbJson(f).c_str());
-
-    netInit();
-    sock_t ls = socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in ad{}; ad.sin_family = AF_INET; ad.sin_addr.s_addr = htonl(INADDR_LOOPBACK); ad.sin_port = 0;
-    bind(ls, (sockaddr*)&ad, sizeof ad);
-    listen(ls, 2);
-    socklen_t al = sizeof ad;
-    getsockname(ls, (sockaddr*)&ad, &al);
-    FeedConfig cfg;
-    cfg.on[kFeedMqtt] = true;
-    cfg.mqttHost = "127.0.0.1"; cfg.mqttPort = ntohs(ad.sin_port);
-    cfg.mqttUser = "home"; cfg.mqttPass = "secret1"; cfg.mqttTopic = "test"; cfg.mqttAdsb = true;
-    Feeds& F = Feeds::get();
-    F.configure(cfg);
-    CHECK(F.wantMqtt() && F.wantIsm() && F.wantAdsb() && !F.wantLora(), "MQTT wanted");
-    sock_t b = accept(ls, nullptr, nullptr);
-    CHECK(b != kBadSock, "the feed connected to the broker");
-    sockRecvTimeout(b, 2000);
-    const std::string con = recvUntil(b, 2);
-    CHECK(con.size() >= 2 && (uint8_t)con[0] == 0x10 && con.find("home") != std::string::npos && con.find("secret1") != std::string::npos, "CONNECT received (%zu bytes)", con.size());
-    CHECK(F.status(kFeedMqtt).state.find("connected") == std::string::npos, "not connected before CONNACK: %s", F.status(kFeedMqtt).state.c_str());
-    send(b, "\x20\x02\x00\x00", 4, 0);
-    CHECK(waitFor([&] { return F.status(kFeedMqtt).active; }), "connected after CONNACK: %s", F.status(kFeedMqtt).state.c_str());
-    F.mqtt("ism/Acurite-Tower/1234-A", "{\"temperature_C\":21.5}");
-    std::string pub = recvUntil(b, 2 + 2 + 23 + 22);
-    CHECK(pub.size() >= 49 && (uint8_t)pub[0] == 0x30 && pub.find("test/ism/Acurite-Tower/1234-A") != std::string::npos && pub.find("{\"temperature_C\":21.5}") != std::string::npos,
-          "PUBLISH received (%zu bytes)", pub.size());
-    F.adsb(f);
-    pub = recvUntil(b, 20);
-    CHECK(pub.find("test/adsb/4840D6") != std::string::npos, "ADS-B PUBLISH received");
-    // a broker that refuses the login: the reason is shown, the password is not
-    sockClose(b);
-    sock_t b2 = kBadSock;
-    CHECK(waitFor([&] { return F.status(kFeedMqtt).state.find("waiting") != std::string::npos; }, 4000), "noticed the closed connection: %s", F.status(kFeedMqtt).state.c_str());
-    F.stop();
-    CHECK(!F.wantMqtt() && !F.wantIsm(), "stopped");
-    (void)b2;
-    sockClose(ls);
-}
-
 int main() {
-    testMqtt();
     testSbs();
     testBeast();
     testAis();
