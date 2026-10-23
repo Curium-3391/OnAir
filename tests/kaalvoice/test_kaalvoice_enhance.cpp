@@ -7,12 +7,14 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include "../common/test_util.h"
 
 using namespace kvtest;
 
-static constexpr uint64_t kGoldenAll = 0x3cf4c4e35490aa8eull, kGoldenPortable = 0x3cf4c4e35490aa8eull;
+static constexpr uint64_t kGoldenAll = 0x5c6b5c649e3047a1ull, kGoldenPortable = 0x5c6b5c649e3047a1ull;
 
 namespace {
 bool finiteAndBounded(const std::vector<int16_t>& x) {
@@ -44,7 +46,7 @@ struct PassThrough : ExternalPostFilter {
         if (s.firstAfterGap) gaps++;
         if (s.kind != EnhanceSide::ComfortNoise)
             for (int k = 0; k < s.subframes; k++) lpcOk &= s.lpc[k][0] == 1.0f;
-        sizeOk &= s.frameSamples > 0 && s.subframes > 0;
+        sizeOk &= s.frameSamples > 0 && (s.kind == EnhanceSide::ComfortNoise || s.subframes > 0);
         for (int i = 0; i < s.frameSamples; i++) pcm[i] *= gain;
     }
 };
@@ -123,7 +125,12 @@ int main() {
         c.enhance = 1;
         const Run all = run(c, x);
         const uint32_t bits[] = {kEnhPitch, kEnhFormant, kEnhBwe, kEnhHbSmooth, kEnhLoudness, kEnhComfort, kEnhDeclick, kEnhNoiseReduce};
-        auto lossy = [](ChannelFrame& f) { f.lost = f.index % 9 == 4; };
+        // losses, and an undetected damaged frame right after some of them (decodes to a burst: the de-clicker's case)
+        auto lossy = [](ChannelFrame& f) {
+            f.lost = f.index % 9 == 4;
+            if (f.index % 18 == 5 && f.type == FrameType::Speech)
+                for (size_t i = 0; i < f.bytes.size(); i++) f.bytes[i] = (uint8_t)(f.bytes[i] ^ (0x5a + 37 * i));
+        };
         for (uint32_t b : bits) {
             c.enhanceStages = kEnhDefault & ~b;
             const Run minus = run(c, x, lossy);
@@ -185,22 +192,34 @@ int main() {
             CHECK(n1 < n0 * 1.6 + 5 && n1 > n0 / 1.6 - 5, "%s: comfort noise level kept (%.1f vs %.1f)", profileName(p), n1, n0);
         }
     }
-    // ---- de-clicking: the first good frame after a loss starts without a step
+    // ---- de-clicking: the first good frame after a loss starts without a step or a burst
     {
         const std::vector<int16_t> x = eval::synthSpeech(16000, 0, 3.0, 81);
-        Config c = cfg(Profile::K4_8, 40);
-        auto ch = [](ChannelFrame& f) { f.lost = f.index % 7 == 3; };
-        c.enhanceStages = kEnhDefault & ~kEnhDeclick;
-        const Run a = run(c, x, ch);
-        c.enhanceStages = kEnhDefault;
-        const Run b = run(c, x, ch);
-        long sa = 0, sb = 0;
-        for (size_t f = 4; f * 640 < b.out.size(); f += 7) {   // frame f is the first good one after the loss
-            sa += maxStep(a.out, f * 640 - 2, f * 640 + 32);
-            sb += maxStep(b.out, f * 640 - 2, f * 640 + 32);
+        for (int fs : {16000, 8000}) {
+            const std::vector<int16_t> xx = fs == 8000 ? eval::downsample2(x) : x;
+            Config c = cfg(Profile::K4_8, 40, fs);
+            auto ch = [](ChannelFrame& f) {
+                f.lost = f.index % 7 == 3;
+                if (f.index % 14 == 4)   // an undetected damaged frame after the loss
+                    for (size_t i = 0; i < f.bytes.size(); i++) f.bytes[i] = (uint8_t)(f.bytes[i] ^ (0xa5 + 29 * i));
+            };
+            c.enhanceStages = kEnhDefault & ~kEnhDeclick;
+            const Run a = run(c, xx, ch);
+            c.enhanceStages = kEnhDefault;
+            const Run b = run(c, xx, ch);
+            const size_t n = (size_t)fs / 25, q = (size_t)fs / 100;
+            long sa = 0, sb = 0;
+            double pa = 0, pb = 0;
+            for (size_t f = 4; (f + 1) * n < b.out.size(); f += 7) {   // frame f is the first good one after the loss
+                sa += maxStep(a.out, f * n - 2, f * n + q / 4);
+                sb += maxStep(b.out, f * n - 2, f * n + q / 4);
+                pa += rmsOf(a.out, f * n, f * n + q);
+                pb += rmsOf(b.out, f * n, f * n + q);
+            }
+            if (print) printf("  de-click %d Hz: boundary steps %ld -> %ld, first-10 ms level %.0f -> %.0f\n", fs, sa, sb, pa, pb);
+            CHECK(sb <= sa, "%d Hz: de-clicking does not make the boundaries after a loss rougher (%ld vs %ld)", fs, sb, sa);
+            CHECK(pb <= pa, "%d Hz: de-clicking does not raise the level after a loss (%.0f vs %.0f)", fs, pb, pa);
         }
-        if (print) printf("  de-click: summed boundary steps %ld -> %ld\n", sa, sb);
-        CHECK(sb <= sa, "de-clicking does not make the boundaries after a loss rougher (%ld vs %ld)", sb, sa);
     }
     // ---- the external post-filter slot (a future neural post-filter)
     {

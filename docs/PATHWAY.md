@@ -610,3 +610,14 @@ the #229 presets. Everything new is checked against generated signals only.
 Measured the two reference screenshots (palettes, floor colour, grain, trace/fill/band colours) and rebuilt the pipeline to match on real recordings (31 m AM, HF band, UHF mux): 2 FFT blocks a frame, FFT up to 64k, history as fine as the FFT, power-averaged rows and trace (time constant follows bins per pixel: no comb at big FFTs), levels per Hz, auto range on the view floor (Navy heat / Blue green palettes, each with its floor place), one look, neutral palette names. tools/spec_render renders the app pipeline offscreen to PNG. Tuning: one tuning thread per engine with a newest-wins mailbox (LatestSlot, test), engine start/stop/retune share a lock; the big readout shows the listening (VFO) frequency with centre / hardware named beside it (freq_model.h, test); readout edits move the VFO inside the band, the radio only past its edge. Waterfall scale under its button and draggable; crisp tuning-style icons. Pipeline CPU 4.4 % -> 1.6 % of a core at 20 Msps (harness). Details: docs/SPECTRUM-RESEARCH.md.
 ## 2026-10-23 Finish A: app/UI cluster
 Six paused branches finished as *-fin-030 (docking, channels fix, tcp-rate, iq-offset-tune, lan-swarm, webonair-decoders), merged with integ-30; fixes found by the first laptop run: rtlTcpThroughput link error, an empty swarm pairing code accepted as an offer, a missing cw_tel.h include, three stale test expectations. Details in docs/FINISH-A-2026-10-23.md.
+
+## 2026-10-23: KV4 decoder-side speech enhancer (step 1, classical)
+Branch kaal-enhance-030 (on kaal-codec-030). Receiver-only enhancer for KV4, bit stream unchanged (core/src/kaalvoice/kv_enhance.*,
+docs/KAAL-ENHANCE.md): adaptive pitch + formant post-filter with tilt compensation (replaces the core postfilter when on), loudness
+restoration, high-band envelope smoothing + low-fluctuation noise, harmonic high-band extension from the rectified excitation, comfort-noise
+shaping, de-click after losses, optional Wiener NR (+5 ms). Config::enhance (auto on for 3.2/4.8/6.0) and enhanceStages bits per stage;
+ExternalPostFilter slot with decoder side information for a later neural post-filter. Objective only (no listening): BLD, LSD, LSDhi and
+level error better at every profile (3.2: BLD 0.203 -> 0.187, |level| 1.92 -> 1.64 dB), STOI-like score -0.001 .. +0.003; still far from
+the old 16 kbit/s codec on STOI~/LSD. Decoder CPU 0.0031 per stream on the Mac (Pi 4 estimate 4 slots 0.06-0.10 of a core, not measured).
+Enhanced-output digest equal on arm64 and x86-64; the plain decoder's golden digest unchanged. New metrics in kaal_voice_eval (stoi,
+levelBias, levelErr), kaalvoice_bench --enhance [--ablate]. Not done: a listening test, the neural post-filter (step 2).
