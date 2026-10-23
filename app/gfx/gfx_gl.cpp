@@ -1,5 +1,6 @@
 // OpenGL 3.2 core back end (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
 #include "gfx.h"
+#include "render_caps.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #define GLFW_INCLUDE_NONE
@@ -20,7 +21,7 @@ enum : GLenum {
     CLAMP_TO_EDGE = 0x812F, FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0, UNPACK_ALIGNMENT = 0x0CF5, FRAGMENT_SHADER = 0x8B30,
     VERTEX_SHADER = 0x8B31, COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82, TRIANGLES = 0x0004, COLOR_BUFFER_BIT = 0x4000, TEXTURE0 = 0x84C0,
     TEXTURE1 = 0x84C1, FRAMEBUFFER_BINDING = 0x8CA6, VIEWPORT = 0x0BA2, CURRENT_PROGRAM = 0x8B8D, TEXTURE_BINDING_2D = 0x8069,
-    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5
+    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5, RENDERER = 0x1F01
 };
 
 #define GLFN(ret, name, args) typedef ret (*PFN_##name) args; PFN_##name name = nullptr;
@@ -61,6 +62,7 @@ GLFN(void, glReadPixels, (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*)
 GLFN(void, glReadBuffer, (GLenum))
 GLFN(void, glGetIntegerv, (GLenum, GLint*))
 GLFN(void, glFlush, ())
+GLFN(const GLubyte*, glGetString, (GLenum))
 #undef GLFN
 
 bool loadGl() {
@@ -72,7 +74,7 @@ bool loadGl() {
     LOAD(glGetShaderiv) LOAD(glGetShaderInfoLog) LOAD(glDeleteShader) LOAD(glCreateProgram) LOAD(glAttachShader) LOAD(glLinkProgram)
     LOAD(glGetProgramiv) LOAD(glUseProgram) LOAD(glGetUniformLocation) LOAD(glUniform1i) LOAD(glUniform3f) LOAD(glGenVertexArrays)
     LOAD(glBindVertexArray) LOAD(glDrawArrays) LOAD(glViewport) LOAD(glClearColor) LOAD(glClear) LOAD(glReadPixels) LOAD(glReadBuffer)
-    LOAD(glGetIntegerv) LOAD(glFlush)
+    LOAD(glGetIntegerv) LOAD(glFlush) LOAD(glGetString)
 #undef LOAD
     return ok;
 }
@@ -276,6 +278,7 @@ struct GlBackend : Backend {
             writePng(shotPath, flipped.data(), fbW, fbH);
         }
         glfwSwapBuffers(win);
+        rcaps::frameDone(glfwGetTime() - rcaps::frameStart());   // DECT2_FRAMETIME=1: build, render and swap of this frame
     }
     GLFWwindow* shareWindow() const override { return win; }
     Surface* createSurface(GLFWwindow* w) override { return new GlSurface(w); }
@@ -291,10 +294,24 @@ void windowHints() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 }
 
+#if defined(__linux__)
+}   // namespace gfx
+extern bool gWayland;   // main_window.cpp
+namespace gfx {
+#endif
+
 Backend* create(GLFWwindow* window) {
     glfwMakeContextCurrent(window);
+#if defined(__linux__)
+    // Native Wayland: eglSwapBuffers with an interval of 1 waits for the compositor's frame callback, which a hidden, minimised or
+    // covered window does not get, so Mesa holds the frame loop (and the whole interface) until the window is shown again. The loop paces
+    // itself (paceFrame, rcaps::frameGate) and a Wayland compositor never tears, so interval 0 there. X11 keeps vsync.
+    glfwSwapInterval(gWayland ? 0 : 1);
+#else
     glfwSwapInterval(1);
+#endif
     if (!loadGl()) return nullptr;
+    rcaps::detect((const char*)glGetString(RENDERER));
     if (!ImGui_ImplOpenGL3_Init("#version 150")) return nullptr;
     return new GlBackend(window);
 }

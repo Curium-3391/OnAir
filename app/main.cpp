@@ -17,6 +17,7 @@
 #include <dlfcn.h>
 #endif
 #include "main_internal.h"
+#include "gfx/render_caps.h"
 #include "ui/typography.h"
 #include "state/workspace.h"
 #include "state/layout.h"
@@ -310,6 +311,7 @@ int main(int argc, char** argv) {
             glfwPollEvents();
             wbDropTick(app);
             updateTick(app);
+            rcaps::frameGate(anyRunning());   // Linux / software OpenGL: input never draws faster than 60 fps; low-power drawing caps lower
             int w, h;
             if (minimisedFrame(window, app, o, w, h)) continue;
             static const float kClear[4] = {0.04f, 0.045f, 0.05f, 1.f}, kClearLight[4] = {0.955f, 0.95f, 0.96f, 1.f};
@@ -321,6 +323,7 @@ int main(int argc, char** argv) {
             textSizeKeys(app);
             if (static bool up = false; !up && ImGui::GetFrameCount() > 120 && glfwGetTime() > 5) { up = true; dect2::crash::startupDone(); }   // started: see the startup guard
             devAutomation(app, o);
+            rcaps::hintWindow(app);   // software OpenGL found: offer low-power drawing once
             double now = glfwGetTime();
             last = now;
             const double tUi0 = glfwGetTime();

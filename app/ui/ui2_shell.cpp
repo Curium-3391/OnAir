@@ -389,6 +389,7 @@ static void viewMenu(App& a) {
         typographyChoice(true);
         if (ImGui::BeginMenu(tr("Language"))) { languageMenuItems(a); ImGui::EndMenu(); }
         ImGui::Separator();
+        rcaps::viewMenuItem();   // Low-power drawing (gfx/render_caps.h)
         if (ImGui::MenuItem(tr("Reduce CPU when hidden"), nullptr, &a.reduceCpuHidden)) savePrefs(a);
         {   // opt-in Discord Rich Presence
             const bool have = *discord::appId() != 0;
