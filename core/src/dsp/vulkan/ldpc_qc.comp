@@ -1,0 +1,92 @@
+#version 450
+// Table-driven quasi-cyclic layered normalised min-sum (DTMB, GpuLdpc::decodeQc). One workgroup of z invocations per word, invocation m owns
+// check m of every block row. A line-by-line port of the Metal kernel in gpu_ldpc.mm, which does the operations of the CPU decoder
+// (dtmb_ldpc.cpp) in the same order, so all three agree to the bit. The totals live in workgroup shared memory: its size (blockCols * z
+// floats) and the workgroup size (z) are specialisation constants set when the pipeline is made. Compiled to SPIR-V by
+// tools/gen_vulkan_spirv.sh into ldpc_spirv.h.
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+layout(constant_id = 1) const int LV = 1;
+
+layout(push_constant) uniform P { int z, rows, cols, punct, sent, info, maxIter, gu0, gd0, gu1, gd1; float alpha, clip; uint msgPer; } p;
+
+layout(std430, binding = 0) readonly buffer B0 { int rowStart[]; };
+layout(std430, binding = 1) readonly buffer B1 { int ecol[]; };
+layout(std430, binding = 2) readonly buffer B2 { int esh[]; };
+layout(std430, binding = 3) buffer B3 { float msg[]; };
+layout(std430, binding = 4) readonly buffer B4 { float llr[]; };
+layout(std430, binding = 5) writeonly buffer B5 { uint infoOut[]; };
+layout(std430, binding = 6) writeonly buffer B6 { int res[]; };
+
+shared float lv[LV];
+shared int weight;
+
+void sync() { memoryBarrierShared(); barrier(); }
+
+// parity checks of the hard decisions: the number of unsatisfied checks of the whole word
+int checks(int mm) {
+    if (mm == 0) weight = 0;
+    sync();
+    int bad = 0;
+    for (int r = 0; r < p.rows; r++) {
+        int par = 0;
+        for (int e = rowStart[r]; e < rowStart[r + 1]; e++) { int sh = mm + esh[e]; if (sh >= p.z) sh -= p.z; par ^= lv[ecol[e] * p.z + sh] < 0.0 ? 1 : 0; }
+        bad += par;
+    }
+    atomicAdd(weight, bad);
+    sync();
+    const int w = weight;
+    sync();
+    return w;
+}
+
+void main() {
+    const int z = p.z;
+    const int mm = int(gl_LocalInvocationID.x);
+    const uint m = gl_LocalInvocationID.x;
+    const uint blk = gl_WorkGroupID.x;
+    const uint mB = blk * p.msgPer, lB = blk * uint(p.sent);
+    for (int v = mm; v < p.cols * z; v += z) lv[v] = v < p.punct ? 0.0 : max(-p.clip, min(p.clip, llr[lB + uint(v - p.punct)]));
+    for (uint i = m; i < p.msgPer; i += uint(z)) msg[mB + i] = 0.0;
+    sync();
+    int iters = 0;
+    bool ok = false;
+    const int w0 = checks(mm);
+    if (w0 == 0) { ok = true; iters = 1; }
+    else {
+        for (int iter = 1; iter <= p.maxIter; iter++) {
+            for (int r = 0; r < p.rows; r++) {
+                const int e0 = rowStart[r], e1 = rowStart[r + 1];
+                float min1 = 0.0, min2 = 3.4028235e38;
+                uint sg = 0u;
+                for (int e = e0; e < e1; e++) {
+                    int sh = mm + esh[e]; if (sh >= z) sh -= z;
+                    precise float q = lv[ecol[e] * z + sh] - msg[mB + uint(e * z) + m];
+                    const float a = abs(q);
+                    if (e == e0) min1 = a;
+                    else { min2 = min(min2, max(a, min1)); min1 = min(min1, a); }
+                    sg ^= floatBitsToUint(q) & 0x80000000u;
+                }
+                for (int e = e0; e < e1; e++) {
+                    int sh = mm + esh[e]; if (sh >= z) sh -= z;
+                    const int vi = ecol[e] * z + sh;
+                    precise float q = lv[vi] - msg[mB + uint(e * z) + m];
+                    const float a = abs(q);
+                    precise float mg = (a == min1 ? min2 : min1) * p.alpha;
+                    const float v = uintBitsToFloat(floatBitsToUint(mg) | (sg ^ (floatBitsToUint(q) & 0x80000000u)));
+                    msg[mB + uint(e * z) + m] = v;
+                    precise float t = q + v;
+                    lv[vi] = max(-p.clip, min(p.clip, t));
+                }
+                sync();   // the next block row reads totals other invocations have just written
+            }
+            const int w = checks(mm);
+            iters = iter;
+            if (w == 0) { ok = true; break; }
+            const int gu = iter == p.gu0 ? p.gd0 : iter == p.gu1 ? p.gd1 : 0;
+            if (gu > 0 && w > p.rows * z / gu) break;
+        }
+    }
+    const uint iB = blk * uint(p.info);
+    for (int v = mm; v < p.info; v += z) infoOut[iB + uint(v)] = lv[p.rows * z + v] < 0.0 ? 1u : 0u;
+    if (mm == 0) { res[blk * 2u] = ok ? 1 : 0; res[blk * 2u + 1u] = iters; }
+}
