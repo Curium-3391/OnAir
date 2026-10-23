@@ -32,6 +32,7 @@ Branch `issue-bugs-030` (from `integ-30`, which already holds `fix-gl31-030`). R
 | 166 | Crash clicking video services | crash on service select | done before | 0cb10c780 | - | 166-tv-service-crash.md |
 | 210 | DAB+ crash on RTL-SDR (mac) | crash | done before | ed4c053e8 | - | 210-dab-rtl-crash.md |
 | Discord | VE3SCP: libmbe-neo DMR plug-in freezes and closes OnAir | a voice codec must never take the app down | fixed now (mbelib-neo's argument layout detected and used; codec guard thread: a crash or hang disables the codec with a message; onair_speech_abi handshake; wrapper for both libraries; docs) | 831b6f044 | real mbelib-neo and a DMR signal; the Windows guard path is only built | discord-libmbe-neo.md |
+| Discord | ar8001: arm64 plug-ins "incompatible architecture" on an M4 | the Intel OnAir under Rosetta; say so, show architectures | fixed now (plain-words mismatch text, Mach-O arch per plug-in, Rosetta notice + download button, universal build tip). Release ships OnAir-<v>-macos-arm64.dmg and -macos-x86_64.dmg (two thin builds, no universal): the pipeline should name them "Apple Silicon" / "Intel" | 0750fc5da | the user's Mac; UI only syntax-checked | discord-codec-arch.md |
 | 112 | DVB-C subtitles broken | subtitles | done before | 49798de36, e613af745 | - | 112-dvbc-subs.md |
 
 Counts (29 rows): done before 16, fixed now 7 (284, 226 with the ggml fix before, 252, 178, 148, 228 with the hang fix before, Discord libmbe-neo), partly 4 (96, 277, 249, 104), needs owner 1 (275 download), handed over 1 (180).
