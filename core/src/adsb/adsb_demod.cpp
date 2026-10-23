@@ -349,6 +349,8 @@ bool AdsbDemod::tryFrame(int64_t bin) {
     } else {
         // the four pulses together against the quiet windows: with a noise window of standard deviation cv n0, the difference of the mean of 4 and
         // the mean of 12 windows has about 0.58 cv n0. Each pulse on its own only has to be above the noise (a weak pulse is often below 3 n0).
+        // lowest effort (a busy computer): only the preambles the stricter test of before 3.0 accepts
+        if (effort_ == 0 && !(minH > pulseThreshold() && pulse > kGap_ * gap && pulse > kGap_ * gapIn)) return false;
         const double sd = 0.58 * cv_ * n0_;
         if (minH <= n0_ * (1.0 + kMinP_ * cv_) || pulse - gap <= kSum_ * sd || pulse <= kGap_ * gap || pulse <= kGap_ * gapIn) return false;
         // the data: a real frame has a pulse in one half of every bit, noise has about the same power in both. Mean contrast of the first 56 bits
@@ -409,18 +411,22 @@ bool AdsbDemod::tryFrame(int64_t bin) {
         return sink_ ? sink_(raw, last && countable) : false;
     };
 
-    bool good = coherentFirst_ ? (slice(raw, x0, hw, 0.0), false) : attempt(x0, hw, !worth && !coherent_);
+    // effort (setEffort): 2 every pass for every candidate; 1 the coherent pass and the retries only for candidates that pass the stricter test of
+    // before 3.0; 0 no coherent pass, retries only for those (about the cost of before 3.0)
+    const bool retries = worth && (effort_ >= 2 || countable);
+    const bool useCoh = coherent_ && (effort_ >= 2 || (effort_ == 1 && countable));
+    bool good = coherentFirst_ ? (slice(raw, x0, hw, 0.0), false) : attempt(x0, hw, !retries && !useCoh);
     // the coherent slicer, guided by the bits just sliced: helps most near the threshold, where the power slicer loses about 1.5 dB
-    if (!good && coherent_) {
+    if (!good && useCoh) {
         AdsbRaw guide = raw, isi;
         if (sliceCoherent(raw, x0, hw, guide, &isi)) {
             good = sink_ ? sink_(raw, false) : false;
             // the same halves, with the smearing of each pulse into its neighbours taken into account (sequence estimation)
-            if (!good && std::memcmp(isi.bytes, raw.bytes, 14) != 0) { raw = isi; good = sink_ ? sink_(raw, !worth && countable) : false; }
-            else if (!good && !worth && sink_) good = sink_(raw, countable);
-        } else if (!worth && sink_) good = sink_(raw, countable);   // the failure is counted once
+            if (!good && std::memcmp(isi.bytes, raw.bytes, 14) != 0) { raw = isi; good = sink_ ? sink_(raw, !retries && countable) : false; }
+            else if (!good && !retries && sink_) good = sink_(raw, countable);
+        } else if (!retries && sink_) good = sink_(raw, countable);   // the failure is counted once
     }
-    if (!good && worth) {
+    if (!good && retries) {
         // timing again from the data: the shift that puts the most energy into the winning half of each of the first 56 bits and the preamble
         double bestE = -1, xd = x0;
         for (int k = -4; k <= 4; k++) {

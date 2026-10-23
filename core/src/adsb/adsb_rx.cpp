@@ -3,6 +3,7 @@
 #include "dect2/adsb/adsb_rx.h"
 #include "dect2/adsb/adsb_demod.h"
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <mutex>
@@ -16,7 +17,9 @@ struct AdsbReceiver::Impl {
     std::atomic<double> rate{0};         // read by ready() from other threads
     std::atomic<float> kPulse{3.0f}, kGap{2.0f};    // preamble thresholds: set from any thread, handed to the demodulator by feed()
     std::atomic<float> dSum{-1}, dMin{0}, dData{0}, dWorth{0};
-    std::atomic<bool> coherent{true};   // setDetector (test knob); dSum < -0.5: the demodulator's defaults
+    std::atomic<bool> coherent{true};
+    std::atomic<int> effortSet{-1}, effortNow{2};   // setEffort; the effort in use
+    double loadWall = 0, loadSig = 0;                // feed() time and signal time of the current half-second window (feed thread)   // setDetector (test knob); dSum < -0.5: the demodulator's defaults
     std::function<void(const std::string&)> log;
     std::function<void(const AdsbFrame&)> frameCb;
     std::atomic<bool> resetPending{false};
@@ -151,7 +154,27 @@ void AdsbReceiver::feed(const cf32* x, size_t n) {
     p.demod.setThresholds(p.kPulse, p.kGap);
     if (p.dSum > -0.5f) p.demod.setDetector(p.dSum, p.dMin, p.dData, p.dWorth);
     p.demod.setCoherent(p.coherent);
+    // the CPU guard: the share of the signal's duration that feed() takes, over windows of half a second of signal
+    const int es = p.effortSet;
+    p.demod.setEffort(es >= 0 ? es : p.effortNow.load());
+    const auto w0 = std::chrono::steady_clock::now();
     p.demod.feed(x, n);
+    if (es < 0) {
+        p.loadWall += std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
+        p.loadSig += (double)n / p.rate.load();
+        if (p.loadSig >= 0.5) {
+            const double load = p.loadWall / p.loadSig;
+            const int e = p.effortNow;
+            int ne = e;
+            if (load > 0.5 && e > 0) ne = e - 1;
+            else if (load < 0.25 && e < 2) ne = e + 1;
+            if (ne != e) {
+                p.effortNow = ne;
+                p.say(ne < e ? "ADS-B: the computer is busy, fewer extra decoding passes for weak signals" : "ADS-B: back to more decoding passes for weak signals");
+            }
+            p.loadWall = p.loadSig = 0;
+        }
+    }
     const double t = p.demod.timeSec();
     while (t >= p.nextReport) {
         p.report(p.nextReport);
@@ -212,6 +235,8 @@ bool AdsbReceiver::loadResults(const std::string& blob) {
 
 void AdsbReceiver::setThresholds(float pulseOverNoise, float pulseOverGap) { p_->kPulse = pulseOverNoise; p_->kGap = pulseOverGap; }
 void AdsbReceiver::setCoherent(bool on) { p_->coherent = on; }
+void AdsbReceiver::setEffort(int e) { p_->effortSet = e < -1 ? -1 : e > 2 ? 2 : e; }
+int AdsbReceiver::effort() const { const int s = p_->effortSet; return s >= 0 ? s : p_->effortNow.load(); }
 void AdsbReceiver::setDetector(float sum, float minPulse, float data, float worthDb) { p_->dMin = minPulse; p_->dData = data; p_->dWorth = worthDb; p_->dSum = sum; }
 
 ModeTuning adsbTuning() {

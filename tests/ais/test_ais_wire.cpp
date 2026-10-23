@@ -6,6 +6,7 @@
 //   -> flags 0x7E -> NRZI (a 0 is a change of level) -> GMSK, BT 0.4, modulation index 0.5, 9600 bd at 96 kHz -> placed at +-25 kHz at 2.4 Msps.
 // The result goes into AisReceiver and the stations, positions and sentences it reports are compared with what the sentences say.
 #include "dect2/ais/ais_rx.h"
+#include <cstdlib>
 #include "dect2/common/stable_random.h"
 #include "dect2/ais/ais_proto.h"
 #include <cmath>
@@ -139,6 +140,9 @@ static void runCase(const char* name, const std::vector<Tx>& txs, double snrDb, 
         gap(0.4);
     }
     for (cf32& v : x) v += cf32{(float)(nd(rng) * nsig), (float)(nd(rng) * nsig)};
+    if (const char* d = getenv("AIS_WIRE_DUMP")) {   // measurement only: the signal as cf32 for other decoders (2.4 Msps)
+        if (FILE* f = fopen((std::string(d) + "_" + std::to_string(seed) + ".cf32").c_str(), "wb")) { fwrite(x.data(), sizeof(cf32), x.size(), f); fclose(f); }
+    }
     AisReceiver rx;
     rx.configure(fs);
     std::vector<std::vector<uint8_t>> got;

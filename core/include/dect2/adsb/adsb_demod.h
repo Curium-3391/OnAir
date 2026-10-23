@@ -46,6 +46,8 @@ public:
     void setThresholds(float pulseOverNoise, float pulseOverGap) { kPulse_ = pulseOverNoise; kGap_ = pulseOverGap; }
     // the preamble detector (see tryFrame): sum <= 0 is the older test (every pulse above pulseThreshold(), no data check)
     void setDetector(float sum, float minPulse, float data, float worthDb) { kSum_ = sum; kMinP_ = minPulse; kData_ = data; kWorthDb_ = worthDb; }
+    void setEffort(int e) { effort_ = e < 0 ? 0 : e > 2 ? 2 : e; }   // 2 all passes (default), 1 / 0 fewer for weak candidates (see tryFrame)
+    int effort() const { return effort_; }
     void setCoherent(int mode) { coherent_ = mode != 0; coherentFirst_ = mode == 2; }   // test knob: 0 off, 1 on (default), 2 only the coherent slices
     uint64_t dataRejects() const { return dataRejects_; }   // preambles that the contrast of the first 56 bits showed to be noise
 
@@ -79,6 +81,7 @@ private:
     float kSum_ = 4.0f, kMinP_ = 0.0f, kData_ = 1.8f, kWorthDb_ = 5.0f;
     uint64_t dataRejects_ = 0;
     bool coherent_ = true, coherentFirst_ = false;
+    int effort_ = 2;
 
     uint64_t samples_ = 0;                          // samples fed since the start (the clock)
     uint64_t smpBase_ = 0;                          // global index of pw_[0]
