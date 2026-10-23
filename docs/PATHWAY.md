@@ -307,3 +307,6 @@ Rust CallInfo now carries gssi/issi (ABI version 4): from D-SETUP only, GSSI = M
 ## 2026-10-22 DSC list import and map (dsc-map-030)
 ShipDb gets a content-based importer (preview + importDetailed with stats, delimiter/header/column detection, DM/DMS/decimal coordinates, position strings, zero repair) and the DSC map a station table, type/heard filters, grey unheard coast stations, call lines and an import dialog. Tests: tests/marine/test_marine_shipdb_import.cpp. Not built in the full app; marine_ui.cpp syntax-checked only.
 
+## 2026-10-22 WEFAX autosave and gallery (wefax-gallery-030)
+Every chart that ends (stop tone, signal gone, new start tone) is saved as wefax_<UTC>_<kHz>kHz.png plus a .json side-car (dial, IOC, lpm, UTC start/stop, station from the schedule table, SNR, phasing lines, end reason) in <data>/wefax (folder, on/off and MB budget in the gallery settings; oldest-first cleanup never removes starred). Fax > Gallery: thumbnails, sort/search/starred filter, large view with zoom/pan, star, delete with undo (.trash), export, copy path, open folder. Pure rules in core/src/marine/wefax_archive.cpp, tested by tests/marine/test_marine_wefax_archive.cpp (picked up by the marine test glob). The autosave stores the raw decoded picture; image-enhance-030 can hook in Capture before wefaxgal::autosave in marine_ui.cpp.
+

@@ -16,6 +16,7 @@
 #include <map>
 #include <sstream>
 #include "dect2/marine/marine_wefax_stations.h"
+#include "wefax_gallery.h"
 #include "dect2/engine/updater.h"
 #include <algorithm>
 #include <cmath>
@@ -41,6 +42,7 @@ struct State {
     struct Fax { int64_t wall = 0; double khz = 0; dect2::FaxImage im; };
     std::vector<Fax> faxes;          // the pictures received this session, newest first (the right-hand list; at most 30)
     int prevFaxState = 0;
+    long long faxStartUtc = 0;       // when the picture under way began (for the autosave)
     std::string listMsg;
     bool listen = false; int pushedListen = -1; float pushedVol = -1; int pushedMute = -1;   // weather fax: "Listen"
     float slant = 0;
@@ -832,11 +834,21 @@ void tick(App& a) {
     if (live(a)) uploadFax(a);
     // a picture that ended (the stop tone, or the signal went): keep it for the list on the right
     const int fs = a.rx.marine.fax.state;
+    if (live(a) && fs == 2 && S.prevFaxState != 2) S.faxStartUtc = (long long)time(nullptr);
     if (live(a) && S.prevFaxState == 2 && fs != 2 && S.last.height >= 50) {
         S.faxes.insert(S.faxes.begin(), State::Fax{(int64_t)time(nullptr), a.freqMhz * 1e3, S.last});
         {
             gallery::Meta gm; gm.detail = std::to_string((int)std::lround(a.freqMhz * 1e3)) + " kHz, IOC " + std::to_string(a.rx.marine.fax.ioc) + ", " + std::to_string(a.rx.marine.fax.lpm) + " lpm";
             gallery::publishGray("fax-" + std::to_string((long long)time(nullptr)), "Weather fax", (double)time(nullptr), S.last.width, S.last.height, S.last.pix.data(), gm);
+        }
+        {   // the autosave: PNG + JSON side-car in the WEFAX folder (settings and gallery in wefax_gallery.cpp)
+            wefaxgal::Capture c;
+            c.im = S.last; c.dialKhz = a.freqMhz * 1e3; c.ioc = a.rx.marine.fax.ioc; c.lpm = a.rx.marine.fax.lpm;
+            c.stopUtc = (long long)time(nullptr); c.startUtc = S.faxStartUtc > 0 ? S.faxStartUtc : c.stopUtc;
+            c.snrDb = a.rx.marine.fax.snrDb; c.phasingLines = a.rx.marine.fax.phasingLines;
+            c.reason = fs == 3 ? "stop tone" : fs == 1 ? "new start" : "timeout";
+            const std::string r = wefaxgal::autosave(c);
+            if (!r.empty()) S.listMsg = r;
         }
         if (S.faxes.size() > 30) S.faxes.pop_back();
     }
@@ -1231,9 +1243,9 @@ void tab(App& a) {
     if (const int svc = subService(a)) {   // a protocol entry: its own view and the tuning view
         static const char* const names[] = {"", "NAVTEX", "DSC", "Fax"};
         if (svc == 3) {   // weather fax: the picture, the stations and their schedule, the tuning aid
-            int k = S.view == 4 ? 1 : S.view == 3 ? 2 : 0;
-            subNav("marv3", k, {"Fax", "Stations", "Tuning"});
-            S.view = k == 1 ? 4 : k == 2 ? 3 : 2;
+            int k = S.view == 4 ? 1 : S.view == 3 ? 2 : S.view == 7 ? 3 : 0;
+            subNav("marv3", k, {"Fax", "Stations", "Tuning", "Gallery"});
+            S.view = k == 1 ? 4 : k == 2 ? 3 : k == 3 ? 7 : 2;
         } else {
         int k = S.view == 3 ? 1 : S.view == 5 ? 2 : S.view == 6 ? 3 : 0;
         if (svc == 2) subNav("marv1", k, {names[svc], "Tuning", "Bands", "Map"});
@@ -1245,7 +1257,7 @@ void tab(App& a) {
     if (S.follow && act != S.lastActive && act != 0) S.view = act == 1 ? 0 : act == 3 ? 2 : 1;
     S.lastActive = act;
     const int before = S.view;
-    subNav("marv", S.view, {"NAVTEX", "DSC", "Fax", "Tuning", "Fax stations", "Bands", "DSC map"});
+    subNav("marv", S.view, {"NAVTEX", "DSC", "Fax", "Tuning", "Fax stations", "Bands", "DSC map", "Fax gallery"});
     if (S.view != before) S.follow = false;
     ImGui::SameLine(0, 20 * gUi);
     ImGui::TextDisabled("Service"); ImGui::SameLine();
@@ -1285,6 +1297,7 @@ void tab(App& a) {
     case 4: stationsView(a); break;
     case 5: bandsView(a); break;
     case 6: mapView(a); break;
+    case 7: wefaxgal::galleryView(a); break;
     default: tuningPanel(a); break;
     }
 }
