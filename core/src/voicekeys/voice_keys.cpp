@@ -53,7 +53,18 @@ std::string VoiceKey::keyHex() const { return meshcrypto::hexEncode(key.data(), 
 
 std::string parseKeyHex(Algorithm a, const std::string& hex, std::vector<uint8_t>& out) {
     out.clear();
-    if (!meshcrypto::hexDecode(hex, out)) return "not valid hex";
+    {
+        size_t digits = 0;
+        bool allHex = true;
+        for (char c : hex) {
+            if (c == ' ' || c == ':' || c == '\n' || c == '\t' || c == '\r') continue;
+            if (!std::isxdigit((unsigned char)c)) allHex = false;
+            digits++;
+        }
+        if (!allHex) return "not valid hex (use only 0-9 and a-f)";
+        if (digits % 2) return "an odd number of hex digits (" + std::to_string(digits) + "): a key is whole bytes, two digits each";
+    }
+    if (!meshcrypto::hexDecode(hex, out)) return "not valid hex (use only 0-9 and a-f)";
     if (out.empty()) return "the key is empty";
     const size_t need = algorithmKeyBytes(a);
     if (need && out.size() != need) {
@@ -113,11 +124,10 @@ long toLong(const std::string& s, long dflt) {
 }
 } // namespace
 
-int KeyStore::importCsv(const std::string& text, std::vector<std::string>& errors) {
+int KeyStore::parseCsv(const std::string& text, std::vector<VoiceKey>& staged, std::vector<std::string>& errors) {
     std::istringstream in(text);
     std::string line;
     int imported = 0, lineNo = 0;
-    std::vector<VoiceKey> staged;
     bool headerChecked = false;
     while (std::getline(in, line)) {
         lineNo++;
@@ -148,6 +158,12 @@ int KeyStore::importCsv(const std::string& text, std::vector<std::string>& error
         staged.push_back(std::move(k));
         imported++;
     }
+    return imported;
+}
+
+int KeyStore::importCsv(const std::string& text, std::vector<std::string>& errors) {
+    std::vector<VoiceKey> staged;
+    const int imported = parseCsv(text, staged, errors);
     if (!staged.empty()) { std::lock_guard<std::mutex> lk(mu_); for (auto& k : staged) keys_.push_back(std::move(k)); }
     return imported;
 }

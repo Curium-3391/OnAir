@@ -93,6 +93,8 @@ public:
     // CSV columns (header optional, case-insensitive): name,protocol,algorithm,key,keyid,algid,talkgroup,unit,nac,cc,enabled
     // Returns the number imported; errors appended to `errors` (one per bad line). Never throws.
     int importCsv(const std::string& text, std::vector<std::string>& errors);
+    // The same parser without touching any store (the Keys window previews with it). Appends to `out`; returns the number parsed.
+    static int parseCsv(const std::string& text, std::vector<VoiceKey>& out, std::vector<std::string>& errors);
     std::string exportCsv() const;
 
     // ---- per-call selection (feed thread; must not block on I/O) ----

@@ -58,6 +58,7 @@ static void tickReceiver(App& a) {
     audioCleanupTick(a);
     audioControlTick(a);
     voiceInversionTick(a);
+    voiceKeysTick(a);
     timeMachineTick(a);
     gainControl(a);
     followBandwidth(a);

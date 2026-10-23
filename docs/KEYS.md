@@ -25,7 +25,7 @@ The cipher code is validated against public known-answer vectors (RC4, DES) and,
 
 ## The Keys window
 
-Open **Keys** to add, edit, delete, enable/disable, import and export keys. Each key has:
+Open **Tools > Voice keys** (or press **Add key...** next to "encrypted: add your key" in a voice panel). The first time, a notice asks you to confirm you only use channels you are authorised to listen to; nothing works before that. The window shows *keys locked / unlocked*, asks for the passphrase when the passphrase fallback is in use, shows keys masked (press Reveal to see one), imports from CSV with a preview, exports (plain CSV with a warning, or locked with a passphrase) and has a Clear all button with confirmation. Use it to add, edit, delete, enable/disable, import and export keys. Each key has:
 
 - a **name** (shown in the status line, e.g. *decrypted with key "club net"*),
 - a **protocol** (DMR / P25 / NXDN / dPMR, or *any*),
@@ -70,6 +70,8 @@ sar,P25,AES-256-OFB,00112233…ff,3,0x84,,,0x293,,1
 - `core/include/dect2/voicekeys/voice_keys.h` — the key model, the store (`voicekeys::store()`), matching and CSV.
 - `core/include/dect2/voicekeys/voice_crypto.h` — RC4, DES, OFB, the 15-bit scrambler.
 - `core/include/dect2/voicekeys/voice_decrypt.h` — the per-call `Decryptor` and `lookupForCall()`.
+- `core/include/dect2/voicekeys/key_guard.h` — which file names count as key material (never zipped into a bug report).
+- `app/keys/` — the Keys window; `app/platform/keychain_*` — the OS keychain providers (macOS Keychain, Windows Credential Manager, Linux libsecret).
 - `core/include/dect2/voicekeys/key_persist.h` — encrypt-at-rest, the keychain provider hook, CSV-independent (de)serialization.
 
 A receiver that has detected encryption builds a `Decryptor` from `lookupForCall()` and runs each voice frame's bits through

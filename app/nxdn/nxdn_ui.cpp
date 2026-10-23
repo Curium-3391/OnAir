@@ -70,7 +70,11 @@ void nowView(App& a) {
     ImGui::TextColored(n.active ? pal::okGreen() : pal::grey(0.6f), "%s  %s  ->  %s", n.active ? "ON AIR" : "last", dect2::nxdnId(n.src).c_str(), dstOf(n).c_str());
     ImGui::PopFont();
     kvRow(a, "call", "%s, NXDN%d, RAN %d%s", dect2::nxdn::callTypeName(n.callType), n.baud == 4800 ? 96 : 48, n.ran, n.lateEntry ? ", joined late" : "");
-    if (n.cipher) { ImGui::TextDisabled("note"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "encrypted (cipher %d, key %d): no sound", n.cipher, n.keyId); }
+    if (n.cipher) {
+        ImGui::TextDisabled("note"); kvColumn(130 * gUi);
+        if (n.decrypt.empty()) ImGui::TextColored(pal::warnAmber(), "encrypted (cipher %d, key %d): no sound", n.cipher, n.keyId);
+        else { ImGui::Text("cipher %d, key %d:", n.cipher, n.keyId); ImGui::SameLine(); voiceKeysStatus(a, n.decrypt); }   // the key status and the way to the Keys window
+    }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
     kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
     kvRow(a, "voice", "%s", n.voice ? "playing (AMBE+2 through mbelib)" : t.ambe ? "-" : "no mbelib: frames counted only");

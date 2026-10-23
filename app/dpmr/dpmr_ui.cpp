@@ -70,6 +70,8 @@ void voiceLine() {
 
 void nowView(App& a) {
     voiceLine();
+    ImGui::SameLine(0, 8 * gUi);
+    voiceKeysLink(a);
     ImGui::Spacing();
     if (!live(a)) { ImGui::TextDisabled("%s", a.engine.running() ? "starting" : "start the receiver to hear dPMR"); return; }
     const dect2::DpmrTelemetry& t = a.rx.dpmr;
