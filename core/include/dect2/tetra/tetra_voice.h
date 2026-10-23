@@ -30,6 +30,19 @@ public:
     virtual void onCaptureEnd() {}
 };
 
+// Collects what decodeCarrier gives a sink, to hand it on (flush) only if the carrier turns out to be the one that is played: several carriers
+// of a capture can show the same call, and a carrier that gave only silence must not be heard in front of one that gave speech.
+class FrameBuffer final : public SpeechFrameSink {
+public:
+    void onCodedFrame(const uint8_t* bits, size_t n) override { ev_.push_back({true, std::vector<uint8_t>(bits, bits + n)}); }
+    void onMissingBurst() override { ev_.push_back({false, {}}); }
+    size_t size() const { return ev_.size(); }
+    void flush(SpeechFrameSink& to) const { for (const auto& e : ev_) { if (e.coded) to.onCodedFrame(e.bits.data(), e.bits.size()); else to.onMissingBurst(); } }
+private:
+    struct Ev { bool coded; std::vector<uint8_t> bits; };
+    std::vector<Ev> ev_;
+};
+
 // The followed timeslot as one sequence of TDMA frames across captures: next is the speech frame index, (mn - 1) * 17 + fn - 1 in the hyperframe
 // (frame 18 of a multiframe carries no speech), of the frame expected after the last one given to the sink; -1: nothing followed yet. Kept by the
 // caller of decodeCarrier for the carrier it follows (key is the caller's name for it), so that the frames of the slot lost where two captures
