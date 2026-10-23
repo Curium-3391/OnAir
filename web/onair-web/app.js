@@ -14,7 +14,7 @@
 
   // ---------- state ----------
   const S = {
-    ws: null, info: null, welcome: null, cap: null, bounds: null, view: null, full: null,
+    ws: null, info: null, welcome: null, ranges: null, cap: null, bounds: null, view: null, full: null,
     freq: 0, mode: "nfm", low: -6250, high: 6250, sq: -150, agc: "slow",
     audioOn: false, muted: false, volume: store.get("vol", 70), level: -150, peak: -150, peakAt: 0,
     spectrumOn: false, subs: [], step: store.get("step", 5000), palette: store.get("palette", "amber"),
@@ -89,11 +89,16 @@
 
   // ---------- tuning ----------
   function clampFreq(hz) {
-    if (!S.bounds) return Math.max(0, hz);
-    return L.clamp(hz, S.bounds.start, S.bounds.stop);
+    const f = S.bounds ? L.clamp(hz, S.bounds.start, S.bounds.stop) : Math.max(0, hz);
+    if (!L.rangeActive(S.ranges)) return f;
+    // the host limits the ranges: stay inside them (the server checks again and answers forbidden_range)
+    const s = L.rangeSnap(S.ranges, S.mode, f, S.low, S.high, S.cap);
+    return s === null ? S.freq : s;
   }
   function setFreq(hz, followView) {
+    const want = Math.round(L.clamp(hz, S.bounds ? S.bounds.start : 0, S.bounds ? S.bounds.stop : 1e12));
     S.freq = Math.round(clampFreq(hz));
+    if (L.rangeActive(S.ranges) && S.freq !== want) banner("The host only allows listening in certain ranges: moved to the nearest allowed frequency.");
     if (followView && S.view && (S.freq < S.view.start || S.freq > S.view.stop)) {
       const sp = S.view.stop - S.view.start; setView({ start: S.freq - sp / 2, stop: S.freq + sp / 2 });
     }
@@ -112,19 +117,22 @@
     if (!L.MODES.includes(mode)) return;
     S.mode = mode;
     const d = L.MODE_DEFAULT[mode]; S.low = d[0]; S.high = d[1];
-    renderMode(); sendTune({ mode });
+    if (L.rangeActive(S.ranges)) S.freq = Math.round(clampFreq(S.freq));   // the new passband must fit too
+    renderMode(); renderFreq(); drawSpectrum(); sendTune({ mode });
     if (S.audioOn) sendAudio();
     persist();
   }
   function setBandwidth(bw) {
     const pb = L.passband(S.mode, bw); S.low = pb.low_hz; S.high = pb.high_hz;
-    renderMode(); sendTune({ low_hz: S.low, high_hz: S.high }); drawSpectrum();
+    if (L.rangeActive(S.ranges)) S.freq = Math.round(clampFreq(S.freq));
+    renderMode(); renderFreq(); sendTune({ low_hz: S.low, high_hz: S.high }); drawSpectrum();
   }
   function buildModes(allowed) {
     const box = $("modes"); box.textContent = "";
     for (const m of L.MODES) {
       if (allowed && !allowed.includes(m)) continue;
-      const b = el("button", null, m.toUpperCase()); b.type = "button"; b.dataset.mode = m; b.setAttribute("role", "radio");
+      const rm = L.rangeModes(S.ranges);   // the host's ranges: a mode that is allowed nowhere is greyed out
+      const b = el("button", null, m.toUpperCase()); if (rm && !rm.includes(m)) { b.disabled = true; b.title = "The host does not allow this mode in any range"; } b.type = "button"; b.dataset.mode = m; b.setAttribute("role", "radio");
       b.addEventListener("click", () => setMode(m)); box.appendChild(b);
     }
   }
@@ -176,6 +184,17 @@
       const x = Math.round(L.hzToX(v, f, W)) + 0.5;
       sctx.strokeStyle = "#241f19"; sctx.lineWidth = 1; sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, H); sctx.stroke();
       sctx.fillStyle = "#8d8473"; sctx.fillText(g >= 1e6 ? (f / 1e6).toFixed(g >= 1e6 ? 0 : 1) : (f / 1e6).toFixed(g >= 1e5 ? 1 : 3), x + 3, 2);
+    }
+    // the host's ranges: what is not visible is darkened, the allowed bands get a strip on top, blocked ones a red tint
+    if (L.rangeActive(S.ranges)) {
+      sctx.fillStyle = "rgba(0,0,0,0.62)";
+      for (const h of L.hiddenRanges(S.ranges, v.start, v.stop)) { const a = L.hzToX(v, h.lo, W), b = L.hzToX(v, h.hi, W); sctx.fillRect(a, 0, Math.max(1, b - a), H); }
+      if (S.ranges.restricted) {
+        sctx.fillStyle = "rgba(96,190,140,0.85)";
+        for (const a of L.mergeRanges(S.ranges.allow)) { if (a.hi < v.start || a.lo > v.stop) continue; const x = L.hzToX(v, Math.max(a.lo, v.start), W), y = L.hzToX(v, Math.min(a.hi, v.stop), W); sctx.fillRect(x, 0, Math.max(2, y - x), Math.max(3, 3 * dpr)); }
+      }
+      sctx.fillStyle = "rgba(190,60,50,0.22)";
+      for (const b of S.ranges.block) { if (b.hi < v.start || b.lo > v.stop) continue; const x = L.hzToX(v, Math.max(b.lo, v.start), W), y = L.hzToX(v, Math.min(b.hi, v.stop), W); sctx.fillRect(x, 0, Math.max(2, y - x), H); }
     }
     // passband and tuned marker
     const x0 = L.hzToX(v, S.freq + S.low, W), x1 = L.hzToX(v, S.freq + S.high, W), xc = L.hzToX(v, S.freq, W);
@@ -414,6 +433,7 @@
     switch (m.type) {
       case "welcome": return onWelcome(m);
       case "state": return onState(m);
+      case "ranges": S.ranges = L.readRanges(m.ranges); applyRanges(true); return;
       case "capture": S.cap = { centre_hz: m.centre_hz, rate_hz: m.rate_hz }; setCapture(); return;
       case "event": return onEvent(m);
       case "error": if (m.code !== "busy") banner(m.message || m.code); return;
@@ -429,6 +449,7 @@
   }
   function onWelcome(m) {
     S.welcome = m; S.attempt = 0; S.kickText = ""; banner("");
+    S.ranges = L.readRanges(m.ranges);   // missing: the host set no ranges (older servers never send it)
     S.cap = m.capture; S.view = null; setCapture();
     $("app").hidden = false; $("login").hidden = true;
     setConn(m.class, "ok"); if (S.info) renderInfo();
@@ -438,7 +459,9 @@
     if (last && last.f >= S.bounds.start && last.f <= S.bounds.stop && m.demods.includes(last.m)) {
       S.freq = last.f; S.mode = last.m; S.low = last.lo; S.high = last.hi; S.sq = last.sq != null ? last.sq : -150;
     } else { S.freq = Math.round(m.capture.centre_hz); S.mode = m.demods.includes("nfm") ? "nfm" : m.demods[0]; const d = L.MODE_DEFAULT[S.mode]; S.low = d[0]; S.high = d[1]; }
+    if (L.rangeActive(S.ranges)) { const sn = L.rangeSnap(S.ranges, S.mode, S.freq, S.low, S.high, S.cap); if (sn !== null) S.freq = Math.round(sn); }
     if (last && last.f && S.view && (S.freq < S.view.start || S.freq > S.view.stop)) S.view = null;
+    renderRangeInfo(); buildBands();
     renderMode(); renderFreq(); renderSquelch();
     send(L.msg.tune({ freq_hz: S.freq, mode: S.mode, low_hz: S.low, high_hz: S.high }));
     send(L.msg.rx({ squelch_db: S.sq }));
@@ -446,6 +469,29 @@
     if (S.audioOn) { S.audioSeq = -1; sendAudio(); }
     S.pinger = setInterval(() => send(L.msg.ping(Date.now())), 20000);
     for (const s of S.subs) send(L.msg.subscribe(s.decoder, s.freq));
+  }
+  // ---------- the host's frequency ranges ----------
+  function renderRangeInfo() {
+    const box = $("rangeInfo"); if (!box) return;
+    box.textContent = "";
+    if (!L.rangeActive(S.ranges)) { box.hidden = true; return; }
+    const d = L.describeRanges(S.ranges, (hz) => String(Math.round(hz / 100) / 10000) + " MHz");
+    const add = (cls, head, items) => { if (!items.length) return; const p = el("p", cls); p.appendChild(el("b", null, head + " ")); p.appendChild(document.createTextNode(items.join("; "))); box.appendChild(p); };
+    add("ok", "This server lets you listen in:", d.allow);
+    add("bad", "Blocked:", d.block);
+    add("dim", "Host notes:", d.notes);
+    box.hidden = !box.childElementCount;
+  }
+  // the ranges changed (welcome, or the host changed them while you listen): re-fit the tuning and redraw
+  function applyRanges(changed) {
+    renderRangeInfo();
+    buildModes(S.welcome && S.welcome.demods);
+    buildBands();
+    if (L.rangeActive(S.ranges)) {
+      const sn = L.rangeSnap(S.ranges, S.mode, S.freq, S.low, S.high, S.cap);
+      if (sn !== null && Math.round(sn) !== S.freq) { S.freq = Math.round(sn); if (changed) banner("The host changed the allowed ranges: your frequency was moved."); sendTune(); }
+    } else if (changed) banner("");
+    renderMode(); renderFreq(); drawSpectrum();
   }
   function onState(m) {
     if (performance.now() - S.pendingTune > 600) {
@@ -470,7 +516,7 @@
     const box = $("bandList"); box.textContent = "";
     for (const b of bands) {
       const slice = S.full ? L.bandSlice({ start: b.s, stop: b.e }, S.bounds) : null;
-      const btn = el("button", null, b.n); btn.type = "button"; btn.disabled = !slice;
+      const btn = el("button", null, b.n); btn.type = "button"; btn.disabled = !slice || !L.rangeOverlaps(S.ranges, b.s, b.e, 1000);
       btn.appendChild(el("span", "f", fmtMHz(b.s) + " - " + fmtMHz(b.e) + " MHz"));
       btn.addEventListener("click", () => {
         const f = L.clamp(b.f, slice.start, slice.stop); setView(slice);

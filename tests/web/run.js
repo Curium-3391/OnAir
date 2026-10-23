@@ -226,4 +226,58 @@ test("jitter buffer: primes, plays, resamples, underruns, resyncs", () => {
   const o = new Float32Array(4); q.pull(o); assert.deepStrictEqual(Array.from(o), [0, 1, 2, 3]);
 });
 
+test("host frequency ranges: check, snap, hidden parts, modes", () => {
+  const r = L.readRanges({ restricted: true, action: "refuse", allow: [{ lo: 144e6, hi: 146e6, modes: ["nfm"] }, { lo: 7e6, hi: 7.2e6, modes: ["usb", "lsb"] }], block: [{ lo: 145.8e6, hi: 146e6 }], notes: ["be nice"] });
+  assert.ok(L.rangeActive(r));
+  assert.strictEqual(L.readRanges(null), null);
+  assert.strictEqual(L.readRanges({ restricted: false, allow: [], block: [] }), null, "nothing to enforce");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 145e6, -6250, 6250), "ok");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 144e6, -6250, 6250), "not_allowed", "the passband sticks out below");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 144.007e6, -6250, 6250), "ok");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 145.9e6, -6250, 6250), "blocked");
+  assert.strictEqual(L.rangeCheck(r, "am", 7.1e6, -5000, 5000), "mode");
+  assert.strictEqual(L.rangeCheck(r, "usb", 7.1e6, 300, 2700), "ok");
+  assert.strictEqual(L.rangeCheck(r, "usb", 7.2e6, 300, 2700), "not_allowed");
+  assert.strictEqual(L.rangeCheck(r, "lsb", 7.2e6, -2700, -300), "ok");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 100e6, -6250, 6250), "not_allowed");
+  assert.strictEqual(L.rangeCheck(r, "nfm", 145e6, 0, 0), "invalid");
+  assert.strictEqual(L.rangeCheck(r, "nfm", NaN, -1, 1), "invalid");
+  assert.strictEqual(L.rangeCheck(r, "nfm", -1, -1, 1), "invalid");
+  // snapping
+  near(L.rangeSnap(r, "nfm", 150e6, -6250, 6250), 146e6 - 6875, 1, "snap above");
+  near(L.rangeSnap(r, "nfm", 140e6, -6250, 6250), 144e6 + 6875, 1, "snap below");
+  const sn = L.rangeSnap(r, "nfm", 145.9e6, -6250, 6250);
+  assert.strictEqual(L.rangeCheck(r, "nfm", sn, -6250, 6250), "ok", "snapped out of the block");
+  assert.strictEqual(L.rangeSnap(r, "am", 145e6, -5000, 5000), null, "no range for AM");
+  // merging: adjacent and overlapping ranges are one, a gap is not
+  assert.strictEqual(L.mergeRanges([{ lo: 144e6, hi: 145e6 }, { lo: 145e6, hi: 146e6 }, { lo: 145.5e6, hi: 145.6e6 }]).length, 1);
+  assert.strictEqual(L.mergeRanges([{ lo: 144e6, hi: 145e6 }, { lo: 145.001e6, hi: 146e6 }]).length, 2);
+  const adj = L.readRanges({ restricted: true, allow: [{ lo: 144e6, hi: 145e6 }, { lo: 145e6, hi: 146e6 }], block: [] });
+  assert.strictEqual(L.rangeCheck(adj, "nfm", 145e6, -6250, 6250), "ok", "across the join");
+  // capture edge
+  const cap = { centre_hz: 100e6, rate_hz: 2.4e6 }, blk = L.readRanges({ restricted: false, allow: [], block: [{ lo: 101.1e6, hi: 101.2e6 }] });
+  assert.strictEqual(L.rangeCheck(blk, "nfm", 98.85e6, -6250, 6250, cap), "capture");
+  assert.strictEqual(L.rangeCheck(blk, "nfm", 98.86e6, -6250, 6250, cap), "ok");
+  assert.strictEqual(L.rangeCheck(blk, "nfm", 101.14e6, -6250, 6250, cap), "blocked");
+  const s2 = L.rangeSnap(blk, "nfm", 90e6, -6250, 6250, cap);
+  assert.ok(s2 > 98.848e6 && L.rangeCheck(blk, "nfm", s2, -6250, 6250, cap) === "ok");
+  // modes and bands
+  assert.deepStrictEqual(L.rangeModes(r), ["nfm", "usb", "lsb"].sort((a, b) => L.MODES.indexOf(a) - L.MODES.indexOf(b)));
+  assert.strictEqual(L.rangeModes(blk), null, "no allow list: every mode");
+  assert.ok(L.rangeOverlaps(r, 144e6, 146e6, 1000) && !L.rangeOverlaps(r, 87.5e6, 108e6, 1000));
+  assert.ok(L.rangeOverlaps(null, 1, 2, 1000), "no ranges: everything");
+  // hidden parts (what the spectrum darkens): outside the allowed ranges and inside a block that names no mode
+  const hid = L.hiddenRanges(r, 143e6, 147e6);
+  assert.deepStrictEqual(hid, [{ lo: 143e6, hi: 144e6 }, { lo: 145.8e6, hi: 147e6 }]);
+  assert.deepStrictEqual(L.hiddenRanges(null, 1, 2), [], "no ranges: nothing hidden");
+  const modeBlock = L.readRanges({ restricted: false, allow: [], block: [{ lo: 1e6, hi: 2e6, modes: ["usb"] }] });
+  assert.deepStrictEqual(L.hiddenRanges(modeBlock, 0, 5e6), [], "a mode-limited block does not hide the spectrum");
+  const d = L.describeRanges(r);
+  assert.strictEqual(d.allow.length, 2); assert.strictEqual(d.block.length, 1); assert.deepStrictEqual(d.notes, ["be nice"]);
+  assert.ok(/NFM/.test(d.allow[0]));
+  // defensive reading: junk from a broken server never throws
+  const junk = L.readRanges({ restricted: true, allow: [{ lo: "x", hi: 2 }, null, { lo: 5, hi: 1 }], block: "no" });
+  assert.ok(junk && junk.restricted && junk.allow.length === 0, "junk entries are dropped; a restricted list with nothing valid allows nothing");
+});
+
 console.log(passed + " tests passed" + (process.exitCode ? ", some FAILED" : ""));

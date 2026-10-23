@@ -69,6 +69,9 @@ struct WebHub::Session {
     int degrade = 0;
     double overSince = 0;
     std::set<std::string> subs;
+    RangeView rv;                      // the host's frequency ranges for this listener's class (cached; follows rangeGen_)
+    unsigned rvGen = 0;
+    bool rclamp = false, rangeNote = false;
     double cpuSec = 0, cpuMark = 0, cpuPct = 0;
 
     std::mutex qm;
@@ -235,6 +238,11 @@ void WebHub::dspLoop() {
                     std::shared_ptr<Session> s;
                     { std::lock_guard<std::mutex> g(mu_); auto it = sessions_.find(id); if (it != sessions_.end()) s = it->second; }
                     if (!s) continue;
+                    if (!d->needsFreq) {   // results of the host's own receiver: only a listener who may see the whole capture gets them
+                        std::lock_guard<std::mutex> sg(s->m);
+                        refreshView(*s);
+                        if (!captureVisible(s->rv, pubCentre_.load(), pubRate_.load())) continue;
+                    }
                     for (const auto& e : ev) {
                         if (e.size() > 65536) continue;   // bigger results are not sent (documented limit)
                         enqueue(*s, OutMsg{"{\"type\":\"event\",\"decoder\":\"" + jsonEsc(d->key) + "\",\"data\":" + e + "}", false, 1});
@@ -287,6 +295,17 @@ void WebHub::configureRx(Session& s) {
     r.audioRate = s.arate;
     s.outside = std::fabs(r.offsetHz) > rateHz_ * 0.48;
     if (s.outside) { s.rxErr = "outside the capture"; return; }
+    // the host's frequency ranges: a tuning that is not (or no longer) allowed gets no receiver at all, so no audio can come out of it
+    refreshView(s);
+    if (s.rv.active()) {
+        const RangeVerdict rvd = checkPassband(s.rv, r.demod, s.freqHz, r.lowHz, r.highHz, centreHz_, rateHz_);
+        if (rvd != RangeVerdict::Ok) {
+            s.rxErr = "forbidden_range";
+            if (!s.rangeNote) { s.rangeNote = true; sendError(s, err::ForbiddenRange, verdictText(rvd)); }
+            return;
+        }
+    }
+    s.rangeNote = false;
     auto v = std::make_unique<VirtualRx>();
     std::string err;
     if (!v->configure(fft_, r, err)) { s.rxErr = err; return; }
@@ -381,6 +400,8 @@ void WebHub::processChunk(Chunk& c) {
             if (b - a < 1000) continue;
             const int bins = s.degrade >= 2 ? std::max(64, s.bins / 2) : s.bins;
             wf_.row(a - centreHz_, b - centreHz_, bins, s.rowDb);
+            refreshView(s);
+            if (s.rv.active()) maskSpectrumRow(s.rowDb, a, b, s.rv);   // what the host does not show is replaced by the noise floor before it is scaled and sent
             quantizeRow(s.rowDb, s.sc, s.rowQ);
             enqueue(s, OutMsg{spectrumFrame(s.sSeq++, a, b, s.sc.floorDb, s.sc.topDb, s.rowQ), true, 3});
             s.cpuSec += threadCpuSeconds() - t0;
@@ -463,6 +484,12 @@ int WebHub::admit(const AdmitRequest& r, std::string& code, std::string& why) {
         if (!policy_.demodAllowed(s->rx.demod)) for (int d = 0; d < (int)Demod::Count; d++) if (policy_.demodAllowed((Demod)d)) { s->rx.demod = (Demod)d; break; }
     }
     defaultPassband(s->rx.demod, s->rx.lowHz, s->rx.highHz);
+    {   // start inside what the host allows (the centre of the capture may be outside)
+        std::lock_guard<std::mutex> pg(polMu_);
+        const RangeView rv = ranges_.view(rangeClassOf(s->cls));
+        double f = 0;
+        if (rv.active() && s->haveFreq && snapFreq(rv, s->rx.demod, s->freqHz, s->rx.lowHz, s->rx.highHz, pubCentre_.load(), pubRate_.load(), f)) s->freqHz = f;
+    }
     sessions_[s->id] = s;
     admitted_++;
     logLine("web: session " + std::to_string(s->id) + " joined (" + userClassName(s->cls) + (logIp_ ? ", " + r.ip : std::string()) + ")");
@@ -570,11 +597,29 @@ void WebHub::handle(int id, const ClientMsg& m) {
             if (m.lowHz < lo || m.highHz > hi) { fail(err::OutOfRange, "passband wider than this mode allows"); return; }
             r.lowHz = m.lowHz; r.highHz = m.highHz;
         }
+        // the host's frequency ranges: frequency, mode and passband together must be allowed (the whole passband plus a guard margin inside one allowed range)
+        double snapF = 0;
+        bool useSnap = false;
+        refreshView(s);
+        if (s.rv.active() && (m.hasFreq || m.hasDemod || m.hasPass) && (m.hasFreq || s.haveFreq)) {
+            const double nf = m.hasFreq ? m.freqHz : s.freqHz;
+            const RangeVerdict rvd = checkPassband(s.rv, r.demod, nf, r.lowHz, r.highHz, centre, rate);
+            if (rvd != RangeVerdict::Ok) {
+                double nearF = 0;
+                const bool have = snapFreq(s.rv, r.demod, nf, r.lowHz, r.highHz, centre, rate, nearF);
+                if (s.rclamp && have) { snapF = nearF; useSnap = true; }
+                else {
+                    fail(err::ForbiddenRange, std::string(verdictText(rvd)) + (have ? "; nearest allowed frequency: " + jsonNumber(nearF) + " Hz" : std::string()));
+                    return;
+                }
+            }
+        }
         if (m.hasFreq) {
             if (!(rate > 0)) { fail(err::OutOfRange, "the receiver is not running"); return; }
             if (std::fabs(m.freqHz - centre) > rate * 0.48) { fail(err::OutOfRange, "outside the capture (" + jsonNumber(centre - rate * 0.48) + " .. " + jsonNumber(centre + rate * 0.48) + " Hz)"); return; }
             s.freqHz = m.freqHz; s.haveFreq = true;
         }
+        if (useSnap) { s.freqHz = snapF; s.haveFreq = true; }
         s.rx = r;
         s.dirty = true;
     } else if (m.type == ClientMsg::Rx) {
@@ -629,6 +674,13 @@ void WebHub::subscribe(const std::shared_ptr<Session>& sp, const ClientMsg& m) {
         fz = std::round(m.decFreqHz / 1000.0) * 1000.0;
         key += "@" + std::to_string((long long)std::llround(m.decFreqHz / 1000.0)) + "k";
     }
+    if (f->second.needsFreq) {   // the host's frequency ranges: the decoder's whole slice must be visible to this listener
+        std::lock_guard<std::mutex> sg(s.m);
+        refreshView(s);
+        const double half = std::max(f->second.rateHz, 25000.0) * 0.5;
+        const RangeVerdict rvd = checkWindow(s.rv, fz - half, fz + half);
+        if (rvd != RangeVerdict::Ok) { sendError(s, err::ForbiddenRange, verdictText(rvd)); return; }
+    }
     {
         std::lock_guard<std::mutex> sg(s.m);
         if (s.subs.count(key)) { sendState(s); return; }
@@ -648,6 +700,54 @@ void WebHub::subscribe(const std::shared_ptr<Session>& sp, const ClientMsg& m) {
     s.subs.insert(key);
     s.lastAction = wallSeconds();
     sendState(s);
+}
+
+// ---------------------------------------------------------------- frequency ranges
+void WebHub::refreshView(Session& s) {
+    // under s.m (lock order: s.m, then polMu_)
+    const unsigned g = rangeGen_.load();
+    if (s.rvGen == g) return;
+    std::lock_guard<std::mutex> pg(polMu_);
+    s.rv = ranges_.view(rangeClassOf(s.cls));
+    s.rclamp = ranges_.clampMode();
+    s.rvGen = g;
+}
+
+void WebHub::sendRanges(Session& s) {
+    enqueue(s, OutMsg{"{\"type\":\"ranges\",\"ranges\":" + rangesJson(s.rv, s.rclamp) + "}", false, 0});
+}
+
+void WebHub::rangesChanged() {
+    { std::lock_guard<std::mutex> pg(polMu_); rangeGen_++; }
+    std::vector<std::shared_ptr<Session>> ss;
+    { std::lock_guard<std::mutex> g(mu_); for (auto& kv : sessions_) ss.push_back(kv.second); }
+    for (auto& sp : ss) {
+        RangeView rv;
+        std::set<std::string> subs;
+        {
+            std::lock_guard<std::mutex> g(sp->m);
+            refreshView(*sp);
+            sp->dirty = true;          // the DSP thread re-checks the tuning and silences it when it is no longer allowed
+            sp->rangeNote = false;
+            sendRanges(*sp);
+            rv = sp->rv; subs = sp->subs;
+        }
+        if (!rv.active() || subs.empty()) continue;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            for (const auto& key : subs) {
+                auto d = decs_.find(key);
+                if (d == decs_.end() || !d->second->needsFreq) continue;
+                const double half = std::max(d->second->rate, 25000.0) * 0.5;
+                const RangeVerdict v = checkWindow(rv, d->second->freqHz - half, d->second->freqHz + half);
+                if (v == RangeVerdict::Ok) continue;
+                sendError(*sp, err::ForbiddenRange, std::string("decoder ") + key + " stopped: " + verdictText(v));
+                unsubscribe(*sp, key);
+            }
+        }
+        std::lock_guard<std::mutex> g(sp->m);
+        sendState(*sp);
+    }
 }
 
 std::string WebHub::welcomeJson(int id) {
@@ -684,7 +784,12 @@ std::string WebHub::welcomeJson(int id) {
             first = false;
         }
     }
-    o << "]}";
+    o << "]";
+    RangeView rv;
+    bool clampMode;
+    { std::lock_guard<std::mutex> pg(polMu_); rv = ranges_.view(rangeClassOf(s->cls)); clampMode = ranges_.clampMode(); }
+    if (rv.active()) o << ",\"ranges\":" << rangesJson(rv, clampMode);   // only when the host set ranges: older clients and open servers see no change
+    o << "}";
     return o.str();
 }
 

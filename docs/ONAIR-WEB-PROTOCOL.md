@@ -71,6 +71,16 @@ Before a close for a reason the server sends a text message (`error` or `kicked`
     "decoders":[{"kind":"host","name":"This server's receiver (its mode's results)","needs_freq":false}]}
    ```
 
+   When the host limits frequencies, the welcome also has a `ranges` object (absent otherwise: older servers and open servers never send it; clients that do not know it work as before, the server still refuses what is not allowed):
+
+   ```json
+   "ranges":{"restricted":true,"action":"refuse","guard":{"min_hz":200,"max_hz":5000,"fraction":0.05},
+             "allow":[{"lo":144000000,"hi":146000000,"modes":["nfm"],"note":"2 m"}],
+             "block":[{"lo":145800000,"hi":146000000}],"notes":["ham_hf: Amateur radio HF bands (typical ...)"]}
+   ```
+
+   `allow` is the listener's own class's list (not merged; `modes` missing: all modes; `note` optional); `restricted` false with `block` only means "everywhere except". Edges are inclusive Hz (10 significant digits). The passband plus the guard margin (`fraction` of the bandwidth, between `min_hz` and `max_hz`) must lie wholly inside one merged allowed range and must not touch a block. `action` is what a refused `tune` gets: `refuse` (an `error`) or `clamp` (the server moves the frequency, see `state`).
+
    `class` is `public`, `member` (password) or `invited`. `demods` and `decoders` list only what the host allows. The session starts tuned to the capture's centre in NFM with audio and spectrum off.
 
 ## Client messages
@@ -99,13 +109,16 @@ Passband limits per mode (Hz relative to the tuned frequency): AM and NFM -10000
 | --- | --- |
 | `welcome` | see above |
 | `state` | the session's settings after every change: `freq_hz`, `mode`, `low_hz`, `high_hz`, `squelch_db`, `agc`, `gain_db`, `deemph_us`, `audio{on,codec,rate}`, `spectrum{on,bins,fps,start_hz?,stop_hz?}`, `subscriptions` (keys), `degrade` (0 .. 3: the server is sending fewer or smaller spectrum rows to keep within the session's budget) |
+| `ranges` | `ranges`: the same object as `welcome.ranges`; sent when the host changes the frequency ranges while you listen. A tuning that is no longer allowed is silenced and answered with one `forbidden_range` error; the client should tune again. Not sent by servers without ranges |
 | `capture` | `centre_hz`, `rate_hz`: the host retuned or changed the rate. Tuned frequencies are kept; a session now outside the capture is silent until it tunes again |
 | `event` | `decoder` (the subscription key: `kind` or `kind@<kHz>k`), `data` (the decoder's JSON value, at most 64 KB) |
 | `pong` | `t` |
 | `error` | `code`, `message` (English text) |
 | `kicked` | `reason`: `kicked`, `kicked: <admin's text>`, `idle`, `time_limit`, `cpu_budget`, `bandwidth_budget`, `server_busy`, `slow_client`, `bye` |
 
-Error codes: `bad_json`, `bad_message`, `unknown_type`, `forbidden`, `out_of_range`, `not_allowed` (the host has turned it off), `rate_limited`, `busy`, `auth`.
+Error codes: `bad_json`, `bad_message`, `unknown_type`, `forbidden`, `out_of_range`, `not_allowed` (the host has turned it off), `forbidden_range` (the host limits the frequency ranges and this tuning, passband or decoder is outside them or blocked; the text says why and may name the nearest allowed frequency; the session keeps its previous tuning), `rate_limited`, `busy`, `auth`.
+
+**Frequency ranges and the spectrum.** When the host limits ranges, spectrum rows are masked on the server: bins the listener may not see carry the noise floor of the visible part (so the row is still a normal `0x10` frame; the client needs no change to stay correct, only to look good). A `tune` is checked as a whole (frequency, mode, passband together) and, with any range set, the passband must also lie inside the usable 96 % of the capture. A `subscribe` with `freq_hz` is refused with `forbidden_range` when the decoder's slice is not visible; the `host` decoder is silent unless the whole capture is visible. This is an additive change: `proto` stays 1.
 
 The `host` decoder's `data` is `{"mode":"<the server's mode id>","telemetry":{...}}` with the receiver's telemetry (the same JSON as `/api/v1/telemetry` of the remote-control API). It is not sent while the server runs a digital voice or pager mode the host has not enabled for web listeners.
 

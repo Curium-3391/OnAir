@@ -61,6 +61,7 @@ constexpr const char* BadMessage = "bad_message";
 constexpr const char* UnknownType = "unknown_type";
 constexpr const char* Forbidden = "forbidden";          // transmit, keys, recording ... never available to web sessions
 constexpr const char* OutOfRange = "out_of_range";
+constexpr const char* ForbiddenRange = "forbidden_range";   // the host limits the frequency ranges: this tuning / decoder is outside them (or blocked)
 constexpr const char* NotAllowed = "not_allowed";       // the host has not enabled this
 constexpr const char* RateLimited = "rate_limited";
 constexpr const char* Busy = "busy";
