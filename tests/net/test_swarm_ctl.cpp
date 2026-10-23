@@ -290,7 +290,7 @@ static void testSockets() {
         dect2::sockRecvTimeout(s, 1500);
         dect2::sockSendAll(s, hello.data(), hello.size());
         char chal[64] = {};
-        dect2::sockRecv(s, chal, 12);
+        dect2::sockRecv(s, chal, 45);   // "OACTL1 CHAL " + 32 hex + newline
         const unsigned char hugeLen[4] = {0xFF, 0xFF, 0xFF, 0xFF};
         dect2::sockSendAll(s, hugeLen, 4);   // a 4 GB frame length: the server must not allocate it, just hang up
         CHECK(dect2::sockRecv(s, &c, 1) <= 0, "huge length ends the session");
@@ -299,7 +299,7 @@ static void testSockets() {
         dect2::sockRecvTimeout(s, 1500);
         std::string frame(4 + 45, 'x'); frame[0] = 0; frame[1] = 0; frame[2] = 0; frame[3] = 45;
         dect2::sockSendAll(s, hello.data(), hello.size());
-        dect2::sockRecv(s, chal, 12);
+        dect2::sockRecv(s, chal, 45);   // "OACTL1 CHAL " + 32 hex + newline
         dect2::sockSendAll(s, frame.data(), frame.size());   // random bytes with a good length: the tag fails
         CHECK(dect2::sockRecv(s, &c, 1) <= 0, "bad tag ends the session");
         dect2::sockClose(s);

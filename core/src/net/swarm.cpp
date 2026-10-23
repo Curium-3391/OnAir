@@ -374,7 +374,7 @@ std::string proofC(const std::string& code, const std::string& nc, const std::st
 }   // namespace
 
 bool PairResponder::offer(const std::string& code, int64_t now, int64_t ttl) {
-    if (normalisePairingCode(code) != code) return false;
+    if (code.size() != 32 || normalisePairingCode(code) != code) return false;   // an empty string normalises to itself: it must never be an offer
     st_ = Offered; code_ = code; expires_ = now + ttl; fails_ = 0;
     peer_.clear(); nc_.clear(); ns_.clear();
     return true;
