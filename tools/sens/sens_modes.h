@@ -11,6 +11,12 @@
 #include "dect2/fm/fm_gen.h"
 #include "dect2/t2/t2.h"
 #include "dect2/t2/t2gen.h"
+#include "dect2/meteor/meteor_rx.h"
+#include "dect2/meteor/meteor_tel.h"
+#include "dect2/hrpt/hrpt_rx.h"
+#include "dect2/hrpt/hrpt_tel.h"
+#include "dect2/goes/goes_rx.h"
+#include "dect2/goes/goes_tel.h"
 #include "sens_impair.h"
 #include <chrono>
 #include <cmath>
@@ -350,6 +356,10 @@ inline std::vector<Mode> allModes() {
     narrow.template operator()<DpmrReceiver, DpmrTelemetry>("dpmr", "dPMR", "digital-voice", 47, 1.2e6, 6.0, 6.25e3, 446, nullptr, 25);
     narrow.template operator()<TetraReceiver, TetraTelemetry>("tetra", "TETRA", "digital-voice", 48, 2e6, 8.0, 25e3, 390, [](SynthConfig& c) { c.modeOpt[0] = 1; }, 22);
     narrow.template operator()<P25Receiver, P25Telemetry>("p25", "P25 phase 1", "digital-voice", 52, 1.2e6, 6.0, 12.5e3, 851, nullptr, 25);
+    // weather satellites: the SNR is Es/N0 (the noise bandwidth is the symbol rate); frames whose Reed-Solomon codewords all passed
+    narrow.template operator()<MeteorReceiver, MeteorTelemetry>("meteor", "Meteor-M LRPT (OQPSK 72k)", "satellite-weather", 61, 1e6, 8.0, 72e3, 137.9, nullptr, 16);
+    narrow.template operator()<HrptReceiver, HrptTelemetry>("hrpt", "MetOp AHRPT", "satellite-weather", 66, 8e6, 1.5, 2.33e6, 1701.3, nullptr, 16);
+    narrow.template operator()<GoesReceiver, GoesTelemetry>("goes", "GOES HRIT", "satellite-weather", 62, 2.4e6, 4.0, 927e3, 1694.1, nullptr, 16);
     return v;
 }
 
