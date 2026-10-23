@@ -3,6 +3,7 @@
 // Built by tools/bench/bench_hf.sh (needs the unit-test helpers in tests/hfdig).
 #include "../../tests/hfdig/hfdig_wsjt_testutil.h"
 #include <sys/resource.h>
+#include <cmath>
 #include <cstdlib>
 #include <set>
 using namespace dect2;
@@ -16,6 +17,20 @@ static std::string callOf(int i) {
     char b[16];
     snprintf(b, sizeof b, "%s%d%c%c", pre[i % 10], (i / 10) % 10, 'A' + (i / 100) % 26, 'A' + (i * 7) % 26);
     return b;
+}
+// BENCH_WAV=<dir>: every slot of sens / the main bench is also written as 16-bit 8 kHz WAV, with the sent messages in <name>.txt (for running
+// other decoders on the same audio)
+static void writeWav(const std::string& base, const std::vector<float>& a, const std::vector<wsjttest::St>& st) {
+    FILE* f = fopen((base + ".wav").c_str(), "wb");
+    if (!f) return;
+    auto u32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
+    auto u16 = [&](uint16_t v) { fwrite(&v, 2, 1, f); };
+    fwrite("RIFF", 1, 4, f); u32(36 + 2 * (uint32_t)a.size()); fwrite("WAVEfmt ", 1, 8, f);
+    u32(16); u16(1); u16(1); u32(8000); u32(16000); u16(2); u16(16); fwrite("data", 1, 4, f); u32(2 * (uint32_t)a.size());
+    for (float v : a) { const int x = (int)std::lround(std::max(-32767.f, std::min(32767.f, v * 20000.f))); u16((uint16_t)(int16_t)x); }
+    fclose(f);
+    FILE* t = fopen((base + ".txt").c_str(), "w");
+    if (t) { for (const auto& s : st) fprintf(t, "%s\n", s.msg.c_str()); fclose(t); }
 }
 static const char* kNames[] = {"ft8", "ft4", "ft2", "wspr", "jt65", "jt9", "q65", "fst4", "msk144", "fst4w", "jt4"};
 static int modeOf(const char* s) {
@@ -45,6 +60,7 @@ static int sens(int argc, char** argv) {
             }
             wsjttest::Imp imp; imp.drift = drift; imp.dialHz = dial;
             auto a = wsjttest::audio(mode, st, 1, imp, 5000 + t * 13 + (int)(snr * 3 + 300));
+            if (const char* w = getenv("BENCH_WAV")) { char nm[256]; snprintf(nm, sizeof nm, "%s/%s_%+.1f_%d", w, argv[2], snr, t); writeWav(nm, a, st); }
             auto d = wsjttest::decode(a, mode, imp);
             for (const auto& s : st) {
                 all++;
@@ -96,6 +112,7 @@ int main(int argc, char** argv) {
     }
     wsjttest::Imp imp;
     auto a = wsjttest::audio(mode, st, slots, imp);
+    if (const char* w = getenv("BENCH_WAV")) { char nm[256]; snprintf(nm, sizeof nm, "%s/%s_busy%d", w, argv[1], N); writeWav(nm, a, st); }
     const double sig = (double)a.size() / 8000.0 - 4.0;
     const double c0 = cpuSec();
     auto d = wsjttest::decode(a, mode, imp);

@@ -385,6 +385,7 @@ public:
                 for (int mir = 0; mir < (mirrored_ ? 2 : 1); mir++) {
                     const auto cands = candidates(mir != 0);
                     for (const auto& c : cands) {
+                        if (deep_ && nearDecoded(c, mir != 0, out)) continue;   // what is left of a decoded signal: not worth the deep search
                         FtxDecode d;
                         std::vector<int> tones;
                         double f0, start;
@@ -417,6 +418,12 @@ public:
 private:
     struct Cand { int frame; int bin; float score; };
     bool deep_ = false;   // the second stage: the coherent metrics, OSD and a-priori decoding
+    bool nearDecoded(const Cand& c, bool mir, const std::vector<FtxDecode>& out) const {
+        const double hz = c.bin * binHz_, dt = j_.x0 + (double)c.frame * (L_.nsps / 4) / L_.rate - spec(j_.mode).t0;
+        for (const auto& o : out)
+            if (o.mirrored == mir && std::fabs(o.hz - hz) < 0.75 * L_.sp && std::fabs(o.dt - dt) < 1.5 * spec(j_.mode).symSec) return true;
+        return false;
+    }
     bool deepOn() const { return j_.mode != kWspr && (kFtxCoherent || kFtxOsd || kFtxApCq); }
 
     // the large FFT of the whole slot, kept for cutting out the candidates
