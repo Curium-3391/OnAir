@@ -401,7 +401,7 @@ void ingestSpectrum(App& a) {
     {   // the history has the width the detail setting and the FFT give (#243), and follows the radio: a retune moves the rows along (#270)
         const double fsMhz = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
         a.wf.setCols(specaxis::historyCols(a.wf.detail, n, Waterfall::kMaxCols));
-        if (!a.wf.paused) a.wf.follow(radioCenterMhz(a), fsMhz);
+        a.wf.follow(radioCenterMhz(a), fsMhz);   // also while paused: the frozen picture must stay under its frequencies
     }
     // frames the screen did not take (it drew slower than they came): the row is repeated for them, so the picture keeps its true speed (#246)
     const int missed = a.wf.rowsPerSec <= 0 ? specaxis::missedRows(prevSeq, f.seq) : 0;
