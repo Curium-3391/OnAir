@@ -36,6 +36,13 @@ struct Trellis {
     }
 };
 const Trellis& trellis() { static Trellis t; return t; }
+// the decision bits of a run (8 bytes a step, about 130 kB for a DVB-T chunk): kept with the thread, not allocated and zeroed for every run
+// (every element is written before it is read)
+inline uint64_t* decisionScratch(size_t steps) {
+    static thread_local std::vector<uint64_t> buf;
+    if (buf.size() < steps) buf.resize(steps);
+    return buf.data();
+}
 
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
 #include <arm_neon.h>
@@ -58,53 +65,68 @@ struct NeonTables {
 const NeonTables& neonTables() { static NeonTables t; return t; }
 
 
+// One trellis step: N (states 8q..8q+7 in N[q]) -> the new metrics in N, the 64 decision bits to *dec.
+// The butterfly metrics of the four groups are M0, -M0, M2, -M2 (the sign tables of groups 1 and 3 are those of 0 and 2 negated), so only
+// two are computed and the negation is folded into the add / subtract. The decision masks are narrowed with one uzp1 per pair (the low byte
+// of each 16-bit lane) instead of two xtn, and stored straight from the vector register.
+static inline __attribute__((always_inline)) void vitStep(int16x8_t (&N)[8], const int16x8_t sx0, const int16x8_t sy0, const int16x8_t sx2,
+                                                          const int16x8_t sy2, const uint8x16_t wt, int16_t a, int16_t b, uint64_t* dec) {
+    const int16x8_t M0 = vmlaq_n_s16(vmulq_n_s16(sx0, a), sy0, b);
+    const int16x8_t M2 = vmlaq_n_s16(vmulq_n_s16(sx2, a), sy2, b);
+    int16x8_t nn[8];
+    uint16x8_t lo[4], hi[4];
+    for (int q = 0; q < 4; q++) {
+        const int16x8x2_t o = vuzpq_s16(N[2 * q], N[2 * q + 1]);   // even states, odd states
+        const int16x8_t M = (q & 2) ? M2 : M0;
+        const int16x8_t A = o.val[0], B = o.val[1];
+        // groups 1 and 3: the metric is -M, so A + (-M) = A - M etc.
+        const int16x8_t p0 = (q & 1) ? vqsubq_s16(A, M) : vqaddq_s16(A, M), p1 = (q & 1) ? vqaddq_s16(B, M) : vqsubq_s16(B, M);
+        const int16x8_t r0 = (q & 1) ? vqaddq_s16(A, M) : vqsubq_s16(A, M), r1 = (q & 1) ? vqsubq_s16(B, M) : vqaddq_s16(B, M);
+        nn[q] = vmaxq_s16(p0, p1);
+        nn[4 + q] = vmaxq_s16(r0, r1);
+        lo[q] = vcgtq_s16(p1, p0);
+        hi[q] = vcgtq_s16(r1, r0);
+    }
+    // the 64 decision bits (lane i of the 64 comparison results -> bit i): narrow to bytes, weight by 1,2,4..128 and add
+    // neighbours three times, which leaves each group of eight lanes as one byte
+    const uint8x16_t c0 = vandq_u8(vuzp1q_u8(vreinterpretq_u8_u16(lo[0]), vreinterpretq_u8_u16(lo[1])), wt);
+    const uint8x16_t c1 = vandq_u8(vuzp1q_u8(vreinterpretq_u8_u16(lo[2]), vreinterpretq_u8_u16(lo[3])), wt);
+    const uint8x16_t c2 = vandq_u8(vuzp1q_u8(vreinterpretq_u8_u16(hi[0]), vreinterpretq_u8_u16(hi[1])), wt);
+    const uint8x16_t c3 = vandq_u8(vuzp1q_u8(vreinterpretq_u8_u16(hi[2]), vreinterpretq_u8_u16(hi[3])), wt);
+    uint8x16_t r = vpaddq_u8(vpaddq_u8(c0, c1), vpaddq_u8(c2, c3));
+    r = vpaddq_u8(r, r);
+    vst1q_lane_u64(dec, vreinterpretq_u64_u8(r), 0);
+    for (int q = 0; q < 8; q++) N[q] = nn[q];
+}
+
 void viterbiRangeCpp(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut) {
     const NeonTables& T = neonTables();
-    std::vector<uint64_t> dec(steps);
+    uint64_t* dec = decisionScratch(steps);
     long off = 0; // total subtracted by the renormalisation: the absolute path metric is off + pm
     alignas(16) int16_t pm[64] = {};
-    int16x8_t sigX[4], sigY[4];
-    for (int q = 0; q < 4; q++) { sigX[q] = vld1q_s16(T.sigX + 8 * q); sigY[q] = vld1q_s16(T.sigY + 8 * q); }
+    const int16x8_t sx0 = vld1q_s16(T.sigX), sy0 = vld1q_s16(T.sigY), sx2 = vld1q_s16(T.sigX + 16), sy2 = vld1q_s16(T.sigY + 16);
     // The 64 path metrics live in eight registers for the whole run (no store and reload per step: that round trip made the
     // chain of steps latency-bound). N[q] holds states 8q..8q+7.
     int16x8_t N[8];
     for (int q = 0; q < 8; q++) N[q] = vdupq_n_s16(0);
     static const uint8_t w8[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
     const uint8x16_t wt = vld1q_u8(w8);
-    for (size_t t = 0; t < steps; t++) {
-        const int16_t a = soft[2 * t], b = soft[2 * t + 1];
-        int16x8_t nn[8];
-        uint16x8_t lo[4], hi[4];
-        for (int q = 0; q < 4; q++) {
-            const int16x8x2_t o = vuzpq_s16(N[2 * q], N[2 * q + 1]);   // even states, odd states
-            const int16x8_t M = vmlaq_n_s16(vmulq_n_s16(sigX[q], a), sigY[q], b);
-            const int16x8_t A = o.val[0], B = o.val[1];
-            const int16x8_t p0 = vqaddq_s16(A, M), p1 = vqsubq_s16(B, M);
-            const int16x8_t r0 = vqsubq_s16(A, M), r1 = vqaddq_s16(B, M);
-            nn[q] = vmaxq_s16(p0, p1);
-            nn[4 + q] = vmaxq_s16(r0, r1);
-            lo[q] = vcgtq_s16(p1, p0);
-            hi[q] = vcgtq_s16(r1, r0);
-        }
-        // the 64 decision bits (lane i of the 64 comparison results -> bit i): narrow to bytes, weight by 1,2,4..128 and add
-        // neighbours three times, which leaves each group of eight lanes as one byte
-        const uint8x16_t c0 = vandq_u8(vcombine_u8(vmovn_u16(lo[0]), vmovn_u16(lo[1])), wt);
-        const uint8x16_t c1 = vandq_u8(vcombine_u8(vmovn_u16(lo[2]), vmovn_u16(lo[3])), wt);
-        const uint8x16_t c2 = vandq_u8(vcombine_u8(vmovn_u16(hi[0]), vmovn_u16(hi[1])), wt);
-        const uint8x16_t c3 = vandq_u8(vcombine_u8(vmovn_u16(hi[2]), vmovn_u16(hi[3])), wt);
-        uint8x16_t r = vpaddq_u8(vpaddq_u8(c0, c1), vpaddq_u8(c2, c3));
-        r = vpaddq_u8(r, r);
-        dec[t] = vgetq_lane_u64(vreinterpretq_u64_u8(r), 0);
-        // renormalise every 4 steps so int16 never saturates
-        if ((t & 3) == 3) {
-            int16x8_t mx = nn[0];
-            for (int q = 1; q < 8; q++) mx = vmaxq_s16(mx, nn[q]);
-            const int16_t top = vmaxvq_s16(mx);
-            off += top;
-            const int16x8_t m = vdupq_n_s16(top);
-            for (int q = 0; q < 8; q++) N[q] = vsubq_s16(nn[q], m);
-        } else for (int q = 0; q < 8; q++) N[q] = nn[q];
+    uint64_t* dp = dec;
+    size_t t = 0;
+    // four steps per pass, then renormalise so int16 never saturates (the same points as before: after steps 3, 7, 11, ...)
+    for (; t + 4 <= steps; t += 4) {
+        const int8_t* s = soft + 2 * t;
+        vitStep(N, sx0, sy0, sx2, sy2, wt, s[0], s[1], dp + t);
+        vitStep(N, sx0, sy0, sx2, sy2, wt, s[2], s[3], dp + t + 1);
+        vitStep(N, sx0, sy0, sx2, sy2, wt, s[4], s[5], dp + t + 2);
+        vitStep(N, sx0, sy0, sx2, sy2, wt, s[6], s[7], dp + t + 3);
+        int16x8_t mx = vmaxq_s16(vmaxq_s16(vmaxq_s16(N[0], N[1]), vmaxq_s16(N[2], N[3])), vmaxq_s16(vmaxq_s16(N[4], N[5]), vmaxq_s16(N[6], N[7])));
+        const int16_t top = vmaxvq_s16(mx);
+        off += top;
+        const int16x8_t m = vdupq_n_s16(top);
+        for (int q = 0; q < 8; q++) N[q] = vsubq_s16(N[q], m);
     }
+    for (; t < steps; t++) vitStep(N, sx0, sy0, sx2, sy2, wt, soft[2 * t], soft[2 * t + 1], dp + t);
     for (int q = 0; q < 8; q++) vst1q_s16(pm + 8 * q, N[q]);
     int state = 0;
     int bm = pm[0];
@@ -147,7 +169,7 @@ inline int16_t maxLane(__m128i v) {
 
 void viterbiRangeSse(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut) {
     const SseTables& T = sseTables();
-    std::vector<uint64_t> dec(steps);
+    uint64_t* dec = decisionScratch(steps);
     long off = 0; // total subtracted by the renormalisation: the absolute path metric is off + pm
     alignas(16) int16_t pm[64] = {};
     __m128i sigX[4], sigY[4];
@@ -212,7 +234,7 @@ inline uint32_t maskBits256(__m256i m0, __m256i m1) {
 __attribute__((target("avx2")))
 void viterbiRangeAvx2(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut) {
     const SseTables& T = sseTables();
-    std::vector<uint64_t> dec(steps);
+    uint64_t* dec = decisionScratch(steps);
     long off = 0;
     alignas(32) int16_t pm[64] = {};
     const __m256i sigX0 = _mm256_loadu_si256((const __m256i*)T.sigX), sigX1 = _mm256_loadu_si256((const __m256i*)(T.sigX + 16));
@@ -267,7 +289,7 @@ void viterbiRangeCpp(const int8_t* soft, size_t steps, std::vector<uint8_t>& bit
 #else
 void viterbiRangeCpp(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut) {
     const Trellis& T = trellis();
-    std::vector<uint64_t> dec(steps);
+    uint64_t* dec = decisionScratch(steps);
     long off = 0;
     int32_t pm[64] = {}, nm[64];
     for (size_t t = 0; t < steps; t++) {
