@@ -2,6 +2,7 @@
 #include "../app.h"
 #include "plot_util.h"
 #include "tune_drag.h"
+#include "file_vfo.h"
 #include "spec_axis.h"
 #include "spec_paint.h"
 #include "../state/tune_worker.h"
@@ -65,6 +66,29 @@ static float identifyButton(App& a, ImVec2 plotMin, ImVec2 plotSize, float right
 static bool lookOn(const App& a);   // a spectrum look other than OnAir (below)
 static int gEdgeDrag = -1, gEdgePlot = -1;
 static bool bandEdgeDragging(int plotId) { return gEdgeDrag >= 0 && gEdgePlot == plotId; }
+// A recording: the tune box is dragged across the whole recorded span (only the demodulator offset moves, the spectrum stays: file_vfo.h)
+static int gBoxPlot = -1;
+static double gBoxGrab = 0;   // MHz from the box centre to where it was grabbed
+static bool fileBoxDragging(int plotId) { return gBoxPlot >= 0 && gBoxPlot == plotId; }
+static bool fileBoxDrag(App& a, int plotId) {
+    if (!fileVfoActive(a) || a.family == 55 || a.second.drawing || a.touchUi || a.identifyTool || ImGui::GetIO().KeyShift) { gBoxPlot = -1; return false; }
+    if (fileBoxDragging(plotId)) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+        if (ImGui::IsMouseDown(0)) { fileSetVfo(a, plt::GetPlotMousePos().x - gBoxGrab); return true; }
+        gBoxPlot = -1;
+        return true;
+    }
+    if (!plt::IsPlotHovered() || gBoxPlot >= 0 || !ImGui::IsMouseClicked(0)) return false;
+    const ChanWidth cw = channelWidth(a);
+    const plt::Rect lim = plt::GetPlotLimits();
+    const ImVec2 pp = plt::GetPlotPos(), ps = plt::GetPlotSize();
+    const double pLo = specaxis::mhzToPx(a.freqMhz - cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max), pHi = specaxis::mhzToPx(a.freqMhz + cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max);
+    const double mx = ImGui::GetIO().MousePos.x, mid = (pLo + pHi) / 2, half = std::max((pHi - pLo) / 2, 6.0 * gUi);
+    if (std::fabs(mx - mid) > half || (cw.settable && a.fmMode && specaxis::edgeUnder(mx, pLo, pHi, 4 * gUi) >= 0)) return false;   // outside the box (or on an FM filter edge): pan / click as usual
+    gBoxPlot = plotId;
+    gBoxGrab = plt::GetPlotMousePos().x - a.freqMhz;
+    return true;
+}
 static bool bandEdgeDrag(App& a, int plotId) {
     if (!a.fmMode || a.touchUi || a.identifyTool) return false;
     const ChanWidth cw = channelWidth(a);
@@ -98,13 +122,15 @@ double clickTuneMhz(const App& a, double mhz) {
     if (a.fmMode) grid = 0.1;
     else if (a.family == 9) grid = 0.0125;
     if (a.specSnapHz > 0) grid = a.specSnapHz / 1e6;   // the user's snap step (the Spectrum menu)
-    if (a.family >= 6) if (const ModeTuning* mt = modeTuning(a.family + 2)) { lo = mt->minMhz; hi = mt->maxMhz; }
-    if (a.family == 4 || a.family == 1 || a.family == 3) return NAN;   // ATSC and ISDB-T channels sit on a fixed raster: use the frequency field
+    const bool rec = fileSourceSelected(a);   // a recording: any frequency of the recorded span, whatever the mode's own range or raster
+    if (!rec && a.family >= 6) if (const ModeTuning* mt = modeTuning(a.family + 2)) { lo = mt->minMhz; hi = mt->maxMhz; }
+    if (!rec && (a.family == 4 || a.family == 1 || a.family == 3)) return NAN;   // ATSC and ISDB-T channels sit on a fixed raster: use the frequency field
     return std::round(std::min(hi, std::max(lo, mhz)) / grid) * grid;
 }
 
 static void clickToTune(App& a, int plotId) {
     if (autoLabelsHovered()) return;   // the mouse is on a name: it tunes (autolabel.cpp)
+    if (fileBoxDrag(a, plotId)) return;
     if (a.family == 55) { generalPlotMouse(a, plotId); return; }   // the general receiver: its channel marker, without retuning the radio
     if (bandEdgeDrag(a, plotId)) return;
     if (!plt::IsPlotHovered() || a.fmScan.running) return;
@@ -1176,6 +1202,7 @@ void drawBandPlanStrip(ImDrawList* dl, float x0, float x1, float y, float h, dou
 // Drawn as one two-part switch with the height and top of the other header buttons (SmallButton: the font size tall, at plotMin.y + 4),
 // crisp vector icons on whole pixels with one stroke width, the chosen half filled in the accent colour with a light border.
 static float tuneStyleButtons(App& a, ImVec2 plotMin, ImVec2 plotSize, float rightUsed) {
+    if (fileSourceSelected(a)) return 0;   // a recording is never retuned: the tune box always moves alone
     const float h = std::round(ImGui::GetFontSize()), seg = std::round(h * 1.55f), m = 4 * gUi, w = 2 * seg;
     const float x = std::round(plotMin.x + plotSize.x - rightUsed - w - m), y = std::round(plotMin.y + m);
     if (x < plotMin.x + 40 * gUi || plotSize.y < h + 2 * m) return 0;
@@ -1248,6 +1275,24 @@ static void dragRetune(App& a) {
     dragSaved = false;
 }
 
+// A recording: the DC spike / LO leakage sits at its centre (a faint amber line, the spectrum never moves), the faint dotted lines are the edges of
+// the band the receivers keep, and a note says when the passband touches an edge or the tune box was held back
+static void fileSpikeAndEdges(const App& a, int plotId, ImVec2 plotMin, ImVec2 plotSize) {
+    if (!fileVfoActive(a)) return;
+    const double c = a.engine.fileCentreHz() / 1e6, half = filevfo::usableHalfSpanHz(a.engine.sampleRate()) / 1e6;
+    if (half <= 0) return;
+    const double xs3[3] = {c, c - half, c + half};
+    plt::Spec dc; dc.LineColor = ImVec4(0.95f, 0.65f, 0.2f, 0.28f); dc.LineWeight = 1.f;
+    plt::PlotInfLines("##filedc", xs3, 1, dc);
+    plt::Spec ed; ed.LineColor = ImVec4(0.8f, 0.8f, 0.8f, 0.14f); ed.LineWeight = 1.f;
+    plt::PlotInfLines("##fileedge", xs3 + 1, 2, ed);
+    if (plotId != 0 || a.fileEdgeCode == 0) return;
+    const char* t = a.fileEdgeCode == 3 ? tr("The demodulator bandwidth is wider than the recording: no room to move the tune box.")
+                  : a.fileEdgeCode == 2 ? tr("The tune box stops at the edge of the recorded band (the passband must stay inside it).")
+                  : tr("The passband touches the edge of the recorded band.");
+    ImGui::GetWindowDrawList()->AddText(ImVec2(plotMin.x + 8 * gUi, plotMin.y + plotSize.y - ImGui::GetFontSize() - 6 * gUi), ImGui::ColorConvertFloat4ToU32(ImVec4(0.95f, 0.7f, 0.3f, 0.95f)), t);
+}
+
 // The looks' cursor: a faint line through both plots at the frequency under the mouse (whichever plot has it), and the floating readout box
 // with the frequency (as many decimals as a pixel needs) and the level.
 static struct { double mhz = 0; int frame = -10; } gLookHover;
@@ -1301,7 +1346,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
     const bool look = lookOn(a);
     const slook::LookSet& L = curLook(a);
     plt::SetNextPlotLook(plotLook(a, true));
-    if (plt::BeginPlot("##spec", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | (a.specSmoothZoom ? plt::Flags_SmoothZoom : 0) | extraFlags | ((a.family == 55 && generalDragging(0)) || bandEdgeDragging(0) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
+    if (plt::BeginPlot("##spec", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | (a.specSmoothZoom ? plt::Flags_SmoothZoom : 0) | extraFlags | ((a.family == 55 && generalDragging(0)) || bandEdgeDragging(0) || fileBoxDragging(0) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
         drawn = true;
         plt::SetupAxes(nullptr, kYLabel, (a.specGrid ? 0 : plt::AxisFlags_NoGridLines), plt::AxisFlags_Inside | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines));   // the frequencies along the bottom edge, inside, as in SDR++
         setupFreqAxis(a);
@@ -1446,6 +1491,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
         }
         if (look) specLookCursor(a, 0, plotMin, plotSize);
         wideMarkers(a);
+        fileSpikeAndEdges(a, 0, plotMin, plotSize);
         multiMarkers(a);
         markerLayer(a, true);
         autoLabelsDraw(a, 0, plotMin, plotSize, plt::GetPlotLimits().X.Min, plt::GetPlotLimits().X.Max);
@@ -1591,7 +1637,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
     bool drawn = false;
     const bool look = lookOn(a);
     plt::SetNextPlotLook(plotLook(a, false));
-    if (plt::BeginPlot("##wf", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | (a.specSmoothZoom ? plt::Flags_SmoothZoom : 0) | extraFlags | ((a.family == 55 && generalDragging(1)) || bandEdgeDragging(1) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
+    if (plt::BeginPlot("##wf", size, plt::Flags_NoLegend | plt::Flags_NoTitle | plt::Flags_Overlay | (a.specSmoothZoom ? plt::Flags_SmoothZoom : 0) | extraFlags | ((a.family == 55 && generalDragging(1)) || bandEdgeDragging(1) || fileBoxDragging(1) ? plt::Flags_NoPan : 0) | (a.identifyTool || ImGui::GetIO().KeyShift ? plt::Flags_NoPan : 0))) {
         drawn = true;
         plt::SetupAxes(nullptr, a.wf.clockLabels ? tr("time of day") : tr("seconds ago"), plt::AxisFlags_NoTickLabels | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines), plt::AxisFlags_Inside | (a.specGrid ? 0 : plt::AxisFlags_NoGridLines));   // the spectrum above shows the frequencies
         double fs = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;

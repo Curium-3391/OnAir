@@ -71,9 +71,10 @@ bool Engine::retune(const TuneSettings& tune) {
     if (restartIfRateChanged(tune)) return running_;
     double oldCentre = 0;
     { std::lock_guard<std::mutex> lk(tuneMu_); oldCentre = lastTune_.centerHz; lastTune_ = tune; }
+    if (lastDev_.kind == DeviceInfo::File) fileFollowVfo(tune);   // a recording: the VFO moves, the spectrum does not
     // a retune that does not move (the gain, the AGC) leaves a second mode's receiver alone: placing it again would restart it
     const bool moved = std::fabs(oldCentre - tune.centerHz) > 0.5;
-    wide_.setCenterHz(lastDev_.kind != DeviceInfo::File ? radioTune(tune).centerHz : tune.centerHz);
+    wide_.setCenterHz(lastDev_.kind != DeviceInfo::File ? radioTune(tune).centerHz : fileCentreHz_.load());
     if (lastDev_.isRadio()) rxAis_.setCenterHz(radioTune(tune).centerHz);   // AIS: the four channels are placed by their own frequencies
     if (moved || secAct_.load() < 0) {
         if (lastDev_.kind != DeviceInfo::File) { rxIono_.setCenterHz(radioTune(tune).centerHz); rxAcars_.setCenterHz(radioTune(tune).centerHz); rxAirband_.setCenterHz(radioTune(tune).centerHz); rxVdl2_.setCenterHz(radioTune(tune).centerHz); rxIsm_.setCenterHz(radioTune(tune).centerHz); rxVor_.setCenterHz(radioTune(tune).centerHz); rxCell_.setCenterHz(radioTune(tune).centerHz); rxHfdl_.setCenterHz(radioTune(tune).centerHz); rxGsmr_.setCenterHz(radioTune(tune).centerHz); rxTetra_.setCenterHz(radioTune(tune).centerHz); rxOrb_.setCenterHz(radioTune(tune).centerHz); rxAle_.setDialHz(tune.centerHz); rxBle_.setCenterHz(radioTune(tune).centerHz); }
@@ -136,9 +137,10 @@ bool Engine::retuneReset(const TuneSettings& tune) {
     if (restartIfRateChanged(tune)) return running_;
     double oldCentre = 0;
     { std::lock_guard<std::mutex> lk(tuneMu_); oldCentre = lastTune_.centerHz; lastTune_ = tune; }
+    if (lastDev_.kind == DeviceInfo::File) fileFollowVfo(tune);   // a recording: the VFO moves, the spectrum does not
     // a retune that does not move (the gain, the AGC) leaves a second mode's receiver alone: placing it again would restart it
     const bool moved = std::fabs(oldCentre - tune.centerHz) > 0.5;
-    wide_.setCenterHz(lastDev_.kind != DeviceInfo::File ? radioTune(tune).centerHz : tune.centerHz);
+    wide_.setCenterHz(lastDev_.kind != DeviceInfo::File ? radioTune(tune).centerHz : fileCentreHz_.load());
     if (lastDev_.isRadio()) rxAis_.setCenterHz(radioTune(tune).centerHz);   // AIS: the four channels are placed by their own frequencies
     if (moved || secAct_.load() < 0) {
         if (lastDev_.kind != DeviceInfo::File) { rxIono_.setCenterHz(radioTune(tune).centerHz); rxAcars_.setCenterHz(radioTune(tune).centerHz); rxAirband_.setCenterHz(radioTune(tune).centerHz); rxVdl2_.setCenterHz(radioTune(tune).centerHz); rxIsm_.setCenterHz(radioTune(tune).centerHz); rxVor_.setCenterHz(radioTune(tune).centerHz); rxCell_.setCenterHz(radioTune(tune).centerHz); rxHfdl_.setCenterHz(radioTune(tune).centerHz); rxGsmr_.setCenterHz(radioTune(tune).centerHz); rxTetra_.setCenterHz(radioTune(tune).centerHz); rxOrb_.setCenterHz(radioTune(tune).centerHz); rxAle_.setDialHz(tune.centerHz); rxBle_.setCenterHz(radioTune(tune).centerHz); }

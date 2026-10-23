@@ -175,11 +175,12 @@ static void devAutomation(App& app, DevOpts& o) {
             }
         }
         if (found) {
-            app.tune.centerHz = app.freqMhz * 1e6; applyBandwidth(app);
+            app.tune.centerHz = app.freqMhz * 1e6; fileStartPrep(app); applyBandwidth(app);
             app.engine.setComputeMode(app.computeMode); app.engine.setStandard(engineStd(app));
             app.engine.start(app.devices[app.devIdx], app.tune, app.file);
         }
     }
+    if (o.fileVfoMhz > 0 && fileVfoActive(app) && glfwGetTime() > 2.0) { fileSetVfo(app, o.fileVfoMhz); o.fileVfoMhz = 0; }
     if (o.fmScanAuto && app.fmMode && app.engine.running() && glfwGetTime() > 3.0) {
         o.fmScanAuto = false;
         app.fmScan.running = true; app.fmScan.phase = 0; app.fmScan.idx = -1; app.fmScan.t0 = 0; app.fmScan.results.clear(); app.fmScan.cand.clear(); app.fmScan.savedFreq = app.freqMhz;

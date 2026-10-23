@@ -409,6 +409,8 @@ struct App {
     int tuningMode = 0;                 // 0 retune the radio LO on spectrum click, 1 decode offset only (sticky LO)
     bool dragMovesTuned = false;        // dragging past the band: true = the tuned frequency travels with the radio centre
     bool centreTuning = false;          // spectrum click: true = centre the radio on the click (target button), false = normal (marker inside the band)
+    int fileEdgeCode = 0;               // IQ file: 0 fine, 1 the passband touches the edge of the recording, 2 the tune box was held back at the edge, 3 the bandwidth is wider than the recording
+    bool fileInfoOpen = false;          // the File info dialog
     bool peakHold = false;             // the max-hold line (off by default: one trace; the orange max-hold line is for those who switch it on)
     float holdDecay = 4.5f;             // dB a second the max-hold line falls (0: it stays until it is reset)
     float specAvgSec = 0.08f;           // time constant of the averaged trace in seconds (0: the raw frames)
@@ -950,6 +952,13 @@ void wideSync(App& a);                                  // once a frame: pushes 
 void wideCarrierCell(const App& a, int carrierId, double relHz);   // a table cell with the carrier's frequency (MHz); "-" for a single channel
 void wideCarriersTable(App& a, float h);                // the carriers table: click selects (sound, detail), double click tunes
 double radioCenterMhz(const App& a);   // where the radio is tuned: the frequency plus the mode's tuneOffsetHz (a file source: the frequency as typed)
+// IQ recordings: the spectrum stays on the recording's centre; the tune box only moves the demodulator offset (app/gfx/file_vfo.h)
+bool fileSourceSelected(const App& a);        // an IQ file is the chosen source
+bool fileVfoActive(const App& a);             // ... and it runs
+void fileSetVfo(App& a, double absMhz);       // click / drag / typed frequency: clamp to the recorded span and move the offset only
+double fileCentreMhz(const App& a);           // the recording's centre (running: the engine's; else the file centre or the frequency)
+void fileStartPrep(App& a);                    // before engine.start(): keeps the recording's centre, the frequency box is the VFO
+void fileSetCentre(App& a, double centreMhz); // the File info dialog: a centre the header lacked
 void applyOutputs(App& a);
 std::string channelLabel(const SavedChannel& c, const char* unnamed = "DVB-T2 mux");   // 'unnamed' is shown for a channel without a name: the standard of the current mode (muxName)
 const char* muxName(const App& a);                                                        // what an unnamed channel is called in the current mode: 'DTMB', 'DVB-T mux', 'ATSC mux' ...

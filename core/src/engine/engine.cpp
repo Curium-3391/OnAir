@@ -85,9 +85,14 @@ void Engine::ingest(cf32* x, size_t n) {
     // sticky tuning: only the first receiver gets the clicked signal at DC. The spectrum, the signal identifier, the second mode and the
     // monitor see the capture as the radio delivers it (their frequencies are relative to captureCentreHz()), so the display stays put
     // and the tuned marker moves to the click, instead of the whole spectrum sliding by the shift (#262)
+    if (dcNotch_.load(std::memory_order_relaxed)) dcn_.process(x, n);   // "Ignore DC spike": after the display, before the receiver
+    // a recording with the tune box off its centre: a receiver that watches the whole span (one decoder per carrier, several TV channels, the
+    // spectrum analysers) keeps the capture as it is; the tune box is then only a marker for it
+    const int act = activeStd_.load();
+    const bool wholeSpan = fileCentreHz_.load() > 0 && ((act <= 1 && mtvActive_.load(std::memory_order_relaxed)) || (wideOn_.load(std::memory_order_relaxed) && WideModes::supports(act)) || act == 42 || act == 43);
     {
         cpu::Scope cs(cpuDec_.load(std::memory_order_relaxed));   // the receiver's CPU (and its pool jobs) to the decoder account
-        decodeMix_.mix(x, n);
+        if (!wholeSpan) decodeMix_.mix(x, n);
         feedRx(x, n);
     }
     tRx_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count();
