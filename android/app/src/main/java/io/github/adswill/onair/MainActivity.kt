@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         takeLink(intent)
+        usbAttached(intent)
     }
 
     private fun takeLink(i: Intent?) {
@@ -83,10 +84,6 @@ class MainActivity : ComponentActivity() {
     private fun systemAnimationsOff(): Boolean = try {
         SysSettings.Global.getFloat(contentResolver, SysSettings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     } catch (_: Exception) { false }
-
-
-        usbAttached(intent)
-    }
 
     /** Opened by the USB_DEVICE_ATTACHED filter (a radio plugged in, the user picked OnAir): hand the device to the radio layer. */
     private fun usbAttached(i: Intent?) {

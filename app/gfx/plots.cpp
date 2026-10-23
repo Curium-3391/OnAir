@@ -1463,9 +1463,9 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
         {   // the marker layer
             std::vector<double> m = markers(a);
             const double perPx = (gXHi - gXLo) / std::max(1.0, (double)ImGui::GetMainViewport()->Size.x);
-            const int near = specaxis::markerNear(m, ctxMhz, perPx * 8 * gUi);
+            const int nearIdx = specaxis::markerNear(m, ctxMhz, perPx * 8 * gUi);
             if (ImGui::MenuItem(tr("Add a marker here"), nullptr, false, (int)m.size() < specaxis::kMaxMarkers)) { m.push_back(ctxMhz); a.specMarkers = specaxis::markersText(m); savePrefs(a); }
-            if (near >= 0 && ImGui::MenuItem(tr("Remove this marker"))) { m.erase(m.begin() + near); a.specMarkers = specaxis::markersText(m); savePrefs(a); }
+            if (nearIdx >= 0 && ImGui::MenuItem(tr("Remove this marker"))) { m.erase(m.begin() + nearIdx); a.specMarkers = specaxis::markersText(m); savePrefs(a); }
             if (!m.empty() && ImGui::MenuItem(tr("Clear all markers"))) { a.specMarkers.clear(); savePrefs(a); }
         }
         ImGui::EndPopup();

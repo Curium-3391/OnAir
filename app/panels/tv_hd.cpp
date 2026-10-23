@@ -174,9 +174,9 @@ void tvHdCheckbox(App& a) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (enabled) {
             const hd::Service& t = cat.all()[other];
-            const bool far = !sameFreq(t.freqMhz, a.freqMhz);
+            const bool farFreq = !sameFreq(t.freqMhz, a.freqMhz);
             char fq[32]; snprintf(fq, sizeof fq, "%.3f", t.freqMhz);
-            const std::string b = std::string(isHd ? "Switches back to " : "Switches to ") + t.name + (far ? std::string(" on ") + fq + " MHz (retunes)" : std::string()) +
+            const std::string b = std::string(isHd ? "Switches back to " : "Switches to ") + t.name + (farFreq ? std::string(" on ") + fq + " MHz (retunes)" : std::string()) +
                                   "  [" + (isHd ? a.hdCacheWhySd : a.hdCacheWhyHd) + "]";
             ImGui::SetTooltip("%s", b.c_str());
         } else ImGui::SetTooltip("%s", i < 0 ? "Pick a service to see whether it has an HD version" : "no HD version found on this multiplex or in your scan");
