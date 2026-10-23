@@ -97,7 +97,7 @@ struct MultitoneGenerator::Impl {
         if (c.content == 1) for (auto& v : on) v = 0;
         // noise per sample so that carrier amplitude^2 / noise power in 20 kHz = snr
         const double snr = std::pow(10.0, c.snrDb / 10.0);
-        noiseSigma = std::sqrt(0.5 * (double)kAmp * kAmp / snr * (c.rate / 20000.0));
+        noiseSigma = c.snrDb >= 150 ? 0.0 : std::sqrt(0.5 * (double)kAmp * kAmp / snr * (c.rate / 20000.0));   // 200 dB: a transmitter
     }
 
     void generate(cf32* out, size_t cnt) {
@@ -115,7 +115,7 @@ struct MultitoneGenerator::Impl {
                 if (phase > kPi) phase -= 2 * kPi; else if (phase < -kPi) phase += 2 * kPi;
                 s = cf32(kAmp * (float)std::cos(phase), kAmp * (float)std::sin(phase));
             }
-            out[i] = s + cf32{(float)noiseSigma * nd(rng), (float)noiseSigma * nd(rng)};
+            out[i] = noiseSigma > 0 ? s + cf32{(float)noiseSigma * nd(rng), (float)noiseSigma * nd(rng)} : s;
         }
     }
 };
@@ -131,7 +131,7 @@ public:
     MultitoneSynth(const SynthConfig& cfg, double fs) {
         MultitoneGenConfig c;
         c.rate = fs;
-        c.snrDb = cfg.snrDb > 0 ? std::min(60.0, (double)cfg.snrDb) : 30;
+        c.snrDb = cfg.snrDb >= 150 ? cfg.snrDb : cfg.snrDb > 0 ? std::min(60.0, (double)cfg.snrDb) : 30;   // 200 dB (a transmitter): no noise at all, not -60 dB of it over the whole span
         c.content = cfg.modeOpt[0];
         c.carrierOffsetHz = cfg.cfoHz - multitoneTuning().tuneOffsetHz;   // the radio sits above the channel (the receiver mixes the offset out)
         c.baud = cfg.modeOpt[1] == 1 ? 512 : cfg.modeOpt[1] == 2 ? 2400 : 1200;

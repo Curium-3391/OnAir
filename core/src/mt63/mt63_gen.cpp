@@ -155,7 +155,16 @@ public:
         c.noiseSigma = 0.05;
         c.signals = mt63TestSignals();
         if (s.modeOpt[0] == 1) c.signals.resize(1);
-        for (auto& g : c.signals) g.snrDb += s.snrDb;
+        if (s.snrDb >= 150) {
+            // a transmitter (cleanSynth asks for 200 dB): no noise and the strongest signal at an rms of 0.15 (MT63 is 64 carriers: about 10 dB
+            // peak-to-average, so the peaks stay under the output limiter's knee). Adding 200 dB made it 10^10 too strong.
+            c.noiseSigma = 0;
+            double top = -1e9;
+            for (const auto& g : c.signals) top = std::max(top, g.snrDb + 10 * std::log10(g.bandwidth));
+            const double off = 20 * std::log10(0.15) - 10 * std::log10(2 * 0.02 * 0.02 / rate) - top;   // power = 2 sigma^2 bandwidth / rate 10^(snr/10)
+            for (auto& g : c.signals) g.snrDb += off;
+        } else
+            for (auto& g : c.signals) g.snrDb += s.snrDb;
         gen_ = std::make_unique<Mt63Generator>(c);
     }
     double sampleRate() const override { return rate_; }

@@ -7,7 +7,8 @@
 #include "dect2/source/source.h"
 #include <cmath>
 #include <complex>
-#include <deque>
+#include <algorithm>
+#include <vector>
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -20,7 +21,8 @@ struct WifiGenerator::Impl {
     WifiGenConfig cfg;
     genutil::NoiseSource noise;
     float sigma = 0;
-    std::deque<cf32> q;
+    std::vector<cf32> q;   // samples made and not yet handed out, from qPos on (a deque per sample was a good part of the time)
+    size_t qPos = 0;
     size_t idx = 0;
     bool done = false;
     double ph = 0;
@@ -28,15 +30,21 @@ struct WifiGenerator::Impl {
 
     explicit Impl(const WifiGenConfig& c) : cfg(c), noise(c.seed) {}
 
-    void silence(double sec) { const size_t n = (size_t)std::llround(sec * cfg.rate); for (size_t i = 0; i < n; i++) { q.push_back(cf32(0.f, 0.f)); nGen++; } }
+    void silence(double sec) { const size_t n = (size_t)std::llround(sec * cfg.rate); q.insert(q.end(), n, cf32(0.f, 0.f)); nGen += n; }
 
     // Catmull-Rom interpolation of the 20 Msps waveform at fractional position t (the radio's rate and sample clock differ from 20 Msps)
     static cf32 cubic(const std::vector<cf32>& w, double t) {
         const long i = (long)std::floor(t);
         const float f = (float)(t - (double)i);
         auto at = [&](long k) { return k < 0 || k >= (long)w.size() ? cf32(0, 0) : w[(size_t)k]; };
-        const cf32 p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-        return 0.5f * ((2.0f * p1) + (p2 - p0) * f + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * f * f + (3.0f * p1 - p0 - 3.0f * p2 + p3) * f * f * f);
+        cf32 p0, p1, p2, p3;
+        if (i >= 1 && i + 2 < (long)w.size()) { const cf32* q = &w[(size_t)(i - 1)]; p0 = q[0]; p1 = q[1]; p2 = q[2]; p3 = q[3]; }   // inside: no bounds per tap
+        else { p0 = at(i - 1); p1 = at(i); p2 = at(i + 1); p3 = at(i + 2); }
+        // Horner form on re and im by hand (the same polynomial as before)
+        auto cr = [f](float a0, float a1, float a2, float a3) {
+            return 0.5f * (2.0f * a1 + f * ((a2 - a0) + f * ((2.0f * a0 - 5.0f * a1 + 4.0f * a2 - a3) + f * (3.0f * a1 - a0 - 3.0f * a2 + a3))));
+        };
+        return cf32(cr(p0.real(), p1.real(), p2.real(), p3.real()), cr(p0.imag(), p1.imag(), p2.imag(), p3.imag()));
     }
 
     // one OFDM PPDU at the output rate, mixed to its position (and the duplicates') plus the carrier offset
@@ -47,17 +55,40 @@ struct WifiGenerator::Impl {
         const double amp = cfg.amp * fr.ampScale;
         std::vector<double> pos = {fr.offHz};
         pos.insert(pos.end(), fr.dupHz.begin(), fr.dupHz.end());
+        // one oscillator per position, started at the phase of sample nGen and turned by a fixed step (re-anchored every 4096 samples)
+        // instead of cos and sin per sample and position; the same phase as before to rounding
+        const size_t np = pos.size();
+        std::vector<double> wr(np), wi(np), sr(np), si(np), fq(np);
+        auto anchor = [&](uint64_t at) {
+            for (size_t j = 0; j < np; j++) {
+                const double a = 2 * kPi * std::fmod(fq[j] * (double)at / cfg.rate, 1.0);
+                wr[j] = std::cos(a); wi[j] = std::sin(a);
+            }
+        };
+        for (size_t j = 0; j < np; j++) {
+            fq[j] = pos[j] + cfg.cfoHz + fr.cfoHz;
+            const double a = 2 * kPi * fq[j] / cfg.rate;
+            sr[j] = std::cos(a); si[j] = std::sin(a);
+        }
+        q.reserve(q.size() + ns);
         for (size_t i = 0; i < ns; i++) {
+            if ((i & 4095) == 0) anchor(nGen);
             const cf32 v = (double)i * step <= (double)w.size() ? cubic(w, (double)i * step) : cf32(0, 0);
-            std::complex<double> acc(0, 0);
-            for (double p : pos) acc += std::polar(1.0, 2 * kPi * (p + cfg.cfoHz + fr.cfoHz) * (double)nGen / cfg.rate);
-            const std::complex<double> o = acc * std::complex<double>(v.real(), v.imag()) * amp;
-            q.push_back(cf32((float)o.real(), (float)o.imag()));
+            double ar = 0, ai = 0;
+            for (size_t j = 0; j < np; j++) {
+                ar += wr[j]; ai += wi[j];
+                const double nr = wr[j] * sr[j] - wi[j] * si[j];
+                wi[j] = wr[j] * si[j] + wi[j] * sr[j];
+                wr[j] = nr;
+            }
+            const double vr = v.real() * amp, vi = v.imag() * amp;
+            q.push_back(cf32((float)(ar * vr - ai * vi), (float)(ar * vi + ai * vr)));
             nGen++;
         }
     }
 
     void refill() {
+        if (qPos > 0) { q.erase(q.begin(), q.begin() + (ptrdiff_t)qPos); qPos = 0; }
         if (done || cfg.frames.empty()) { silence(0.001); return; }
         const WifiGenFrame& fr = cfg.frames[idx];
         std::vector<uint8_t> mp = fr.mpdu;
@@ -105,10 +136,13 @@ WifiGenerator::~WifiGenerator() = default;
 
 void WifiGenerator::generate(cf32* out, size_t n) {
     Impl& m = *p_;
-    for (size_t i = 0; i < n; i++) {
-        if (m.q.empty()) m.refill();
-        out[i] = m.q.front();
-        m.q.pop_front();
+    size_t i = 0;
+    while (i < n) {
+        if (m.qPos >= m.q.size()) { m.refill(); continue; }
+        const size_t k = std::min(n - i, m.q.size() - m.qPos);
+        std::copy(m.q.begin() + (ptrdiff_t)m.qPos, m.q.begin() + (ptrdiff_t)(m.qPos + k), out + i);
+        m.qPos += k;
+        i += k;
     }
     if (m.sigma > 0) m.noise.add(out, n, m.sigma);
 }

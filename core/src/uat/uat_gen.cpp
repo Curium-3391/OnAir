@@ -99,12 +99,15 @@ struct UatSynth : ModeSynth {
     std::vector<UatTx> sched;
     std::vector<cf32> buf;
     size_t pos = 0;
+    bool gap = false;   // the next piece is the silence after a burst
 
     bool configure(const SynthConfig& c) override {
         if (c.modeOpt[0] != cfg.modeOpt[0] && !sched.empty()) return false;
         cfg = c;
         idx = 0;
         pos = 0;
+        gap = false;
+        buf.clear();
         sched.clear();
         static const char* kVec = "FF8196782DD44238C1453855F89980C7524F5970940ED83AD89CE7A9BEF8761BBCD9FCC817D82E2D1ACF90CA78DA3C49";
         const int nAc = cfg.modeOpt[0] > 0 ? cfg.modeOpt[0] : 4;
@@ -123,11 +126,14 @@ struct UatSynth : ModeSynth {
     void generate(cf32* x, size_t n) override {
         while (n) {
             if (pos >= buf.size()) {
-                if (idx >= sched.size()) {
+                if (sched.empty()) {
                     std::fill(x, x + n, cf32(0, 0));
                     return;
                 }
-                buf = uatBurst(sched[idx++], rate);
+                // the bursts with 10 ms of silence after each and the whole schedule again after a second: as a transmitter it used to send
+                // the bursts back to back as one and then stay silent for good
+                if (gap) { gap = false; buf.assign((size_t)((idx >= sched.size() ? 1.0 : 0.01) * rate), cf32(0, 0)); if (idx >= sched.size()) idx = 0; }
+                else { buf = uatBurst(sched[idx++], rate); gap = true; }
                 pos = 0;
             }
             const size_t m = std::min(n, buf.size() - pos);

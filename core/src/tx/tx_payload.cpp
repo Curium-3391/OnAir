@@ -31,6 +31,7 @@
 #include "dect2/hfdl/hfdl_proto.h"
 #include "dect2/hfdl/hfdl_rx.h"
 #include "dect2/js8/js8_gen.h"
+#include "dect2/js8/js8_proto.h"
 #include "dect2/js8/js8_rx.h"
 #include "dect2/loraraw/loraraw_gen.h"
 #include "dect2/loraraw/loraraw_rx.h"
@@ -58,6 +59,7 @@
 #include "dect2/vor/vor_rx.h"
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -427,10 +429,15 @@ std::unique_ptr<ModeSynth> makeTxPayloadSynth(const TxModeSpec& m, const TxReque
         g.call = r.callsign.empty() ? "N0CALL" : upper(r.callsign);
         g.grid = r.grid.empty() ? "FN42" : upper(r.grid);
         g.to = upper(r.dest);
+        if (g.to.empty() && !r.text.empty()) g.to = "@ALLCALL";   // a text needs a recipient in its first frame: without one nothing was sent at all
         g.text = r.text;
         g.kind = r.text.empty() ? Js8GenStation::Cq : Js8GenStation::Text;
         g.hz = r.toneHz > 100 ? r.toneHz : 1000;
         g.snrDb = 20;
+        // JS8 frames start on the UTC 15 s slots (a receiver only looks there): the slot clock of sample 0 from the system clock, and the first
+        // frame in the next whole slot. Without it the frames sat at the moment Start was pressed plus up to a minute of silence.
+        c.slotPhaseSec = std::fmod(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(), 3600.0);
+        g.firstSlot = (int)std::floor(c.slotPhaseSec / js8::spec(g.submode).period) + 1;
         c.stations = {g};
         return std::make_unique<WrapGen<Js8Generator>>(std::make_unique<Js8Generator>(c), rate);
     }

@@ -38,7 +38,7 @@ public:
         const int scr = cfg.modeOpt[0] > 0 ? std::min(127, cfg.modeOpt[0]) : kTetrapolTestScramble;
         iq_ = frameIq(scr);
         const double pn = rate / kChanBw / std::pow(10.0, cfg.snrDb / 10.0);
-        sigma_ = cfg.snrDb < -100 ? 0.f : (float)std::sqrt(pn / 2);
+        sigma_ = cfg.snrDb < -100 || cfg.snrDb >= 150 ? 0.f : (float)std::sqrt(pn / 2);   // 200 dB: a transmitter, no noise and the clean level below (not full scale)
         scale_ = sigma_ > 0.15f ? 0.15f / sigma_ : 1.f;
         if (sigma_ == 0.f) scale_ = 0.35f;
         const double w = 2 * kPi * cfg.cfoHz / rate;

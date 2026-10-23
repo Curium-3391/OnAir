@@ -107,6 +107,13 @@ public:
         VdesRenderConfig rc;
         rc.rate = rate; rc.durationSec = kCycle; rc.snrDb = cfg.snrDb; rc.cfoHz = cfg.cfoHz; rc.sroPpm = cfg.sroPpm;
         cyc_ = renderVdes(asmB, vde, rc);
+        if (cfg.snrDb >= 150) {
+            // a transmitter (cleanSynth: 200 dB): the four-channel 16-QAM bursts (0.6 rms through the root-raised cosine) peaked at 1.23 and
+            // were clipped by the output limiter. The whole cycle is scaled down so that its peak is 0.8, the AIS / VDE levels kept relative.
+            float pk = 0.f;
+            for (const auto& v : cyc_) pk = std::max(pk, std::abs(v));
+            if (pk > 0.8f) for (auto& v : cyc_) v *= 0.8f / pk;
+        }
     }
     double sampleRate() const override { return rate_; }
     void generate(cf32* out, size_t n) override {

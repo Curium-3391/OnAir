@@ -4,6 +4,7 @@
 #include "dect2/specan/specan_gen.h"
 #include "dect2/common/stable_random.h"
 #include "dect2/specan/specan_dsp.h"
+#include <algorithm>
 #include <cmath>
 #include <random>
 
@@ -24,6 +25,7 @@ public:
         hi_ = c.modeVal[1] > lo_ ? c.modeVal[1] : 6000;
         for (double f = std::floor(lo_); f < hi_; f += 20) { tags_.push_back(f * 1e6); tags_.push_back((f + 5) * 1e6); }
         sigma_ = (float)(0.25 * std::pow(10.0, -c.snrDb / 20.0));
+        clean_ = c.snrDb >= 150;   // a transmitter (cleanSynth: 200 dB): the carriers only, no noise floor and no LO leak at DC
         SaSweepTap::get().setActive(true, rate_, 7.5e6);
         block_.resize(kBlock);
         newBlock();
@@ -44,19 +46,33 @@ private:
         int nt = 0;
         const SpecanTone* tn = specanTestTones(nt);
         dect2::normal_distribution<float> g(0.f, sigma_ / std::sqrt(2.f));
-        for (size_t i = 0; i < kBlock; i++) block_[i] = cf32{g(rng_), g(rng_)};
+        if (clean_) std::fill(block_.begin(), block_.end(), cf32(0.f, 0.f));
+        else for (size_t i = 0; i < kBlock; i++) block_[i] = cf32{g(rng_), g(rng_)};
         for (int k = 0; k < nt; k++) {
             const double off = tn[k].hz - loHz;
             if (std::fabs(off) > rate_ * 0.45) continue;
             const float a = (float)std::pow(10.0, tn[k].dbfs / 20.0);
             const double w = 2 * M_PI * off / rate_;
-            for (size_t i = 0; i < kBlock; i++) block_[i] += a * cf32((float)std::cos(w * i), (float)std::sin(w * i));
+            // a phasor turned by a fixed step (re-anchored every 1024 samples) instead of cos and sin per sample
+            for (size_t i0 = 0; i0 < kBlock; i0 += 1024) {
+                double rr = std::cos(w * (double)i0), ri = std::sin(w * (double)i0);
+                const double sr = std::cos(w), si = std::sin(w);
+                const size_t m = std::min<size_t>(1024, kBlock - i0);
+                for (size_t i = 0; i < m; i++) {
+                    block_[i0 + i] += cf32(a * (float)rr, a * (float)ri);
+                    const double nr = rr * sr - ri * si;
+                    ri = rr * si + ri * sr;
+                    rr = nr;
+                }
+            }
         }
+        if (clean_) return;
         block_[0] += cf32(0.02f, 0);   // a little LO leak
         for (size_t i = 0; i < kBlock; i++) block_[i] += cf32(0.01f, 0.f);
     }
     double rate_, lo_, hi_;
     float sigma_;
+    bool clean_ = false;
     std::vector<double> tags_;
     size_t t_ = 0, pos_ = 0;
     std::vector<cf32> block_;
