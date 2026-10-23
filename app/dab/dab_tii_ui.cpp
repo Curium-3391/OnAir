@@ -47,6 +47,8 @@ struct State {
     // every transmitter heard since the program started, over all channels (a band scan fills it): key as in sites
     std::map<uint64_t, Heard> heard;
     std::string exportMsg;
+    // the transmitter being submitted: asked here (position and site), because the issue form of the site does not keep what is typed into it
+    struct Pending { bool want = false; int eid = 0, mainId = 0, subId = 0; double mhz = 0; char lat[32] = "", lon[32] = "", site[96] = ""; } pend;
 };
 State S;
 
@@ -138,16 +140,60 @@ void startDownload() {
     }).detach();
 }
 
-// the issue of the repository's submission form, filled in with what the receiver knows; the user adds the position and the site
-void submitTransmitter(int eid, int mainId, int subId, double mhz) {
-    char row[160];
-    if (mhz > 0) snprintf(row, sizeof row, "%04X,%d,%d,,,,,%.3f", eid & 0xFFFF, mainId, subId, mhz);
-    else snprintf(row, sizeof row, "%04X,%d,%d,,,,,", eid & 0xFFFF, mainId, subId);
+// decimal degrees as people type them: a point or a comma ("48,80"), a leading + or -, no letters; false when it is not a number or out of range
+bool parseDegrees(const char* t, double lim, double& v) {
+    std::string x(t);
+    for (auto& c : x) if (c == ',') c = '.';
+    x.erase(0, x.find_first_not_of(" \t"));
+    if (x.empty()) return false;
+    char* end = nullptr;
+    v = std::strtod(x.c_str(), &end);
+    while (end && (*end == ' ' || *end == '\t')) end++;
+    return end && !*end && std::isfinite(v) && std::fabs(v) <= lim;
+}
+
+// the issue of the repository's submission form, filled in completely: the list refuses a transmitter without its position
+void submitTransmitter(int eid, int mainId, int subId, double mhz, double lat, double lon, std::string site) {
+    for (auto& c : site) if (c == ',' || c == '"' || c == '\n' || c == '\r' || c == '|' || (unsigned char)c < 32) c = ' ';
+    char row[240];
+    snprintf(row, sizeof row, "%04X,%d,%d,%.5f,%.5f,%s,,", eid & 0xFFFF, mainId, subId, lat, lon, site.c_str());
+    std::string r = row;
+    if (mhz > 0) { char m[24]; snprintf(m, sizeof m, "%.3f", mhz); r += m; }
     const std::string cc = S.country[0] ? std::string(S.country) : std::string("XX");
-    const std::string body = "mode: dab-tii\ncountry: " + cc + "\n\n```csv\neid,main,sub,lat,lon,site,power_kw,channel_mhz\n" + row + "\n```\n";
+    const std::string body = "mode: dab-tii\ncountry: " + cc + "\n\n```csv\neid,main,sub,lat,lon,site,power_kw,channel_mhz\n" + r + "\n```\n";
     const std::string title = "[submit] dab-tii " + cc;
     dect2::openUrl("https://github.com/adswill/OnAir-channels/issues/new?template=submit.yml&title=" + dect2::chdb::urlEncode(title) +
                    "&data=" + dect2::chdb::urlEncode(body));
+}
+
+// the window that asks where the transmitter stands; called every frame
+void submitDialog() {
+    auto& P = S.pend;
+    if (P.want) { ImGui::OpenPopup("Submit a transmitter"); P.want = false; }
+    if (!ImGui::BeginPopupModal("Submit a transmitter", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::Text("Transmitter %04X, MainId %d / SubId %d", P.eid & 0xFFFF, P.mainId, P.subId);
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28);
+    ImGui::TextDisabled("Where the TRANSMITTER stands (not where you are), in decimal degrees, e.g. 51.50134 and -0.14190. A map or the broadcaster's "
+                        "site list gives it. Your own position is never sent.");
+    ImGui::PopTextWrapPos();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10); ImGui::InputText("latitude", P.lat, sizeof P.lat);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10); ImGui::InputText("longitude", P.lon, sizeof P.lon);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18); ImGui::InputText("site name (optional)", P.site, sizeof P.site);
+    double la = 0, lo = 0;
+    const bool okLa = parseDegrees(P.lat, 90, la), okLo = parseDegrees(P.lon, 180, lo);
+    const bool zero = okLa && okLo && std::fabs(la) < 1e-6 && std::fabs(lo) < 1e-6;
+    if (P.lat[0] && !okLa) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "latitude: a number between -90 and 90");
+    if (P.lon[0] && !okLo) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "longitude: a number between -180 and 180");
+    if (zero) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "0, 0 is not a place where a transmitter stands");
+    ImGui::TextDisabled("Your browser opens GitHub with this filled in; press Submit new issue there.\nGitHub shows your user name on the issue; the data becomes public domain (CC0).");
+    const bool noCountry = !S.country[0];
+    if (noCountry) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "No country chosen yet: pick one on the Scan tab (Shared data) first.");
+    ImGui::BeginDisabled(!(okLa && okLo) || zero || noCountry);
+    if (ImGui::Button("  Open GitHub  ")) { submitTransmitter(P.eid, P.mainId, P.subId, P.mhz, la, lo, P.site); ImGui::CloseCurrentPopup(); }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 // great-circle distance (km) and initial bearing (degrees from north)
@@ -351,11 +397,11 @@ void dabTransmittersTab(App& a) {
                 // the built-in test signal's transmitters are made up: they must not end up in the public list
                 const bool demo = a.devices[a.devIdx].kind == DeviceInfo::Synthetic || a.devices[a.devIdx].kind == DeviceInfo::File;
                 ImGui::BeginDisabled(demo);
-                if (ImGui::SmallButton("submit")) submitTransmitter(h.eid, h.mainId, h.subId, h.mhz);
+                if (ImGui::SmallButton("submit")) { auto& P = S.pend; P = State::Pending(); P.want = true; P.eid = h.eid; P.mainId = h.mainId; P.subId = h.subId; P.mhz = h.mhz; }
                 ImGui::EndDisabled();
                 if (demo && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Only transmitters received with a radio can be submitted (the test signal's and recordings' are not real ones).");
-                else if (ImGui::IsItemHovered()) ImGui::SetTooltip("Position not known yet. Add it to the shared list: your browser opens GitHub with its ids filled in;\n"
-                                                              "add where it stands (latitude, longitude) and the site's name, then press Submit.\n"
+                else if (ImGui::IsItemHovered()) ImGui::SetTooltip("Position not known yet. Add it to the shared list: OnAir asks where it stands (latitude, longitude),\n"
+                                                              "then your browser opens GitHub with everything filled in; press Submit there.\n"
                                                               "GitHub shows your user name on the issue; the data becomes public domain (CC0).");
             }
             ImGui::PopID();
@@ -366,6 +412,7 @@ void dabTransmittersTab(App& a) {
         ImGui::EndTable();
     }
 
+    submitDialog();
     // ---- the list and the antenna position
     ImGui::Spacing();
     if (!S.dlMsg.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", S.dlMsg.c_str()); ImGui::PopTextWrapPos(); }

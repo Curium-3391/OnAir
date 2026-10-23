@@ -126,7 +126,13 @@ std::string issueBody(const Submission& s, bool withServices) {
     std::string o = "mode: " + s.mode + "\ncountry: " + s.country + "\ncity: " + s.city + "\n\n```csv\nfreq_mhz,bw_mhz,standard,network,services,snr_db\n";
     for (const auto& r : s.rows) {
         std::vector<std::string> sv;
-        if (withServices) for (const auto& x : r.services) { const std::string c = cleanService(x); if (!c.empty()) sv.push_back(c); }
+        // each name once; a name the receiver could not read ("?") is not sent; a national multiplex repeats the names of the ensembles it
+        // carries (the list refuses more than 200 names per channel, a real multiplex has 60 to 110)
+        if (withServices) for (const auto& x : r.services) {
+            const std::string c = cleanService(x);
+            if (c.empty() || c.find_first_not_of('?') == std::string::npos || std::find(sv.begin(), sv.end(), c) != sv.end()) continue;
+            if (sv.size() < 150) sv.push_back(c);
+        }
         o += fmtFreq(r.freqMhz) + "," + fmtFreq(r.bwMhz) + "," + csvQuote(r.standard) + "," + csvQuote(cleanService(r.network)) + "," + csvQuote(join(sv, '|')) + "," + fmtSnr(r.snrDb) + "\n";
     }
     return o + "```\n";
