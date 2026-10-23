@@ -84,7 +84,11 @@ KEEP long avio_open_dyn_buf(void) { return -1; }
 KEEP long avsubtitle_free(void) { return -1; }
 KEEP long hackrf_board_id_read(void) { return -1; }
 KEEP long hackrf_close(void) { return -1; }
+KEEP const char* hackrf_board_id_name(void) { return "unavailable"; }
+KEEP void* hackrf_device_list(void) { return 0; }
+KEEP void hackrf_device_list_free(void) { }
 KEEP const char* hackrf_error_name(void) { return "unavailable"; }
+KEEP const char* hackrf_usb_board_id_name(void) { return "unavailable"; }
 KEEP long hackrf_exit(void) { return -1; }
 KEEP long hackrf_init(void) { return -1; }
 KEEP long hackrf_init_sweep(void) { return -1; }
