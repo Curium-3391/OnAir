@@ -24,6 +24,8 @@ struct RemoteApiConfig {
     int port = 8765;          // 0: any free port (tests); config() then tells which
     bool lan = false;         // listen on every address (else 127.0.0.1 only); needs a token
     std::string token;        // >= 16 characters; required from every non-loopback peer (Authorization: Bearer <token>, or ?token=)
+    bool requireTokenLocal = false;   // a program on this computer needs the token too (the app turns it on and makes the token on first use)
+    double ratePerSec = 0, rateBurst = 40;   // requests per second and burst allowed from one address (HTTP 429 beyond); 0 rate: no limit
     std::string tlsCert, tlsKey;   // PEM files: serve HTTPS / wss instead of HTTP / ws (needs a build with OpenSSL; both or neither)
 };
 
@@ -58,6 +60,21 @@ public:
     virtual int audioOpen(int /*rateHz*/) { return -1; }           // a listener at this rate (mono, 16 bit); -1: the host has no audio
     virtual bool audioRead(int, std::string& /*pcm16le*/) { return false; }   // the audio since the last call (empty: none yet); false: the listener is gone
     virtual void audioClose(int) {}
+    // ---- optional: the rest of the control surface (docs/REMOTE-API.md). A getter returning an empty string / a setter returning false with err
+    // "not supported" make the server answer 501. None of these can transmit or touch keys, credentials or security settings.
+    virtual std::string memoriesJson() { return std::string(); }      // the memory list (read only)
+    virtual std::string schedulerJson() { return std::string(); }     // the scheduled jobs (read only)
+    virtual std::string audioJson() { return std::string(); }         // volume, mute
+    virtual std::string recordingJson() { return std::string(); }     // is a recording running, which file, how long
+    virtual bool setVolume(double /*level0to1*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool setMute(bool /*on*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool setSquelch(bool /*on*/, bool /*autoLevel*/, double /*levelDb*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool setBandwidthHz(double /*hz*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool setAutoGain(bool /*on*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool recordStart(const std::string& /*kind: "iq" or "audio"*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool recordStop(std::string& err) { err = "not supported"; return false; }
+    // Decoded messages (one JSON line each, see apipol::eventLine). cursor UINT64_MAX: from now. Fills `out` with the lines since the cursor and moves it. false: no message stream.
+    virtual bool eventsSince(uint64_t& /*cursor*/, size_t /*maxN*/, std::vector<std::string>& /*out*/, bool& /*gap*/) { return false; }
     // GET / POST under /api/v1/x/ (the program's own extras). Returns the HTTP status (0: not handled, the server answers 404) and the JSON body in `json`.
     virtual int handleExtra(const std::string& /*method*/, const std::string& /*path*/, const std::map<std::string, JsonVal>& /*body*/, std::string& /*json*/) { return 0; }
 };

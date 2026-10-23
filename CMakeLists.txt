@@ -186,6 +186,8 @@ target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp core/src/packs/datasets.cpp core/src/packs/datasets_inventory.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
 # User-supplied voice decryption keys: the key store, standard cipher primitives, per-call decryption and encrypted-at-rest persistence (docs/KEYS.md). Never an auto-decrypter.
 target_sources(dect2core PRIVATE core/src/voicekeys/voice_crypto.cpp core/src/voicekeys/voice_keys.cpp core/src/voicekeys/voice_decrypt.cpp core/src/voicekeys/key_persist.cpp)
+target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/api_policy.cpp core/src/net/api_servers.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
+target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/api_policy.cpp core/src/net/api_servers.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
 target_sources(dect2core PRIVATE core/src/ros/ros_detect.cpp)   # ROS identifier (proprietary mode, identification only; docs/ROS.md), used by the signal identifier
 # TLS for the remote-control API (headless server): OpenSSL, off by default so the packages need no extra library (docs/headless-server.md)
@@ -1294,6 +1296,9 @@ if(DECT2_BUILD_TESTS)
     target_compile_definitions(test_remote_api PRIVATE DECT2_TLS)
   endif()
   add_test(NAME remote_api COMMAND test_remote_api)
+  add_executable(test_api_policy tests/net/test_api_policy.cpp)
+  target_link_libraries(test_api_policy PRIVATE dect2core)
+  add_test(NAME api_policy COMMAND test_api_policy)
   add_executable(test_server_host tests/server/test_server_host.cpp server/server_config.cpp server/server_host.cpp)
   target_link_libraries(test_server_host PRIVATE dect2core)
   target_compile_definitions(test_server_host PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")

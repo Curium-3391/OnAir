@@ -851,6 +851,11 @@ void memoryQuickBar(App& a);                       // memory_lists_ui.cpp: the s
 void memoryToolbarButton(App& a);                  // memory_ui.cpp: the same quick list as a small "M" button with a pop-up (the classic toolbar)
 void memoryMenu(App& a);                           // memory_ui.cpp: the "M" menu of the menu bar: open, store, the favourites and the ten most recent
 double generalListenHz(const App& a);
+int generalApiDemod();                              // general_ui.cpp, for the remote API: the demodulator (GeneralDemod), set it, the squelch
+bool generalApiSetDemod(int demod);
+void generalApiSquelch(bool on, bool autoLevel, double db);
+bool generalApiRecord(App& a, bool on, std::string& err);
+std::string tvRecJobsJson();                        // tvrec_ui.cpp, for the remote API: the recorder's scheduled jobs (read only)
 void generalRecallHz(App& a, double hz);          // general_ui.cpp: a memory's frequency: the dial on hz, the channel marker back on the dial              // general_ui.cpp: the general receiver's listening frequency (the dial plus its offset)
 void stationHealthWindow(App& a);                  // station_health_ui.cpp: the station and antenna health report (a.stationHealthOpen)
 void sweepWindow(App& a);                          // sweep_ui.cpp: the fast sweep scanner window (a.sweepOpen)
