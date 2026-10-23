@@ -96,9 +96,7 @@ void chooseMode(App& a, TxUi& s, const TxModeSpec& m) {
 const ImVec4 kRed(0.90f, 0.12f, 0.12f, 1.f);
 
 std::vector<int> txRadios(const App& a) {
-    std::vector<int> v;
-    for (int i = 0; i < (int)a.devices.size(); i++) if (a.devices[(size_t)i].isRadio() && a.devices[(size_t)i].canTransmit) v.push_back(i);
-    return v;
+    return txRadioChoices(a.devices);   // one entry per device (a USRP's receive inputs are one radio)
 }
 
 // the receiver holding a radio the transmitter wants (0: none, or the radio can do both)
