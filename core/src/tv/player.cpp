@@ -2,6 +2,7 @@
 #include "dect2/tv/player.h"
 #include "dect2/tv/hw_guard.h"
 #include "dect2/tv/conceal.h"
+#include "dect2/tv/avsplus_dec.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -493,6 +494,9 @@ void Player::threadMain() {
         const AVCodecID avsId = vIdx >= 0 ? fmt->streams[vIdx]->codecpar->codec_id : AV_CODEC_ID_NONE;
         const bool avs = avsId == AV_CODEC_ID_CAVS || avsId == AV_CODEC_ID_AVS2 || avsId == AV_CODEC_ID_AVS3;
         int avsProfile = -1;
+        std::unique_ptr<AvsPlusDecoder> avd;       // the user's AVS+ add-on, when the picture needs it and it is installed
+        bool avsNeedsAddon = false;                // the AVS profile is one FFmpeg's own decoder cannot show
+        AVFrame* avf = av_frame_alloc();           // a borrowed-plane frame handed to convertVideo for the add-on's pictures
         const std::string avsNote = avs ? avsServiceMessage(avsId == AV_CODEC_ID_CAVS ? 0x42 : avsId == AV_CODEC_ID_AVS2 ? 0xD2 : 0xD4, -1, avcodec_find_decoder(avsId) != nullptr) : std::string();
         if (vIdx >= 0) {
             const AVCodec* c = avcodec_find_decoder(fmt->streams[vIdx]->codecpar->codec_id);
@@ -889,19 +893,58 @@ void Player::threadMain() {
             int r = av_read_frame(fmt, pkt);
             if (getenv("DECT2_PLAYDEBUG")) { static int n = 0; if ((n++ % 100) == 0 || r < 0) fprintf(stderr, "[play] read r=%d idx=%d pts=%lld vq=%zu abuf=%d decoded=%llu\n", r, pkt->stream_index, (long long)pkt->pts, I.vq.size(), audio_.bufferedFrames(), (unsigned long long)I.st.decoded); }
             if (r < 0) break;
+            auto openAddon = [&]() {   // true when the picture is now decoded by the add-on
+                auto d = std::make_unique<AvsPlusDecoder>();
+                if (!d->open()) return false;
+                if (vctx) avcodec_free_context(&vctx);
+                avd = std::move(d);
+                AVRational fr = fmt->streams[vIdx]->avg_frame_rate.num ? fmt->streams[vIdx]->avg_frame_rate : fmt->streams[vIdx]->r_frame_rate;
+                std::lock_guard<std::mutex> lk(I.smu);
+                I.st.videoNote.clear(); I.st.hasVideo = true; I.st.hardware = false;
+                I.st.videoCodec = "AVS+ (add-on)";
+                I.st.fps = fr.den ? (double)fr.num / fr.den : 0;
+                return true;
+            };
             if (avsId == AV_CODEC_ID_CAVS && avsProfile < 0 && pkt->stream_index == vIdx) {
-                // the profile from the first sequence header: AVS+ (and anything else but JiZhun) is refused picture by picture, so say so instead
+                // the profile from the first sequence header: AVS+ (and anything else but JiZhun) is refused picture by picture by FFmpeg's own
+                // decoder, so the user's AVS+ add-on takes it when installed, and otherwise the player says so
                 avsProfile = avsProfileId(pkt->data, (size_t)pkt->size);
-                const std::string n = avsProfile >= 0 ? avsServiceMessage(0x42, avsProfile, vctx != nullptr) : std::string();
                 { std::lock_guard<std::mutex> lk(I.smu); I.st.avsProfile = avsProfile; }
-                if (!n.empty()) {
+                avsNeedsAddon = avsProfile >= 0 && (avsNeverDecodable(0x42, avsProfile) || !vctx);
+                if (avsNeedsAddon && !(avsPlusPoll(0) && openAddon())) {
+                    const bool hadDecoder = vctx != nullptr;
                     if (vctx) avcodec_free_context(&vctx);
+                    const AvsPlusLibInfo li = avsPlusLibrary();
                     std::lock_guard<std::mutex> lk(I.smu);
-                    I.st.videoNote = n;
+                    I.st.videoNote = avsProfile == 0x48 ? avsPlusNote(li) : avsServiceMessage(0x42, avsProfile, hadDecoder);
                     I.st.hasVideo = false;
                 }
+            } else if (avsNeedsAddon && !avd && pkt->stream_index == vIdx && avsPlusPoll(3.0)) {
+                openAddon();   // the add-on was installed while the service was playing; the decoder waits for the next sequence header
             }
-            if (pkt->stream_index == vIdx && vctx) {
+            if (pkt->stream_index == vIdx && avd) {
+                I.lossFlag.store(false);
+                const int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+                if (!avd->send(pkt->data, (size_t)pkt->size, ts == AV_NOPTS_VALUE ? INT64_MIN : ts, (pkt->flags & AV_PKT_FLAG_KEY) != 0)) { std::lock_guard<std::mutex> lk(I.smu); I.st.errors++; }
+                AvsPicture pic;
+                while (avf && avd->receive(pic)) {
+                    if (pic.format != AV_PIX_FMT_YUV420P && pic.format != AV_PIX_FMT_YUVJ420P) {
+                        std::lock_guard<std::mutex> lk(I.smu);
+                        I.st.videoNote = "AVS+ video: the add-on gave a picture format OnAir does not handle (" + std::to_string(pic.format) + ")";
+                        break;
+                    }
+                    for (int k = 0; k < 4; k++) { avf->data[k] = const_cast<uint8_t*>(pic.data[k]); avf->linesize[k] = pic.linesize[k]; }
+                    avf->width = pic.w; avf->height = pic.h; avf->format = pic.format;
+                    avf->pts = avf->best_effort_timestamp = pic.pts == INT64_MIN ? AV_NOPTS_VALUE : pic.pts;
+                    avf->flags = pic.key ? AV_FRAME_FLAG_KEY : 0;
+                    avf->colorspace = AVCOL_SPC_UNSPECIFIED;
+                    avf->color_range = pic.format == AV_PIX_FMT_YUVJ420P ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+                    avf->sample_aspect_ratio = AVRational{0, 1};
+                    { std::lock_guard<std::mutex> lk(I.smu); I.st.decoded++; }
+                    convertVideo(avf);
+                    for (int k = 0; k < 4; k++) { avf->data[k] = nullptr; avf->linesize[k] = 0; }
+                }
+            } else if (pkt->stream_index == vIdx && vctx) {
                 if (I.lossFlag.exchange(false)) {
                     if (!suspect && conceal_ && !getenv("DECT2_NOREPAIR")) {
                         // the damaged picture may already be queued (the decoder lags the demuxer by a few pictures): take the newest
@@ -968,6 +1011,8 @@ void Player::threadMain() {
         av_packet_free(&pkt);
         av_frame_free(&frame);
         av_frame_free(&sw);
+        av_frame_free(&avf);
+        avd.reset();
         if (sws) sws_freeContext(sws);
         if (nv12ctx) sws_freeContext(nv12ctx);
         if (swr) swr_free(&swr);

@@ -1,6 +1,7 @@
 // The app side of user-installed speech codecs (see speech_codec_ui.h and docs/CODECS.md).
 #include "speech_codec_ui.h"
 #include "../app.h"
+#include "dect2/tv/avsplus_dec.h"
 #include "../ui/scale.h"
 #include "../platform/platform.h"
 #include "dect2/codec/speech_codec.h"
@@ -223,6 +224,18 @@ void voiceCodecsWindow(App& a) {
             ImGui::PopID();
         }
         ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    {   // the AVS+ video add-on (DTMB TV in China): an FFmpeg the user builds, not a speech codec, but installed the same way
+        const dect2::AvsPlusLibInfo li = dect2::avsPlusLibrary();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("AVS+ video (DTMB TV in China, patented, add-on only):");
+        ImGui::SameLine();
+        if (li.hasDecoder) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "add-on loaded: %s", li.path.c_str());
+        else if (li.found) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "found but not usable: %s", li.message.c_str());
+        else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: an FFmpeg libavcodec with AVS+");
+        ImGui::SameLine();
+        codecHelpButton(CodecHelp::AvsPlus);
     }
     ImGui::Spacing();
     ImGui::TextDisabled("Codecs folder: %s", folder.c_str());

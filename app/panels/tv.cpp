@@ -584,7 +584,7 @@ void rightPanel(App& a) {
         if (!ac.empty()) x += tagAt(dl, ImVec2(x, ty), ac.c_str(), IM_COL32(38, 46, 58, 255), IM_COL32(190, 200, 214, 255)) + 4;
         // AVS family video (DTMB in China): say it plainly when OnAir cannot show the picture; the profile is known for the playing service only
         const int avsProf = sel && cardPs.videoStreamType == vType ? cardPs.avsProfile : -1;
-        const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);
+        const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) && !(sel && cardPs.hasVideo) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);
         if (avsUndecodable) x += tagAt(dl, ImVec2(x, ty), tr("no picture"), IM_COL32(112, 52, 50, 255)) + 4;
         if (sv.scrambled) x += tagAt(dl, ImVec2(x, ty), "scrambled", IM_COL32(112, 52, 50, 255)) + 4;
         if (multi) { char cb[40]; snprintf(cb, sizeof cb, "channel %.3f MHz", radioCenterMhz(a) + rw.offHz / 1e6); x += tagAt(dl, ImVec2(x, ty), cb, IM_COL32(58, 74, 44, 255)) + 4; }
@@ -657,7 +657,7 @@ void rightPanel(App& a) {
         }
         // a picture or sound OnAir's FFmpeg cannot decode (AVS+, AVS2, AVS3, DRA): why, and the codec note (docs/CODECS.md)
         if (pl.selected() >= 0) {
-            if (!ps.videoNote.empty()) { codecHelpButton(CodecHelp::Avs); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.videoNote.c_str()); ImGui::PopTextWrapPos(); }
+            if (!ps.videoNote.empty()) { codecHelpButton(ps.avsProfile == 0x48 ? CodecHelp::AvsPlus : CodecHelp::Avs); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.videoNote.c_str()); ImGui::PopTextWrapPos(); }
             if (!ps.audioNote.empty()) { codecHelpButton(CodecHelp::DraTv); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.audioNote.c_str()); ImGui::PopTextWrapPos(); }
             {   // ATSC 3.0 sound in AC-4 and no decoder library: say why there is no sound
                 const dect2::Ac4Status a4 = dect2::ac4Status();

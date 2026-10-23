@@ -2,6 +2,7 @@
 // the codec was found and where, what it is, how to install it on this computer, where to put it, a link to the full page, and "Look again".
 #include "../app.h"
 #include "dect2/audio/ac4_dec.h"
+#include "dect2/tv/avsplus_dec.h"
 #include "dect2/cdr/cdr_dra.h"
 #include "dect2/hdr/hdr_hdc.h"
 #include "dect2/hfdig/hfdig_freedv.h"
@@ -199,7 +200,7 @@ Text textOf(CodecHelp c) {
                 "OnAir plays them through the FFmpeg built into it and ships no codec of its own. FFmpeg decodes AVS1 in its JiZhun profile, "
                 "but not AVS+ (the broadcast profile), and AVS2 and AVS3 only when it was built with libdavs2 or libuavs3d, which the FFmpeg in "
                 "OnAir is not. The service list, the sound and the guide work without the picture.",
-                "There is no free AVS+ decoder to install at this time. For AVS2 or AVS3, save the stream (Outputs: file or UDP) and play it "
+                "For AVS+ you can build an FFmpeg add-on yourself (press ? next to the AVS+ notice, or see docs/CODECS.md). For AVS2 or AVS3, save the stream (Outputs: file or UDP) and play it "
                 "with an FFmpeg build that includes libdavs2 or libuavs3d (ffplay). Check the patent rules where you live first.",
                 false};
     case CodecHelp::DraTv:
@@ -220,6 +221,22 @@ Text textOf(CodecHelp c) {
                 "Licences, honestly: the decoder in that patch (ac4dec.c, Paul B Mahol) is LGPL-2.1-or-later and the build script is MIT, so "
                 "building and using it yourself is fine as far as copyright goes. The patents are another matter: Dolby holds patents on AC-4 "
                 "and licenses them for products; OnAir ships no AC-4 code and downloads nothing. Whether you may use it is for you to check where you live.",
+                true};
+    case CodecHelp::AvsPlus:
+        return {"AVS+ (TV pictures in China)",
+                "DTMB television in China sends its pictures as AVS+, a Chinese patented video codec. The FFmpeg inside OnAir decodes AVS1 only in its "
+                "JiZhun profile, not AVS+, and OnAir ships no codec of its own. If you install a libavcodec built from an FFmpeg that has an AVS+ "
+                "decoder, OnAir loads it and shows the picture of AVS+ services. The sound, the service list and the guide work without it. "
+                "Experimental: it has not been tried on a real AVS+ broadcast.",
+                "You build the add-on yourself. The public project github.com/maliwen2015/ffmpeg_cavs_dra (MIT) offers a patch for FFmpeg 7.1.2 "
+                "(ffmpeg-7.1.2_cavs_dra.patch) that adds AVS+ and DRA decoding; its page gives no build steps, so these are the ordinary FFmpeg ones: "
+                "get the FFmpeg 7.1.2 source, apply the patch (patch -p1 < ffmpeg-7.1.2_cavs_dra.patch), run ./configure --enable-shared --disable-static "
+                "--disable-programs --disable-doc, make, and take libavcodec and libavutil (and the libswresample and other libraries they need) from the "
+                "build. On Windows build in MSYS2 with the same options; on macOS use Xcode command line tools; on Linux gcc and make. Put the files "
+                "next to each other in the codecs folder below, then press Look again. OnAir looks for a decoder named cavs (set DECT2_AVSPLUS_DECODER "
+                "if your build names it differently).\n"
+                "Licences, honestly: the project is MIT and FFmpeg is LGPL/GPL, so building it yourself is fine as far as copyright goes. AVS+ is covered "
+                "by patents (the Chinese AVS group licenses them); OnAir ships and downloads nothing of it. Whether you may use it is for you to check where you live.",
                 true};
     }
     return {"", "", "", false};
@@ -255,6 +272,39 @@ void codecHelpButton(CodecHelp c, const char* label) {
         {   // the AMBE / IMBE family: the shared plug-in install helper first
             const char* pid = pluginIdFor(c);
             if (pid) { appcodec::codecInstallHelper(pid); ImGui::Separator(); }
+        }
+        if (c == CodecHelp::AvsPlus) {   // the optional AVS+ FFmpeg add-on (same layout as AC-4)
+            const dect2::AvsPlusLibInfo li = dect2::avsPlusLibrary();
+            if (li.hasDecoder) ImGui::TextColored(pal::okGreen(), "AVS+ decoder found: %s", li.path.c_str());
+            else ImGui::TextColored(pal::warnAmber(), "AVS+ add-on not found: AVS+ services play without a picture%s%s", li.message.empty() ? "" : "\n", li.message.c_str());
+            ImGui::Spacing();
+            ImGui::TextUnformatted(t.what);
+            ImGui::Spacing();
+            ImGui::TextDisabled("Install");
+            ImGui::TextUnformatted(t.install);
+            ImGui::Spacing();
+            ImGui::TextDisabled("File names OnAir looks for");
+            ImGui::TextUnformatted("libavcodec.dylib / libavcodec.NN.dylib (macOS), libavcodec.so.NN (Linux), avcodec-NN.dll (Windows), and the libavutil of the same kind in the same folder");
+            ImGui::TextDisabled("Folders, in this order");
+            for (const auto& d : dect2::avsPlusSearchFolders()) ImGui::BulletText("%s", d.c_str());
+            ImGui::Spacing();
+            const auto folders = dect2::codecFolderList();
+            if (!folders.empty()) {
+                if (ImGui::Button("Open codecs folder")) {
+                    std::error_code ec;
+                    std::filesystem::create_directories(std::filesystem::path(folders.back()), ec);
+                    dect2::openUrl(folders.back());
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n(made if it does not exist)", folders.back().c_str());
+                ImGui::SameLine();
+            }
+            if (ImGui::Button("Look again")) dect2::avsPlusLibrary(true);
+            ImGui::SameLine();
+            if (ImGui::Button("Full instructions")) dect2::openUrl(kDocUrl);
+            ImGui::PopTextWrapPos();
+            ImGui::EndPopup();
+            ImGui::PopID();
+            return;
         }
         if (c == CodecHelp::Ac4) {   // its own layout: the optional FFmpeg, not mbelib or codec2
             const dect2::Ac4LibInfo li = dect2::ac4Library();
