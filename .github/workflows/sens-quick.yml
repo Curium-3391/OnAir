@@ -1,0 +1,76 @@
+# Sensitivity / lock-time sweep on the free runners (docs/SENSITIVITY.md). By hand only: Actions tab > Sensitivity sweep > Run workflow.
+# Builds sens_sweep alone (no app), runs it for the modes you name and compares with tests/sens/baseline/. The JSON results are the artifact.
+name: Sensitivity sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      modes:
+        description: 'Mode regex (sens_sweep --list shows the ids), e.g. "dab|fm" or ".*" for all'
+        default: 'dvbt|dab|fm'
+      tier:
+        description: 'quick (4 trials, 2 dB steps, 4 scenarios) or full (12 trials, 1 dB steps, every scenario)'
+        type: choice
+        options: [quick, full]
+        default: quick
+      scenarios:
+        description: 'Scenario regex (awgn cfo2ppm cfo20ppm offcentre sro50ppm echo tu6 rician phasenoise combined)'
+        default: '.*'
+      trials:
+        description: 'Trials per point (0 = the tier default)'
+        default: '0'
+      update_baseline:
+        description: 'Write the result into tests/sens/baseline/sens-baseline.json (uploaded as an artifact; commit it by hand)'
+        type: boolean
+        default: false
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_MAXSIZE: 1G
+  CCACHE_COMPRESS: "true"
+
+jobs:
+  sens:
+    name: sens_sweep (${{ inputs.tier }}, ${{ inputs.modes }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config ccache libhackrf-dev libsoapysdr-dev libusb-1.0-0-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libswresample-dev
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-sens-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-${{ github.sha }}
+          restore-keys: |
+            ccache-sens-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-
+            ccache-sens-
+      - name: Build sens_sweep
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build --target sens_sweep -j 4
+      - name: Sweep
+        run: |
+          args=(--${{ inputs.tier }} --mode '${{ inputs.modes }}' --scenario '${{ inputs.scenarios }}' --out sens-out)
+          if [ '${{ inputs.trials }}' != '0' ]; then args+=(--trials '${{ inputs.trials }}'); fi
+          ./build/sens_sweep "${args[@]}" | tee sens-out.txt
+      - name: Compare with the baseline
+        continue-on-error: true
+        run: |
+          if [ -f tests/sens/baseline/sens-baseline.json ]; then python3 tools/sens/compare.py tests/sens/baseline/sens-baseline.json sens-out/sens-baseline.json | tee -a sens-out.txt; fi
+      - name: Merge into the baseline file
+        if: ${{ inputs.update_baseline }}
+        run: |
+          mkdir -p sens-merged
+          cp tests/sens/baseline/sens-baseline.json sens-merged/ 2>/dev/null || true
+          python3 tools/sens/compare.py --merge sens-merged/sens-baseline.json sens-out/sens-baseline.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sens-results
+          path: |
+            sens-out/
+            sens-out.txt
+            sens-merged/
