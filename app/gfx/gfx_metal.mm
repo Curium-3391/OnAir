@@ -205,6 +205,10 @@ struct MtlBackend : Backend {
 
 } // namespace
 
+int levelCount() { return 1; }
+int level() { return 0; }
+void setLevel(int) {}
+const char* levelName() { return "Metal"; }
 void windowHints() { glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); }
 Backend* create(GLFWwindow* window) { return new MtlBackend(window); }
 

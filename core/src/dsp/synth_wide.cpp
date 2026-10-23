@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace dect2::synth {
+namespace dect2::synthwide {
 
 static const double kPi = 3.14159265358979323846;
 
@@ -534,4 +534,4 @@ void SynthWideband::solve(int p) {
     a.clear(ov_);
 }
 
-} // namespace dect2::synth
+} // namespace dect2::synthwide
