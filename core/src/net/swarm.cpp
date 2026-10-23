@@ -374,7 +374,7 @@ std::string proofC(const std::string& code, const std::string& nc, const std::st
 }   // namespace
 
 bool PairResponder::offer(const std::string& code, int64_t now, int64_t ttl) {
-    if (code.empty() || normalisePairingCode(code) != code) return false;   // normalise("") is "" too: an empty code is no secret
+    if (code.size() != 32 || normalisePairingCode(code) != code) return false;   // an empty string normalises to itself: it must never be an offer
     st_ = Offered; code_ = code; expires_ = now + ttl; fails_ = 0;
     peer_.clear(); nc_.clear(); ns_.clear();
     return true;
@@ -482,6 +482,16 @@ bool TokenBook::revoke(const std::string& label) {
 bool TokenBook::authorise(const std::string& token, std::string* label) const {
     bool ok = false;
     for (auto& e : t_) if (ctEqualStr(e.first, token) && token.size() >= 16 && !ok) { ok = true; if (label) *label = e.second; }
+    return ok;
+}
+std::string keyIdOf(const std::string& token) {
+    uint8_t o[32];
+    hmac(token, "OACTL1 id", o);
+    return toHex(o, 8);
+}
+bool TokenBook::findByKeyId(const std::string& keyId, std::string& token, std::string* label) const {
+    bool ok = false;
+    for (auto& e : t_) if (!ok && ctEqualStr(keyIdOf(e.first), keyId)) { ok = true; token = e.first; if (label) *label = e.second; }
     return ok;
 }
 bool controlAllowed(const std::string& c) {
