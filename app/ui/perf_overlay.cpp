@@ -15,7 +15,7 @@ struct Stats {
     float fps = 0, buildAvgMs = 0, buildMaxMs = 0;
     double interval = 0;
     bool battery = false, occluded = false;
-    power::Usage usage;
+    ::power::Usage usage;
     bool haveUsage = false;
     double logT = 0;
 } P;
@@ -25,7 +25,7 @@ void perfFrame(double now, double buildSec, double interval, bool battery, bool 
     P.interval = interval; P.battery = battery; P.occluded = occluded;
     static const bool log = getenv("DECT2_PERF") != nullptr;
     if (!wanted && !log) { P.t0 = 0; return; }   // nothing is read while nobody looks
-    if (P.t0 == 0) { P.t0 = now; P.frames = 0; P.buildAcc = P.buildMax = 0; power::sampleUsage(P.usage); return; }
+    if (P.t0 == 0) { P.t0 = now; P.frames = 0; P.buildAcc = P.buildMax = 0; ::power::sampleUsage(P.usage); return; }
     P.frames++;
     P.buildAcc += buildSec;
     P.buildMax = std::max(P.buildMax, buildSec);
@@ -34,7 +34,7 @@ void perfFrame(double now, double buildSec, double interval, bool battery, bool 
     P.buildAvgMs = (float)(1e3 * P.buildAcc / std::max(1, P.frames));
     P.buildMaxMs = (float)(1e3 * P.buildMax);
     P.frames = 0; P.buildAcc = P.buildMax = 0; P.t0 = now;
-    P.haveUsage = power::sampleUsage(P.usage);
+    P.haveUsage = ::power::sampleUsage(P.usage);
     if (log && now - P.logT >= 5.0) {
         P.logT = now;
         fprintf(stderr, "perf: %.1f fps (pace %.0f fps%s%s), build %.2f ms avg / %.1f ms max, process %.1f %% CPU, %.0f %s/s; top:",

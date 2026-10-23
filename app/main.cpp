@@ -74,7 +74,7 @@ static PaceInfo paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double
     pace::State ps;
     ps.shot = o.shotPath != nullptr;
     ps.shown = glfwGetWindowAttrib(window, GLFW_VISIBLE) && !glfwGetWindowAttrib(window, GLFW_ICONIFIED);
-    ps.occluded = ps.shown && power::windowOccluded(window);
+    ps.occluded = ps.shown && ::power::windowOccluded(window);
     ps.popOut = popOutShown();
     ps.noOsWindows = gNoOsWindows;
     ps.reduceCpuHidden = app.reduceCpuHidden;
@@ -83,9 +83,9 @@ static PaceInfo paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double
     ps.video = app.engine.player().selected() >= 0;
     ps.running = anyRunning();
     ps.liveWaterfall = ps.running && !app.wf.paused;   // a shown window with a live waterfall keeps 30 frames a second, focused or not (#246)
-    ps.onBattery = app.batterySaver && power::onBattery();
+    ps.onBattery = app.batterySaver && ::power::onBattery();
     ps.batterySaver = app.batterySaver;
-    power::setReceiving(ps.running);   // no App Nap while a receiver runs
+    ::power::setReceiving(ps.running);   // no App Nap while a receiver runs
     const double interval = pace::interval(ps);
     if (interval > 0 && frameNext > t) {
         glfwWaitEventsTimeout(frameNext - t);
