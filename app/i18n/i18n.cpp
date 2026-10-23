@@ -12,7 +12,7 @@ const i18n::Language kLanguages[] = {
     {"en", "English"}, {"de", "Deutsch"}, {"fr", "Fran\xC3\xA7" "ais"}, {"es", "Espa\xC3\xB1ol"},
     {"zh", "\xE4\xB8\xAD\xE6\x96\x87 (\xE7\xAE\x80\xE4\xBD\x93)"}, {"lt", "Lietuvi\xC5\xB3"}, {"hu", "Magyar"},
     {"ja", "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"}, {"pl", "Polski"}, {"nl", "Nederlands"},
-    {"pt", "Portugu\xC3\xAA" "s (Brasil)"}, {"it", "Italiano"}, {"ru", "\xD0\xA0\xD1\x83\xD1\x81\xD1\x81\xD0\xBA\xD0\xB8\xD0\xB9"},
+    {"pt", "Portugu\xC3\xAA" "s (Brasil)"}, {"pt_PT", "Portugu\xC3\xAA" "s (Portugal)"}, {"it", "Italiano"}, {"ru", "\xD0\xA0\xD1\x83\xD1\x81\xD1\x81\xD0\xBA\xD0\xB8\xD0\xB9"},
 };
 constexpr int kNumLanguages = (int)(sizeof kLanguages / sizeof *kLanguages);
 
@@ -82,6 +82,9 @@ const char* i18n::current() { return kLanguages[gCur].code; }
 const char* i18n::set(const std::string& code) {
     std::string c;
     for (char ch : code) { if (ch == '-' || ch == '_' || ch == '.' || ch == '@') break; c += (char)(ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch); }
+    // Portuguese: the region picks Portugal (pt_PT, pt-PT); every other Portuguese locale uses the Brazilian catalog
+    if (c == "pt" && code.size() >= 5 && (code[2] == '_' || code[2] == '-') &&
+        (code[3] == 'P' || code[3] == 'p') && (code[4] == 'T' || code[4] == 't')) c = "pt_PT";
     gCur = 0;
     for (int i = 0; i < kNumLanguages; i++) if (c == kLanguages[i].code) gCur = i;
     load(gCur);
