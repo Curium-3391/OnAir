@@ -39,18 +39,25 @@ struct DvbtReceiver::Impl {
     // symbol it spreads carrier k by k * 80e-6 of a carrier (a third of a carrier at the band edges), which the timing loop, moving only the
     // FFT window, cannot undo. Once the loop has learnt the drift it is handed to this resampler, which corrects the samples themselves.
     // Off (no cost) until the clock is measurably off. Local to this receiver; a shared clock_correct.h can replace it.
+    // Merged (a radio rate that has to be resampled anyway, 10 Msps for 8 MHz): one ExactResampler takes the radio's samples straight to the native
+    // rate and the clock correction only steers its step, instead of the rational resampler followed by a second, near-unity resampler: one
+    // filter per sample instead of two (36 taps instead of 32 + 32 once the clock is corrected, which with a real radio is all the time).
     struct ClockCorrector {
         ExactResampler rs;
         bool on = false;
+        bool merged = false;
+        double nominal = 1.0;   // merged: input samples per output sample at the nominal rates
         std::vector<cf32> out;
-        double ppm() const { return on ? (rs.step() - 1.0) * 1e6 : 0.0; }
-        void reset() { on = false; out.clear(); }
+        void setMerged(double inRate, double outRate) { merged = rs.configure(inRate, outRate, 16) && !rs.passthrough(); nominal = rs.step(); }
+        double ppm() const { return merged ? (rs.step() / nominal - 1.0) * 1e6 : on ? (rs.step() - 1.0) * 1e6 : 0.0; }
+        void reset() { on = false; out.clear(); if (merged) { rs.reset(); rs.setStep(nominal); } }
         // the samples run fast by rel (positive: more samples than nominal): take that much more input per output sample
         void adjust(double rel, double rate) {
+            if (merged) { rs.scaleStep(1.0 + rel); return; }
             if (!on) { rs.configure(rate, rate * (1.0 + 1e-9)); rs.scaleStep(1.0 + 1e-9); on = true; }
             rs.scaleStep(1.0 + rel);
         }
-        void process(std::vector<cf32>& io) { if (!on) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
+        void process(std::vector<cf32>& io) { if (!on || merged) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
     } clk;
     std::vector<cf32> stage;      // the input at the native rate, before the clock correction
     std::vector<cf32> buf;
@@ -1060,6 +1067,8 @@ void DvbtReceiver::configure(double inputRateHz, double bandwidthMhz) {
     I.rateOk = I.resampler.configure(inputRateHz, I.fn, nullptr, carriersK(dvbt::k8K) * I.fn / 8192.0) &&   // the signal fills K carriers: only what folds into them has to be stopped (a kernel half as long at 10 Msps)
                   inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
     I.decimate = I.rateOk && !I.resampler.passthrough();
+    I.clk.merged = false;
+    if (I.decimate) { I.clk.setMerged(inputRateHz, I.fn); I.clk.reset(); }
 }
 
 void DvbtReceiver::setLowPriority(bool lp) { p_->lpReq = lp; }   // applied with the next symbol, on the thread that decodes
@@ -1121,7 +1130,8 @@ void DvbtReceiver::feed(const cf32* x, size_t n) {
     {
         DECT2_STAGE("dvbt.resample");
         I.stage.clear();
-        if (I.decimate) I.resampler.process(x, n, I.stage);
+        if (I.decimate && I.clk.merged) I.clk.rs.process(x, n, I.stage);   // resampling and clock correction in one filter
+        else if (I.decimate) I.resampler.process(x, n, I.stage);
         else I.stage.assign(x, x + n);
         I.clk.process(I.stage);
         I.buf.insert(I.buf.end(), I.stage.begin(), I.stage.end());
