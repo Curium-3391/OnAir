@@ -94,6 +94,11 @@ android {
         buildConfig = true
     }
 
+    // Shared data from the repository (one source for desktop and phone), copied by syncOnAirAssets below
+    sourceSets["main"].assets.srcDir(project.layout.buildDirectory.dir("generated/onairAssets").get().asFile)
+
+    testOptions { unitTests.isReturnDefaultValues = true }
+
     packaging {
         jniLibs {
             // libonair.so is built by tools/build_native.sh (native/CMakeLists.txt: the desktop core + the JNI bridge) into
@@ -102,6 +107,21 @@ android {
         }
     }
 }
+
+// ---- Assets from the repository ------------------------------------------------------------------------------------------
+// The first-run lessons (data/lessons/*.json, shared with the desktop's setup guide) and the credits (tools/credits_data.tsv,
+// tools/contributors.tsv, app/panels/supporters_data.h, LICENSES/OFL-1.1.txt for the bundled fonts) go into the APK's assets as they
+// are, so the phone shows the same lessons and credits as the desktop and nothing is kept twice. Missing files are simply skipped.
+val repoRoot = rootProject.file("..")
+val syncOnAirAssets by tasks.registering(Sync::class) {
+    into(layout.buildDirectory.dir("generated/onairAssets"))
+    from(File(repoRoot, "data/lessons")) { include("*.json"); into("lessons") }
+    from(File(repoRoot, "tools")) { include("credits_data.tsv", "contributors.tsv"); into("credits") }
+    from(File(repoRoot, "app/panels")) { include("supporters_data.h"); into("credits") }
+    from(File(repoRoot, "LICENSES")) { include("OFL-1.1.txt"); into("credits") }
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach { dependsOn(syncOnAirAssets) }
+tasks.matching { it.name == "preBuild" || it.name.contains("lint", ignoreCase = true) }.configureEach { dependsOn(syncOnAirAssets) }
 
 // A release without the native library would install but receive nothing: stop the build instead. Debug builds only warn.
 val nativeLib = file("src/main/jniLibs/arm64-v8a/libonair.so")
@@ -120,10 +140,16 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    // @Preview of every screen (ui/Previews.kt); the tooling itself only in debug builds
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // JVM unit tests of the UI logic (navigation, deep links, mode filter, credits parsers): ./gradlew testDebugUnitTest
+    testImplementation("junit:junit:4.13.2")
 }

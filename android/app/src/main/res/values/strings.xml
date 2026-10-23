@@ -27,7 +27,6 @@
     <string name="spectrum_title">Spectrum</string>
     <string name="waterfall_title">Waterfall</string>
     <string name="not_running_hint">Pick a source and press run. The test signal needs no radio.</string>
-    <string name="native_missing">The receiver library did not load on this device.</string>
 
     <!-- receiver tab -->
     <string name="section_source">Source</string>
@@ -130,4 +129,142 @@
     <string name="log_share">share</string>
     <string name="log_clear">clear</string>
     <string name="log_follow">follow</string>
+
+    <!-- 0.3.0 interface (android-ui-030) -->
+    <string name="tab_radio">Radio</string>
+    <string name="tab_settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="next">Next</string>
+    <string name="finish">Finish</string>
+    <string name="skip">Skip</string>
+    <string name="close">Close</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="add">Add</string>
+
+    <!-- receiver screen -->
+    <string name="step">Step</string>
+    <string name="step_auto">Auto (%1$s)</string>
+    <string name="step_auto_plain">Auto (from the mode)</string>
+    <string name="frequency_hint">100.5 or 100.5M is MHz; 7074k is kHz; 1.09G is GHz; a number above 100000 is Hz.</string>
+    <string name="frequency_invalid">Not a frequency</string>
+    <string name="noise_floor">Noise</string>
+    <string name="adc">ADC</string>
+    <string name="clipping">clipping</string>
+    <string name="tuning_centre">Centre</string>
+    <string name="tuning_normal">Normal</string>
+    <string name="cd_spectrum">Spectrum and waterfall, tuned to %1$s. Tap to tune, pinch to zoom, drag to move.</string>
+    <string name="cd_zoom_in">Zoom in</string>
+    <string name="cd_zoom_out">Zoom out</string>
+    <string name="cd_tune_up">Tune up</string>
+    <string name="cd_tune_down">Tune down</string>
+    <string name="cd_edit_frequency">Frequency %1$s. Double tap to type a frequency.</string>
+    <string name="cd_step_up">Up one step, %1$s</string>
+    <string name="cd_step_down">Down one step, %1$s</string>
+    <string name="cd_mute">Mute</string>
+    <string name="cd_unmute">Sound on</string>
+    <string name="cd_squelch_on">Squelch on</string>
+    <string name="cd_squelch_off">Squelch off</string>
+    <string name="cd_record_start">Start recording</string>
+    <string name="cd_record_stop">Stop recording</string>
+    <string name="cd_record_unavailable">Recording is not in this build yet</string>
+    <string name="cd_split_handle">Drag to change the size of the spectrum and the panels</string>
+    <string name="crash_banner">OnAir closed unexpectedly last time. Tap to see and share the log.</string>
+
+    <!-- mode picker -->
+    <string name="favourites">Favourites</string>
+    <string name="filter_hide_unused">Hide modes I do not use</string>
+    <string name="filter_hide_unused_help">Modes you hide with Manage stay out of the list.</string>
+    <string name="filter_only_capable">Only modes my radio can run</string>
+    <string name="filter_only_capable_help">Leave out the modes that need a higher sample rate than the chosen source gives.</string>
+    <string name="filter_manage">Manage</string>
+    <string name="no_modes_match">No mode matches. Clear the search or the filters.</string>
+    <string name="cd_clear_search">Clear the search</string>
+    <string name="cd_favourite">Add %1$s to the favourites</string>
+    <string name="cd_unfavourite">Remove %1$s from the favourites</string>
+    <string name="cd_hide_mode">Hide %1$s from the list</string>
+    <string name="cd_collapsed">collapsed</string>
+    <string name="cd_expanded">expanded</string>
+
+    <!-- radio screen -->
+    <string name="source_usb">USB radio</string>
+    <string name="source_synth_short">No radio needed</string>
+    <string name="usb_not_in_build">Direct USB radios come with the next update; an RTL-SDR works now through the rtl_tcp driver app.</string>
+    <string name="usb_none">No USB radio connected. Plug one in with an OTG adapter, then tap here.</string>
+    <string name="usb_ready">Ready</string>
+    <string name="usb_needs_permission">Tap to allow OnAir to open it</string>
+    <string name="usb_setup_hint">Plug the radio in with an OTG adapter; Android asks once whether OnAir may open it.</string>
+    <string name="add_network_radio">Add a network radio…</string>
+    <string name="section_selected_source">Chosen source</string>
+    <string name="network_unsaved">Not saved: add it with “Add a network radio”</string>
+    <string name="network_kind">Kind</string>
+    <string name="network_name">Name</string>
+    <string name="network_name_hint">Roof antenna</string>
+    <string name="network_privacy">OnAir only connects to the address you give. Nothing is sent to any server.</string>
+    <string name="discovery_title">Look for radios on this network</string>
+    <string name="discovery_help">Lists rtl_tcp and SpyServer servers that announce themselves on your Wi-Fi (mDNS). Off until you turn it on.</string>
+    <string name="discovery_searching">Looking… servers that do not announce themselves are added by address.</string>
+    <string name="cd_remove_radio">Remove %1$s</string>
+
+    <!-- settings -->
+    <string name="search_settings">Search settings</string>
+    <string name="no_settings_match">No setting matches.</string>
+    <string name="settings_display">Display</string>
+    <string name="settings_tuning">Tuning</string>
+    <string name="settings_modes">Mode list</string>
+    <string name="settings_sound">Sound</string>
+    <string name="settings_access">Accessibility</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_help">Help and information</string>
+    <string name="follow_system_theme">Follow the system theme</string>
+    <string name="font_look">Font look</string>
+    <string name="look_current">Current (monospace)</string>
+    <string name="look_clean">Clean</string>
+    <string name="look_compact">Compact</string>
+    <string name="tuning_centre_setting">Centre tuning</string>
+    <string name="tuning_centre_help">On: the view follows the dial and dragging tunes. Off (normal): the view stays and the marker moves inside it.</string>
+    <string name="reduce_motion">Reduce motion</string>
+    <string name="reduce_motion_help">No animations. The system\'s “Remove animations” does the same.</string>
+    <string name="map_tiles">Online map tiles</string>
+    <string name="map_ask">Ask first</string>
+    <string name="map_yes">Allowed</string>
+    <string name="map_no">Never</string>
+    <string name="run_setup">Run the setup again</string>
+    <string name="log_title">Log</string>
+    <string name="about_title">About</string>
+
+    <!-- log -->
+    <string name="log_filter">Filter the log</string>
+    <string name="log_crash_banner">A crash log from an earlier run is included when you share.</string>
+
+    <!-- about -->
+    <string name="about_source">Source code</string>
+    <string name="about_support">Support OnAir</string>
+    <string name="credits_title">Credits</string>
+    <string name="contributors_title">Contributors</string>
+    <string name="supporters_title">Supporters</string>
+    <string name="licences_title">Licences</string>
+    <string name="credits_missing">Not included in this build.</string>
+    <string name="contributors_intro">OnAir exists because of these people: fixes, bug reports, recordings, translations and ideas.</string>
+    <string name="supporters_intro">Thank you to our supporters on Ko-fi.</string>
+    <string name="fonts_licence_intro">The Inter and JetBrains Mono fonts are used under the SIL Open Font License 1.1:</string>
+
+    <!-- first-run guide -->
+    <string name="setup_title">Setup  (%1$d / %2$d)</string>
+    <string name="setup_welcome">OnAir is a receiver: TV, radio, aircraft, ships, satellites and more, decoded on this phone.</string>
+    <string name="setup_privacy">Receive only: nothing is transmitted and nothing is sent to any server. There is no account.</string>
+    <string name="setup_radio_question">Which radio do you have? You can go on without one: the test signal and IQ files work with no hardware.</string>
+    <string name="setup_network_hint">An rtl_tcp server or a SpyServer on your network, by its address</string>
+    <string name="setup_permissions">Permissions</string>
+    <string name="setup_notifications_why">Android shows a notification while OnAir receives in the background, with a Stop button. Receiving works without it too.</string>
+    <string name="setup_notifications_ok">Notifications: allowed (or not needed on this Android).</string>
+    <string name="setup_allow_notifications">Allow notifications</string>
+    <string name="setup_usb_permission">USB radios: Android asks once per radio when you plug it in. No other permission is needed.</string>
+    <string name="setup_interests">What do you want to receive? Tick anything that interests you: those become your favourites.</string>
+    <string name="setup_lessons">Short lessons to get going. Open any, or come back to them from Settings.</string>
+    <string name="setup_no_lessons">This build has no lessons yet. Settings has the setup again any time.</string>
+    <string name="setup_done">All set.</string>
+    <string name="setup_done_hint">Press the play button to start. Tap the spectrum to tune, pinch to zoom. Change the mode any time from the mode chip.</string>
+    <string name="lesson_pages">%1$d pages</string>
+    <string name="lesson_page_of">Page %1$d of %2$d</string>
+    <string name="lesson_try">Try it</string>
 </resources>

@@ -8,6 +8,11 @@
     native <methods>;
 }
 
+# Mode panels found with java.util.ServiceLoader (ui/panels/ModePanels.kt): keep every provider and its no-argument constructor;
+# R8 rewrites META-INF/services entries for kept classes.
+-keep class * implements io.github.adswill.onair.ui.panels.ModePanelProvider { public <init>(); }
+-keepnames interface io.github.adswill.onair.ui.panels.ModePanelProvider
+
 # The C++ side never calls back into Kotlin today. A future callback (FindClass / GetMethodID) needs its class and members kept here.
 
 # Readable crash reports: keep file names and line numbers, hide the original source file name.
