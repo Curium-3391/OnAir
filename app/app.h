@@ -66,6 +66,7 @@
 #include <unistd.h>
 #include "gfx/colormap.h"
 #include "gfx/wf_view.h"
+#include "gfx/wf3d.h"
 #include "gfx/spec_axis.h"
 
 using namespace dect2;
@@ -88,6 +89,7 @@ struct Waterfall {
     long long rows = 0;              // rows written since the start; the newest is number rows - 1, at writeRow
     gfx::Image* viewImg = nullptr;   // the history at the size it is shown (the main waterfall; made on first use, W x H)
     plt::WfView view;
+    w3d::State s3d;                  // the 3D view of the history (wf3d.h, drawn by wf3d_plot.cpp): its settings, camera and cached mesh
     float gamma = 1.f, builtGamma = 1.f;   // contrast: the level ^ gamma picks the colour (below 1 lifts weak signals)
     float brightness = 0.f, contrast = 1.f, builtBright = 0.f, builtContrast = 1.f;   // the level shifted and stretched before the gamma
     int builtCustom = 0;             // the custom gradient's version the table was made with
@@ -1201,6 +1203,9 @@ void channelWidthButton(App& a, ImVec2 plotMin, ImVec2 plotSize, const char* yLa
 void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
 void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
 float specCornerPopup(App& a, const char* label, const char* popId, ImVec2 plotMin, ImVec2 plotSize, float rightUsed, float reserveLeft, float dropY, bool on, const char* tip, void (*body)(App&));
+double clickTuneMhz(const App& a, double mhz);   // plots.cpp: where a click on the spectrum at mhz tunes (the mode's limits and raster); NAN: the mode is not tuned by a click
+void waterfall3dPlot(App& a, ImVec2 size);       // gfx/wf3d_plot.cpp: the 3D waterfall in place of the flat one (a.wf.s3d.on)
+void waterfall3dPopup(App& a);                   // gfx/wf3d_plot.cpp: its settings (in the waterfall popup)
 float bandPlanStripHeight();         // plots.cpp: one text line plus padding; follows the font and resize
 void drawBandPlanStrip(ImDrawList* dl, float x0, float x1, float y, float h, double loMhz, double hiMhz);   // saAllocations in view
 // gfx/autolabel.cpp: the names of the stations in view, drawn on the spectrum (plotId 0) and the waterfall (1); a click on a name tunes and opens its mode

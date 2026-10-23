@@ -88,20 +88,24 @@ static bool bandEdgeDrag(App& a, int plotId) {
     return true;
 }
 
+double clickTuneMhz(const App& a, double mhz) {
+    double lo = 0.001, hi = dect2::kMaxTuneMhz;
+    double grid = 0.001;
+    if (a.fmMode) grid = 0.1;
+    else if (a.family == 9) grid = 0.0125;
+    if (a.family >= 6) if (const ModeTuning* mt = modeTuning(a.family + 2)) { lo = mt->minMhz; hi = mt->maxMhz; }
+    if (a.family == 4 || a.family == 1 || a.family == 3) return NAN;   // ATSC and ISDB-T channels sit on a fixed raster: use the frequency field
+    return std::round(std::min(hi, std::max(lo, mhz)) / grid) * grid;
+}
+
 static void clickToTune(App& a, int plotId) {
     if (autoLabelsHovered()) return;   // the mouse is on a name: it tunes (autolabel.cpp)
     if (a.family == 55) { generalPlotMouse(a, plotId); return; }   // the general receiver: its channel marker, without retuning the radio
     if (bandEdgeDrag(a, plotId)) return;
     if (!plt::IsPlotHovered() || a.fmScan.running) return;
     if (a.identifyTool || ImGui::GetIO().KeyShift) return;   // the Identify tool and Shift+drag select a signal instead of tuning (identifyPlotInput)
-    double mhz = plt::GetPlotMousePos().x;
-    double lo = 0.001, hi = dect2::kMaxTuneMhz;
-    double grid = 0.001;
-    if (a.fmMode) grid = 0.1;
-    else if (a.family == 9) grid = 0.0125;
-    if (a.family >= 6) if (const ModeTuning* mt = modeTuning(a.family + 2)) { lo = mt->minMhz; hi = mt->maxMhz; }
-    mhz = std::round(std::min(hi, std::max(lo, mhz)) / grid) * grid;
-    if (a.family == 4 || a.family == 1 || a.family == 3) return;   // ATSC and ISDB-T channels sit on a fixed raster: use the frequency field
+    const double mhz = clickTuneMhz(a, plt::GetPlotMousePos().x);
+    if (std::isnan(mhz)) return;
     const ImVec2 d = ImGui::GetMouseDragDelta(0, 0);
     if (ImGui::IsMouseReleased(0) && std::fabs(d.x) < 4 && std::fabs(d.y) < 4 && std::fabs(mhz - a.freqMhz) > 1e-6) {
         spectrumTune(a, mhz);
@@ -827,6 +831,8 @@ void wfDisplayPopup(App& a) {
     if (ImGui::Button(tr("Reset spectrum"))) resetSpectrum(a);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
     ImGui::Separator();
+    waterfall3dPopup(a);   // 3D view on or off, and its settings while on (wf3d_plot.cpp)
+    ImGui::Separator();
     // the levels first: they are what is changed most
     ImGui::TextDisabled("%s", tr("Intensity (dB)"));
     ImGui::SetNextItemWidth(170 * gUi);
@@ -1288,6 +1294,7 @@ static void wfScaleBar(const App& a, ImVec2 plotMin, ImVec2 plotSize) {
 static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
     const int H = Waterfall::H;
     waterfallColourSync(a);
+    if (a.wf.s3d.on) { waterfall3dPlot(a, size); return; }   // the 3D view (wf3d_plot.cpp) in its place, from the same history and colours
     // The time scale is worked out once and kept until the plot changes size (or the first real measure of the row time is in),
     // so the labels never move while the picture scrolls under them.
     struct Scale { ImVec2 avail{-1, -1}; bool measured = false; double dt = 0; std::vector<double> pos; std::vector<std::string> lab; std::vector<const char*> cstr; };
