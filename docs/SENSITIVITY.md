@@ -100,6 +100,8 @@ output is reported as "skipped" (receiver wiring in the harness needs a look) in
 
 ## Baseline
 
-`tests/sens/baseline/sens-baseline.json`: see the table in the PATHWAY entry of the day it was made; regenerate with the workflow
+`tests/sens/baseline/sens-baseline.json`: full sweep (8 trials a point, 1 dB steps) of 25 modes, made on the GitHub Linux runner 2026-10-23 (push to branch
+`sens-baseline-run-030` runs the workflow; the build workers run the same as ctest `sens_full`, label `sens-full`, about 2 h). Not in it: `tetra` (no valid
+output on its clean test signal: the harness wiring needs a look, probably `setCenterHz`/scene) and `mesh` (heavy, `--heavy`). Regenerate with the workflow
 (`update_baseline`). Known harness limits: the sample clock uses a 4-point cubic (a fraction of a dB loss at the band edge of critically sampled OFDM);
 multipath delays are rounded to whole samples; lock time has the 50 ms poll resolution (T2 and other threaded decoders also lag by their queue).
