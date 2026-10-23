@@ -462,7 +462,16 @@ void voiceKeysWindow(App& a) {
     ImGui::SameLine();
     ImGui::TextDisabled("| %s", S.keychain.empty() ? tr("protected by a passphrase") : (std::string(tr("protected by the ")) + S.keychain).c_str());
     if (!S.error.empty()) ImGui::TextColored(pal::badRed(), "%s", S.error.c_str());
-    else if (!S.notice.empty()) ImGui::TextColored(pal::okGreen(), "%s", S.notice.c_str());
+    if (!S.error.empty() && S.haveFile && !S.fileNeedsPass && S.error.find("keychain") != std::string::npos) {
+        // the keychain item is gone (keychain reset): the old file can never open again; the user may move it aside to start a new store
+        ImGui::TextWrapped("%s", tr("If you reset or wiped the keychain, the old key file cannot be opened any more. You can move it aside (it is kept as keys.oavk.discarded) and start a new store."));
+        if (ImGui::Button(tr("Move the old key file aside"))) {
+            const std::string e = vk::discardKeyFile(filePath());
+            if (e.empty()) { S.haveFile = false; S.error.clear(); S.unlocked = true; S.notice = "The old key file was moved aside. You can add keys again."; }
+            else S.error = e;
+        }
+    }
+    if (S.error.empty() && !S.notice.empty()) ImGui::TextColored(pal::okGreen(), "%s", S.notice.c_str());
     ImGui::Separator();
 
     if (st == keyswin::StoreState::NeedsNotice) { legalBody(a); ImGui::End(); return; }

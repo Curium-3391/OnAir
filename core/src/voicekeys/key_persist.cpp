@@ -221,6 +221,14 @@ std::string saveToFile(const std::string& path, const std::string& passphrase) {
     return wrote ? std::string() : "could not write " + path;
 }
 
+std::string discardKeyFile(const std::string& path) {
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return std::string();
+    std::filesystem::remove(path + ".discarded", ec);
+    std::filesystem::rename(path, path + ".discarded", ec);
+    return ec ? "could not move the old key file aside: " + ec.message() : std::string();
+}
+
 std::string loadFromFile(const std::string& path, const std::string& passphrase) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return std::string();   // no file yet: not an error

@@ -58,6 +58,10 @@ std::string saveToFile(const std::string& path, const std::string& passphrase = 
 // Load into KeyStore::instance(). Returns empty on success; a non-empty string describes why (missing file is NOT an error -> returns "" and leaves the store empty).
 std::string loadFromFile(const std::string& path, const std::string& passphrase = std::string());
 
+// For a key file whose keychain key is gone for good (the user wiped the keychain): moves it aside to <path>.discarded so a new store can be
+// saved. The old keys are NOT deleted; they just cannot be opened any more. Returns "" on success (also when there is no file).
+std::string discardKeyFile(const std::string& path);
+
 // PBKDF2-HMAC-SHA256 (RFC 2898), exposed for tests.
 void pbkdf2HmacSha256(const uint8_t* pw, size_t pwLen, const uint8_t* salt, size_t saltLen, uint32_t rounds, uint8_t* out, size_t outLen);
 
