@@ -112,7 +112,7 @@ class WalkMathTest {
     }
 
     @Test fun walkingTowardIsHotAwayIsCold() {
-        val tx = XY(300.0, 0.0)
+        val tx = XY(80.0, 0.0)       // close enough that 40 m of walking changes the level well beyond the noise
         val rng = Random(3)
         fun leg(from: Double, to: Double): List<Sample> = (0 until 15).map { i ->
             val x = from + (to - from) * i / 14.0

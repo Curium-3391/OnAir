@@ -138,8 +138,10 @@ private fun lsqAt(xs: DoubleArray, ys: DoubleArray, lv: DoubleArray, px: Double,
  * Fits level = A - 10 n log10(distance) with unknown transmitter position, A and n. Returns null with fewer than [minSamples] samples
  * or when the walk is shorter than ~10 m (no geometry to fit).
  */
-fun fitPathLoss(samples: List<Sample>, minSamples: Int = 8): FitResult? {
-    if (samples.size < minSamples) return null
+fun fitPathLoss(all: List<Sample>, minSamples: Int = 8, maxSamples: Int = 240): FitResult? {
+    if (all.size < minSamples) return null
+    // Long walks are thinned evenly so a refit stays cheap on a phone.
+    val samples = if (all.size <= maxSamples) all else List(maxSamples) { all[(it.toLong() * (all.size - 1) / (maxSamples - 1)).toInt()] }
     val lat0 = samples.sumOf { it.lat } / samples.size
     val lon0 = samples.sumOf { it.lon } / samples.size
     val xs = DoubleArray(samples.size); val ys = DoubleArray(samples.size); val lv = DoubleArray(samples.size)
@@ -154,12 +156,10 @@ fun fitPathLoss(samples: List<Sample>, minSamples: Int = 8): FitResult? {
     val x0 = minX - grow; val x1 = maxX + grow; val y0 = minY - grow; val y1 = maxY + grow
     val g = 61
     val dx = (x1 - x0) / (g - 1); val dy = (y1 - y0) / (g - 1)
-    val sseGrid = DoubleArray(g * g)
     var best = Double.MAX_VALUE; var bi = 0; var bj = 0
     for (j in 0 until g) for (i in 0 until g) {
         val r = lsqAt(xs, ys, lv, x0 + i * dx, y0 + j * dy, ls)
-        sseGrid[j * g + i] = r.sse
-        if (r.sse < best) { best = r.sse; bi = i; bj = j }
+                if (r.sse < best) { best = r.sse; bi = i; bj = j }
     }
     // Pattern search refinement from the best cell.
     var px = x0 + bi * dx; var py = y0 + bj * dy
@@ -177,27 +177,39 @@ fun fitPathLoss(samples: List<Sample>, minSamples: Int = 8): FitResult? {
     val m = samples.size
     val sigma2 = max(1.0, fin.sse / max(1, m - 4))
     val bound = fin.sse + 6.17 * sigma2     // 95 % region for 2 free parameters
-    // Covariance of the grid cells inside the region (plus the cell's own spread) -> ellipse.
-    var cnt = 0; var mx = 0.0; var my = 0.0
-    for (j in 0 until g) for (i in 0 until g) if (sseGrid[j * g + i] <= bound) { cnt++; mx += x0 + i * dx; my += y0 + j * dy }
-    val e: Ellipse
-    if (cnt == 0) {
-        e = Ellipse(max(dx, dy) / 2.0, max(dx, dy) / 2.0, 0.0)
-    } else {
+    // The 95 % region is found on a fine grid centred on the optimum, whose size adapts: doubled while the region touches the edge,
+    // halved while it covers fewer than 20 cells (the coarse grid above is too coarse for a well-determined fit).
+    val gf = 41
+    var half = max(dx, dy) * 2.0
+    var e = Ellipse(1.0, 1.0, 0.0)
+    for (iter in 0 until 14) {
+        val cell = 2.0 * half / (gf - 1)
+        var cnt = 0; var touches = false
+        var mx = 0.0; var my = 0.0
+        val inside = BooleanArray(gf * gf)
+        for (j in 0 until gf) for (i in 0 until gf) {
+            val x = px - half + i * cell; val y = py - half + j * cell
+            if (lsqAt(xs, ys, lv, x, y, ls).sse <= bound) {
+                inside[j * gf + i] = true; cnt++; mx += x; my += y
+                if (i == 0 || j == 0 || i == gf - 1 || j == gf - 1) touches = true
+            }
+        }
+        if (touches && half < 20.0 * grow) { half *= 2.0; continue }
+        if (cnt < 20 && half > 0.5 && iter < 13) { half /= 2.0; continue }
+        if (cnt == 0) { e = Ellipse(cell / 2.0, cell / 2.0, 0.0); break }
         mx /= cnt; my /= cnt
         var cxx = 0.0; var cyy = 0.0; var cxy = 0.0
-        for (j in 0 until g) for (i in 0 until g) if (sseGrid[j * g + i] <= bound) {
-            val ex = x0 + i * dx - mx; val ey = y0 + j * dy - my
+        for (j in 0 until gf) for (i in 0 until gf) if (inside[j * gf + i]) {
+            val ex = px - half + i * cell - mx; val ey = py - half + j * cell - my
             cxx += ex * ex; cyy += ey * ey; cxy += ex * ey
         }
-        cxx = cxx / cnt + dx * dx / 12.0; cyy = cyy / cnt + dy * dy / 12.0; cxy /= cnt
+        cxx = cxx / cnt + cell * cell / 12.0; cyy = cyy / cnt + cell * cell / 12.0; cxy /= cnt
         val tr = cxx + cyy; val det = cxx * cyy - cxy * cxy
         val disc = sqrt(max(0.0, tr * tr / 4.0 - det))
         val l1 = tr / 2.0 + disc; val l2 = max(0.0, tr / 2.0 - disc)
-        // Eigenvector of l1 in (x east, y north); azimuth from north clockwise.
         val ang = 0.5 * atan2(2.0 * cxy, cxx - cyy)       // from +x (east), counter-clockwise
-        val az = wrap360(90.0 - deg(ang)) % 180.0
-        e = Ellipse(2.0 * sqrt(l1), 2.0 * sqrt(l2), az)
+        e = Ellipse(2.0 * sqrt(l1), 2.0 * sqrt(l2), wrap360(90.0 - deg(ang)) % 180.0)
+        break
     }
     val (lat, lon) = fromLocal(px, py, lat0, lon0)
     val outside = max(max(minX - px, px - maxX), max(minY - py, py - maxY))

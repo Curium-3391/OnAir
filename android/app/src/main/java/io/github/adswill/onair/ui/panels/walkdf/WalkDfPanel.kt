@@ -51,6 +51,7 @@ import io.github.adswill.onair.CheckRow
 import io.github.adswill.onair.Label
 import io.github.adswill.onair.LocalPalette
 import io.github.adswill.onair.PanelButton
+import io.github.adswill.onair.PositionMap
 import io.github.adswill.onair.R
 import io.github.adswill.onair.SectionLabel
 import io.github.adswill.onair.diag.AppLog
@@ -183,7 +184,19 @@ private fun WalkDfContent(vm: ReceiverViewModel, modifier: Modifier) {
         }
 
         // Heat map.
-        HeatMap(s.samples, fit, s.bearings, s.lastLat, s.lastLon, Modifier.fillMaxWidth().height(300.dp).background(p.plate))
+        val consent = vm.settings.collectAsStateWithLifecycle().value.mapConsent
+        val mapMod = Modifier.fillMaxWidth().height(320.dp)
+        val start = s.samples.lastOrNull()
+        if (consent == 1 && start != null) {
+            // OpenStreetMap tiles under the heat map (the same consent as the other maps).
+            val pal = p
+            val snap = s.samples; val bl = s.bearings.toList(); val fl = s.fit; val la = s.lastLat; val lo = s.lastLon
+            PositionMap(emptyList(), null, { }, consent, vm::setMapConsent, mapMod,
+                overlay = { toScreen -> drawWalk(pal, snap, fl, bl, la, lo, toScreen) }, homeOverride = start.lat to start.lon, startZoom = 17f)
+        } else {
+            HeatMap(s.samples, fit, s.bearings, s.lastLat, s.lastLon, mapMod.background(p.plate))
+            if (consent != 1) PanelButton("Show OpenStreetMap tiles under the map", modifier = Modifier.fillMaxWidth()) { vm.setMapConsent(1) }
+        }
 
         // Hot / cold, arrow, estimate.
         val trendText = when (tr.trend) {
@@ -294,10 +307,10 @@ private fun startSensors(ctx: Context, report: (String) -> Unit): () -> Unit {
     return { try { lm.removeUpdates(ll) } catch (_: Exception) {}; sm.unregisterListener(sl) }
 }
 
-/** The heat map: north up, coloured dots by level, current position, estimate with its ellipse, bearing rays, a scale bar. */
+/** The heat map on its own plate (no tiles): north up, scaled to the walk. */
 @Composable
 private fun HeatMap(samples: List<Sample>, fit: FitResult?, bearings: List<BearingLine>, curLat: Double, curLon: Double, modifier: Modifier) {
-    val p = LocalPalette.current
+    val pal = LocalPalette.current
     Canvas(modifier) {
         if (samples.isEmpty()) return@Canvas
         val lat0 = samples.sumOf { it.lat } / samples.size
@@ -305,41 +318,56 @@ private fun HeatMap(samples: List<Sample>, fit: FitResult?, bearings: List<Beari
         val pts = samples.map { toLocal(it.lat, it.lon, lat0, lon0) }
         val est = fit?.let { toLocal(it.lat, it.lon, lat0, lon0) }
         var x0 = pts.minOf { it.x }; var x1 = pts.maxOf { it.x }; var y0 = pts.minOf { it.y }; var y1 = pts.maxOf { it.y }
-        if (est != null) { x0 = min(x0, est.x - fit.ellipse.semiMajorM.coerceAtMost(300.0)); x1 = max(x1, est.x + fit.ellipse.semiMajorM.coerceAtMost(300.0)); y0 = min(y0, est.y - fit.ellipse.semiMajorM.coerceAtMost(300.0)); y1 = max(y1, est.y + fit.ellipse.semiMajorM.coerceAtMost(300.0)) }
+        if (est != null && fit != null) {
+            val r = fit.ellipse.semiMajorM.coerceAtMost(300.0)
+            x0 = min(x0, est.x - r); x1 = max(x1, est.x + r); y0 = min(y0, est.y - r); y1 = max(y1, est.y + r)
+        }
         val w = max(40.0, x1 - x0); val h = max(40.0, y1 - y0)
         val sc = (min(size.width / (w * 1.15), size.height / (h * 1.15))).toFloat()
         val cx = (x0 + x1) / 2; val cy = (y0 + y1) / 2
-        fun sx(x: Double) = size.width / 2 + ((x - cx) * sc).toFloat()
-        fun sy(y: Double) = size.height / 2 - ((y - cy) * sc).toFloat()
-        val (lo, hi) = levelSpan(samples.map { it.levelDb })
-        // Scale bar: a round length near a fifth of the width.
+        val toScreen = { lat: Double, lon: Double ->
+            val q = toLocal(lat, lon, lat0, lon0)
+            Offset(size.width / 2 + ((q.x - cx) * sc).toFloat(), size.height / 2 - ((q.y - cy) * sc).toFloat())
+        }
+        drawWalk(pal, samples, fit, bearings, curLat, curLon, toScreen)
         val target = size.width / 5f / sc
         val bar = listOf(5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000).lastOrNull { it <= target } ?: 5
-        drawLine(p.plotText, Offset(12f, size.height - 14f), Offset(12f + bar * sc, size.height - 14f), 3f)
-        for (b in bearings) {
-            val o = toLocal(b.lat, b.lon, lat0, lon0)
-            val a = b.bearingDeg * PI / 180.0
-            val len = 2000.0
-            drawLine(p.warn.copy(alpha = 0.7f), Offset(sx(o.x), sy(o.y)), Offset(sx(o.x + len * sin(a)), sy(o.y + len * cos(a))), 2f)
+        drawLine(pal.plotText, Offset(12f, size.height - 14f), Offset(12f + bar * sc, size.height - 14f), 3f)
+    }
+}
+
+/** Draws the walk on any lat/lon -> screen mapping (own plate or the OSM tile map): rays, track, heat dots, position, estimate + ellipse. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWalk(
+    p: io.github.adswill.onair.Palette, samples: List<Sample>, fit: FitResult?, bearings: List<BearingLine>, curLat: Double, curLon: Double,
+    toScreen: (Double, Double) -> Offset,
+) {
+    if (samples.isEmpty()) return
+    val (lo, hi) = levelSpan(samples.map { it.levelDb })
+    // pixels per metre near the walk
+    val a = samples.last()
+    val o0 = toScreen(a.lat, a.lon)
+    val (la1, lo1) = fromLocal(0.0, 100.0, a.lat, a.lon)
+    val ppm = ((toScreen(la1, lo1) - o0).getDistance() / 100f).coerceAtLeast(1e-4f)
+    for (b in bearings) {
+        val s0 = toScreen(b.lat, b.lon)
+        val t = b.bearingDeg * PI / 180.0
+        val (la2, lo2) = fromLocal(2000.0 * sin(t), 2000.0 * cos(t), b.lat, b.lon)
+        drawLine(p.warn.copy(alpha = 0.8f), s0, toScreen(la2, lo2), 3f)
+    }
+    for (i in 1 until samples.size) drawLine(p.grid, toScreen(samples[i - 1].lat, samples[i - 1].lon), toScreen(samples[i].lat, samples[i].lon), 2f)
+    for (s in samples) {
+        val f = if (hi > lo) (s.levelDb - lo) / (hi - lo) else 0.5
+        drawCircle(Color(heatArgb(f)), 8f, toScreen(s.lat, s.lon))
+    }
+    if (!curLat.isNaN()) drawCircle(p.bright, 11f, toScreen(curLat, curLon), style = Stroke(3f))
+    if (fit != null) {
+        val c = toScreen(fit.lat, fit.lon)
+        val rw = (fit.ellipse.semiMajorM * ppm).toFloat(); val rh = (fit.ellipse.semiMinorM * ppm).toFloat()
+        rotate(degrees = (fit.ellipse.majorAzimuthDeg - 90.0).toFloat(), pivot = c) {
+            drawOval(p.accent.copy(alpha = 0.2f), Offset(c.x - rw, c.y - rh), Size(2 * rw, 2 * rh))
+            drawOval(p.accent, Offset(c.x - rw, c.y - rh), Size(2 * rw, 2 * rh), style = Stroke(2f))
         }
-        for (i in 1 until pts.size) drawLine(p.grid, Offset(sx(pts[i - 1].x), sy(pts[i - 1].y)), Offset(sx(pts[i].x), sy(pts[i].y)), 1f)
-        for ((i, q) in pts.withIndex()) {
-            val f = if (hi > lo) (samples[i].levelDb - lo) / (hi - lo) else 0.5
-            drawCircle(Color(heatArgb(f)), 6f, Offset(sx(q.x), sy(q.y)))
-        }
-        if (!curLat.isNaN()) {
-            val c = toLocal(curLat, curLon, lat0, lon0)
-            drawCircle(p.bright, 9f, Offset(sx(c.x), sy(c.y)), style = Stroke(2f))
-        }
-        if (est != null && fit != null) {
-            val c = Offset(sx(est.x), sy(est.y))
-            val rw = (fit.ellipse.semiMajorM * sc).toFloat(); val rh = (fit.ellipse.semiMinorM * sc).toFloat()
-            rotate(degrees = (fit.ellipse.majorAzimuthDeg - 90.0).toFloat(), pivot = c) {
-                drawOval(p.accent.copy(alpha = 0.18f), Offset(c.x - rw, c.y - rh), Size(2 * rw, 2 * rh))
-                drawOval(p.accent, Offset(c.x - rw, c.y - rh), Size(2 * rw, 2 * rh), style = Stroke(1.5f))
-            }
-            drawLine(p.accent, Offset(c.x - 10f, c.y), Offset(c.x + 10f, c.y), 3f)
-            drawLine(p.accent, Offset(c.x, c.y - 10f), Offset(c.x, c.y + 10f), 3f)
-        }
+        drawLine(p.accent, Offset(c.x - 14f, c.y), Offset(c.x + 14f, c.y), 4f)
+        drawLine(p.accent, Offset(c.x, c.y - 14f), Offset(c.x, c.y + 14f), 4f)
     }
 }
