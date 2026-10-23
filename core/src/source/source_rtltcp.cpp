@@ -36,15 +36,36 @@ bool splitHostPort(const std::string& a, std::string& host, int& port) { return 
 uint32_t be32(const unsigned char* p) { return (uint32_t)dect2::endian::loadBe32(p); }
 
 constexpr double kOtherMinRate = 0.25e6, kOtherMaxRate = 20e6;
+constexpr double kAnyMinRate = 0.1e6, kAnyMaxRate = 40e6;   // "Allow any sample rate (advanced)": only sanity limits, the server and the network decide the rest
+
+// the measured stream of each connected server (by address), for the status line
+std::mutex gStatMu;
+std::map<std::string, RtlTcpThroughput> gStat;
+void publishStat(const std::string& addr, const RtlTcpThroughput& t) { std::lock_guard<std::mutex> lk(gStatMu); gStat[addr] = t; }
+
+// unsigned 8-bit sample to float, one table lookup instead of a subtraction and a division per sample
+struct U8Lut { float v[256]; U8Lut() { for (int i = 0; i < 256; i++) v[i] = (i - 127.4f) / 128.f; } };
+const U8Lut& u8lut() { static const U8Lut l; return l; }
 
 // the servers found serving another radio than an RTL-SDR (by nativeArgs), for the rate limits the app shows
 std::mutex gOtherMu;
 std::set<std::string> gOther;
 bool noted(const std::string& addr) { std::lock_guard<std::mutex> lk(gOtherMu); return gOther.count(addr) > 0; }
 
-void setCaps(DeviceInfo& d, bool other) {
-    if (other) { d.maxRateHz = kOtherMaxRate; d.minRateHz = kOtherMinRate; d.rateRanges.clear(); }
+void setCaps(DeviceInfo& d, bool other, bool any = false) {
+    if (any) { d.maxRateHz = kAnyMaxRate; d.minRateHz = kAnyMinRate; d.rateRanges.clear(); }
+    else if (other) { d.maxRateHz = kOtherMaxRate; d.minRateHz = kOtherMinRate; d.rateRanges.clear(); }
     else { d.maxRateHz = 2.56e6; d.minRateHz = 0.9e6; d.rateRanges = {{0.225001e6, 0.3e6}, {0.900001e6, 2.56e6}}; }
+}
+
+RadioSetting customRateSetting() {
+    RadioSetting r;
+    r.type = RadioSetting::Number;
+    r.key = "customrate";
+    r.label = "Sample rate (0 = as the mode needs)";
+    r.help = "Only with Allow any sample rate: the rate to ask the server for, in Msps. 0 = what the mode asks.";
+    r.minV = 0; r.maxV = 40; r.step = 0.1; r.unit = "Msps"; r.def = "0";
+    return r;
 }
 
 } // namespace
@@ -55,6 +76,13 @@ bool rtlTcpGreeting(const unsigned char* hdr, std::string& magic, bool& other) {
     magic = g.magic;
     other = g.other;
     return true;
+}
+bool rtlTcpThroughput(const std::string& addr, RtlTcpThroughput& out) {
+    std::lock_guard<std::mutex> lk(gStatMu);
+    const auto it = gStat.find(addr);
+    if (it == gStat.end()) return false;
+    out = it->second;
+    return out.valid;
 }
 void rtlTcpNoteServer(const std::string& addr, bool other) {
     std::lock_guard<std::mutex> lk(gOtherMu);
@@ -118,7 +146,9 @@ protected:
         (void)live;
         if (sock_ == kBadSock) return false;
         const std::string server = radioOption(s, "server", "auto");
-        bool other = detected_ || server == "other";
+        const bool any = radioOption(s, "anyrate", "0") == "1";
+        const double custom = any ? radioNumber(s, "customrate", 0) * 1e6 : 0;
+        bool other = detected_ || server == "other" || any;
         // Auto: a server that greets as an RTL-SDR is held to 2.56 Msps, but a mode that asks for more is let through up to 20 Msps (it may be
         // SDR++, OpenWebRX or rsp_tcp serving a faster radio): samples may drop if it is a real RTL-SDR
         if (!other && server == "auto" && s.sampleRate > 2.56e6 * 1.0001) {
@@ -130,7 +160,8 @@ protected:
                 fflush(stderr);
             }
         }
-        if (s.sampleRate > (other ? kOtherMaxRate : 3.2e6) * 1.0001) {
+        const double maxRate = any ? kAnyMaxRate : other ? kOtherMaxRate : 3.2e6;
+        if ((custom > 0 ? custom : s.sampleRate) > maxRate * 1.0001) {
             char b[200];
             if (other) snprintf(b, sizeof b, "an rtl_tcp server gives at most 20 Msps; this mode needs about %.0f Msps: use a faster radio", s.sampleRate / 1e6);
             else snprintf(b, sizeof b, "an RTL-SDR (rtl_tcp) gives at most 3.2 Msps; this mode needs about %.0f Msps: use a faster radio "
@@ -140,7 +171,8 @@ protected:
             return false;
         }
         double want;
-        if (other) want = std::min(std::max(s.sampleRate > 0 ? s.sampleRate : 2.048e6, kOtherMinRate), kOtherMaxRate);
+        if (any) want = std::min(std::max(custom > 0 ? custom : s.sampleRate > 0 ? s.sampleRate : 2.048e6, kAnyMinRate), kAnyMaxRate);
+        else if (other) want = std::min(std::max(s.sampleRate > 0 ? s.sampleRate : 2.048e6, kOtherMinRate), kOtherMaxRate);
         else {
             want = std::min(s.sampleRate > 0 ? s.sampleRate : 2.048e6, 2.56e6);   // a real RTL-SDR drops samples above 2.56 Msps
             if (want < 900001 && (want > 300000 || want <= 225000)) want = 900001;
@@ -149,6 +181,8 @@ protected:
         bool ok = true;
         if (rate != sentRate_) { ok = ok && command(kCmdRate, rate); sentRate_ = rate; rate_ = rate; }
         requested_ = s.sampleRate;
+        asked_ = rate;
+        statT0_ = {};   // the meter starts a new window at the new rate
         const double f = std::max(s.centerHz, 0.0);
         // Auto: nothing is sent, the server's own library picks the way down (an RTL-SDR Blog V4 server upconverts HF itself; a direct-sampling
         // request would break it, and the server does not say which dongle it is). OnAir does not refuse the frequency: a V3 or modified
@@ -186,14 +220,31 @@ protected:
     }
     bool restartForRate() const override { return false; }   // the server changes the rate while streaming
     void streamLoop() override {
-        std::vector<unsigned char> buf(1 << 18);
+        std::vector<unsigned char> buf(1 << 20);   // large reads: at 10 Msps the server sends 20 MB/s
+        statT0_ = std::chrono::steady_clock::now();
+        uint64_t winBytes = 0, totalBytes = 0;
         while (run_) {
             const long long k = sockRecv(sock_, buf.data() + (carry_ >= 0 ? 1 : 0), buf.size() - 1);
             if (k <= 0) break;   // closed, failed or stalled
             size_t n = (size_t)k;
+            winBytes += n; totalBytes += n;
             if (carry_ >= 0) { buf[0] = (unsigned char)carry_; n++; carry_ = -1; }
             if (n & 1) { carry_ = buf[n - 1]; n--; }   // half an IQ pair: kept for the next read
             convert(buf.data(), n);
+            const auto now = std::chrono::steady_clock::now();
+            if (statT0_.time_since_epoch().count() == 0) { statT0_ = now; winBytes = 0; }
+            const double sec = std::chrono::duration<double>(now - statT0_).count();
+            if (sec >= 1.0) {
+                RtlTcpThroughput t;
+                t.valid = true;
+                t.mbitPerSec = winBytes * 8.0 / sec / 1e6;
+                t.achievedHz = winBytes / 2.0 / sec;
+                t.askedHz = asked_;
+                t.bytes = totalBytes;
+                t.lostBytes = lost_ * 2;
+                publishStat(addr_, t);
+                statT0_ = now; winBytes = 0;
+            }
         }
         if (run_) {
             fprintf(stderr, "rtl_tcp: lost the connection to %s\n", addr_.c_str());
@@ -220,7 +271,8 @@ private:
     void convert(const unsigned char* b, size_t bytes) {
         const size_t n = bytes / 2;
         conv_.resize(n);
-        for (size_t i = 0; i < n; i++) conv_[i] = cf32((b[2 * i] - 127.4f) / 128.f, (b[2 * i + 1] - 127.4f) / 128.f);
+        const float* lut = u8lut().v;
+        for (size_t i = 0; i < n; i++) conv_[i] = cf32(lut[b[2 * i]], lut[b[2 * i + 1]]);
         push(conv_.data(), n);
     }
 
@@ -236,6 +288,8 @@ private:
     int carry_ = -1;
     std::chrono::steady_clock::time_point lostAt_{};
     std::atomic<uint64_t> lost_{0};
+    double asked_ = 0;   // the rate sent to the server
+    std::chrono::steady_clock::time_point statT0_{};
 };
 
 // The entry of an rtl_tcp server at host:port
@@ -258,6 +312,11 @@ DeviceInfo rtlTcpDevice(const std::string& host, int port) {
                                 "SDRplay, airspy_tcp, hackrf_tcp, SDR++'s rtl_tcp server): any rate from 0.25 to 20 Msps, the gain as set, still\n"
                                 "8-bit samples. A server that greets as another radio is taken as one by itself.",
                                 {"auto", "rtl", "other"}, {"Auto", "RTL-SDR (up to 2.56 Msps)", "Other radio (up to 20 Msps)"}, "auto"),
+                  boolSetting("anyrate", "Allow any sample rate (advanced)",
+                              "Lifts every limit on the rate asked from this server (0.1 to 40 Msps) and treats it as a radio that can take it. Your\n"
+                              "server or network may not keep up: 8-bit IQ at 10 Msps is 160 Mbit/s, more than most Wi-Fi gives (gigabit Ethernet\n"
+                              "does). Dropped samples show in the status line, with the measured speed.", false, false),
+                  customRateSetting(),
                   ppmSetting(1),
                   choiceSetting("ds", "Direct sampling (HF)",
                                 "Below 24 MHz the tuner cannot receive: the RTL2832U can sample an HF antenna on one of its inputs directly.\n"
@@ -278,6 +337,6 @@ void applyRadioOptionCaps(DeviceInfo& d, const TuneSettings& t) {
     if (d.kind == DeviceInfo::Native && d.board == "kiwisdr") { native::kiwiSdrCaps(d); return; }
     if (d.kind == DeviceInfo::Native && d.board == "sdrpp") { native::sdrppCaps(d); return; }          // its rates, gain and controls as last seen
     if (d.kind != DeviceInfo::Native || d.board != "rtltcp") return;
-    native::setCaps(d, radioOption(t, "server", "auto") == "other" || native::noted(d.nativeArgs));
+    native::setCaps(d, radioOption(t, "server", "auto") == "other" || native::noted(d.nativeArgs), radioOption(t, "anyrate", "0") == "1");
 }
 } // namespace dect2

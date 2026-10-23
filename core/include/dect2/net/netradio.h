@@ -17,6 +17,10 @@ struct NetRadio {
     bool operator==(const NetRadio& o) const { return type == o.type && host == o.host && port == o.port && remote == o.remote; }
 };
 
+// What an rtl_tcp stream measured over its last second (valid = a window completed), for the status line
+struct RtlTcpThroughput { bool valid = false; double mbitPerSec = 0, achievedHz = 0, askedHz = 0; uint64_t bytes = 0, lostBytes = 0; };
+bool rtlTcpThroughput(const std::string& addr, RtlTcpThroughput& out);   // addr = DeviceInfo::nativeArgs of the rtl_tcp radio
+
 // SoapyRemote: one radio a server offers (the keys of its enumeration, "remote:" prefix dropped)
 struct RemoteSoapyDevice { std::string driver, serial, label; };
 // The SoapySDR arguments of a SoapyRemote radio: "driver=remote,remote=tcp://host:port" plus every key=value of r.remote as "remote:key=value"
