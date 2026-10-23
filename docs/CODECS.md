@@ -295,8 +295,16 @@ for example JAERO (<https://github.com/jontio/JAERO>), work on C channels.
 
 ## AMBE variant (Iridium voice)
 
-OnAir counts Iridium voice frames but does not decode them. It hands the data off instead: **Save for iridium-toolkit** writes a
-`.bits` file. Then:
+OnAir ships no Iridium vocoder. Voice slots are grouped into calls (Iridium > Calls: time, frequency, direction, length, satellite and
+beam when a broadcast frame on that frequency named them, status) with a Listen selector and one WAV recording per call in the recordings
+folder. Sound needs a plug-in `onair-codec-iridium` (id `iridium`, ABI in `core/include/dect2/codec/speech_codec.h`) that you install
+yourself. Each call to `onair_speech_decode` gets the 39 bytes (312 bits) of the voice field exactly as received (over-the-air bit order,
+MSB first; no de-scrambling or de-interleaving by OnAir) and returns PCM. **Unverified:** this has only been tested with synthetic
+bursts and a stub plug-in, never a real Iridium recording; whether the voice field needs further de-interleaving or FEC before the vocoder
+is for the plug-in. No public description defines an "encrypted" marker, so none is shown: frames that fail their checks or that the
+plug-in refuses are listed as "not readable" and stay silent, and OnAir never decodes encrypted traffic or works on keys.
+
+Alternatively, **Save for iridium-toolkit** writes a `.bits` file. Then:
 
 1. Get iridium-toolkit: <https://github.com/muccc/iridium-toolkit>
 2. `iridium-parser.py output.bits > output.parsed`

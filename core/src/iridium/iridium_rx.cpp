@@ -70,6 +70,7 @@ struct IridiumReceiver::Impl {
     std::vector<cf32> seg;
     IridiumMsgAssembler assembler;
     IridiumIdaAssembler idaAsm;
+    IridiumVoice voice;                       // voice calls (own lock; the user's codec plug-in decodes them)
     struct Recent { double t, f; float level; };
     std::deque<Recent> recent;
 
@@ -174,6 +175,7 @@ struct IridiumReceiver::Impl {
             haveFrame = true;
         }
         if (haveFrame && burstCb) burstCb(bb, f);
+        if (haveFrame) voice.feed(bb, f);
         std::vector<IridiumPagerMessage> done;
         if (haveFrame && f.type == IridiumType::MSG) done = assembler.feed(f, bb.timeSec);
         std::vector<IridiumIdaPacket> packets;
@@ -338,6 +340,8 @@ struct IridiumReceiver::Impl {
         if (t.hasTime) t.iridiumUtc = ibcUnix + (now - ibcAt);
         t.sats.clear();
         for (const auto& kv : sats) t.sats.push_back(kv.second);
+        voice.expire(now);
+        t.calls = voice.calls();
         while (!dots.empty() && dots.front().t < now - 2.0) dots.pop_front();
         t.scatter.clear();
         const size_t from = dots.size() > 2000 ? dots.size() - 2000 : 0;
@@ -367,12 +371,14 @@ struct IridiumReceiver::Impl {
         moveLists(e, tel);
         tel.pagedTotal = tel.sbdPackets = 0;
         sats.clear(); tel.sats.clear();
+        voice.clear(); tel.calls.clear();
         tel.seq++;
     }
 
     // mu held: the satellites, ring alerts, time broadcasts, messages, positions and ACARS stay through it (clearLists): the sample clock
     // starts again, so their times move back by the time it had reached
     void clearResults() {
+        voice.closeAll();   // the sample clock starts again: the calls end here (the finished ones stay in the table until Clear)
         IridiumTelemetry t;
         t.seq = tel.seq + 1;
         moveLists(t, tel);
@@ -533,6 +539,7 @@ void IridiumReceiver::setThresholdDb(double db) {
     // the wrong place in the ring
     if (p_->rate > 0) p_->det.setThreshold(db);
 }
+IridiumVoice& IridiumReceiver::voice() { return p_->voice; }
 void IridiumReceiver::setBurstCallback(std::function<void(const IridiumBurstBits&, const IridiumFrame&)> cb) {
     std::lock_guard<std::mutex> wl(p_->wmu);
     p_->burstCb = std::move(cb);

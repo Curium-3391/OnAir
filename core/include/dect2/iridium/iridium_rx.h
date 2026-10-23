@@ -4,6 +4,7 @@
 #include "dect2/engine/mode_tuning.h"
 #include "iridium_frame.h"
 #include "iridium_tel.h"
+#include "iridium_voice.h"
 #include "dect2/common/ring.h"
 #include <functional>
 #include <memory>
@@ -46,6 +47,8 @@ public:
     void stopBitsStream();
     bool bitsStreamOpen() const;
     uint64_t bitsStreamLines() const;
+    // Voice calls (iridium_voice.h): listen selector, volume, mute, recordings. Safe from the interface thread.
+    IridiumVoice& voice();
     void setBurstCallback(std::function<void(const IridiumBurstBits&, const IridiumFrame&)> cb);
 
 private:
