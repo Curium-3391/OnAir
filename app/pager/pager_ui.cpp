@@ -339,7 +339,7 @@ void capcodeView(App& a) {
     ImGui::PushTextWrapPos(0);
     ImGui::TextDisabled("%zu addresses heard in the last %zu pages. Click an address to filter the Messages view by it.", rows.size(), messagesOf(t).size());
     if (!wide && modeSupportsWide(a.family))
-        ImGui::TextDisabled("%s", tr("Unknown frequency? Turn on \"Whole span\" on the spectrum: every pager carrier in the band the radio captures is decoded, and the MHz column shows where each capcode was heard."));
+        ImGui::TextDisabled("%s", tr("Unknown frequency? Turn on Whole span (top right of the spectrum): every pager carrier in the band the radio captures is decoded, and the MHz column shows where each capcode was heard."));
     ImGui::PopTextWrapPos();
     // the watch list (#269): capcodes to keep an eye on; their rows are marked here and the Messages view can show only them
     auto saveWatch = [] { S.watched = dect2::pagerParseWatch(S.watch); plat::prefs().setS("pagerWatch", S.watch); plat::prefs().flush(); };
