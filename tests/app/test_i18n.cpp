@@ -156,6 +156,8 @@ int main(int argc, char** argv) {
     CHECK(!std::strcmp(i18n::set("zh_CN.UTF-8"), "zh"), "zh_CN.UTF-8 -> zh");
     CHECK(!std::strcmp(i18n::set("zh-Hans-CN"), "zh"), "zh-Hans-CN -> zh");
     CHECK(!std::strcmp(i18n::set("pt-BR"), "pt") && !std::strcmp(i18n::set("ru_RU.UTF-8"), "ru") && !std::strcmp(i18n::set("it-IT"), "it"), "pt-BR -> pt, ru_RU.UTF-8 -> ru, it-IT -> it");
+    CHECK(!std::strcmp(i18n::set("pt-PT"), "pt_PT") && !std::strcmp(i18n::set("pt_PT.UTF-8"), "pt_PT") && !std::strcmp(i18n::set("pt_PT"), "pt_PT"), "pt-PT, pt_PT.UTF-8 -> pt_PT");
+    CHECK(!std::strcmp(i18n::set("pt-AO"), "pt") && !std::strcmp(i18n::set("pt"), "pt"), "other Portuguese locales -> the Brazilian catalog");
     CHECK(!std::strcmp(i18n::set("xx-YY"), "en"), "an unknown language -> en");
     i18n::set("en");
     CHECK(!std::strcmp(tr("Peak hold"), "Peak hold"), "English is the key itself");
