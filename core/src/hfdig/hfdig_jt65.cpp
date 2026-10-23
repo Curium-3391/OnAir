@@ -4,7 +4,7 @@
 // frequency and time -> a fine fit -> the 64 tone energies of every data symbol -> symbol probabilities -> Reed-Solomon decoding with
 // erasures of the least reliable symbols (several erasure counts; the Berlekamp-Massey decoder handles errors and erasures together) ->
 // the codeword closest to the received energies is taken, with a plausibility test against false decodes. (WSJT-X's Koetter-Vardy soft decoder
-// and its "deep search" are not part of this; the hard-erasure decoder is about 2 dB less sensitive.)
+// and its "deep search" are not part of this; the random erasures are drawn by reliability rank, about 0.5 dB short of WSJT-X.)
 #include "hfdig_wsjt_int.h"
 #include <algorithm>
 #include <cmath>
@@ -250,7 +250,10 @@ public:
 
     static constexpr float kMinSync = 0.7f;
     static constexpr size_t kMaxCand = 16;
-    static constexpr int kTrials = 500;
+    static double env(const char* n, double v) { const char* e = std::getenv(n); return e ? std::atof(e) : v; }   // for measuring only
+    const int kTrials = (int)env("HFDIG_JT65_TRIALS", 3000);
+    const bool kEraRank = env("HFDIG_JT65_RANK", 1) != 0;
+    const double kEraMax = env("HFDIG_JT65_EMAX", 1.0), kEraWidth = env("HFDIG_JT65_EWIDTH", 70);
 
 private:
     bool tryCandidate(const Cand& c, double t0, FtxDecode& out) {
@@ -332,14 +335,22 @@ private:
             // random erasure sets drawn by the reliabilities (the Franke-Taylor way): the least reliable symbols are erased most often
             uint64_t rs = 0x9E3779B97F4A7C15ull;
             auto rnd = [&]() { rs ^= rs << 13; rs ^= rs >> 7; rs ^= rs << 17; return ((rs >> 11) + 0.5) / 9007199254740992.0; };
+            // by rank: at weak signals every symbol's best probability is small, so the reliabilities themselves hardly differ; the rank in
+            // the reliability order is what tells (as in Franke-Taylor's tables): the least reliable is erased with probability kEraMax, falling
+            // linearly to 0 at rank kEraWidth
             for (int trial = 0; trial < kTrials; trial++) {
-                const int ne = 22 + (int)(rnd() * 15);
-                double key[63];
-                int idx[63];
-                for (int i = 0; i < 63; i++) { key[i] = -std::log(rnd()) / (1.02 - rel[i]); idx[i] = i; }
-                std::partial_sort(idx, idx + ne, idx + 63, [&](int a, int b) { return key[a] < key[b]; });
-                int era[64];
-                for (int i = 0; i < ne; i++) era[i] = idx[i];
+                int era[64], ne = 0;
+                if (kEraRank) {
+                    for (int r = 0; r < 63 && ne < 50; r++)
+                        if (r < kEraWidth && rnd() < kEraMax * (1.0 - (double)r / kEraWidth)) era[ne++] = order[r];
+                } else {
+                    ne = 22 + (int)(rnd() * 15);
+                    double key[63];
+                    int idx[63];
+                    for (int i = 0; i < 63; i++) { key[i] = -std::log(rnd()) / (1.02 - rel[i]); idx[i] = i; }
+                    std::partial_sort(idx, idx + ne, idx + 63, [&](int a, int b) { return key[a] < key[b]; });
+                    for (int i = 0; i < ne; i++) era[i] = idx[i];
+                }
                 attempt(ne, era);
             }
         }

@@ -289,6 +289,7 @@ static const bool kFtxCoherent = envOr("HFDIG_FTX_COH", 1) != 0;
 static const bool kFtxOsd = envOr("HFDIG_FTX_OSD", 1) != 0;
 static const float kSyncMin = (float)envOr("HFDIG_FTX_SYNCMIN", 1.45);
 static const double kCandMul = envOr("HFDIG_FTX_CANDMUL", 1);
+static const long kWsprFanoLimit = (long)envOr("HFDIG_WSPR_FANO", 20000.0 * 81);
 static const bool kFtxApCq = envOr("HFDIG_FTX_APCQ", 1) != 0;
 static const bool kOsdDebug = envOr("HFDIG_FTX_OSDDBG", 0) != 0;
 static const int kOsdPairs = (int)envOr("HFDIG_FTX_OSDPAIRS", 40);
@@ -697,7 +698,7 @@ private:
             }
             wsprDeinterleave(llr, dl);
             uint8_t data[7];
-            if (!wsprFano(dl, data, 20000L * 81)) return false;
+            if (!wsprFano(dl, data, kWsprFanoLimit)) return false;
             int dbm = -1;
             const std::string msg = wsprUnpack(data, wsprHash_, &dbm);
             if (msg.empty()) return false;

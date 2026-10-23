@@ -129,6 +129,31 @@ int main() {
         uint8_t back[7];
         CHECK(wsprFano(dl, back, 100000) && !memcmp(back, d, 7), "Fano failed on %s", m);
     }
+    // the calling station and grid shown in the decode list
+    {
+        struct { const char* m; const char* call; const char* grid; } cg[] = {
+            {"CQ K1ABC FN42", "K1ABC", "FN42"}, {"CQ DX K1ABC FN42", "K1ABC", "FN42"}, {"W9XYZ K1ABC R FN42", "K1ABC", "FN42"},
+            {"W9XYZ K1ABC -12", "K1ABC", ""}, {"K1ABC RR73; W9XYZ <KH1/KH7Z> -08", "KH1/KH7Z", ""}, {"K1ABC RR73; W9XYZ <...> -08", "", ""}};
+        for (const auto& c : cg) {
+            std::string call, grid;
+            callAndGrid(c.m, call, grid);
+            CHECK(call == c.call && grid == c.grid, "\"%s\": call \"%s\" grid \"%s\"", c.m, call.c_str(), grid.c_str());
+        }
+    }
+    // ordered statistics: a codeword with a dozen weak wrong bits, too many for belief propagation alone in this test, comes back
+    {
+        uint8_t b77[77], cw[kN], got[kN];
+        pack77("K1ABC W9XYZ -12", b77);
+        encode174(b77, cw);
+        float llr[kN];
+        uint32_t s2 = 99;
+        auto r2 = [&]() { s2 = s2 * 1664525u + 1013904223u; return (s2 >> 8) / 16777216.0; };
+        for (int i = 0; i < kN; i++) llr[i] = (cw[i] ? 1.f : -1.f) * (float)(0.3 + 2.5 * r2());
+        for (int e = 0; e < 14; e++) { const int i = (e * 53 + 11) % kN; llr[i] = (cw[i] ? -1.f : 1.f) * 0.2f; }
+        OsdStats st;
+        CHECK(osdDecode(llr, 40, got, &st) && !memcmp(got, cw, kN), "OSD did not recover the codeword (hard errors %d)", st.hardErrors);
+        CHECK(st.hardErrors == 14, "OSD hard errors %d, wanted 14", st.hardErrors);
+    }
     printf("%s\n", fails ? "FAILED" : "all passed");
     return fails ? 1 : 0;
 }

@@ -470,11 +470,15 @@ std::string unpack77(const uint8_t* b, CallHash* hash) {
 void callAndGrid(const std::string& msg, std::string& call, std::string& grid) {
     call.clear(); grid.clear();
     std::vector<std::string> t = split(msg);
-    if (t.empty() || msg.find(';') != std::string::npos) return;
     auto bare = [](std::string s) {
         if (s.size() > 2 && s.front() == '<' && s.back() == '>') s = s.substr(1, s.size() - 2);
         return s == "..." ? std::string() : s;
     };
+    if (t.empty()) return;
+    if (msg.find(';') != std::string::npos) {   // DXpedition "K1ABC RR73; W9XYZ <KH1/KH7Z> -08": the fox sends it
+        if (t.size() == 5 && t[1] == "RR73;") call = bare(t[3]);
+        return;
+    }
     auto isGrid = [](const std::string& g) {
         if (g == "RR73") return false;
         if (isGrid4(g)) return true;
