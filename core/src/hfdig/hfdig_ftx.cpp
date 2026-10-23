@@ -290,6 +290,9 @@ static const bool kFtxOsd = envOr("HFDIG_FTX_OSD", 1) != 0;
 static const float kSyncMin = (float)envOr("HFDIG_FTX_SYNCMIN", 1.45);
 static const double kCandMul = envOr("HFDIG_FTX_CANDMUL", 1);
 static const long kWsprFanoLimit = (long)envOr("HFDIG_WSPR_FANO", 20000.0 * 81);
+static const int kFtxNudges = (int)envOr("HFDIG_FTX_NUDGES", 5);
+static const double kFtxNudgeStep = envOr("HFDIG_FTX_NUDGESTEP", 1.0 / 48);
+static const bool kOsdNudged = envOr("HFDIG_FTX_OSDNUDGE", 0) != 0;
 static const bool kFtxApCq = envOr("HFDIG_FTX_APCQ", 1) != 0;
 static const bool kOsdDebug = envOr("HFDIG_FTX_OSDDBG", 0) != 0;
 static const int kOsdPairs = (int)envOr("HFDIG_FTX_OSDPAIRS", 40);
@@ -389,7 +392,15 @@ public:
                         FtxDecode d;
                         std::vector<int> tones;
                         double f0, start;
-                        if (!tryCandidate(c, mir != 0, d, tones, f0, start)) continue;
+                        bool ok = false;
+                        // deep stage: the fitted frequency first, then nudged by fractions of the spacing (the sync fit is noisy at the
+                        // threshold, and the two- to four-symbol metrics lose much to a small frequency error)
+                        for (int k = 0; k < (deep_ && L_.nt == 4 ? kFtxNudges : 1) && !ok; k++) {   // FT4 / FT2: 16 sync symbols only
+                            nudge_ = k == 0 ? 0.0 : ((k + 1) / 2) * kFtxNudgeStep * (k % 2 ? 1 : -1);
+                            ok = tryCandidate(c, mir != 0, d, tones, f0, start);
+                        }
+                        nudge_ = 0;
+                        if (!ok) continue;
                         bool same = seen.count(d.msg) > 0;
                         for (const auto& o : out)   // the rest of a signal already decoded (its subtraction is not perfect)
                             same |= o.mirrored == d.mirrored && std::fabs(o.hz - d.hz) < 1.5 * L_.sp && std::fabs(o.dt - d.dt) < 2 * spec(j_.mode).symSec;
@@ -417,7 +428,8 @@ public:
 
 private:
     struct Cand { int frame; int bin; float score; };
-    bool deep_ = false;   // the second stage: the coherent metrics, OSD and a-priori decoding
+    bool deep_ = false;
+    double nudge_ = 0;    // frequency offset of a deep retry, in tone spacings   // the second stage: the coherent metrics, OSD and a-priori decoding
     bool nearDecoded(const Cand& c, bool mir, const std::vector<FtxDecode>& out) const {
         const double hz = c.bin * binHz_, dt = j_.x0 + (double)c.frame * (L_.nsps / 4) / L_.rate - spec(j_.mode).t0;
         for (const auto& o : out)
@@ -645,6 +657,7 @@ private:
                 if (den < 0) dfr += 0.5 * (mm[0] - mm[2]) / den * L_.sp / 32.0;
             }
         }
+        dfr += nudge_ * L_.sp;   // the deep stage's retries a little off the fitted frequency (the coherent metrics need it close)
         std::vector<cd> w;
         twiddles(base, dfr, nspsb, fsb, w);
         double tfrac = 0;
@@ -760,7 +773,7 @@ private:
             if (!got && !kFtxCoherent) { std::copy(llr, llr + kN, llrC[0]); std::copy(llr, llr + kN, llrC[1]); }
             const float* sets[3] = {llr, llrC[0], llrC[1]};
             // ordered statistics on the strongest candidates only
-            if (!got && kFtxOsd && c.score >= kOsdMinScore)
+            if (!got && kFtxOsd && c.score >= kOsdMinScore && (nudge_ == 0 || kOsdNudged))   // AP (below) only at the fitted frequency: each try is a chance of a false decode
                 for (int q = 0; q < 3 && !got; q++) {
                     OsdStats os;
                     const bool crc = osdDecode(sets[q], kOsdPairs, cw, &os);
@@ -768,7 +781,7 @@ private:
                     got = viaOsd = crc && os.dist <= kOsdMaxDist && os.margin >= kOsdMinMargin && plausible(cw, false);
                 }
             // a-priori decoding (WSJT-X's AP type 1, "CQ ??? ???"): the 29 bits of CQ and the message type taken as known; needs nobody's call
-            if (!got && kFtxApCq) {
+            if (!got && kFtxApCq && nudge_ == 0) {
                 static const std::array<uint8_t, 77> cqBits = [] { std::array<uint8_t, 77> b{}; pack77("CQ K1ABC FN42", b.data()); return b; }();
                 for (int q = 0; q < 3 && !got; q++) {
                     float a[kN];
