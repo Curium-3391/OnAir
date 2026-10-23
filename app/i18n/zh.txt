@@ -1,119 +1,120 @@
 # OnAir interface in Simplified Chinese. One text per line: the English text as in the source, a tab, the translation.
 # \n is a line break. Keep the printf conversions (%s, %d, %.1f ...) in the same order. tests/app/test_i18n.cpp checks this file.
+# Some entries are machine translations that no native speaker has reviewed yet: they are listed in unreviewed/zh.txt. Corrections are welcome.
 #  menus, status words, common buttons
 %.1f dB	%.1f dB
 %s  #%d  %.3f MHz%s	%s  #%d  %.3f MHz%s
 %s  %.4f MHz  %s%s%s%s  %.1f dB  %s	%s  %.4f MHz  %s%s%s%s  %.1f dB  %s
 -	-
-1 kHz test tone	1 kHz test tone
+1 kHz test tone	1 kHz 测试音
 8 MHz	8 MHz
-A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.
-A SAME header. ZCZC- is added when missing.	A SAME header. ZCZC- is added when missing.
-Aircraft registration	Aircraft registration
-An RS41 with this serial. Empty: the demo sondes.	An RS41 with this serial. Empty: the demo sondes.
-Are you sure? This clears all previous data and cannot be undone.	Are you sure? This clears all previous data and cannot be undone.
-ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.
-Audio file	Audio file
-Audio input	Audio input
-AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI frame. Empty: the demo CubeSat cycle.
-Baud	Baud
-Browse…	Browse…
-Callsign / my ID	Callsign / my ID
+A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	P6 PPM 文件将作为图片发送；其他文件或空文件使用测试图片。呼号会叠加在图片上。
+A SAME header. ZCZC- is added when missing.	SAME 报头。缺少时会自动添加 ZCZC-。
+Aircraft registration	飞机注册号
+An RS41 with this serial. Empty: the demo sondes.	具有此序列号的 RS41。留空：演示探空仪。
+Are you sure? This clears all previous data and cannot be undone.	确定吗？这将清除所有先前的数据，且无法撤销。
+ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 使用 ROUTE / fMP4 演示；自定义 MPEG-TS 不是载荷路径。
+Audio file	音频文件
+Audio input	音频输入
+AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI 帧。留空：演示 CubeSat 循环。
+Baud	波特率
+Browse…	浏览…
+Callsign / my ID	呼号 / 我的 ID
 Capcode	Capcode
-Carrier tune	Carrier tune
-Clear all	Clear all
-Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.
-Code rate / MODCOD index	Code rate / MODCOD index
-Colour code	Colour code
-Comment	Comment
+Carrier tune	载波调谐
+Clear all	全部清除
+Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	清除所有先前的数据：每个已打开接收机上所有模式的解码列表（飞机、船舶、消息、图片等）。磁盘上的已保存副本也会被清空。
+Code rate / MODCOD index	码率 / MODCOD 索引
+Colour code	色码
+Comment	备注
 CQ	CQ
-D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC test scene (custom video is not wired into this analogue generator).
-DATV (DVB-S/S2 file)	DATV (DVB-S/S2 file)
-Default input	Default input
-Destination	Destination
-Destination / ID	Destination / ID
-Destination ID	Destination ID
-Device ID	Device ID
+D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC 测试画面（自定义视频未接入此模拟发生器）。
+DATV (DVB-S/S2 file)	DATV（DVB-S/S2 文件）
+Default input	默认输入
+Destination	目的地
+Destination / ID	目的地 / ID
+Destination ID	目的地 ID
+Device ID	设备 ID
 Dial frequency the decoder should assume (the sound card is not tuned)	解码器应假定的刻度频率（声卡不会调谐）
-DVB standard	DVB standard
-Empty: the demo 802.15.4 scene.	Empty: the demo 802.15.4 scene.
-Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.
-Empty: the demo LoRa / mesh scene.	Empty: the demo LoRa / mesh scene.
-Empty: the demo Mode S uplink scene.	Empty: the demo Mode S uplink scene.
-Empty: the demo VDES scene.	Empty: the demo VDES scene.
+DVB standard	DVB 标准
+Empty: the demo 802.15.4 scene.	留空：演示 802.15.4 场景。
+Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	留空：演示 FLARM 场景。此 ID 不会被打包进未公开的新版协议。
+Empty: the demo LoRa / mesh scene.	留空：演示 LoRa / mesh 场景。
+Empty: the demo Mode S uplink scene.	留空：演示 Mode S 上行场景。
+Empty: the demo VDES scene.	留空：演示 VDES 场景。
 File	文件
-File to send	File to send
-Free text	Free text
+File to send	要发送的文件
+Free text	自由文本
 Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)	增益控制只对电台有效（不用于录音、声卡或合成信号）
 I/Q stereo	I/Q 立体声
-ICAO address	ICAO address
-Image (PNG / PPM)	Image (PNG / PPM)
-Image (PPM)	Image (PPM)
-Input device	Input device
-Latitude	Latitude
-libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.
-libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.
-Live voice is encoded with Codec 2 (FreeDV).	Live voice is encoded with Codec 2 (FreeDV).
-Live voice is encoded with Codec 2 (libcodec2).	Live voice is encoded with Codec 2 (libcodec2).
-Longitude	Longitude
-Look for Red Pitaya boards on this computer's networks again	Look for Red Pitaya boards on this computer's networks again
+ICAO address	ICAO 地址
+Image (PNG / PPM)	图像 (PNG / PPM)
+Image (PPM)	图像 (PPM)
+Input device	输入设备
+Latitude	纬度
+libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 未加载：实时编码已关闭。仍可发送 1 kHz 音调、静音或 WAV/MP3。
+libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 未加载：实时编码已关闭。目的地呼号仍会发送；语音比特为已知测试图案。仍可改为以模拟 NFM 发送 1 kHz 音调、静音或 WAV/MP3。
+Live voice is encoded with Codec 2 (FreeDV).	实时语音使用 Codec 2 (FreeDV) 编码。
+Live voice is encoded with Codec 2 (libcodec2).	实时语音使用 Codec 2 (libcodec2) 编码。
+Longitude	经度
+Look for Red Pitaya boards on this computer's networks again	重新查找本机网络上的 Red Pitaya 板
 LSB audio	LSB 音频
-Message	Message
+Message	消息
 MHz	MHz
-Mic level	Mic level
-Microphone	Microphone
+Mic level	麦克风电平
+Microphone	麦克风
 MMSI	MMSI
 Mode	模式
-Morse identification, up to four letters.	Morse identification, up to four letters.
-NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.
-No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.	No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.
-PAN / short address	PAN / short address
-Path	Path
-Payload text	Payload text
-Power (dBm)	Power (dBm)
-Pre-emphasis	Pre-emphasis
-PSK variant	PSK variant
-QO-100 path	QO-100 path
-Radio ID	Radio ID
-Radio text (RT)	Radio text (RT)
+Morse identification, up to four letters.	摩尔斯识别码，最多四个字母。
+NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX 发送文本（缺少时会添加 ZCZC / NNNN）。DSC（选择该业务时）使用 MMSI。
+No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.	本机网络上没有 Red Pitaya 应答（其 SDR 收发器应用是否在运行？）：请输入其地址。
+PAN / short address	PAN / 短地址
+Path	路径
+Payload text	载荷文本
+Power (dBm)	功率 (dBm)
+Pre-emphasis	预加重
+PSK variant	PSK 变体
+QO-100 path	QO-100 路径
+Radio ID	无线电 ID
+Radio text (RT)	无线电文本 (RT)
 RDS PI	RDS PI
-Receiver-style options (demo signal)	Receiver-style options (demo signal)
-Report	Report
-Reverse (mark is the upper tone)	Reverse (mark is the upper tone)
+Receiver-style options (demo signal)	接收机式选项（演示信号）
+Report	报告
+Reverse (mark is the upper tone)	反转（标记音为高音）
 RFPI	RFPI
-RFPI of the base station.	RFPI of the base station.
-Roll-off	Roll-off
-Satellite standard	Satellite standard
-searching for Red Pitaya boards…	searching for Red Pitaya boards…
-Send analog NFM of the audio instead of the digital test pattern	Send analog NFM of the audio instead of the digital test pattern
-Send analog NFM of the microphone or a file instead of the test scene	Send analog NFM of the microphone or a file instead of the test scene
-Serial / ID	Serial / ID
-Shift	Shift
-Sideband	Sideband
-Silence	Silence
+RFPI of the base station.	基站的 RFPI。
+Roll-off	滚降
+Satellite standard	卫星标准
+searching for Red Pitaya boards…	正在查找 Red Pitaya 板…
+Send analog NFM of the audio instead of the digital test pattern	发送音频的模拟 NFM，而不是数字测试图案
+Send analog NFM of the microphone or a file instead of the test scene	发送麦克风或文件的模拟 NFM，而不是测试场景
+Serial / ID	序列号 / ID
+Shift	频移
+Sideband	边带
+Silence	静音
 sound card	声卡
-SSB (microphone)	SSB (microphone)
-SSTV mode	SSTV mode
-Station name (PS)	Station name (PS)
-Symbol rate (Hz)	Symbol rate (Hz)
-Talkgroup	Talkgroup
-test DJI DroneID scene (custom serial is not packed)	test DJI DroneID scene (custom serial is not packed)
-test downlink scene (this generator does not take a custom message)	test downlink scene (this generator does not take a custom message)
-test LRPT/HRIT scene (custom image not wired)	test LRPT/HRIT scene (custom image not wired)
-test NCDXF-style beacon scene	test NCDXF-style beacon scene
-test weather-fax chart (custom image not wired)	test weather-fax chart (custom image not wired)
-TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Text	Text
+SSB (microphone)	SSB（麦克风）
+SSTV mode	SSTV 模式
+Station name (PS)	电台名称 (PS)
+Symbol rate (Hz)	符号率 (Hz)
+Talkgroup	通话组
+test DJI DroneID scene (custom serial is not packed)	测试 DJI DroneID 场景（不打包自定义序列号）
+test downlink scene (this generator does not take a custom message)	测试下行场景（此发生器不接受自定义消息）
+test LRPT/HRIT scene (custom image not wired)	测试 LRPT/HRIT 场景（自定义图像未接入）
+test NCDXF-style beacon scene	测试 NCDXF 式信标场景
+test weather-fax chart (custom image not wired)	测试传真气象图（自定义图像未接入）
+TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	此处不编码 TETRA ACELP。显示色码和 ID；发送下行测试图案。也可改为以模拟 NFM 发送 1 kHz 音调、静音或 WAV/MP3。
+Text	文本
 The capture rate of the sound card. The engine runs at this rate; there is no radio to tune.	声卡的采集速率。引擎按该速率运行；没有可调谐的电台。
-The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.
-The microphone starts only when you press START TRANSMITTING.	The microphone starts only when you press START TRANSMITTING.
-The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.
-this mode has no transmit generator	this mode has no transmit generator
-This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Timeslot	Timeslot
+The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	文件字节将以此呼号作为 HamDRM 对象发送。空文件：测试图片。
+The microphone starts only when you press START TRANSMITTING.	只有按下 START TRANSMITTING 后麦克风才会启动。
+The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	注册号和自由文本将作为 H1 / ACARS 下行发送。留空：演示流量。
+this mode has no transmit generator	此模式没有发射发生器
+This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	此声码器无法编码：OnAir 仅加载 mbelib 用于解码 (AMBE/IMBE)。目的地 ID / 通话组 / 色码仍会发送；语音比特为测试图案。也可改为以模拟 NFM 发送 1 kHz 音调、静音或 WAV/MP3。
+Timeslot	时隙
 To	To
 USB audio	USB 音频
-Vessel name	Vessel name
+Vessel name	船名
 View	视图
 Help	帮助
 Language	语言
@@ -136,14 +137,14 @@ searching	正在搜索
 syncing	正在同步
 locked	已锁定
 Locked	已锁定
-Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.
-Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.
-WAV / MP3 file	WAV / MP3 file
+Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	警告：ADS-B 会模拟飞机。只能发送到假负载或屏蔽环境中，切勿接到天线。
+Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	警告：AIS 会模拟船舶。只能发送到假负载或屏蔽环境中，切勿接到天线：虚假船舶可能干扰真实接收机，这有安全风险，且在大多数地方违法。
+WAV / MP3 file	WAV / MP3 文件
 weak	弱
 stereo	立体声
 mono	单声道
 radio disconnected	无线电设备已断开
-What to send	What to send
+What to send	发送内容
 WPM	WPM
 yes	是
 no lock	未锁定
@@ -610,7 +611,7 @@ Include beta versions	包括测试版
 Check now	立即检查
 Not checked yet.	尚未检查。
 Asking GitHub for the newest version…	正在向 GitHub 查询最新版本…
-Yes, clear all	Yes, clear all
+Yes, clear all	是，全部清除
 You have the newest version.	已是最新版本。
 Version %s is available%s.	版本 %s 已发布%s。
  (beta)	（测试版）
@@ -1043,8 +1044,8 @@ GNSS NMEA RMC/GGA (UDP)	GNSS NMEA RMC/GGA（UDP）
 Bluetooth LE advertisements, JSON (UDP)	蓝牙 LE 广播，JSON（UDP）
 LoRa / LoRaWAN / Meshtastic, JSON (UDP)	LoRa / LoRaWAN / Meshtastic，JSON（UDP）
 JSON lines (one object a line) unless GNSS, which is NMEA. Off until you turn a feed on. Only modes that already have structured messages are sent.	JSON 行（每行一个对象）；GNSS 除外，用 NMEA。默认关闭，直到打开某个输出。只发送已有结构化消息的模式。
-Support	Support
-Support OnAir on Ko-fi	Support OnAir on Ko-fi
+Support	支持
+Support OnAir on Ko-fi	在 Ko-fi 上支持 OnAir
 Documentation	文档
 Troubleshooting	故障排除
 Website	网站
@@ -1203,14 +1204,14 @@ test (no RF)	测试(无射频)
 the limiter is working: %.2f%% of samples (lower the level)	限幅器正在工作:%.2f%% 的采样(请降低电平)
 25 kHz	25 kHz
 12.5 kHz	12.5 kHz
-Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Call letters	Call letters
-RDS standard	RDS standard
-Auto (RBDS on odd tenths)	Auto (RBDS on odd tenths)
-RDS (Europe)	RDS (Europe)
-RBDS (US)	RBDS (US)
-RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	接收滤波器宽度。12.5 kHz 对相邻信道的抑制更好，但要求信号位于信道中心；25 kHz 更宽，容错更高。
+Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	接收滤波器宽度。12.5 kHz 对相邻信道的抑制更好（通常最适合 APRS），但要求信号位于信道中心；25 kHz 更宽，容错更高。
+Call letters	呼号字母
+RDS standard	RDS 标准
+Auto (RBDS on odd tenths)	自动（奇数十分位用 RBDS）
+RDS (Europe)	RDS（欧洲）
+RBDS (US)	RBDS（美国）
+RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS 与美国 RBDS 共用数据，但节目类型的命名不同，且 RBDS 电台会发送呼号字母。自动模式在美国信道栅格（87.9、88.1 ... 107.9 MHz）上使用 RBDS；欧洲在这些信道上也有电台，因此在欧洲请选择 RDS（欧洲）。
 Real (mono)	实数（单声道）
 Left	左
 Right	右
@@ -1252,83 +1253,83 @@ Keyboard	键盘
 Re-sync	重新同步
 Drop the lock and search for the CDR signal again without stopping the radio.\nUse it when the sound stays silent after the signal faded.	丢弃当前锁定并重新搜索CDR信号，无需停止收音机。\n信号衰落后声音一直无声时使用。
 #  memories (English until translated)
-"%s" is stored on this frequency and mode already.	"%s" is stored on this frequency and mode already.
-%zu memories	%zu memories
-(frequency only)	(frequency only)
-(no name)	(no name)
-(nothing stored or used yet)	(nothing stored or used yet)
-0 keeps the mode's own rate (Auto)	0 keeps the mode's own rate (Auto)
-Add another	Add another
-Back to my list	Back to my list
-Bandwidth	Bandwidth
-Bandwidth (kHz)	Bandwidth (kHz)
-Click a heading of the table to sort by it too	Click a heading of the table to sort by it too
-Colour	Colour
-Could not apply this memory.	Could not apply this memory.
-Delete	Delete
-Edit...	Edit...
-Enter a frequency.	Enter a frequency.
-Export JSON...	Export JSON...
-Exported to 	Exported to 
-Favourite	Favourite
-Frequency only	Frequency only
-Group	Group
-Groups	Groups
-Import failed: 	Import failed: 
-Import...	Import...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Imported %zu memories, %zu skipped (duplicates or lines without a frequency).
-Include in the memory scan	Include in the memory scan
-Informative: the channel width at the time. The mode's own width options are in the options below.	Informative: the channel width at the time. The mode's own width options are in the options below.
-Keep the gains	Keep the gains
-Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.
-Last used	Last used
-Manual order	Manual order
-Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Memories: the frequencies you keep, with mode and settings (Ctrl+M)
-Memory	Memory
-Memory panel...	Memory panel...
-Memory...	Memory...
-No group	No group
-No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.
-Notes	Notes
-Options	Options
+"%s" is stored on this frequency and mode already.	"%s" 已存储在此频率和模式上。
+%zu memories	%zu 个存储
+(frequency only)	（仅频率）
+(no name)	（无名称）
+(nothing stored or used yet)	（尚未存储或使用任何内容）
+0 keeps the mode's own rate (Auto)	0 表示使用该模式自身的速率（自动）
+Add another	再添加一个
+Back to my list	返回我的列表
+Bandwidth	带宽
+Bandwidth (kHz)	带宽 (kHz)
+Click a heading of the table to sort by it too	点击表头也可按其排序
+Colour	颜色
+Could not apply this memory.	无法应用此存储。
+Delete	删除
+Edit...	编辑...
+Enter a frequency.	请输入频率。
+Export JSON...	导出 JSON...
+Exported to 	已导出到
+Favourite	收藏
+Frequency only	仅频率
+Group	分组
+Groups	分组
+Import failed: 	导入失败：
+Import...	导入...
+Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	已导入 %zu 个存储，跳过 %zu 个（重复或没有频率的行）。
+Include in the memory scan	纳入存储扫描
+Informative: the channel width at the time. The mode's own width options are in the options below.	仅供参考：当时的信道宽度。该模式自身的宽度选项在下方选项中。
+Keep the gains	保持增益
+Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	保留此接收机的频率、模式、采样率、增益和该模式的选项。若模式报告了电台名称，则名称即为电台名。
+Last used	最近使用
+Manual order	手动排序
+Memories: the frequencies you keep, with mode and settings (Ctrl+M)	存储：你保留的频率，含模式和设置 (Ctrl+M)
+Memory	存储
+Memory panel...	存储面板...
+Memory...	存储...
+No group	无分组
+No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	还没有存储。调谐到想保留的频率后点击“存储当前”，或导入列表。
+Notes	备注
+Options	选项
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.
-Recall	Recall
-Recall frequency only	Recall frequency only
-Sample rate (kHz)	Sample rate (kHz)
-Save	Save
-Scan memories	Scan memories
-Search name, tag, mode, frequency (162.4)	Search name, tag, mode, frequency (162.4)
-Show Memory as a tab	Show Memory as a tab
-Stars only	Stars only
-Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.
-Store current	Store current
-Store current...	Store current...
-Tags	Tags
-The list is the memories flagged for scan (Memory panel).	The list is the memories flagged for scan (Memory panel).
-The memory bank is full.	The memory bank is full.
-The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).
-The receiver Store current and Recall work on	The receiver Store current and Recall work on
-This receiver	This receiver
-Tunes to the frequency and keeps the mode as it is	Tunes to the frequency and keeps the mode as it is
-Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.
-Undo delete	Undo delete
-Update it	Update it
-Words separated by commas; the search finds them.	Words separated by commas; the search finds them.
-stored with: %s	stored with: %s
-Edit memory	Edit memory
-Click to make this a favourite	Click to make this a favourite
-Favourite: kept at the top. Click to remove	Favourite: kept at the top. Click to remove
+Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	读取存储的 CSV 或 JSON 文件、由“频率,名称”行（MHz）组成的纯列表，或 SDR++ Frequency Manager 导出文件。同一频率和模式上已有的存储会被跳过。
+Recall	调用
+Recall frequency only	仅调用频率
+Sample rate (kHz)	采样率 (kHz)
+Save	保存
+Scan memories	扫描存储
+Search name, tag, mode, frequency (162.4)	搜索名称、标签、模式、频率 (162.4)
+Show Memory as a tab	将存储显示为标签页
+Stars only	仅星标
+Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	用扫描器逐个扫描标记为“纳入存储扫描”的存储：调谐到每一个、切换模式、监听其驻留时间，当接收机报告有信号或锁定时停止。没有模式的存储会被略过。
+Store current	存储当前
+Store current...	存储当前...
+Tags	标签
+The list is the memories flagged for scan (Memory panel).	该列表是标记为扫描的存储（存储面板）。
+The memory bank is full.	存储库已满。
+The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	该模式的设置，每行一个 key=value（解调器、去加重、宽度等）。
+The receiver Store current and Recall work on	“存储当前”和“调用”所作用的接收机
+This receiver	此接收机
+Tunes to the frequency and keeps the mode as it is	调谐到该频率并保持当前模式
+Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	调谐到该频率，切换到已存储的模式并应用其选项和增益。双击一行效果相同。模式变化时，正在运行的接收机会重启。
+Undo delete	撤销删除
+Update it	更新
+Words separated by commas; the search finds them.	用逗号分隔的词；搜索会查找它们。
+stored with: %s	已存储于：%s
+Edit memory	编辑存储
+Click to make this a favourite	点击设为收藏
+Favourite: kept at the top. Click to remove	收藏：置顶保留。点击取消
 Ham It Down: 1500 MHz down-converter for about 1.5 to 3 GHz (2.4 GHz, 2.3/3.4 GHz). Connect it between the antenna and the radio; the radio sees RF - 1500 MHz. Below 1500 MHz is not supported.	Ham It Down: 1500 MHz 下变频器,适用于约 1.5 至 3 GHz (2.4 GHz、2.3/3.4 GHz)。接在天线和电台之间;电台看到的是 RF - 1500 MHz。低于 1500 MHz 不支持。
 Contrast	对比度
-Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)
-Credits and licences	Credits and licences
-OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.
-Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.
-Project	Project
-Author	Author
-Licence	Licence
-Used for	Used for
+Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	小于 1 提升弱信号，大于 1 压暗噪声（双击：1）
+Credits and licences	致谢与许可证
+OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir 是自由软件，采用 GNU 通用公共许可证 v3 或更高版本。它建立在下列人员和项目的成果之上；谢谢你们。
+Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	点击链接可在浏览器中打开。完整声明和开放的许可证事项见 THIRD_PARTY.md。
+Project	项目
+Author	作者
+Licence	许可证
+Used for	用于
 Update source	更新来源
 Automatic: GitHub	自动：GitHub
 GitHub only	仅 GitHub
@@ -1343,11 +1344,11 @@ Noise remover (neural)##gennr	降噪（神经网络）##gennr
 Mix of cleaned and original audio: right removes more noise, left keeps more of the original. Adds about 20 ms of delay.	净化音频与原声的混合：向右去除更多噪声，向左保留更多原声。会增加约 20 毫秒延迟。
 Speech only; do not use on music or data modes.	仅用于语音；请勿用于音乐或数据模式。
 Noise remover (neural)##airnr	降噪（神经网络）##airnr
-Photo / info	Photo / info
-No identifier to look up	No identifier to look up
-Opens %s in your browser (nothing is loaded until you click)	Opens %s in your browser (nothing is loaded until you click)
-Pictures and details in a public database: opens your browser	Pictures and details in a public database: opens your browser
-Preferred site	Preferred site
+Photo / info	照片 / 信息
+No identifier to look up	没有可查询的标识符
+Opens %s in your browser (nothing is loaded until you click)	在浏览器中打开 %s（点击前不会加载任何内容）
+Pictures and details in a public database: opens your browser	公共数据库中的图片和详细信息：在浏览器中打开
+Preferred site	首选站点
 Sunday	星期日
 Monday	星期一
 Tuesday	星期二
@@ -1356,7 +1357,7 @@ Thursday	星期四
 Friday	星期五
 Saturday	星期六
 Your radio cannot tune 225 kHz.	您的电台无法调谐到 225 kHz。
-Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.
+Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	长波需要 SDRplay、Airspy HF+、处于直接采样模式的 RTL-SDR，或者在起始频率为几 MHz 的电台前加装上变频器（在电台设置中设置），并配备长线或铁氧体棒天线。也可播放电台音频的 BFO 录音：在“接收机”标签页中勾选“音频”，而不是 IQ。
 time decoded, two packets agree	已解码时间，两个数据包一致
 time decoded (one packet)	已解码时间（一个数据包）
 carrier found, waiting for a time packet	已找到载波，等待时间数据包
@@ -1375,19 +1376,19 @@ transmitter	发射机
 computer clock	计算机时钟
 ahead	超前
 behind	落后
-The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.
+The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	每个时间包开始时的计算机时钟，减去包内时间戳和路径延迟，对最近若干个包取平均。其中包含电台的缓冲（取最早到达的）。该业务的帧时序来自其说明 (GUM, v1.0)，尚未与已知时钟的信号核对：仅作参考。
 nothing to compare (a recording)	无可比较（录音文件）
 once the time is decoded	解码时间后
 path	路径
-; set your position in ADS-B (Receiver position) for the right delay	; set your position in ADS-B (Receiver position) for the right delay
+; set your position in ADS-B (Receiver position) for the right delay	；请在 ADS-B（接收机位置）中设置你的位置以获得正确的延迟
 clock offset	时钟偏差
 level	电平
 start the receiver to see the signal	启动接收机以查看信号
 carrier	载波
 phase of the carrier	载波相位
-The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.
+The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	载波相位的最近两秒，每 8 ms 一个点，最新的最亮。该业务在相隔 36 度的两个状态之间键控相位（50 bit/s）；干净的信号呈现两个紧密的簇。
 signal at the bit slicer	位判决器处的信号
-The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.
+The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	每个 20 ms 比特上的相位变化：±1 的步进表示改变键控状态的比特，0 表示不改变；判决器在一半处判决（虚线）。最近两秒。
 Computer UTC	计算机 UTC
 Frame	帧
 Result	结果
@@ -1395,13 +1396,13 @@ no frame yet: a time packet comes every few slots of the minute frame	尚无帧�
 , audio recording	，音频录音
 Recording of the radio's audio	电台音频录音
 Audio, not IQ	音频，非 IQ
-The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.
+The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	该文件是接收机音频 (SSB / CW) 的录音，调谐在 225 kHz 稍偏处，因此载波是一个音调（左声道为音频、右声道为静音的 WAV；单声道 WAV：eczastool rx 可直接读取）。不适用于 IQ 文件或电台。
 carrier tone Hz	载波音调 Hz
-The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).
-Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).
+The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	录音中载波的音高：电台刻度为 224 kHz（上边带）时为 1000 Hz。
+Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	未使用：帧的 Reed-Solomon 字节（校验字节错误的帧会被丢弃，不会被修复）。
 Carrier	载波
 Sync	同步
-The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).
+The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	测试信号每 12 秒携带一次计算机时间的时间包：时钟偏差应保持接近零（模拟器自身的缓冲会体现在其中）。
 LW time service, Poland	长波授时服务（波兰）
 Predict positions	预测位置
 Fills the gaps between position reports: the aircraft moves smoothly and, when messages stop, is dead-reckoned along its track (and along the route when a message named the destination). Predicted positions are drawn as a ghost with a dashed ring.	填补位置报告之间的空白:飞机平滑移动,消息中断后沿航迹(若消息给出了目的地,则沿航路)推算位置。预测位置以带虚线圈的虚影绘制。
@@ -1535,21 +1536,21 @@ Source...	来源...
 Switches to the entry's mode, applies the mode's tuning and tunes to the frequency. A double-click on a row does the same. A running receiver restarts when the mode changes.	切换到条目的模式,应用其调谐设置并调谐到该频率。双击一行效果相同。模式改变时,正在运行的接收机会重新启动。
 Tuned: %s  %s MHz	已调谐: %s  %s MHz
 Well-known frequencies of this mode: pick one to tune to it	此模式的已知频率:选择一个即可调谐
-Stop scan##dsc	Stop scan##dsc
-Scan band##dsc	Scan band##dsc
-DECT carrier %d, %.3f MHz	DECT carrier %d, %.3f MHz
-Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.
-US / Canada 1920-1930 MHz (DECT 6.0)	US / Canada 1920-1930 MHz (DECT 6.0)
-Brazil 1910-1920 MHz	Brazil 1910-1920 MHz
-Latin America 1910-1930 MHz	Latin America 1910-1930 MHz
-US ISM 902-928 MHz (DECT in ISM)	US ISM 902-928 MHz (DECT in ISM)
-Europe 1880-1900 MHz	Europe 1880-1900 MHz
-USA, Canada: the UPCS band, DECT 6.0 phones	USA, Canada: the UPCS band, DECT 6.0 phones
-Brazil	Brazil
-Several Latin American countries	Several Latin American countries
-USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT
-Europe, most of Asia, Africa, Australia: the common DECT band	Europe, most of Asia, Africa, Australia: the common DECT band
-Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.
+Stop scan##dsc	停止扫描##dsc
+Scan band##dsc	扫描频段##dsc
+DECT carrier %d, %.3f MHz	DECT 载波 %d，%.3f MHz
+Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	每个载波停留 1.5 秒，逐个步进遍历该频段，听到突发信号时停留在该载波上。
+US / Canada 1920-1930 MHz (DECT 6.0)	美国 / 加拿大 1920-1930 MHz (DECT 6.0)
+Brazil 1910-1920 MHz	巴西 1910-1920 MHz
+Latin America 1910-1930 MHz	拉丁美洲 1910-1930 MHz
+US ISM 902-928 MHz (DECT in ISM)	美国 ISM 902-928 MHz（ISM 中的 DECT）
+Europe 1880-1900 MHz	欧洲 1880-1900 MHz
+USA, Canada: the UPCS band, DECT 6.0 phones	美国、加拿大：UPCS 频段，DECT 6.0 电话
+Brazil	巴西
+Several Latin American countries	多个拉丁美洲国家
+USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	美国，900 MHz ISM 频段中的标准 DECT：很少见，大多数 900 MHz 无绳电话并不是 DECT
+Europe, most of Asia, Africa, Australia: the common DECT band	欧洲、亚洲大部、非洲、澳大利亚：常见的 DECT 频段
+Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	你的电台无法调谐 %.3f - %.3f MHz（%s 频段）；其范围为 %.6g - %.6g MHz。请使用能覆盖该频段的电台（HackRF、PlutoSDR、LimeSDR、BladeRF），或在电台设置中设置变频器。
 The nRSP-ST is reached through SDRconnect: run SDRconnect (or its headless build) on a computer with the WebSocket server on (port 5454) and its nRSP-ST selected, and type that computer's address. No password is needed or stored.	nRSP-ST 通过 SDRconnect 访问：在已开启 WebSocket 服务器（端口 5454）并选中 nRSP-ST 的电脑上运行 SDRconnect（或其无界面版本），然后输入该电脑的地址。无需密码，也不会保存密码。
 #  the guided tour
 Tuning and gain	调谐与增益
@@ -1590,17 +1591,17 @@ WAV header	WAV文件头
 Allow other computers	允许其他电脑
 16-bit stereo, 48 kHz. ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:PORT, or a WAV player with the header on. Security: anyone who can reach the port can listen; leave 'Allow other computers' off unless you need it.	16位立体声,48 kHz。ffplay -f s16le -ar 48000 -ac 2 tcp://127.0.0.1:端口,或带文件头的WAV播放器。安全:能访问该端口的人都可以收听;不需要时请保持“允许其他电脑”关闭。
 Listeners:	听众:
-video	video
-audio	audio
-profile	profile
-Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work
-Open in an external player	Open in an external player
-Save the transport stream to a file	Save the transport stream to a file
-Stream it as UDP to %s	Stream it as UDP to %s
-Copy VLC command	Copy VLC command
-Copy mpv command	Copy mpv command
-Copy ffplay command	Copy ffplay command
-Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).
+video	视频
+audio	音频
+profile	配置
+Video: %s (OnAir cannot decode this video) — audio, subtitles and data still work	视频：%s（OnAir 无法解码此视频）——音频、字幕和数据仍可使用
+Open in an external player	在外部播放器中打开
+Save the transport stream to a file	将传输流保存到文件
+Stream it as UDP to %s	以 UDP 流发送到 %s
+Copy VLC command	复制 VLC 命令
+Copy mpv command	复制 mpv 命令
+Copy ffplay command	复制 ffplay 命令
+Start the UDP stream first, then run the command. Whether the player shows the picture depends on its own build (docs/AVSPLUS.md).	先启动 UDP 流，再运行命令。播放器是否显示画面取决于其自身的构建 (docs/AVSPLUS.md)。
 # credits and contributors
 Credits	致谢
 Contributors	贡献者

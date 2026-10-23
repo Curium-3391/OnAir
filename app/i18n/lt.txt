@@ -1,119 +1,120 @@
 # OnAir interface in Lithuanian. One text per line: the English text as in the source, a tab, the translation.
 # \n is a line break. Keep the printf conversions (%s, %d, %.1f ...) in the same order. tests/app/test_i18n.cpp checks this file.
+# Some entries are machine translations that no native speaker has reviewed yet: they are listed in unreviewed/lt.txt. Corrections are welcome.
 #  menus, status words, common buttons
 %.1f dB	%.1f dB
 %s  #%d  %.3f MHz%s	%s  #%d  %.3f MHz%s
 %s  %.4f MHz  %s%s%s%s  %.1f dB  %s	%s  %.4f MHz  %s%s%s%s  %.1f dB  %s
 -	-
-1 kHz test tone	1 kHz test tone
+1 kHz test tone	1 kHz bandomasis tonas
 8 MHz	8 MHz
-A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.
-A SAME header. ZCZC- is added when missing.	A SAME header. ZCZC- is added when missing.
-Aircraft registration	Aircraft registration
-An RS41 with this serial. Empty: the demo sondes.	An RS41 with this serial. Empty: the demo sondes.
-Are you sure? This clears all previous data and cannot be undone.	Are you sure? This clears all previous data and cannot be undone.
-ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.
-Audio file	Audio file
-Audio input	Audio input
-AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI frame. Empty: the demo CubeSat cycle.
+A P6 PPM is sent as the picture; any other or empty file uses the test picture. The callsign is stamped on it.	Kaip paveikslėlis siunčiamas P6 PPM; bet kuris kitas ar tuščias failas naudoja bandomąjį paveikslėlį. Ant jo išspausdinamas šaukinys.
+A SAME header. ZCZC- is added when missing.	SAME antraštė. ZCZC- pridedama, jei trūksta.
+Aircraft registration	Orlaivio registracija
+An RS41 with this serial. Empty: the demo sondes.	RS41 su šiuo serijos numeriu. Tuščia: demonstraciniai zondai.
+Are you sure? This clears all previous data and cannot be undone.	Ar tikrai? Tai išvalo visus ankstesnius duomenis ir negali būti atšaukta.
+ATSC 3.0 uses a ROUTE / fMP4 demo; a custom MPEG-TS is not the payload path.	ATSC 3.0 naudoja ROUTE / fMP4 demonstraciją; pasirinktinis MPEG-TS nėra naudingosios apkrovos kelias.
+Audio file	Garso failas
+Audio input	Garso įvestis
+AX.25 UI frame. Empty: the demo CubeSat cycle.	AX.25 UI kadras. Tuščia: demonstracinis CubeSat ciklas.
 Baud	Baud
-Browse…	Browse…
-Callsign / my ID	Callsign / my ID
+Browse…	Naršyti…
+Callsign / my ID	Šaukinys / mano ID
 Capcode	Capcode
-Carrier tune	Carrier tune
-Clear all	Clear all
-Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.
-Code rate / MODCOD index	Code rate / MODCOD index
-Colour code	Colour code
-Comment	Comment
+Carrier tune	Nešlio derinimas
+Clear all	Išvalyti viską
+Clears all previous data: the decoded lists of every mode (aircraft, ships, messages, pictures and so on), on every open receiver. The saved copy on disk is emptied too.	Išvalo visus ankstesnius duomenis: visų režimų iššifruotus sąrašus (orlaivius, laivus, žinutes, paveikslėlius ir kt.) visuose atidarytuose imtuvuose. Diske išsaugota kopija taip pat ištuštinama.
+Code rate / MODCOD index	Kodo sparta / MODCOD indeksas
+Colour code	Spalvos kodas
+Comment	Komentaras
 CQ	CQ
-D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC test scene (custom video is not wired into this analogue generator).
-DATV (DVB-S/S2 file)	DATV (DVB-S/S2 file)
-Default input	Default input
-Destination	Destination
-Destination / ID	Destination / ID
-Destination ID	Destination ID
-Device ID	Device ID
+D2-MAC test scene (custom video is not wired into this analogue generator).	D2-MAC bandomoji scena (savo vaizdo įrašas šiame analoginiame generatoriuje nepalaikomas).
+DATV (DVB-S/S2 file)	DATV (DVB-S/S2 failas)
+Default input	Numatytoji įvestis
+Destination	Paskirtis
+Destination / ID	Paskirtis / ID
+Destination ID	Paskirties ID
+Device ID	Įrenginio ID
 Dial frequency the decoder should assume (the sound card is not tuned)	Rinkimo dažnis, kurį dekoderis turi laikyti (garso plokštė nederinama)
-DVB standard	DVB standard
-Empty: the demo 802.15.4 scene.	Empty: the demo 802.15.4 scene.
-Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.
-Empty: the demo LoRa / mesh scene.	Empty: the demo LoRa / mesh scene.
-Empty: the demo Mode S uplink scene.	Empty: the demo Mode S uplink scene.
-Empty: the demo VDES scene.	Empty: the demo VDES scene.
+DVB standard	DVB standartas
+Empty: the demo 802.15.4 scene.	Tuščia: demonstracinė 802.15.4 scena.
+Empty: the demo FLARM scene. This ID is not packed into the unpublished newer protocol.	Tuščia: demonstracinė FLARM scena. Šis ID nepakuojamas į nepaskelbtą naujesnį protokolą.
+Empty: the demo LoRa / mesh scene.	Tuščia: demonstracinė LoRa / mesh scena.
+Empty: the demo Mode S uplink scene.	Tuščia: demonstracinė Mode S uplink scena.
+Empty: the demo VDES scene.	Tuščia: demonstracinė VDES scena.
 File	Failas
-File to send	File to send
-Free text	Free text
+File to send	Siunčiamas failas
+Free text	Laisvas tekstas
 Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)	Stiprinimo valdikliai taikomi tik radijams (ne įrašui, garso plokštei ar sintetiniam signalui)
 I/Q stereo	I/Q stereo
-ICAO address	ICAO address
-Image (PNG / PPM)	Image (PNG / PPM)
-Image (PPM)	Image (PPM)
-Input device	Input device
-Latitude	Latitude
-libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.
-libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.
-Live voice is encoded with Codec 2 (FreeDV).	Live voice is encoded with Codec 2 (FreeDV).
-Live voice is encoded with Codec 2 (libcodec2).	Live voice is encoded with Codec 2 (libcodec2).
-Longitude	Longitude
-Look for Red Pitaya boards on this computer's networks again	Look for Red Pitaya boards on this computer's networks again
+ICAO address	ICAO adresas
+Image (PNG / PPM)	Paveikslėlis (PNG / PPM)
+Image (PPM)	Paveikslėlis (PPM)
+Input device	Įvesties įrenginys
+Latitude	Platuma
+libcodec2 is not loaded: live encode is off. A 1 kHz tone, silence or a WAV/MP3 can still be sent.	libcodec2 neįkelta: gyvas kodavimas išjungtas. 1 kHz tonas, tyla ar WAV/MP3 vis tiek gali būti siunčiami.
+libcodec2 is not loaded: live encode is off. Destination callsigns still go on the air; voice bits are the known test pattern. A 1 kHz tone, silence or a WAV/MP3 can still be sent as analog NFM.	libcodec2 neįkelta: gyvas kodavimas išjungtas. Paskirties šaukiniai vis tiek išeina į eterį; balso bitai yra žinomas bandomasis raštas. 1 kHz tonas, tyla ar WAV/MP3 vis tiek gali būti siunčiami kaip analoginis NFM.
+Live voice is encoded with Codec 2 (FreeDV).	Gyvas balsas koduojamas su Codec 2 (FreeDV).
+Live voice is encoded with Codec 2 (libcodec2).	Gyvas balsas koduojamas su Codec 2 (libcodec2).
+Longitude	Ilguma
+Look for Red Pitaya boards on this computer's networks again	Dar kartą ieškoti Red Pitaya plokščių šio kompiuterio tinkluose
 LSB audio	LSB garsas
-Message	Message
+Message	Žinutė
 MHz	MHz
-Mic level	Mic level
-Microphone	Microphone
+Mic level	Mikrofono lygis
+Microphone	Mikrofonas
 MMSI	MMSI
 Mode	Režimas
-Morse identification, up to four letters.	Morse identification, up to four letters.
-NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.
-No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.	No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.
-PAN / short address	PAN / short address
-Path	Path
-Payload text	Payload text
-Power (dBm)	Power (dBm)
+Morse identification, up to four letters.	Morzės identifikacija, iki keturių raidžių.
+NAVTEX sends the text (ZCZC / NNNN are added when missing). DSC (when that service is selected) uses the MMSI.	NAVTEX siunčia tekstą (ZCZC / NNNN pridedama, jei trūksta). DSC (kai pasirinkta ši paslauga) naudoja MMSI.
+No Red Pitaya answered on this computer's networks (is its SDR transceiver app running?): type its address.	Šio kompiuterio tinkluose neatsakė joks Red Pitaya (ar paleista jo SDR transceiver programa?): įveskite jo adresą.
+PAN / short address	PAN / trumpasis adresas
+Path	Kelias
+Payload text	Naudingosios apkrovos tekstas
+Power (dBm)	Galia (dBm)
 Pre-emphasis	Pre-emphasis
-PSK variant	PSK variant
-QO-100 path	QO-100 path
-Radio ID	Radio ID
-Radio text (RT)	Radio text (RT)
+PSK variant	PSK variantas
+QO-100 path	QO-100 kelias
+Radio ID	Radijo ID
+Radio text (RT)	Radijo tekstas (RT)
 RDS PI	RDS PI
-Receiver-style options (demo signal)	Receiver-style options (demo signal)
-Report	Report
-Reverse (mark is the upper tone)	Reverse (mark is the upper tone)
+Receiver-style options (demo signal)	Imtuvo stiliaus parinktys (demonstracinis signalas)
+Report	Ataskaita
+Reverse (mark is the upper tone)	Atvirkštinis (mark yra viršutinis tonas)
 RFPI	RFPI
-RFPI of the base station.	RFPI of the base station.
+RFPI of the base station.	Bazinės stoties RFPI.
 Roll-off	Roll-off
-Satellite standard	Satellite standard
-searching for Red Pitaya boards…	searching for Red Pitaya boards…
-Send analog NFM of the audio instead of the digital test pattern	Send analog NFM of the audio instead of the digital test pattern
-Send analog NFM of the microphone or a file instead of the test scene	Send analog NFM of the microphone or a file instead of the test scene
-Serial / ID	Serial / ID
-Shift	Shift
-Sideband	Sideband
-Silence	Silence
+Satellite standard	Palydovo standartas
+searching for Red Pitaya boards…	ieškoma Red Pitaya plokščių…
+Send analog NFM of the audio instead of the digital test pattern	Siųsti analoginį NFM iš garso vietoj skaitmeninio bandomojo rašto
+Send analog NFM of the microphone or a file instead of the test scene	Siųsti analoginį NFM iš mikrofono ar failo vietoj bandomosios scenos
+Serial / ID	Serijos nr. / ID
+Shift	Poslinkis
+Sideband	Šoninė juosta
+Silence	Tyla
 sound card	garso plokštė
-SSB (microphone)	SSB (microphone)
-SSTV mode	SSTV mode
-Station name (PS)	Station name (PS)
-Symbol rate (Hz)	Symbol rate (Hz)
+SSB (microphone)	SSB (mikrofonas)
+SSTV mode	SSTV režimas
+Station name (PS)	Stoties pavadinimas (PS)
+Symbol rate (Hz)	Simbolių dažnis (Hz)
 Talkgroup	Talkgroup
-test DJI DroneID scene (custom serial is not packed)	test DJI DroneID scene (custom serial is not packed)
-test downlink scene (this generator does not take a custom message)	test downlink scene (this generator does not take a custom message)
-test LRPT/HRIT scene (custom image not wired)	test LRPT/HRIT scene (custom image not wired)
-test NCDXF-style beacon scene	test NCDXF-style beacon scene
-test weather-fax chart (custom image not wired)	test weather-fax chart (custom image not wired)
-TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Text	Text
+test DJI DroneID scene (custom serial is not packed)	bandomoji DJI DroneID scena (savas serijos numeris nepakuojamas)
+test downlink scene (this generator does not take a custom message)	bandomoji downlink scena (šis generatorius nepriima savos žinutės)
+test LRPT/HRIT scene (custom image not wired)	bandomoji LRPT/HRIT scena (savas paveikslėlis nepajungtas)
+test NCDXF-style beacon scene	bandomoji NCDXF tipo švyturio scena
+test weather-fax chart (custom image not wired)	bandomoji orų faksimilės schema (savas paveikslėlis nepajungtas)
+TETRA ACELP is not encoded here. Colour code and IDs are shown; the downlink test pattern is sent. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	TETRA ACELP čia nekoduojamas. Rodomi spalvos kodas ir ID; siunčiamas žemyn nukreiptas bandomasis raštas. Vietoj to galima siųsti 1 kHz toną, tylą ar WAV/MP3 kaip analoginį NFM.
+Text	Tekstas
 The capture rate of the sound card. The engine runs at this rate; there is no radio to tune.	Garso plokštės įrašymo sparta. Variklis veikia šia sparta; derinti radijo nėra.
-The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.
-The microphone starts only when you press START TRANSMITTING.	The microphone starts only when you press START TRANSMITTING.
-The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.
-this mode has no transmit generator	this mode has no transmit generator
-This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.
-Timeslot	Timeslot
+The file bytes go out as a HamDRM object with this callsign. Empty file: the test picture.	Failo baitai siunčiami kaip HamDRM objektas su šiuo šaukiniu. Tuščias failas: bandomasis paveikslėlis.
+The microphone starts only when you press START TRANSMITTING.	Mikrofonas įsijungia tik paspaudus START TRANSMITTING.
+The registration and free-text go on the air as an H1 / ACARS downlink. Empty: the demo traffic.	Registracija ir laisvas tekstas išeina į eterį kaip H1 / ACARS downlink. Tuščia: demonstracinis srautas.
+this mode has no transmit generator	šis režimas neturi siuntimo generatoriaus
+This vocoder cannot encode: OnAir loads mbelib for decode only (AMBE/IMBE). Destination ID / talkgroup / colour code still go on the air; voice bits are the test pattern. A 1 kHz tone, silence or a WAV/MP3 can be sent as analog NFM instead.	Šis vokoderis negali koduoti: OnAir įkelia mbelib tik dekodavimui (AMBE/IMBE). Paskirties ID / talkgroup / spalvos kodas vis tiek išeina į eterį; balso bitai yra bandomasis raštas. Vietoj to galima siųsti 1 kHz toną, tylą ar WAV/MP3 kaip analoginį NFM.
+Timeslot	Laiko tarpas
 To	To
 USB audio	USB garsas
-Vessel name	Vessel name
+Vessel name	Laivo pavadinimas
 View	Rodinys
 Help	Pagalba
 Language	Kalba
@@ -136,14 +137,14 @@ searching	ieškoma
 syncing	sinchronizuojama
 locked	sinchronizuota
 Locked	Sinchronizuota
-Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.
-Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.
-WAV / MP3 file	WAV / MP3 file
+Warning: ADS-B simulates aircraft. Send it only into a dummy load or a shielded setup, never to an antenna.	Įspėjimas: ADS-B simuliuoja orlaivius. Siųskite tik į dirbtinę apkrovą ar ekranuotą sąranką, niekada į anteną.
+Warning: AIS simulates vessels. Send it only into a dummy load or a shielded setup, never to an antenna: false ships can confuse real receivers, which is a safety risk and illegal in most places.	Įspėjimas: AIS simuliuoja laivus. Siųskite tik į dirbtinę apkrovą ar ekranuotą sąranką, niekada į anteną: netikri laivai gali suklaidinti tikrus imtuvus, tai kelia pavojų saugai ir daugelyje vietų neteisėta.
+WAV / MP3 file	WAV / MP3 failas
 weak	silpnas
 stereo	stereo
 mono	mono
 radio disconnected	radijas atjungtas
-What to send	What to send
+What to send	Ką siųsti
 WPM	WPM
 yes	taip
 no lock	nesinchronizuota
@@ -610,7 +611,7 @@ Include beta versions	Įtraukti beta versijas
 Check now	Tikrinti dabar
 Not checked yet.	Dar netikrinta.
 Asking GitHub for the newest version…	Klausiama GitHub apie naujausią versiją…
-Yes, clear all	Yes, clear all
+Yes, clear all	Taip, išvalyti viską
 You have the newest version.	Turite naujausią versiją.
 Version %s is available%s.	Galima versija %s%s.
  (beta)	 (beta)
@@ -1043,8 +1044,8 @@ GNSS NMEA RMC/GGA (UDP)	GNSS NMEA RMC/GGA (UDP)
 Bluetooth LE advertisements, JSON (UDP)	Bluetooth LE skelbimai, JSON (UDP)
 LoRa / LoRaWAN / Meshtastic, JSON (UDP)	LoRa / LoRaWAN / Meshtastic, JSON (UDP)
 JSON lines (one object a line) unless GNSS, which is NMEA. Off until you turn a feed on. Only modes that already have structured messages are sent.	JSON eilutės (vienas objektas eilutėje), išskyrus GNSS, kuris yra NMEA. Išjungta, kol įjungsite srautą. Siunčiamos tik veislės, turinčios struktūrinius pranešimus.
-Support	Support
-Support OnAir on Ko-fi	Support OnAir on Ko-fi
+Support	Parama
+Support OnAir on Ko-fi	Paremkite OnAir per Ko-fi
 Documentation	Dokumentacija
 Troubleshooting	Trikčių šalinimas
 Website	Svetainė
@@ -1203,14 +1204,14 @@ test (no RF)	bandymas (be RF)
 the limiter is working: %.2f%% of samples (lower the level)	ribotuvas veikia: %.2f%% imčių (sumažinkite lygį)
 25 kHz	25 kHz
 12.5 kHz	12.5 kHz
-Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.
-Call letters	Call letters
-RDS standard	RDS standard
-Auto (RBDS on odd tenths)	Auto (RBDS on odd tenths)
-RDS (Europe)	RDS (Europe)
-RBDS (US)	RBDS (US)
-RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Priėmimo filtro plotis. 12.5 kHz geriau nukerta gretimą kanalą, bet signalas turi būti kanalo centre; 25 kHz yra platesnis, atlaidesnis filtras.
+Receive filter width. 12.5 kHz cuts a neighbouring channel better (often best for APRS) but needs the signal on the channel centre; 25 kHz is the wider, more forgiving filter.	Priėmimo filtro plotis. 12.5 kHz geriau nukerta gretimą kanalą (dažnai geriausia APRS), bet signalas turi būti kanalo centre; 25 kHz yra platesnis, atlaidesnis filtras.
+Call letters	Šaukinio raidės
+RDS standard	RDS standartas
+Auto (RBDS on odd tenths)	Auto (RBDS ties nelyginėmis dešimtosiomis)
+RDS (Europe)	RDS (Europa)
+RBDS (US)	RBDS (JAV)
+RDS and the US RBDS share the data but name the programme types differently, and RBDS stations send call letters. Auto uses RBDS on the US channel raster (87.9, 88.1 ... 107.9 MHz); Europe has stations on those channels too, so pick RDS (Europe) there.	RDS ir JAV RBDS dalijasi duomenimis, bet programų tipus vadina skirtingai, o RBDS stotys siunčia šaukinio raides. Auto naudoja RBDS JAV kanalų tinklelyje (87.9, 88.1 ... 107.9 MHz); Europoje taip pat yra stočių tuose kanaluose, todėl ten pasirinkite RDS (Europa).
 Real (mono)	Realus (mono)
 Left	Kairysis
 Right	Dešinysis
@@ -1252,83 +1253,83 @@ Keyboard	Klaviatūra
 Re-sync	Sinchronizuoti iš naujo
 Drop the lock and search for the CDR signal again without stopping the radio.\nUse it when the sound stays silent after the signal faded.	Atmeta užraktą ir iš naujo ieško CDR signalo nestabdant radijo.\nNaudokite, kai po signalo nutrūkimo garsas lieka nutilęs.
 #  memories (English until translated)
-"%s" is stored on this frequency and mode already.	"%s" is stored on this frequency and mode already.
-%zu memories	%zu memories
-(frequency only)	(frequency only)
-(no name)	(no name)
-(nothing stored or used yet)	(nothing stored or used yet)
-0 keeps the mode's own rate (Auto)	0 keeps the mode's own rate (Auto)
-Add another	Add another
-Back to my list	Back to my list
-Bandwidth	Bandwidth
-Bandwidth (kHz)	Bandwidth (kHz)
-Click a heading of the table to sort by it too	Click a heading of the table to sort by it too
-Colour	Colour
-Could not apply this memory.	Could not apply this memory.
-Delete	Delete
-Edit...	Edit...
-Enter a frequency.	Enter a frequency.
-Export JSON...	Export JSON...
-Exported to 	Exported to 
-Favourite	Favourite
-Frequency only	Frequency only
-Group	Group
-Groups	Groups
-Import failed: 	Import failed: 
-Import...	Import...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Imported %zu memories, %zu skipped (duplicates or lines without a frequency).
-Include in the memory scan	Include in the memory scan
-Informative: the channel width at the time. The mode's own width options are in the options below.	Informative: the channel width at the time. The mode's own width options are in the options below.
-Keep the gains	Keep the gains
-Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.
-Last used	Last used
-Manual order	Manual order
-Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Memories: the frequencies you keep, with mode and settings (Ctrl+M)
-Memory	Memory
-Memory panel...	Memory panel...
-Memory...	Memory...
-No group	No group
-No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.
-Notes	Notes
-Options	Options
+"%s" is stored on this frequency and mode already.	„%s“ jau išsaugota šiuo dažniu ir režimu.
+%zu memories	%zu atmintinės įrašų
+(frequency only)	(tik dažnis)
+(no name)	(be pavadinimo)
+(nothing stored or used yet)	(dar nieko neišsaugota ar naudota)
+0 keeps the mode's own rate (Auto)	0 palieka paties režimo dažnį (Auto)
+Add another	Pridėti dar vieną
+Back to my list	Atgal į mano sąrašą
+Bandwidth	Juostos plotis
+Bandwidth (kHz)	Juostos plotis (kHz)
+Click a heading of the table to sort by it too	Spustelėkite lentelės antraštę, kad rikiuotumėte pagal ją
+Colour	Spalva
+Could not apply this memory.	Šios atmintinės įrašo pritaikyti nepavyko.
+Delete	Ištrinti
+Edit...	Redaguoti...
+Enter a frequency.	Įveskite dažnį.
+Export JSON...	Eksportuoti JSON...
+Exported to 	Eksportuota į
+Favourite	Mėgstamas
+Frequency only	Tik dažnis
+Group	Grupė
+Groups	Grupės
+Import failed: 	Importuoti nepavyko:
+Import...	Importuoti...
+Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Importuota atmintinės įrašų: %zu, praleista: %zu (dublikatai arba eilutės be dažnio).
+Include in the memory scan	Įtraukti į atmintinės skenavimą
+Informative: the channel width at the time. The mode's own width options are in the options below.	Informacinis: tuometinis kanalo plotis. Paties režimo pločio parinktys yra žemiau esančiose parinktyse.
+Keep the gains	Palikti stiprinimus
+Keeps this receiver's frequency, mode, sample rate, gains and the mode's options. The name is the station's when the mode reports one.	Išsaugo šio imtuvo dažnį, režimą, diskretizavimo dažnį, stiprinimus ir režimo parinktis. Pavadinimas yra stoties, kai režimas jį praneša.
+Last used	Paskutinį kartą naudota
+Manual order	Rankinė tvarka
+Memories: the frequencies you keep, with mode and settings (Ctrl+M)	Atmintinė: dažniai, kuriuos laikote, su režimu ir nustatymais (Ctrl+M)
+Memory	Atmintinė
+Memory panel...	Atmintinės skydelis...
+Memory...	Atmintinė...
+No group	Be grupės
+No memories yet. Tune to a frequency you want to keep and press Store current; or import a list.	Atmintinėje dar nieko nėra. Suderinkite dažnį, kurį norite išsaugoti, ir spauskite Išsaugoti dabartinį; arba importuokite sąrašą.
+Notes	Pastabos
+Options	Parinktys
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.
-Recall	Recall
-Recall frequency only	Recall frequency only
-Sample rate (kHz)	Sample rate (kHz)
-Save	Save
-Scan memories	Scan memories
-Search name, tag, mode, frequency (162.4)	Search name, tag, mode, frequency (162.4)
-Show Memory as a tab	Show Memory as a tab
-Stars only	Stars only
-Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.
-Store current	Store current
-Store current...	Store current...
-Tags	Tags
-The list is the memories flagged for scan (Memory panel).	The list is the memories flagged for scan (Memory panel).
-The memory bank is full.	The memory bank is full.
-The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).
-The receiver Store current and Recall work on	The receiver Store current and Recall work on
-This receiver	This receiver
-Tunes to the frequency and keeps the mode as it is	Tunes to the frequency and keeps the mode as it is
-Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.
-Undo delete	Undo delete
-Update it	Update it
-Words separated by commas; the search finds them.	Words separated by commas; the search finds them.
-stored with: %s	stored with: %s
-Edit memory	Edit memory
-Click to make this a favourite	Click to make this a favourite
-Favourite: kept at the top. Click to remove	Favourite: kept at the top. Click to remove
+Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Skaito atmintinės CSV ar JSON failą, paprastą „dažnis,pavadinimas“ eilučių sąrašą (MHz) arba SDR++ Frequency Manager eksportą. Atmintinės įrašai, jau išsaugoti tuo pačiu dažniu ir režimu, praleidžiami.
+Recall	Prisiminti
+Recall frequency only	Prisiminti tik dažnį
+Sample rate (kHz)	Diskretizavimo dažnis (kHz)
+Save	Išsaugoti
+Scan memories	Skenuoti atmintinę
+Search name, tag, mode, frequency (162.4)	Ieškoti pagal pavadinimą, žymą, režimą, dažnį (162.4)
+Show Memory as a tab	Rodyti atmintinę kaip skirtuką
+Stars only	Tik žvaigždės
+Steps through the memories marked 'Include in the memory scan' with the Scanner: it tunes each one, switches the mode, listens for its dwell time and stops while the receiver reports a signal or a lock. Memories without a mode are left out.	Skeneriu pereina per atmintinės įrašus, pažymėtus „Įtraukti į atmintinės skenavimą“: suderina kiekvieną, perjungia režimą, klauso jo trukmę ir sustoja, kol imtuvas praneša apie signalą ar sinchronizaciją. Įrašai be režimo praleidžiami.
+Store current	Išsaugoti dabartinį
+Store current...	Išsaugoti dabartinį...
+Tags	Žymos
+The list is the memories flagged for scan (Memory panel).	Sąrašas yra atmintinės įrašai, pažymėti skenavimui (Atmintinės skydelis).
+The memory bank is full.	Atmintinė pilna.
+The mode's settings, one key=value per line (demodulator, de-emphasis, widths ...).	Režimo nustatymai, po vieną key=value eilutėje (demoduliatorius, de-emphasis, pločiai ...).
+The receiver Store current and Recall work on	Imtuvo Išsaugoti dabartinį ir Prisiminti veikia su
+This receiver	Šis imtuvas
+Tunes to the frequency and keeps the mode as it is	Suderina dažnį ir palieka režimą nepakeistą
+Tunes to the frequency, switches to the stored mode and applies its options and gains. Double-click a row does the same. A running receiver restarts when the mode changes.	Suderina dažnį, perjungia į išsaugotą režimą ir pritaiko jo parinktis bei stiprinimus. Dukart spustelėjus eilutę daroma tas pats. Veikiantis imtuvas paleidžiamas iš naujo, kai keičiasi režimas.
+Undo delete	Atšaukti ištrynimą
+Update it	Atnaujinti
+Words separated by commas; the search finds them.	Žodžiai, atskirti kableliais; paieška juos suranda.
+stored with: %s	išsaugota su: %s
+Edit memory	Redaguoti atmintinės įrašą
+Click to make this a favourite	Spustelėkite, kad padarytumėte mėgstamu
+Favourite: kept at the top. Click to remove	Mėgstamas: laikomas viršuje. Spustelėkite, kad pašalintumėte
 Ham It Down: 1500 MHz down-converter for about 1.5 to 3 GHz (2.4 GHz, 2.3/3.4 GHz). Connect it between the antenna and the radio; the radio sees RF - 1500 MHz. Below 1500 MHz is not supported.	Ham It Down: 1500 MHz žeminantis keitiklis maždaug 1,5-3 GHz dažniams (2,4 GHz, 2,3/3,4 GHz). Junkite tarp antenos ir radijo; radijas mato RF - 1500 MHz. Žemiau 1500 MHz nepalaikoma.
 Contrast	Kontrastas
-Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)
-Credits and licences	Credits and licences
-OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.
-Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.
-Project	Project
-Author	Author
-Licence	Licence
-Used for	Used for
+Below 1 lifts the weak signals, above 1 darkens the noise (double click: 1)	Žemiau 1 pakelia silpnus signalus, aukščiau 1 patamsina triukšmą (dukart spustelėkite: 1)
+Credits and licences	Padėkos ir licencijos
+OnAir is free software under the GNU General Public License v3 or later. It is built on the work of the people and projects below; thank you.	OnAir yra laisva programinė įranga pagal GNU General Public License v3 ar naujesnę. Ji sukurta remiantis žemiau išvardytų žmonių ir projektų darbu; ačiū.
+Click a link to open it in your browser. The full notices and open licence points are in THIRD_PARTY.md.	Spustelėkite nuorodą, kad atidarytumėte ją naršyklėje. Pilni pranešimai ir atviri licencijų klausimai yra faile THIRD_PARTY.md.
+Project	Projektas
+Author	Autorius
+Licence	Licencija
+Used for	Naudojama
 Update source	Atnaujinimų šaltinis
 Automatic: GitHub	Automatiškai: GitHub
 GitHub only	Tik GitHub
@@ -1343,11 +1344,11 @@ Noise remover (neural)##gennr	Triukšmo šalintuvas (neuroninis)##gennr
 Mix of cleaned and original audio: right removes more noise, left keeps more of the original. Adds about 20 ms of delay.	Išvalyto ir originalaus garso mišinys: dešinėn pašalina daugiau triukšmo, kairėn lieka daugiau originalo. Prideda apie 20 ms vėlinimo.
 Speech only; do not use on music or data modes.	Tik kalbai; nenaudokite su muzika ar duomenų režimais.
 Noise remover (neural)##airnr	Triukšmo šalintuvas (neuroninis)##airnr
-Photo / info	Photo / info
-No identifier to look up	No identifier to look up
-Opens %s in your browser (nothing is loaded until you click)	Opens %s in your browser (nothing is loaded until you click)
-Pictures and details in a public database: opens your browser	Pictures and details in a public database: opens your browser
-Preferred site	Preferred site
+Photo / info	Nuotrauka / informacija
+No identifier to look up	Nėra identifikatoriaus paieškai
+Opens %s in your browser (nothing is loaded until you click)	Atidaro %s naršyklėje (nieko neįkeliama, kol nespustelėsite)
+Pictures and details in a public database: opens your browser	Paveikslėliai ir duomenys viešoje duomenų bazėje: atidaro naršyklę
+Preferred site	Pageidaujama vieta
 Sunday	sekmadienis
 Monday	pirmadienis
 Tuesday	antradienis
@@ -1356,7 +1357,7 @@ Thursday	ketvirtadienis
 Friday	penktadienis
 Saturday	šeštadienis
 Your radio cannot tune 225 kHz.	Jūsų radijas negali derintis prie 225 kHz.
-Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.
+Long wave needs an SDRplay, an Airspy HF+, an RTL-SDR in direct sampling mode, or an upconverter in front of a radio that starts at a few MHz (set it under the radio's settings), and a long wire or a ferrite rod antenna. A BFO recording of the radio's audio also plays: tick Audio, not IQ in the Receiver tab.	Ilgosioms bangoms reikia SDRplay, Airspy HF+, RTL-SDR tiesioginio diskretizavimo režimu arba keitiklio prieš radiją, kuris pradeda nuo kelių MHz (nustatykite radijo nustatymuose), ir ilgo laido arba feritinės antenos. Radijo garso BFO įrašas taip pat atkuriamas: skirtuke Imtuvas pažymėkite Garsas, ne IQ.
 time decoded, two packets agree	laikas iškoduotas, du paketai sutampa
 time decoded (one packet)	laikas iškoduotas (vienas paketas)
 carrier found, waiting for a time packet	nešlys rastas, laukiama laiko paketo
@@ -1375,19 +1376,19 @@ transmitter	siųstuvas
 computer clock	kompiuterio laikrodis
 ahead	pirmauja
 behind	vėluoja
-The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.
+The computer clock when each time packet began, minus the stamp in the packet and the path delay, averaged over the last packets. It includes the radio's buffering (the earliest arrival is used). The frame timing of the service is from its description (GUM, v1.0) and not yet checked against a signal with a known clock: use it as an indication.	Kompiuterio laikrodis, kai prasidėjo kiekvienas laiko paketas, atėmus paketo žymą ir kelio vėlinimą, suvidurkintas per paskutinius paketus. Jis apima radijo buferizavimą (naudojamas ankstyviausias atėjimas). Paslaugos kadrų laikas imtas iš jos aprašo (GUM, v1.0) ir dar netikrintas su signalu su žinomu laikrodžiu: naudokite kaip orientacinį.
 nothing to compare (a recording)	nėra ką lyginti (įrašas)
 once the time is decoded	kai laikas bus iškoduotas
 path	trasa
-; set your position in ADS-B (Receiver position) for the right delay	; set your position in ADS-B (Receiver position) for the right delay
+; set your position in ADS-B (Receiver position) for the right delay	; nustatykite savo vietą ADS-B (Imtuvo vieta), kad vėlinimas būtų teisingas
 clock offset	laikrodžio paklaida
 level	lygis
 start the receiver to see the signal	paleiskite imtuvą, kad pamatytumėte signalą
 carrier	nešlys
 phase of the carrier	nešlio fazė
-The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.
+The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Paskutinės dvi nešlio fazės sekundės, vienas taškas per 8 ms, naujausias ryškiausias. Paslauga perjungia fazę tarp dviejų būsenų, nutolusių 36 laipsniais (50 bit/s); švarus signalas rodo du glaudžius spiečius.
 signal at the bit slicer	signalas prie bitų sprendiklio
-The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.
+The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	Fazės pokytis per kiekvieną 20 ms bitą: +-1 žingsnis yra bitas, keičiantis raktavimo būseną, 0 – nekeičiantis; sprendimo ribą nustato pusė (punktyras). Paskutinės dvi sekundės.
 Computer UTC	Kompiuterio UTC
 Frame	Kadras
 Result	Rezultatas
@@ -1395,13 +1396,13 @@ no frame yet: a time packet comes every few slots of the minute frame	kadro dar 
 , audio recording	, garso įrašas
 Recording of the radio's audio	Radijo garso įrašas
 Audio, not IQ	Garsas, ne IQ
-The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.
+The file is a recording of a receiver's audio (SSB / CW) tuned a little off 225 kHz, so the carrier is a tone (a WAV with the audio on the left channel and silence on the right; a mono WAV: eczastool rx reads it directly). Not for IQ files or radios.	Failas yra imtuvo garso (SSB / CW) įrašas, suderintas šiek tiek šalia 225 kHz, todėl nešlys yra tonas (WAV su garsu kairiajame kanale ir tyla dešiniajame; mono WAV: eczastool rx skaito tiesiogiai). Netinka IQ failams ar radijams.
 carrier tone Hz	nešlio tonas Hz
-The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).
-Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).
+The pitch of the carrier in the recording: 1000 Hz when the radio's dial was 224 kHz (upper sideband).	Nešlio tonas įraše: 1000 Hz, kai radijo ciferblatas buvo 224 kHz (viršutinė šoninė juosta).
+Not used: the Reed-Solomon bytes of the frame (a frame with a wrong check byte is dropped, not repaired).	Nenaudojama: kadro Reed-Solomon baitai (kadras su neteisingu kontroliniu baitu atmetamas, o ne taisomas).
 Carrier	Nešlys
 Sync	Sinchr.
-The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).
+The test signal carries the computer's time with a time packet every 12 s: the clock offset should stay near zero (the simulator's own buffering shows in it).	Bandomasis signalas neša kompiuterio laiką su laiko paketu kas 12 s: laikrodžio nuokrypis turėtų likti netoli nulio (simuliatoriaus buferizavimas jame matosi).
 LW time service, Poland	LW laiko tarnyba, Lenkija
 Predict positions	Prognozuoti padėtis
 Fills the gaps between position reports: the aircraft moves smoothly and, when messages stop, is dead-reckoned along its track (and along the route when a message named the destination). Predicted positions are drawn as a ghost with a dashed ring.	Užpildo tarpus tarp padėties pranešimų: orlaivis juda sklandžiai, o kai pranešimai nutrūksta, jo vieta skaičiuojama pagal kursą (ir pagal maršrutą, jei pranešime nurodyta paskirties vieta). Prognozuotos padėtys piešiamos kaip šmėkla su punktyriniu žiedu.
@@ -1535,21 +1536,21 @@ Source...	Šaltinis...
 Switches to the entry's mode, applies the mode's tuning and tunes to the frequency. A double-click on a row does the same. A running receiver restarts when the mode changes.	Perjungia į įrašo režimą, pritaiko jo derinimą ir suderina dažnį. Dukart spustelėjus eilutę atsitinka tas pats. Veikiantis imtuvas paleidžiamas iš naujo pasikeitus režimui.
 Tuned: %s  %s MHz	Suderinta: %s  %s MHz
 Well-known frequencies of this mode: pick one to tune to it	Šio režimo žinomi dažniai: pasirinkite, kad suderintumėte
-Stop scan##dsc	Stop scan##dsc
-Scan band##dsc	Scan band##dsc
-DECT carrier %d, %.3f MHz	DECT carrier %d, %.3f MHz
-Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.
-US / Canada 1920-1930 MHz (DECT 6.0)	US / Canada 1920-1930 MHz (DECT 6.0)
-Brazil 1910-1920 MHz	Brazil 1910-1920 MHz
-Latin America 1910-1930 MHz	Latin America 1910-1930 MHz
-US ISM 902-928 MHz (DECT in ISM)	US ISM 902-928 MHz (DECT in ISM)
-Europe 1880-1900 MHz	Europe 1880-1900 MHz
-USA, Canada: the UPCS band, DECT 6.0 phones	USA, Canada: the UPCS band, DECT 6.0 phones
-Brazil	Brazil
-Several Latin American countries	Several Latin American countries
-USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT
-Europe, most of Asia, Africa, Australia: the common DECT band	Europe, most of Asia, Africa, Australia: the common DECT band
-Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.
+Stop scan##dsc	Stabdyti skenavimą##dsc
+Scan band##dsc	Skenuoti juostą##dsc
+DECT carrier %d, %.3f MHz	DECT nešlys %d, %.3f MHz
+Steps through the carriers of the band, 1.5 s each, and stays on one while bursts are heard.	Pereina per juostos nešlius po 1,5 s ir sustoja ties vienu, kol girdimi paketai.
+US / Canada 1920-1930 MHz (DECT 6.0)	JAV / Kanada 1920-1930 MHz (DECT 6.0)
+Brazil 1910-1920 MHz	Brazilija 1910-1920 MHz
+Latin America 1910-1930 MHz	Lotynų Amerika 1910-1930 MHz
+US ISM 902-928 MHz (DECT in ISM)	JAV ISM 902-928 MHz (DECT ISM juostoje)
+Europe 1880-1900 MHz	Europa 1880-1900 MHz
+USA, Canada: the UPCS band, DECT 6.0 phones	JAV, Kanada: UPCS juosta, DECT 6.0 telefonai
+Brazil	Brazilija
+Several Latin American countries	Kelios Lotynų Amerikos šalys
+USA, standard DECT in the 900 MHz ISM band: rare, most 900 MHz cordless phones are not DECT	JAV, standartinis DECT 900 MHz ISM juostoje: retas, dauguma 900 MHz belaidžių telefonų nėra DECT
+Europe, most of Asia, Africa, Australia: the common DECT band	Europa, didžioji dalis Azijos, Afrika, Australija: įprasta DECT juosta
+Your radio cannot tune %.3f - %.3f MHz (the %s band); its range is %.6g - %.6g MHz. Use a radio that reaches it (HackRF, PlutoSDR, LimeSDR, BladeRF) or a converter set under the radio's settings.	Jūsų radijas negali derintis į %.3f - %.3f MHz (%s juosta); jo diapazonas %.6g - %.6g MHz. Naudokite radiją, kuris pasiekia šį diapazoną (HackRF, PlutoSDR, LimeSDR, BladeRF) arba keitiklį, nustatytą radijo nustatymuose.
 The nRSP-ST is reached through SDRconnect: run SDRconnect (or its headless build) on a computer with the WebSocket server on (port 5454) and its nRSP-ST selected, and type that computer's address. No password is needed or stored.	nRSP-ST pasiekiamas per SDRconnect: paleiskite SDRconnect (arba jo headless versiją) kompiuteryje su įjungtu WebSocket serveriu (prievadas 5454) ir pasirinktu nRSP-ST, tada įveskite to kompiuterio adresą. Slaptažodžio nereikia ir jis nesaugomas.
 #  the guided tour
 Tuning and gain	Derinimas ir stiprinimas
@@ -3199,7 +3200,7 @@ Conversations	Pokalbiai
 Decode automatically	Dekoduoti automatiškai
 Decoding	Dekoduojama
 Dial MHz	Derinimas MHz
-Downlink MHz	Downlink MHz
+Downlink MHz	Žemyn MHz
 FT4 on every signal that keys in 7.5 s slots	FT4 kiekvienam signalui, perduodamam 7,5 s intervalais
 FT8 on every signal that keys in 15 s slots	FT8 kiekvienam signalui, perduodamam 15 s intervalais
 How many decoder channels may run at once; each channel decodes every signal inside 3.4 kHz of audio	Kiek dekoderio kanalų gali veikti vienu metu; kiekvienas kanalas dekoduoja visus signalus 3,4 kHz garso ruože
