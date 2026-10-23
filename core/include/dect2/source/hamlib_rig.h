@@ -12,10 +12,19 @@ struct HamlibRig {
     std::string label;          // optional display name (empty: built from model + path)
     std::string audioId;        // AudioIn device id for IQ/audio (empty: silence at 48 kHz, CAT only)
     int baud = 0;               // serial speed; 0 = the model's own default (ignored for a network rig)
-    bool operator==(const HamlibRig& o) const { return model == o.model && path == o.path && label == o.label && audioId == o.audioId && baud == o.baud; }
+    // the transmit profile of this rig (the Ham view): how PTT is keyed, the data mode, the sound card the TX audio goes to, split
+    int pttType = 0;            // 0 CAT, 1 RTS, 2 DTR, 3 VOX (no PTT command: the rig keys itself from the audio)
+    std::string pttPath;        // the port whose RTS / DTR line keys the rig ("" = the CAT port)
+    std::string dataMode;       // the rig mode for the digital modes ("" = PKTUSB)
+    std::string audioOutId;     // the sound card output that feeds the rig's audio input ("" = not paired yet)
+    bool split = false;         // transmit through the TX VFO (split), the receive VFO stays
+    bool operator==(const HamlibRig& o) const {
+        return model == o.model && path == o.path && label == o.label && audioId == o.audioId && baud == o.baud && pttType == o.pttType &&
+               pttPath == o.pttPath && dataMode == o.dataMode && audioOutId == o.audioOutId && split == o.split;
+    }
 };
 
-// prefs "hamlibRigs": "model,path,label,audioId,baud;…" (label, audioId and baud may be empty; older entries have four fields)
+// prefs "hamlibRigs": "model,path,label,audioId,baud,pttType,pttPath,dataMode,audioOutId,split;…" (older entries have four or five fields)
 std::string hamlibRigsToString(const std::vector<HamlibRig>& v);
 std::vector<HamlibRig> hamlibRigsFromString(const std::string& s);
 

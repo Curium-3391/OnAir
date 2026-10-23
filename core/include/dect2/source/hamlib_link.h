@@ -12,6 +12,8 @@ struct HamlibConn {
     int baud = 0;              // 0 = the model's default
     int timeoutMs = 1000;      // per command; keeps a dead rig from freezing the program
     int retries = 1;
+    int pttType = 0;           // 0 CAT command, 1 RTS line, 2 DTR line, 3 none (VOX: the rig keys itself from the audio)
+    std::string pttPath;       // the serial port whose RTS / DTR keys the rig ("" = the CAT port itself)
 };
 
 class HamlibLink {
@@ -30,6 +32,9 @@ public:
     bool setMode(const std::string& mode, int passbandHz, std::string& err);   // Hamlib mode name ("USB", "WFM"...); passband 0 = the rig's normal
     bool getMode(std::string& mode, int& passbandHz, std::string& err);
     bool setPtt(bool on, std::string& err);              // transmit sink only
+    // Split: transmit on txHz while the receive VFO stays where it is (on = false: back to simplex). getSplitFreq reads the TX VFO back.
+    bool setSplit(bool on, double txHz, std::string& err);
+    bool getSplitFreq(double& hz, std::string& err);
     std::string info() const;                            // rig_get_info text ("" when the rig has none)
 
 private:
