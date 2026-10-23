@@ -208,4 +208,6 @@ repo's own sample and on speech synthesised by `kaal_voice_eval`.
   class importance order, garbage then recovery.
 - `kaalvoice_dtx`: frame types and sizes, SID rate, comfort-noise level, DTX does not hurt the speech, digital silence, lost SIDs, the
   noise suppressor.
-- `kaalvoice_golden`: determinism digest (section 6).
+- `kaalvoice_golden`: determinism digest (section 6), with the receiver-side enhancer off.
+- `kaalvoice_enhance`: the decoder-side speech enhancer (docs/KAAL-ENHANCE.md; on by default for 3.2 / 4.8 / 6.0, the bit stream is
+  the same).
