@@ -2,6 +2,7 @@
 // list, status lamps, the analysis plots (FAC / SDC / MSC cells, channel, SNR), the Receiver tab with all telemetry and the options of the test signal.
 #include "app.h"
 #include "panels/gallery.h"
+#include "panels/enhance_ui.h"
 #include "panels/journaline_view.h"
 #include <cmath>
 #include <ctime>
@@ -23,6 +24,7 @@ struct State {
     gfx::Image* img = nullptr;        // the slide show picture of that service
     uint64_t imgSeq = 0;
     int imgShort = -1;
+    enhui::LiveTex enh;               // the Enhance control on the slide
     int objSel = -1;                  // the object of a website / EPG service whose text is shown
     std::string objSelName;
     uint64_t lastSeq = 0;
@@ -149,6 +151,8 @@ void slideImage(const dect2::DrmDataView& v) {
         if (gGfx && v.slide.w > 0 && v.slide.h > 0 && v.slide.rgba.size() >= (size_t)v.slide.w * (size_t)v.slide.h * 4) {
             S.img = gGfx->createImage(v.slide.w, v.slide.h, 0xFF000000u);
             S.img->update(0, 0, v.slide.w, v.slide.h, reinterpret_cast<const uint32_t*>(v.slide.rgba.data()));
+            S.enh.e.setSource("DRM slide show");
+            S.enh.feed(reinterpret_cast<const uint32_t*>(v.slide.rgba.data()), v.slide.w, v.slide.h, true);
         }
         S.imgSeq = v.slide.seq; S.imgShort = v.shortId;
     }
@@ -182,7 +186,8 @@ void dataPanel(App& a, float w, float h, const DrmService& s) {
         if (v.slide.seq == 0) ImGui::TextDisabled("no picture received yet (the carousel sends one object after the other)");
         else if (S.img) {
             const float sc = std::max(0.1f, std::min(std::min((ImGui::GetContentRegionAvail().x - 4 * gUi) / (float)v.slide.w, std::max(80.f * gUi, h * 0.45f) / (float)v.slide.h), 8.f));
-            ImGui::Image(S.img->texture(), ImVec2((float)v.slide.w * sc, (float)v.slide.h * sc));
+            ImGui::Image(S.enh.texture(S.img)->texture(), ImVec2((float)v.slide.w * sc, (float)v.slide.h * sc));
+            S.enh.controls("drmenh");
         }
         if (v.slide.seq) {
             if (!v.slide.caption.empty()) { ImGui::PushFont(a.ui, 18.f); ImGui::TextUnformatted(v.slide.caption.c_str()); ImGui::PopFont(); }

@@ -3,6 +3,7 @@
 #include "app.h"
 #include "../ui/typography.h"
 #include "panels/gallery.h"
+#include "panels/enhance_ui.h"
 #include "dect2/results/results_io.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/marine/marine_tel.h"
@@ -87,6 +88,7 @@ struct State {
     int texW = 0, texH = 0, imgW = 0, imgH = 0;
     uint64_t imgSeq = 0, telImgSeq = ~0ull;
     dect2::FaxImage last;            // the copy kept for saving
+    enhui::LiveTex enh;              // the Enhance control on the fax picture
     bool faxShown = false;           // the Fax view was drawn this frame (the top "clear" button also clears the picture then)
     float zoom = 0;                  // 0 = fit the width
     ImVec2 pan{0, 0};
@@ -521,6 +523,8 @@ void uploadFax(App& a) {
     std::vector<uint32_t> px((size_t)im.width * im.height);
     for (size_t i = 0; i < px.size(); i++) { const uint32_t g = im.pix[i]; px[i] = 0xFF000000u | (g << 16) | (g << 8) | g; }
     S.img->update(0, 0, im.width, im.height, px.data());
+    S.enh.e.setSource("Weather fax");
+    S.enh.feed(px.data(), im.width, im.height, false);   // still arriving: the cheap preview path
     S.imgW = im.width; S.imgH = im.height;
     S.last = std::move(im);
 }
@@ -582,6 +586,8 @@ void faxView(App& a) {
     if (ImGui::SmallButton(tr("clear picture##faxclr"))) { a.engine.marine().clearFax(); marineFaxClearUi(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Clears the picture and the lines the decoder has collected, and starts a new picture at the next start tone or phasing. Pictures already in the list on the right stay."));
     flowEnd();
+    S.enh.e.setSource("Weather fax");
+    S.enh.controls("faxenh");
     static const char* const st[] = {"waiting for the start tone", "phasing", "receiving", "stopped"};
     { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s, IOC %d, %d lpm, %d lines, %d px wide, slant %+.1f ppm, black at %.0f Hz (%+.0f Hz off), last tone %.0f Hz",
                         st[std::max(0, std::min(3, f.state))], f.ioc, f.lpm, f.lines, f.width, f.slantPpm, f.blackHz, f.blackHz - 1500.0, f.toneHz); ImGui::PopTextWrapPos(); }
@@ -625,7 +631,8 @@ void faxView(App& a) {
     S.pan.y = std::min(0.f, std::max(S.pan.y, std::min(0.f, box.y - h)));
     const ImVec2 q0(p0.x + S.pan.x, p0.y + S.pan.y), q1(q0.x + w, q0.y + h);
     dl->PushClipRect(p0, ImVec2(p0.x + box.x, p0.y + box.y), true);
-    dl->AddImage(S.img->texture(), q0, q1, ImVec2(0, 0), ImVec2(1, (float)S.imgH / (float)S.texH));
+    gfx::Image* shown = S.enh.texture(S.img);   // the enhanced view when Enhance is on (its own texture, exactly the picture's size)
+    dl->AddImage(shown->texture(), q0, q1, ImVec2(0, 0), ImVec2(1, shown == S.img ? (float)S.imgH / (float)S.texH : 1.f));
     dl->PopClipRect();
     char b[48];
     snprintf(b, sizeof b, "%dx%d  %.0f %%", S.imgW, S.imgH, z * 100);
@@ -1475,5 +1482,7 @@ void marineFaxTexture() {
     std::vector<uint32_t> px((size_t)S.last.width * S.last.height);
     for (size_t i = 0; i < px.size(); i++) { const uint32_t g = S.last.pix[i]; px[i] = 0xFF000000u | (g << 16) | (g << 8) | g; }
     S.img->update(0, 0, S.last.width, S.last.height, px.data());
+    S.enh.e.setSource("Weather fax");
+    S.enh.feed(px.data(), S.last.width, S.last.height, true);
     S.imgW = S.last.width; S.imgH = S.last.height;
 }

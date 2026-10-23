@@ -1,6 +1,7 @@
 // DAB / DAB+ digital radio panels.
 #include "app.h"
 #include "panels/journaline_view.h"
+#include "panels/enhance_ui.h"
 #include "state/results_export.h"
 #include "dect2/dab/dab_announce.h"
 #include "dect2/dab/dab_fig.h"
@@ -419,6 +420,7 @@ static struct DabSlideView {
     int w = 0, h = 0;
     std::string name;
 } gDabSlide;
+static enhui::LiveTex gDabEnh;   // the Enhance control on the slide
 static void dabSlideUpdate(App& a) {
     DabSlide s;
     if (!gGfx || !a.engine.dabAudio().slide(s, gDabSlide.seq)) return;
@@ -428,6 +430,8 @@ static void dabSlideUpdate(App& a) {
     if (s.w <= 0 || s.h <= 0 || s.rgba.size() < (size_t)s.w * (size_t)s.h * 4) return;
     gDabSlide.img = gGfx->createImage(s.w, s.h, 0xFF000000u);
     gDabSlide.img->update(0, 0, s.w, s.h, reinterpret_cast<const uint32_t*>(s.rgba.data()));
+    gDabEnh.e.setSource("DAB slide show");
+    gDabEnh.feed(reinterpret_cast<const uint32_t*>(s.rgba.data()), s.w, s.h, true);
     gDabSlide.w = s.w; gDabSlide.h = s.h; gDabSlide.name = s.name;
 }
 // The latest slide show picture of the playing service with the name it came with (and the label), in a box at most `maxH` high
@@ -446,9 +450,10 @@ void dabSlidePanel(App& a, const DabEnsemble& ens, float maxH) {
     }
     const float bw = ImGui::GetContentRegionAvail().x;
     const float sc = std::max(0.1f, std::min(std::min(bw / (float)gDabSlide.w, maxH / (float)gDabSlide.h), 6.f));
-    ImGui::Image(gDabSlide.img->texture(), ImVec2((float)gDabSlide.w * sc, (float)gDabSlide.h * sc));
+    ImGui::Image(gDabEnh.texture(gDabSlide.img)->texture(), ImVec2((float)gDabSlide.w * sc, (float)gDabSlide.h * sc));
     ImGui::SameLine(0, 10 * gUi);
     ImGui::BeginGroup();
+    gDabEnh.controls("dabenh");
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + std::max(120.f * gUi, bw - (float)gDabSlide.w * sc - 14 * gUi));
     if (!gDabSlide.name.empty()) ImGui::TextUnformatted(gDabSlide.name.c_str());
     ImGui::TextDisabled("%d x %d", gDabSlide.w, gDabSlide.h);
@@ -687,7 +692,7 @@ void dabStations(App& a) {
             if (sc > 0.f) {
                 const ImVec2 sz((float)gDabSlide.w * sc, (float)gDabSlide.h * sc);
                 ImGui::SetCursorPosX(std::max(0.f, (bw - sz.x) * 0.5f));
-                ImGui::Image(gDabSlide.img->texture(), sz);
+                ImGui::Image(gDabEnh.texture(gDabSlide.img)->texture(), sz);
             }
             drawTags(bw);
             if (!dls.empty() && tags.empty()) { ImGui::SetCursorPosX(8); ImGui::PushTextWrapPos(bw - 8); ImGui::TextDisabled("%s", dls.c_str()); ImGui::PopTextWrapPos(); }

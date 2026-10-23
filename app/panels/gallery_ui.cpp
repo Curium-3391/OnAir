@@ -5,6 +5,7 @@
 // colour palettes, a histogram, crop to the visible part, and a mosaic that stitches several projected passes into one map.
 #include "../app.h"
 #include "gallery.h"
+#include "enhance_ui.h"
 #include "../gfx/gfx.h"
 #include "../ui/icons.h"
 #include "../platform/platform.h"
@@ -63,6 +64,10 @@ struct View {
     bool cropOn = false; int cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;   // pixels of the image on show (the map, or the picture)
     float vis[4] = {0, 0, 1, 1};                    // the part of the image on screen, in its pixels
     std::string msg;
+    // enhancement (enhance_ui.h): fed with the picture after the false colour, the studio works on its view
+    enhui::Enhancer enh;
+    int fedPreset = -1;
+    int dw = 0, dh = 0;                             // size of disp (the enhanced picture can be larger: upscale, fax width)
 };
 
 struct State {
@@ -132,6 +137,7 @@ void rmFiles(const Item& it) {
     std::error_code ec;
     fs::remove(P(S.dir + "/" + it.id + ".png"), ec);
     fs::remove(P(S.dir + "/" + it.id + "_t.png"), ec);
+    fs::remove(P(S.dir + "/" + it.id + "_e.png"), ec);
     fs::remove(P(S.dir + "/" + it.id + ".trk"), ec);
     for (int c = 0; c < 6; c++) fs::remove(P(S.dir + "/" + it.id + "_c" + std::to_string(c) + ".png"), ec);
 }
@@ -239,6 +245,7 @@ void publish(const std::string& key, const std::string& source, double unixTime,
     const std::string base = S.dir + "/" + id;
     if (!gfx::writePng((base + ".png").c_str(), rgba, w, h)) { S.msg = "could not write " + base + ".png"; return; }
     it.bytes = fileSize(base + ".png");
+    enhui::autoEnhanceFile(source, rgba, w, h, base + "_e.png");   // "Apply to all new images" of this mode: an enhanced copy beside the raw one
     std::vector<uint8_t> th; int tw, thh;
     makeThumb(rgba, w, h, th, tw, thh);
     gfx::writePng((base + "_t.png").c_str(), th.data(), tw, thh);
@@ -307,6 +314,8 @@ void selectItem(const Item& it) {
     S.sel = it.id;
     View& v = S.v;
     v.id = it.id; v.w = it.w; v.h = it.h;
+    v.enh.setSource(it.source);
+    v.enh.setSaveName(fileStamp(it.time) + "-" + fsafe(it.sat.empty() ? it.source : it.sat) + "-enhanced.png");
     std::vector<uint8_t> rgba;
     int w = 0, h = 0;
     if (!readPng(S.dir + "/" + it.id + ".png", w, h, rgba) || w != it.w || h != it.h) { v.msg = "could not read the picture"; v.w = v.h = 0; return; }
@@ -341,7 +350,16 @@ void render(View& v) {
         const uint8_t *a = pl(p.r), *b = pl(p.g), *c = pl(p.b);
         if (a || b || c) composeRgba(a, b, c, n, p.thermal, v.disp.data());
     }
-    std::vector<uint8_t> y = lumaOf(v.disp.data(), n);
+    // the enhancement works on the picture with its false colour; the tone controls below work on what it shows
+    if (v.fedPreset != v.preset) { v.fedPreset = v.preset; v.enh.feed(v.disp.data(), v.w, v.h, true); }
+    v.dw = v.w; v.dh = v.h;
+    if (v.enh.on()) {
+        int ew, eh;
+        const std::vector<uint8_t>& ev = v.enh.view(ew, eh);
+        if (!ev.empty() && ew > 0 && eh > 0) { v.disp = ev; v.dw = ew; v.dh = eh; }
+    }
+    const size_t nd = (size_t)v.dw * v.dh;
+    std::vector<uint8_t> y = lumaOf(v.disp.data(), nd);
     std::array<uint8_t, 256> lut;
     for (int i = 0; i < 256; i++) lut[(size_t)i] = (uint8_t)i;
     if (v.stretch) {
@@ -357,14 +375,14 @@ void render(View& v) {
         lut = composeLut(lut, equaliseLut(y2.data(), y2.size(), true));
     }
     if (v.invert) lut = composeLut(lut, invertLut());
-    applyLutRgba(v.disp.data(), n, lut);
-    if (v.palette > 0) applyPaletteRgba(v.disp.data(), n, v.palette);
-    if (v.hist) { const std::vector<uint8_t> yy = lumaOf(v.disp.data(), n); histogramOf(yy.data(), yy.size(), true, v.hbins); }
+    applyLutRgba(v.disp.data(), nd, lut);
+    if (v.palette > 0) applyPaletteRgba(v.disp.data(), nd, v.palette);
+    if (v.hist) { const std::vector<uint8_t> yy = lumaOf(v.disp.data(), nd); histogramOf(yy.data(), yy.size(), true, v.hbins); }
     v.dirty = false;
     v.mapDirty = true;
     if (gGfx) {
-        if (!v.tex || v.texW != v.w || v.texH != v.h) { delete v.tex; v.tex = gGfx->createImage(v.w, v.h, 0xFF000000u); v.texW = v.w; v.texH = v.h; }
-        if (v.tex) v.tex->update(0, 0, v.w, v.h, reinterpret_cast<const uint32_t*>(v.disp.data()));
+        if (!v.tex || v.texW != v.dw || v.texH != v.dh) { delete v.tex; v.tex = gGfx->createImage(v.dw, v.dh, 0xFF000000u); v.texW = v.dw; v.texH = v.dh; }
+        if (v.tex) v.tex->update(0, 0, v.dw, v.dh, reinterpret_cast<const uint32_t*>(v.disp.data()));
     }
 }
 
@@ -387,6 +405,7 @@ void applyOverlays(View& v) {
 
 void project(View& v) {
     v.mapDirty = false;
+    if (v.dw != v.w || v.dh != v.h) { v.msg = "the map needs the picture at its own size (turn off Upscale and Fax width in the enhancement)"; v.mapOn = false; return; }
     SwathGeom g = v.sg;
     g.cols = v.w;
     if (!projectSwath(v.disp.data(), v.w, v.h, v.lpt, g, 2400, v.mapBase)) { v.msg = "could not project"; v.mapOn = false; return; }
@@ -447,9 +466,9 @@ void saveView(const Item& it, View& v) {
     if (v.cropOn && v.cx1 > v.cx0 && v.cy1 > v.cy0) {
         const int cw = v.cx1 - v.cx0, ch = v.cy1 - v.cy0;
         std::vector<uint8_t> px((size_t)cw * ch * 4);
-        for (int y = 0; y < ch; y++) std::memcpy(&px[(size_t)y * cw * 4], &v.disp[((size_t)(y + v.cy0) * v.w + v.cx0) * 4], (size_t)cw * 4);
+        for (int y = 0; y < ch; y++) std::memcpy(&px[(size_t)y * cw * 4], &v.disp[((size_t)(y + v.cy0) * v.dw + v.cx0) * 4], (size_t)cw * 4);
         ok = gfx::writePng(path.c_str(), px.data(), cw, ch);
-    } else ok = gfx::writePng(path.c_str(), v.disp.data(), v.w, v.h);
+    } else ok = gfx::writePng(path.c_str(), v.disp.data(), v.dw, v.dh);
     v.msg = ok ? "saved " + path : "could not write " + path;
 }
 
@@ -639,6 +658,9 @@ void viewer(Item& it) {
     if (ImGui::Checkbox(tr("Histogram"), &v.hist)) ch = true;
     ImGui::SameLine();
     if (ImGui::SmallButton("Reset")) { v.preset = 0; v.stretch = false; v.loPct = 1.f; v.hiPct = 99.f; v.gamma = 1.f; v.curve = v.palette = 0; v.equalise = v.invert = false; ch = true; }
+    // the enhancement: its own row
+    if (v.enh.controls("genh")) v.dirty = true;
+    if (v.enh.poll()) v.dirty = true;
     if (ch) v.dirty = true;
     if (v.hist) histogramStrip(v);
     if (v.geo) {
@@ -651,7 +673,7 @@ void viewer(Item& it) {
     } else if (it.lpt == 0 && it.source.find("Meteor") != std::string::npos) {
         ImGui::TextDisabled("(no map: needs a TLE, download them in View > Passes)");
     }
-    cropControls(v, v.mapOn && v.mapTex ? v.map.w : v.w, v.mapOn && v.mapTex ? v.map.h : v.h);
+    cropControls(v, v.mapOn && v.mapTex ? v.map.w : v.dw, v.mapOn && v.mapTex ? v.map.h : v.dh);
     ImGui::SameLine();
     if (ImGui::SmallButton("Fit")) v.fit = true;
     ImGui::SameLine();
@@ -675,7 +697,7 @@ void viewer(Item& it) {
     if (!v.msg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", v.msg.c_str()); }
 
     gfx::Image* tex = v.mapOn && v.mapTex ? v.mapTex : v.tex;
-    const int iw = v.mapOn && v.mapTex ? v.map.w : v.w, ih = v.mapOn && v.mapTex ? v.map.h : v.h;
+    const int iw = v.mapOn && v.mapTex ? v.map.w : v.dw, ih = v.mapOn && v.mapTex ? v.map.h : v.dh;
     if (!tex) return;
     canvas(v, tex, iw, ih, v.mapOn ? &v.map : nullptr);
 }

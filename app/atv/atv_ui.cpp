@@ -1,6 +1,7 @@
 // Analog TV screens: the picture with a line scope, the status lamps, the vertical-interval and level panels, the receiver readouts and the options
 // of the test signal. The receiver (AtvReceiver) makes the pictures; the telemetry carries the waveforms and the numbers.
 #include "app.h"
+#include "panels/enhance_ui.h"
 #include "dect2/atv/atv_std.h"
 #include <cmath>
 #include <memory>
@@ -10,6 +11,7 @@ namespace {
 struct State {
     bool loaded = false, wasRunning = false;
     gfx::Image* img = nullptr;                  // the picture as a texture
+    enhui::LiveTex enh;                         // the Enhance control on the frame grab (worked on the newest frame when the last is done)
     int imgW = 0, imgH = 0;
     uint64_t frameSeq = 0;
     std::shared_ptr<const AtvFrame> frame;      // the last picture (for the caption)
@@ -204,6 +206,8 @@ void uploadFrame(App& a) {
     std::vector<uint32_t> px((size_t)f->width * f->height);
     memcpy(px.data(), f->rgba.data(), px.size() * 4);
     S.img->update(0, 0, f->width, f->height, px.data());
+    S.enh.e.setSource("Analog TV frame");
+    if (S.enh.e.on()) S.enh.feed(px.data(), f->width, f->height, false);
     S.frame = f;
 }
 
@@ -219,7 +223,7 @@ void picture(App& a, ImVec2 box) {
     if (box.x / box.y > ar) sz.x = box.y * ar; else sz.y = box.x / ar;
     const ImVec2 q0(p0.x + (box.x - sz.x) * 0.5f, p0.y + (box.y - sz.y) * 0.5f), q1(q0.x + sz.x, q0.y + sz.y);
     if (S.img && S.frame) {
-        dl->AddImage(S.img->texture(), q0, q1);
+        dl->AddImage(S.enh.texture(S.img)->texture(), q0, q1);
         if (!on || t.state != 2) dl->AddRectFilled(q0, q1, IM_COL32(0, 0, 0, 150));   // an old picture
     }
     const char* msg = nullptr;
@@ -266,6 +270,8 @@ void tab(App& a) {
     ImGui::SameLine(0, 4 * gUi);
     if (pillButton("Bob", S.deint == 1)) { S.deint = 1; plat::prefs().setI("atvDeint", 1); savePrefs(a); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("One field at a time, lines doubled: no combing, half the vertical detail.");
+    S.enh.e.setSource("Analog TV frame");
+    S.enh.controls("atvenh");
     const float rest = ImGui::GetContentRegionAvail().y;
     const bool side = W - rest * 4.f / 3.f > 300 * gUi;   // wide window: the scope goes beside the picture
     if (side) {
