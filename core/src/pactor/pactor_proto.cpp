@@ -149,7 +149,7 @@ bool huffLoad(const std::string& path) {
         t.add(ch, code);
     }
     fclose(f);
-    if (t.enc.size() < 10) return false;
+    if (t.enc.size() < 3) return false;
     std::lock_guard<std::mutex> lk(gMu);
     table() = std::move(t);
     return true;

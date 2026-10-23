@@ -111,13 +111,13 @@ int main() {
     {   // memory ARQ: one packet sent four times near the threshold; no copy needs to be clean, the sum of the copies must give the packet
         pactor::Packet p = pactorTextPacket("ABCDEFGHIJKLMNOPQRST", false, pactor::kHeaderA, 1, true);
         int bestMem = -1, bestOk = 0;
-        for (double snr : {-3.0, -2.0, -1.0, 0.0}) {
+        for (double snr : {-2.5, -2.0, -1.5, -1.0, -0.5, 0.0}) {
             PactorScriptBuilder b;
             for (int i = 0; i < 6; i++) { b.packet(p, true); b.cs(i == 5 ? 1 : 2); b.next(); }
             PactorGenConfig c;
             c.snrDb = snr; c.events = b.ev; c.lengthSec = b.end();
             const PactorTelemetry t = run(c);
-            printf("  memory ARQ at %.0f dB: %llu ok, %llu bad, %llu saved\n", snr, (unsigned long long)t.blocksOk, (unsigned long long)t.blocksBad, (unsigned long long)t.memArqSaves);
+            printf("  memory ARQ at %.1f dB: %llu ok, %llu bad, %llu saved\n", snr, (unsigned long long)t.blocksOk, (unsigned long long)t.blocksBad, (unsigned long long)t.memArqSaves);
             if (t.memArqSaves > 0 && has(t.text, "ABCDEFGHIJKLMNOPQRST")) { bestMem = (int)t.memArqSaves; break; }
             bestOk = std::max(bestOk, (int)t.blocksOk);
         }

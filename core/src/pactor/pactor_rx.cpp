@@ -10,6 +10,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <cstdlib>
 #include <mutex>
 #include <vector>
 #include "dect2/common/mathconst.h"
@@ -96,6 +97,7 @@ struct PactorReceiver::Impl {
     cd zh{0, 0}, zl{0, 0}, histH[4], histL[4];
     int histN = 0;
     double floorE = 1;
+    std::vector<double>* collect = nullptr;   // first pass over the stored audio: the energies, to start the noise level from
     bool on = false;
     int64_t burstStart = 0, lastOn = 0;
     int offCnt = 0;
@@ -233,6 +235,19 @@ struct PactorReceiver::Impl {
         zh = zl = cd(0, 0); histN = 0; on = false; offCnt = 0;
         changed = true;
         say("PACTOR-I: tone pair " + std::to_string((int)std::lround(low)) + " / " + std::to_string((int)std::lround(low + 200)) + " Hz");
+        {   // first pass: the noise level is the lower quartile of the energies (mean of two exponentials = quartile / 0.38), whatever the signal does
+            std::vector<double> es;
+            collect = &es;
+            for (int64_t i = start; i < na; i++) envSample(ring[(size_t)(i & kMask)], i);
+            collect = nullptr;
+            if (es.size() > 50) {
+                std::nth_element(es.begin(), es.begin() + (long)es.size() / 4, es.end());
+                floorE = std::max(es[es.size() / 4] / 0.38, 1e-12);
+            }
+            oh = std::polar(1.0, -2 * kPi * (low + 200.0) * (double)start / kFs);
+            ol = std::polar(1.0, -2 * kPi * low * (double)start / kFs);
+            zh = zl = cd(0, 0); histN = 0;
+        }
         for (int64_t i = start; i < na; i++) envSample(ring[(size_t)(i & kMask)], i);
     }
 
@@ -246,12 +261,12 @@ struct PactorReceiver::Impl {
         zh = zl = cd(0, 0);
         if (histN < 4) return;
         const double E = std::norm(histH[0] + histH[1] + histH[2] + histH[3]) + std::norm(histL[0] + histL[1] + histL[2] + histL[3]);
+        if (collect) { collect->push_back(E); return; }
         if (!on) {
-            if (E < floorE) floorE += (E - floorE) * 0.02;
-            else if (E < 2.5 * floorE) floorE += (E - floorE) * 0.002;
-            if (E > 5.0 * floorE) { on = true; burstStart = idx - 32; lastOn = idx; offCnt = 0; }
+            if (E < 3.0 * floorE) floorE += (E - floorE) * 0.01;   // the mean noise energy, signal excluded
+            if (E > 6.0 * floorE) { on = true; burstStart = idx - 32; lastOn = idx; offCnt = 0; }
         } else {
-            if (E > 2.5 * floorE) { lastOn = idx; offCnt = 0; }
+            if (E > 3.0 * floorE) { lastOn = idx; offCnt = 0; }
             else if (++offCnt >= 24) { on = false; endBurst(burstStart, lastOn); }
             else if (idx - burstStart > 6 * (int64_t)kFs) { on = false; endBurst(burstStart, idx); }
         }
@@ -324,26 +339,35 @@ struct PactorReceiver::Impl {
         return false;
     }
 
-    // best-guess soft bits of a packet that failed its CRC, by the header (alternating 0101.. whichever polarity): ok when the header is clear
-    bool bestSoft(int64_t pos, std::vector<float>& out, int64_t* where) {
-        double bestScore = 0;
+    // best-guess soft bits of a packet that failed its CRC. Without a reference: the speed and timing with the most confident bits over the whole packet
+    // and the alternating 0101.. of the header 55 / AA. With the soft bits of an earlier bad packet: the hypothesis that lines up with it best
+    // (a repeat of the same packet), when that is clearly better than chance; otherwise as without.
+    bool bestSoft(int64_t pos, std::vector<float>& out, int64_t* where, const std::vector<float>* ref = nullptr) {
+        double bestH = -1, bestHdr = 0, bestConf = 0, bestR = 0;
+        std::vector<float> outH, outR;
+        int64_t whereH = pos, whereR = pos;
         for (int off : offsets()) for (int sp = 0; sp < 2; sp++) {
-            const int bl = sp ? kBitFast : kBitSlow;
+            const int bl = sp ? kBitFast : kBitSlow, nb = sp ? pactor::kBitsFast : pactor::kBitsSlow;
             const int64_t a = pos + off;
-            if (!inside(a, a + (int64_t)bl * 8)) continue;
-            double c = 0;
-            for (int i = 0; i < 8; i++) c += ((i & 1) ? -1.0 : 1.0) * soft(a + (int64_t)i * bl, a + (int64_t)(i + 1) * bl);
-            c = std::fabs(c) / 8;
-            if (c > bestScore) {
-                const int nb = sp ? pactor::kBitsFast : pactor::kBitsSlow;
-                if (!inside(a, a + (int64_t)bl * nb)) continue;
-                bestScore = c;
-                out.assign((size_t)nb, 0.f);
-                for (int i = 0; i < nb; i++) out[(size_t)i] = (float)soft(a + (int64_t)i * bl, a + (int64_t)(i + 1) * bl);
-                *where = a;
+            if (!inside(a, a + (int64_t)bl * nb)) continue;
+            std::vector<float> v((size_t)nb);
+            double conf = 0, hc = 0, rc = 0;
+            for (int i = 0; i < nb; i++) {
+                v[(size_t)i] = (float)soft(a + (int64_t)i * bl, a + (int64_t)(i + 1) * bl);
+                conf += std::fabs(v[(size_t)i]);
+                if (i < 8) hc += ((i & 1) ? -1.0 : 1.0) * v[(size_t)i];
             }
+            conf /= nb; hc = std::fabs(hc) / 8;
+            if (ref && ref->size() == (size_t)nb) {
+                for (int i = 0; i < nb; i++) rc += (*ref)[(size_t)i] * v[(size_t)i];
+                rc = std::fabs(rc) / nb;
+                if (rc > bestR) { bestR = rc; outR = v; whereR = a; }
+            }
+            if (conf + hc > bestH) { bestH = conf + hc; bestHdr = hc; bestConf = conf; outH = v; whereH = a; }
         }
-        return bestScore > 0.6;
+        if (bestR > 0.2) { out = outR; *where = whereR; return true; }
+        out = outH; *where = whereH;
+        return bestConf > 0.3 && bestHdr > 0.2;
     }
 
     struct CsHit { int n = 0, dist = 99; int64_t pos = 0; bool inverted = false; };
@@ -378,12 +402,13 @@ struct PactorReceiver::Impl {
             if (rem >= 720 && tryCS(pos, cs)) {
                 const int64_t next = cs.pos + kCsSamples, nrem = e - next;
                 PktHit peek;
-                if (nrem < 720 || (nrem >= 6400 && tryPacket(next, peek))) { gotCs(cs); pos = next; continue; }
+                // the burst is a control signal and a packet long: the packet may be damaged (its CRC fails), the control signal is still real
+                if (nrem < 720 || (nrem >= 6400 && tryPacket(next, peek)) || (nrem >= 7300 && nrem <= 8000)) { gotCs(cs); pos = next; continue; }
             }
             if (rem >= 6800) {
                 std::vector<float> soft;
                 int64_t where = pos;
-                gotBad(pos, bestSoft(pos, soft, &where) ? &soft : nullptr);
+                gotBad(pos, bestSoft(pos, soft, &where, badSoft.empty() ? nullptr : &badSoft) ? &soft : nullptr);
                 pos += kPktSamples;
                 continue;
             }
@@ -480,24 +505,28 @@ struct PactorReceiver::Impl {
         if (soft && !badSoft.empty() && badSoft.size() == soft->size() && ts - badTime < 8.0) {
             double corr = 0;
             for (int i = 0; i < 8; i++) corr += badSoft[(size_t)i] * (*soft)[(size_t)i];
-            if (std::fabs(corr) >= 2.0) {
-                const float sg = corr > 0 ? 1.f : -1.f;
-                std::vector<float> c(soft->size());
-                for (size_t i = 0; i < c.size(); i++) c[i] = badSoft[i] + sg * (*soft)[i];
-                for (int pol = 0; pol < 2; pol++) {
-                    std::vector<uint8_t> bits(c.size());
-                    for (size_t i = 0; i < c.size(); i++) bits[i] = (uint8_t)((c[i] > 0) ^ pol);
-                    pactor::Packet p;
-                    int he = 9;
-                    if (pactor::packetParse(bits, p, &he) && he <= 1) {
-                        PktHit h; h.p = p; h.pos = pos; h.fast = soft->size() == (size_t)pactor::kBitsFast; h.inverted = false; h.snr = 0;
-                        memSaves++;
-                        gotPacket(h, true);
-                        badTime = -1e9;
-                        return;
+            {   // the header decides how the two copies line up (the tone polarity swaps every cycle); both ways are tried, the CRC decides
+                std::vector<float> keep;
+                for (int pass = 0; pass < 2; pass++) {
+                    const float sg = ((pass == 0) == (corr > 0)) ? 1.f : -1.f;
+                    std::vector<float> c(soft->size());
+                    for (size_t i = 0; i < c.size(); i++) c[i] = badSoft[i] + sg * (*soft)[i];
+                    if (pass == 0) keep = c;
+                    for (int pol = 0; pol < 2; pol++) {
+                        std::vector<uint8_t> bits(c.size());
+                        for (size_t i = 0; i < c.size(); i++) bits[i] = (uint8_t)((c[i] > 0) ^ pol);
+                        pactor::Packet p;
+                        int he = 9;
+                        if (pactor::packetParse(bits, p, &he) && he <= 1) {
+                            PktHit h; h.p = p; h.pos = pos; h.fast = soft->size() == (size_t)pactor::kBitsFast; h.inverted = false; h.snr = 0;
+                            memSaves++;
+                            gotPacket(h, true);
+                            badTime = -1e9;
+                            return;
+                        }
                     }
                 }
-                badSoft = c; badTime = ts; badPk++;
+                badSoft = keep; badTime = ts; badPk++;
                 logBad(ts, soft->size() == (size_t)pactor::kBitsFast);
                 return;
             }
