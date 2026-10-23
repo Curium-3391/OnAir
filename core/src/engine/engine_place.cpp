@@ -89,10 +89,35 @@ void Engine::setDecodeShiftHz(double hz) {
     resetReq_ = true;
 }
 
+// A recording: the tune frequency is the VFO; its offset from the recording's centre is the decode shift, kept inside the usable span
+void Engine::fileFollowVfo(const TuneSettings& t) {
+    const double c = fileCentreHz_.load(), r = rate_.load();
+    if (c <= 0) return;
+    const double lim = 0.45 * r;
+    setDecodeShiftHz(r > 0 ? std::min(lim, std::max(-lim, t.centerHz - c)) : 0.0);
+}
+
+void Engine::setFileVfoHz(double hz) {
+    if (fileCentreHz_.load() <= 0) return;
+    TuneSettings t;
+    { std::lock_guard<std::mutex> lk(tuneMu_); lastTune_.centerHz = hz; t = lastTune_; }
+    fileFollowVfo(t);
+}
+
+void Engine::setFileCentreHz(double hz) {
+    if (!(hz > 0) || fileCentreHz_.load() <= 0) return;
+    TuneSettings t;
+    { std::lock_guard<std::mutex> lk(tuneMu_); t = lastTune_; }
+    fileCentreHz_ = hz;
+    t.centerHz = hz + decodeShiftHz_.load();
+    { std::lock_guard<std::mutex> lk(tuneMu_); lastTune_ = t; }
+}
+
 double Engine::captureCentreHz() const {
     TuneSettings t;
     DeviceInfo::Kind k;
     { std::lock_guard<std::mutex> lk(tuneMu_); t = lastTune_; k = lastDev_.kind; }
+    if (k == DeviceInfo::File && fileCentreHz_.load() > 0) return fileCentreHz_.load();   // a recording: its own centre, whatever the VFO
     if (k == DeviceInfo::File || k == DeviceInfo::Audio || k == DeviceInfo::Hamlib) return t.centerHz;   // dial frequency (sound card / Hamlib + audio IQ)
     const ModeTuning* mt = modeTuning(stdMode_.load());
     return t.centerHz + (mt && !noTuneOffset_.load() ? mt->tuneOffsetHz : 0);   // the radio's centre (with offset tuning the samples are shifted back to it)

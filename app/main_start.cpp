@@ -96,6 +96,7 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--voiceinv") voiceInversionDevOpen();   // dev: the Voice inversion pop-up open
         if (std::string(argv[i]) == "--audioclean") audioCleanupDevOpen(i + 1 < argc && std::string(argv[i + 1]) == "adv");   // dev: the Audio cleanup pop-up open (adv: Advanced)
         if (std::string(argv[i]) == "--fmscan") o.fmScanAuto = true;
+        if (std::string(argv[i]) == "--vfo" && i + 1 < argc) o.fileVfoMhz = atof(argv[++i]);
         if (std::string(argv[i]) == "--passes") app.passesOpen = true;
         if (std::string(argv[i]) == "--df") app.dfOpen = true;
         if (std::string(argv[i]) == "--passive-radar") app.passiveRadarOpen = true;
@@ -192,7 +193,7 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--pp" && i + 1 < argc) app.tune.synth.tx.pp = atoi(argv[++i]);
         if (std::string(argv[i]) == "--ext") app.tune.synth.tx.ext = true;
         if (std::string(argv[i]) == "--hackrf") o.hackrfStart = true;
-        if (std::string(argv[i]) == "--file" && i + 1 < argc) { app.file.path = argv[++i]; app.file.sampleRate = 10e6; app.file.format = FileFormat::CS8;
+        if (std::string(argv[i]) == "--file" && i + 1 < argc) { app.file.path = argv[++i]; app.file.centreHz = 0; app.file.sampleRate = 10e6; app.file.format = FileFormat::CS8;
             { IqFileInfo info; std::string perr;
               if (probeIqFile(app.file.path, info, perr)) { app.file.path = info.dataPath; app.file.format = info.format; app.file.bigEndian = info.bigEndian; app.file.offsetBytes = info.offsetBytes; app.file.endBytes = info.endBytes; if (info.sampleRate > 0) app.file.sampleRate = info.sampleRate; if (info.centerHz > 0) app.freqMhz = info.centerHz / 1e6; }
               else if (!perr.empty()) fprintf(stderr, "%s\n", perr.c_str()); }

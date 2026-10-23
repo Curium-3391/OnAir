@@ -97,6 +97,12 @@ bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOp
                  offHz_.load() / 1e6, srcRate_ / 1e6, rate_.load() / 1e6);
         log(b);
     }
+    if (dev.kind == DeviceInfo::File) {   // a recording: the spectrum stays on its centre, the tune frequency is the VFO (a decode shift)
+        fileCentreHz_ = file.centreHz > 0 ? file.centreHz : tune.centerHz;
+        const double lim = 0.45 * rate_.load();
+        decodeShiftHz_ = std::min(lim, std::max(-lim, tune.centerHz - fileCentreHz_.load()));
+    } else fileCentreHz_ = 0;
+    dcn_.set(rate_.load()); dcn_.reset();
     decodeMix_.set(decodeShiftHz_.load(), rate_.load());   // sticky tuning, mixed just before the receiver (after the offset resampler)
     {
         std::lock_guard<std::mutex> lk(tuneMu_);
@@ -167,10 +173,10 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         const ModeTuning* mto = modeTuning(stdMode_.load());
         const double o = mto && dev.kind != DeviceInfo::File && dev.kind != DeviceInfo::Audio ? -mto->tuneOffsetHz : 0.0;
         for (int wm : WideModes::modes()) wide_.configure(wm, rate_, o);
-        wide_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : tune.centerHz);   // the logs of a whole-span decoder keep their rows' frequencies over a retune
+        wide_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : fileCentreHz_.load());   // the logs of a whole-span decoder keep their rows' frequencies over a retune
         rxSonde_.setSignalOffset(o);
         rxAis_.setSignalOffset(o);
-        rxAis_.setCenterHz(dev.isRadio() ? radioTune(tune).centerHz : dev.kind == DeviceInfo::File && rate_ >= 5e6 ? tune.centerHz : 0.0);   // a wide capture holds the long-range channels too
+        rxAis_.setCenterHz(dev.isRadio() ? radioTune(tune).centerHz : dev.kind == DeviceInfo::File && rate_ >= 5e6 ? fileCentreHz_.load() : 0.0);   // a wide capture holds the long-range channels too
         rxMarine_.setSignalOffset(o);
         rxAcars_.setSignalOffset(o);
         if (dev.kind != DeviceInfo::File) rxAcars_.setCenterHz(radioTune(tune).centerHz);   // channel frequencies and the 25 kHz grid come from it

@@ -2,6 +2,7 @@
 #include "../rooms/rooms.h"
 #include "../app.h"
 #include "../clips/clips_ui.h"
+#include "../gfx/file_vfo.h"
 #include <cstring>
 #include "dect2/source/usb_diag.h"
 #include "dect2/engine/rate_choice.h"
@@ -528,7 +529,52 @@ void ingestRx(App& a) {
     }
 }
 
+bool fileSourceSelected(const App& a) {
+    return !a.devices.empty() && a.devIdx >= 0 && a.devIdx < (int)a.devices.size() && a.devices[a.devIdx].kind == DeviceInfo::File;
+}
+bool fileVfoActive(const App& a) { return fileSourceSelected(a) && a.engine.running() && a.engine.fileCentreHz() > 0; }
+double fileCentreMhz(const App& a) {
+    if (fileVfoActive(a)) return a.engine.fileCentreHz() / 1e6;
+    return a.file.centreHz > 0 ? a.file.centreHz / 1e6 : a.freqMhz;
+}
+
+// A click, a drag, a typed or wheel-stepped frequency on a recording: the spectrum and waterfall stay on the recording's centre and rate (the
+// file cannot retune anything); only the demodulator's offset moves, clamped so the passband stays inside the recorded span.
+void fileSetVfo(App& a, double absMhz) {
+    if (!fileVfoActive(a)) { a.freqMhz = absMhz; return; }
+    const double bw = std::max(0.0, channelWidth(a).mhz) * 1e6;
+    const filevfo::Plan p = filevfo::plan(absMhz, fileCentreMhz(a), a.engine.sampleRate(), bw);
+    a.freqMhz = p.vfoMhz;
+    a.tune.centerHz = p.vfoMhz * 1e6;
+    a.engine.setFileVfoHz(a.tune.centerHz);
+    a.fileEdgeCode = p.tooWide ? 3 : p.clamped ? 2 : p.nearEdge ? 1 : 0;
+    savePrefs(a);
+}
+
+// The File info dialog: the true centre frequency of a recording whose header lacks it. The tune box keeps its offset from the centre.
+void fileSetCentre(App& a, double centreMhz) {
+    if (!(centreMhz > 0)) return;
+    const double off = fileVfoActive(a) ? a.engine.decodeShiftHz() / 1e6 : a.freqMhz - fileCentreMhz(a);
+    a.file.centreHz = centreMhz * 1e6;
+    a.freqMhz = centreMhz + off;
+    a.tune.centerHz = a.freqMhz * 1e6;
+    if (fileVfoActive(a)) a.engine.setFileCentreHz(a.file.centreHz);
+    a.peak.clear(); a.minPk.clear();
+    savePrefs(a);
+}
+
+// Before a recording starts: its centre is kept (the first start takes the frequency typed as it); a frequency box value inside the span is the
+// VFO offset, one far outside it (a mode's own default) leaves the VFO on the centre
+void fileStartPrep(App& a) {
+    if (!fileSourceSelected(a)) return;
+    if (a.file.centreHz <= 0) a.file.centreHz = a.freqMhz * 1e6;
+    const double rate = a.file.sampleRate;
+    if (rate > 0 && std::fabs(a.freqMhz * 1e6 - a.file.centreHz) > filevfo::usableHalfSpanHz(rate)) a.freqMhz = a.file.centreHz / 1e6;
+    a.tune.centerHz = a.freqMhz * 1e6;
+}
+
 double radioCenterMhz(const App& a) {
+    if (fileVfoActive(a)) return a.engine.fileCentreHz() / 1e6;   // a recording: the axis never moves
     const ModeTuning* mt = a.family >= 6 ? modeTuning(a.family + 2) : nullptr;
     const bool file = !a.devices.empty() && a.devIdx >= 0 && a.devIdx < (int)a.devices.size() &&
                       (a.devices[a.devIdx].kind == DeviceInfo::File || a.devices[a.devIdx].isAudio() || a.devices[a.devIdx].kind == DeviceInfo::Hamlib);

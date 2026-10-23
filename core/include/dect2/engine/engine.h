@@ -164,6 +164,7 @@
 #include <cstdint>
 #include <memory>
 #include "dect2/power/power.h"
+#include "dect2/dsp/dc_notch.h"
 #include <map>
 #include <utility>
 
@@ -179,6 +180,7 @@ struct FileOptions {
     bool loop = true;
     uint64_t offsetBytes = 0, endBytes = 0;   // SigMF / WAV: where the samples start and end in the file
     bool bigEndian = false;
+    double centreHz = 0;   // the recording's own centre frequency (0: the tuned frequency at start is it). The spectrum stays on it; tune.centerHz is then the VFO
 };
 
 // Where samples were lost since the radio was started. Callback gaps: the library delivered less than the radio's rate (the radio or its
@@ -362,6 +364,14 @@ public:
     // Sticky tuning: mix a signal at captureCentreHz() + shiftHz to DC without retuning the radio (spectrum click in decode-offset mode).
     void setDecodeShiftHz(double hz);
     double decodeShiftHz() const { return decodeShiftHz_.load(); }
+    // A recording (file source): the spectrum stays on its centre; the tune frequency of start()/retune() is the VFO, whose offset from the centre
+    // becomes the decode shift (clamped to the usable span). 0 = not a file / not running.
+    double fileCentreHz() const { return fileCentreHz_.load(); }
+    void setFileCentreHz(double hz);   // the File info dialog: the centre the header lacked (the VFO keeps its offset)
+    void setFileVfoHz(double hz);      // the VFO (dial) frequency: the shift follows, nothing else is touched (no hold, no reset of the radio)
+    // "Ignore DC spike": a notch at the capture's centre in front of the receiver (the spectrum still shows the spike)
+    void setDcNotch(bool on) { dcNotch_ = on; }
+    bool dcNotch() const { return dcNotch_.load(); }
     // DAB / DAB+: the ensemble found on the channel, and the station to play (a sub-channel id, -1 = none)
     DabEnsemble dabEnsemble() const { return rxD_.ensemble(); }
     DabFicAnalysis dabFic() const { return rxD_.ficAnalysis(); }
@@ -610,6 +620,10 @@ private:
     std::atomic<double> offHz_{0}, offRate_{0};
     OffsetMixer offMix_;
     std::atomic<double> decodeShiftHz_{0};
+    std::atomic<double> fileCentreHz_{0};
+    std::atomic<bool> dcNotch_{false};
+    DcNotch dcn_;
+    void fileFollowVfo(const TuneSettings& t);
     OffsetMixer decodeMix_;
     // with offset tuning the radio runs faster than the mode needs; right after the shift the samples go back to the mode's own rate, so the
     // receivers, the spectrum and the waterfall see exactly what they see without the offset (only the radio's USB stream is larger)

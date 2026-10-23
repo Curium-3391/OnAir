@@ -169,6 +169,8 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagFn("offsetTune", [](const App& a) { return a.engine.autoOffset(); }, [](App& a, bool v) { a.engine.setAutoOffset(v); })),
         shared(flagFn("iqCorrect", [](const App& a) { return (bool)a.engine.iqFix().iq.load(); }, [](App& a, bool v) { a.engine.iqFix().iq = v; })),
         shared(text("filePath", AT(a.file.path), true)),
+        shared(dbl("fileCentreHz", AT(a.file.centreHz), 0)),
+        shared(flagFn("fileDcNotch", [](const App& a) { return a.engine.dcNotch(); }, [](App& a, bool v) { a.engine.setDcNotch(v); })),
         shared(chars("outPath", AT(a.filePath[0]), sizeof(App::filePath), true)),
         shared(chars("udpHost", AT(a.udpHost[0]), sizeof(App::udpHost), true)),
         shared(num("udpPort", AT(a.out.port), 0, 1, 0, true, true)),
