@@ -81,6 +81,7 @@ bool isSecretPrefKey(const std::string& key) {
     static const char* const kPart[] = {"password", "passwd", "passphrase", "token", "secret", "apikey", "api_key", "qrzkey", "clubapi", "clubpw", "eqslpw", "authkey", "privkey", "private"};
     for (const char* p : kPart) if (k.find(p) != std::string::npos) return true;
     if (k.size() >= 2 && k.compare(k.size() - 2, 2, "pw") == 0) return true;
+    if (k.find("passcode") != std::string::npos || k.find("aprspass") != std::string::npos) return true;   // the APRS-IS passcode (feedAprsPass); not *pass in general: wfLowPass, dfCompass
     if (k.size() >= 3 && k.compare(k.size() - 3, 3, "key") == 0 && (k.find("api") != std::string::npos || k.find("licen") != std::string::npos || k.find("auth") != std::string::npos)) return true;
     return false;
 }

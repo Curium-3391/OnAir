@@ -60,6 +60,7 @@ std::vector<DeviceInfo> listNativeDevices(std::string& err) {
 // when its module is installed; their native drivers here are receive-only.
 std::unique_ptr<TxSink> makeNativeTxSink(const DeviceInfo& d) {
     if (d.board == "pluto") return native::makePlutoTx(d);
+    if (d.board == "usrp") return native::makeUsrpTx(d);
     return nullptr;
 }
 
