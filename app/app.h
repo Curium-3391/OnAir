@@ -965,6 +965,16 @@ double savedSampleRate(const App& a);
 void saveSampleRate(App& a, double hz);
 double modeMinSampleRate(const App& a);
 void sampleRateControl(App& a);
+bool lowerSampleRate(App& a, double& prevChoiceHz, double& newHz);   // toolbar_source.cpp: the next lower rate the radio offers for this mode (restarts the receiver); false when none
+void restoreSampleRate(App& a, double choiceHz);                     // and back to the earlier choice (0 = Auto)
+// meter_ui.cpp: the one signal indicator (No signal / Weak / Locked / Good) and the CPU meter's relief
+void signalBars(ImDrawList* dl, ImVec2 p, float h, int quality);   // 4 rising segments + the word is drawn by the caller
+void signalRow(App& a);                             // the indicator with its numbers, at the top of the Receiver tab
+float signalStripWidth(App& a);                     // the width the strip cell needs
+void signalStripCell(App& a, float x, float y, float h);   // drawn into the strip at x
+void cpuReliefTick(App& a, float cpuPct, int cores);   // once a second from the status strip
+bool cpuReliefStrip(App& a, float limitX);          // "Too slow" + Fix, or the choice made + Undo; false when nothing was drawn
+void cpuSparkDraw(ImDrawList* dl, ImVec2 p, ImVec2 size, ImU32 col, ImU32 edge, int cores);
 std::string biasContext(const App& a);   // the prefs key of the antenna power for this mode on this radio ("" = none)
 void loadBiasTee(App& a);
 void saveBiasTee(const App& a);   // toolbar_source.cpp: the "Sample rate" control under the frequency

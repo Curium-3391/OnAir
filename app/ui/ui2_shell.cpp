@@ -9,6 +9,7 @@
 #include "ui_common.h"
 #include "tour_logic.h"
 #include "status_strip.h"
+#include "../platform/proc_cpu.h"
 #include <thread>
 #include "../state/workspace.h"
 #include "../state/layout.h"
@@ -291,20 +292,6 @@ void sidebar(App& a) {
     ImGui::PopStyleVar();
 }
 
-#ifdef _WIN32
-static double processCpuSeconds() {
-    FILETIME c, e, k, u;
-    if (!GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u)) return 0;
-    return (((uint64_t)k.dwHighDateTime << 32 | k.dwLowDateTime) + ((uint64_t)u.dwHighDateTime << 32 | u.dwLowDateTime)) * 1e-7;
-}
-#else
-static double processCpuSeconds() {
-    struct rusage ru;
-    getrusage(RUSAGE_SELF, &ru);
-    return ru.ru_utime.tv_sec + ru.ru_stime.tv_sec + (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) * 1e-6;
-}
-#endif
-
 // height of the labelled cells of the status strip: caption row + value row + padding (follows the text size)
 float statusStripBlockHeight() {
     const float fs = ImGui::GetFontSize();
@@ -324,9 +311,10 @@ void statusLine(App& a) {
     {
         const double wall = ImGui::GetTime();
         if (wall - lastWall >= 1.0) {
-            const double cpu = processCpuSeconds();
+            const double cpu = plat::processCpuSeconds();
             if (lastWall > 0) cpuPct = (cpu - lastCpu) / (wall - lastWall) * 100;
             lastCpu = cpu; lastWall = wall;
+            cpuReliefTick(a, (float)cpuPct, (int)std::max(1u, std::thread::hardware_concurrency()));
         }
         gCpuPct = (float)cpuPct;
     }
@@ -350,7 +338,8 @@ void statusLine(App& a) {
         const float lampW = 9 * gUi, barW = 44 * gUi, mhzSz = valS * 0.62f;
         const float freqV = textW(fp.lead, monoB, valS) + textW(fp.rest, monoB, valS) + textW(mhzTxt, a.mono, mhzSz) + 3 * gUi;
         const float modeV = textW(cur->name, monoB, valS * 0.85f), rxV = textW(rxTxt, monoB, valS * 0.85f);
-        const float stateV = lampW + textW(stateTxt, nullptr, fs), cpuV = barW + 6 * gUi + textW(pc, mono, fs);
+        const float sparkW = 34 * gUi;
+        const float stateV = lampW + textW(stateTxt, nullptr, fs), cpuV = barW + 6 * gUi + textW("100%", mono, fs) + 6 * gUi + sparkW;
         const auto cell = [&](float cap, float val) { return statusstrip::Cell{std::max(cap, val) + 2 * padX, val + 2 * padX}; };
         statusstrip::Widths w{cell(capW(capF), freqV), cell(capW(capM), modeV), cell(capW(capR), rxV), cell(capW(capS2), stateV), cell(capW(capC), cpuV),
                               barW + 2 * padX, ImGui::GetFrameHeight(), gap};
@@ -416,10 +405,13 @@ void statusLine(App& a) {
             dl2->AddRectFilled(ImVec2(bx, cy - bh * 0.5f), ImVec2(bx + barW, cy + bh * 0.5f), u32(T.edge), 2 * gUi);
             const float fill = statusstrip::cpuFill((float)cpuPct, (int)std::max(1u, std::thread::hardware_concurrency()));
             dl2->AddRectFilled(ImVec2(bx, cy - bh * 0.5f), ImVec2(bx + std::max(fill, 0.02f) * barW, cy + bh * 0.5f), u32(lc), 2 * gUi);
-            ImGui::PushFont(mono, fs); dl2->AddText(ImVec2(bx + barW + 6 * gUi, cy - ImGui::GetTextLineHeight() * 0.5f), u32(lv ? lc : T.bright), pc); ImGui::PopFont();
+            ImGui::PushFont(mono, fs); dl2->AddText(ImVec2(bx + barW + 6 * gUi, cy - ImGui::GetTextLineHeight() * 0.5f), u32(lv ? lc : T.bright), pc);
+            const float sx = bx + barW + 12 * gUi + textW("100%", mono, fs);
+            ImGui::PopFont();
+            cpuSparkDraw(dl2, ImVec2(sx, cy - valH * 0.4f), ImVec2(sparkW, valH * 0.8f), u32(lv ? lc : T.accent), u32(T.edge), (int)std::max(1u, std::thread::hardware_concurrency()));
             if (ImGui::IsMouseHoveringRect(ImVec2(cx0, stripY0), ImVec2(cx0 + cw, stripY0 + blockH)) && ImGui::IsWindowHovered()) {
                 ImGui::BeginTooltip();
-                ImGui::Text("Process CPU: %.0f%% (100%% = one core)", cpuPct);
+                ImGui::Text("Process CPU: %.0f%% (100%% = one core). The line is the last 30 s; the thin rule is 85%% of the cores.", cpuPct);
                 if (run && sl.live) ImGui::Text("DSP load: %.0f%% of real time on the sample thread (processing time, not lost samples)", sl.loadPct);
                 if (run && sl.live && sl.deliveredPct >= 0)
                     ImGui::Text(sl.rateLow ? "Samples arriving: %.1f%% of the set rate (below 97%%: the radio or its driver)" : "Samples arriving: %.1f%% of the set rate", sl.deliveredPct);
@@ -437,6 +429,19 @@ void statusLine(App& a) {
         ImGui::SetCursorScreenPos(ImVec2(x, stripY0 + (blockH - lh) * 0.5f));   // the trailing fields continue after the cells
     }
     bool fresh = true;
+    if (run) {   // the one signal indicator (same in every mode), then the "too slow" warning with its fix
+        const float sw = signalStripWidth(a);
+        if (ImGui::GetCursorScreenPos().x + sw < limit) {
+            const ImVec2 c = ImGui::GetCursorScreenPos();
+            signalStripCell(a, c.x, c.y - (blockH - lh) * 0.5f, blockH);
+            ImGui::Dummy(ImVec2(sw, lh));
+            fresh = false;
+        }
+    }
+    {
+        if (!fresh) ImGui::SameLine(0, 12 * gUi);
+        if (cpuReliefStrip(a, limit)) fresh = false;
+    }
     auto field = [&](const char* text, bool first = false, ImVec4 col = ImVec4(-1, 0, 0, 0), bool fit = false) {
         const float gap = 8 * gUi;
         const float left = fresh ? ImGui::GetCursorScreenPos().x : ImGui::GetItemRectMax().x + 0;
