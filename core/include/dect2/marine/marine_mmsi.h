@@ -33,8 +33,31 @@ struct ShipRec {
     int source = 0;                                                       // 0 learned from AIS, 1 imported
 };
 
+// Digits of an MMSI cell: spaces and a spreadsheet apostrophe dropped; the zeros a spreadsheet cut off coast station / group numbers put back. "" when it is none.
+std::string normaliseMmsi(const std::string& cell);
+// One coordinate: "51.5", "-3.25", "51 30.5 N", degrees / minutes / seconds with degree and minute marks, "N 51 30", "51-30.5N", "5130N" / "00312W" (ddmm),
+// decimal comma. hemi gets N/S/E/W when written. strict (used to find unlabelled columns): a bare integer is not a coordinate.
+bool parseCoordinate(const std::string& s, double& deg, char* hemi = nullptr, bool strict = false);
+// Latitude and longitude in one string, in either order when hemisphere letters are written: "51 30.5 N 003 12.3 W", "N51 30 E003 12", "51.5/-3.2", "51.5, -3.2".
+bool parsePosition(const std::string& s, double& lat, double& lon);
+
+struct ImportStats { int read = 0, added = 0, updated = 0, unchanged = 0, skipped = 0, withPos = 0, coast = 0, ships = 0; };
+struct ImportPreview {
+    bool ok = false;                              // a column of MMSI numbers was found
+    char delim = ',';                             // tab, ';', '|', ',' or ' ' (two or more spaces)
+    bool header = false;
+    std::vector<std::string> columns;             // per column: "mmsi", "name", "callsign", "type", "country", "station", "location", "lat", "lon", "position" or ""
+    std::vector<std::vector<std::string>> rows;   // the first rows of data
+    int records = 0;                              // rows with a readable MMSI
+};
+
 class ShipDb {
 public:
+    // What importDetailed() would make of the text: delimiter, header and the column roles found, the first rows. Nothing is stored.
+    static ImportPreview preview(const std::string& text, size_t maxRows = 8);
+    // As importText(), with the numbers: new MMSIs, changed ones, skipped rows. Merge rule: a non-empty cell of the file replaces the stored value, an empty cell
+    // never erases one, a position is replaced only by a new position, the MMSI is the key (one record per number).
+    ImportStats importDetailed(const std::string& text);
     // Text with one record per line: tab, semicolon or comma separated, optional header row (mmsi, name, callsign, type, country, station,
     // location, lat, lon in any order). Without a header: MMSI, name, callsign, type, country, location. '#' lines are comments.
     // Returns the number of records read; replaced fields come from the file (imports win over AIS).

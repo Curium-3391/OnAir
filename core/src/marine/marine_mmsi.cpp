@@ -112,6 +112,16 @@ std::string trimS(std::string v) {
 std::vector<std::string> splitRow(const std::string& line, char d) {
     std::vector<std::string> r;
     std::string cur;
+    if (d == ' ') {     // fixed-width text: two or more spaces between the fields
+        for (size_t i = 0; i < line.size(); i++) {
+            if (line[i] == ' ' && i + 1 < line.size() && line[i + 1] == ' ') {
+                r.push_back(trimS(cur)); cur.clear();
+                while (i + 1 < line.size() && line[i + 1] == ' ') i++;
+            } else cur += line[i];
+        }
+        r.push_back(trimS(cur));
+        return r;
+    }
     bool q = false;
     for (char c : line) {
         if (c == '"') q = !q;
@@ -121,11 +131,6 @@ std::vector<std::string> splitRow(const std::string& line, char d) {
     r.push_back(trimS(cur));
     return r;
 }
-bool nineDigits(const std::string& s) {
-    if (s.size() != 9) return false;
-    for (char c : s) if (c < '0' || c > '9') return false;
-    return true;
-}
 std::string lowerS(std::string v) { for (char& c : v) c = (char)tolower((unsigned char)c); return v; }
 bool numberOf(const std::string& s, double& v) {
     if (s.empty()) return false;
@@ -133,65 +138,293 @@ bool numberOf(const std::string& s, double& v) {
     v = strtod(s.c_str(), &e);
     return e && *e == 0;
 }
+bool isHemi(char c) { return c == 'N' || c == 'S' || c == 'E' || c == 'W' || c == 'n' || c == 's' || c == 'e' || c == 'w'; }
 } // namespace
 
-int ShipDb::importText(const std::string& text) {
-    int n = 0;
+std::string normaliseMmsi(const std::string& in) {
+    std::string d;
+    for (char c : in) {
+        if (c >= '0' && c <= '9') d += c;
+        else if (c == ' ' || c == '\'' || c == '-' || c == '.' || c == '\t' || c == '"' || c == '\r') continue;      // "232 123 456", a spreadsheet's leading apostrophe
+        else return "";
+    }
+    if (d.size() == 9) return d;
+    if (d.size() == 7 || d.size() == 8) {      // a spreadsheet dropped the leading zeros of a coast station (00MID) or group (0MID) number
+        const std::string p = std::string(9 - d.size(), '0') + d;
+        const MmsiInfo mi = mmsiInfo(p); const MmsiKind k = mi.country.empty() ? MmsiKind::Unknown : mi.kind;
+        if (k == MmsiKind::CoastStation || k == MmsiKind::Group) return p;
+    }
+    return "";
+}
+
+bool parseCoordinate(const std::string& s, double& out, char* hemiOut, bool strict) {
+    char hemi = 0;
+    bool neg = false, seenDigit = false;
+    const bool comma = s.find(',') != std::string::npos && s.find('.') == std::string::npos;
+    std::vector<std::string> tok;
+    std::string cur;
+    auto flush = [&] { if (!cur.empty()) { tok.push_back(cur); cur.clear(); } };
+    for (size_t i = 0; i < s.size(); i++) {
+        const unsigned char c = (unsigned char)s[i];
+        if ((c >= '0' && c <= '9') || c == '.') { cur += (char)c; seenDigit = true; }
+        else if (c == ',' && comma && !cur.empty() && i + 1 < s.size() && isdigit((unsigned char)s[i + 1]) && tok.empty()) cur += '.';   // decimal comma
+        else if (isHemi((char)c)) {
+            const char h = (char)toupper(c);
+            if (hemi && hemi != h) return false;
+            hemi = h; flush();
+        }
+        else if (c == '-' || c == '+') { if (!seenDigit && c == '-') neg = true; flush(); }
+        else if (c == ' ' || c == '\t' || c == '\'' || c == '"' || c == ':' || c == ',' || c == '`') flush();
+        else if (c == 0xC2 && i + 1 < s.size() && ((unsigned char)s[i + 1] == 0xB0 || (unsigned char)s[i + 1] == 0xBA)) { flush(); i++; }     // degree sign
+        else if (c == 0xE2 && i + 2 < s.size() && (unsigned char)s[i + 1] == 0x80) { flush(); i += 2; }                                         // prime marks
+        else return false;
+    }
+    flush();
+    if (tok.empty() || tok.size() > 3) return false;
+    double v[3] = {0, 0, 0};
+    for (size_t i = 0; i < tok.size(); i++) if (!numberOf(tok[i], v[i])) return false;
+    double deg;
+    const bool plainInt = tok.size() == 1 && tok[0].find('.') == std::string::npos;
+    if (plainInt && hemi && tok[0].size() >= 4) {          // 5130N, 00312W, 513012N: ddmm[ss] / dddmm[ss]
+        const bool lat = hemi == 'N' || hemi == 'S';
+        const size_t dl = lat ? 2 : 3;
+        const std::string& t = tok[0];
+        if (t.size() != dl + 2 && t.size() != dl + 4) return false;
+        const double d = atof(t.substr(0, dl).c_str()), m = atof(t.substr(dl, 2).c_str()), sec = t.size() > dl + 2 ? atof(t.substr(dl + 2, 2).c_str()) : 0;
+        if (m >= 60 || sec >= 60) return false;
+        deg = d + m / 60 + sec / 3600;
+    } else if (tok.size() == 1) {
+        if (strict && !hemi && tok[0].find('.') == std::string::npos) return false;
+        deg = v[0];
+    } else {
+        if (tok[0].find('.') != std::string::npos || v[1] >= 60 || (tok.size() == 3 && (v[2] >= 60 || tok[1].find('.') != std::string::npos))) return false;
+        deg = v[0] + v[1] / 60 + v[2] / 3600;
+    }
+    if (hemi == 'S' || hemi == 'W') deg = -std::fabs(deg);
+    else if (neg) deg = -deg;
+    out = deg;
+    if (hemiOut) *hemiOut = hemi;
+    return true;
+}
+
+bool parsePosition(const std::string& in, double& lat, double& lon) {
+    std::vector<size_t> hi;
+    for (size_t i = 0; i < in.size(); i++) {
+        if (!isHemi(in[i])) continue;
+        const bool lb = i > 0 && isalpha((unsigned char)in[i - 1]), la = i + 1 < in.size() && isalpha((unsigned char)in[i + 1]);
+        if (!lb && !la) hi.push_back(i);
+    }
+    std::string a, b;
+    if (hi.size() == 2) {
+        const size_t firstDigit = in.find_first_of("0123456789");
+        if (firstDigit == std::string::npos) return false;
+        const size_t cut = hi[0] < firstDigit ? hi[1] : hi[0] + 1;         // "N 51 30 E 003 12" or "51 30 N 003 12 W"
+        a = in.substr(0, cut); b = in.substr(cut);
+    } else if (hi.empty()) {
+        std::string t = in;
+        for (size_t p; (p = t.find(", ")) != std::string::npos;) t.replace(p, 2, "/");
+        for (char& c : t) if (c == ';') c = '/';
+        const size_t sl = t.find('/');
+        if (sl != std::string::npos) { a = t.substr(0, sl); b = t.substr(sl + 1); }
+        else {
+            const std::string tt = trimS(t);
+            const size_t sp = tt.find(' ');
+            if (sp == std::string::npos || tt.find(' ', tt.find_first_not_of(' ', sp)) != std::string::npos) return false;
+            a = tt.substr(0, sp); b = tt.substr(sp + 1);
+        }
+    } else return false;
+    double x, y; char hx = 0, hy = 0;
+    if (!parseCoordinate(a, x, &hx) || !parseCoordinate(b, y, &hy)) return false;
+    if (hx == 'E' || hx == 'W' || hy == 'N' || hy == 'S') std::swap(x, y);
+    if (std::fabs(x) > 90 || std::fabs(y) > 180) return false;
+    lat = x; lon = y;
+    return true;
+}
+
+namespace {
+struct Cols { int mmsi = -1, name = -1, call = -1, type = -1, country = -1, station = -1, loc = -1, lat = -1, lon = -1, pos = -1; };
+
+// header words (lower case, letters and digits only) to the role of the column they name
+bool headerRole(const std::string& raw, int& role) {
+    std::string h;
+    for (char c : lowerS(raw)) if (isalnum((unsigned char)c)) h += c;
+    static const struct { const char* w; int r; } t[] = {
+        {"mmsi", 0}, {"mmsinumber", 0}, {"mmsino", 0}, {"dscid", 0}, {"dscnumber", 0}, {"id", 0}, {"identity", 0},
+        {"name", 1}, {"shipname", 1}, {"vessel", 1}, {"vesselname", 1}, {"shipsname", 1}, {"nameofship", 1},
+        {"stationname", 5}, {"nameofstation", 5}, {"coaststation", 5}, {"coast", 5}, {"station", 5},
+        {"callsign", 2}, {"call", 2}, {"callsigns", 2}, {"callletters", 2}, {"radiocallsign", 2},
+        {"type", 3}, {"shiptype", 3}, {"vesseltype", 3}, {"class", 3}, {"category", 3}, {"kind", 3},
+        {"country", 4}, {"flag", 4}, {"nation", 4}, {"flagstate", 4}, {"countrycode", 4},
+        {"location", 6}, {"place", 6}, {"city", 6}, {"site", 6}, {"town", 6}, {"qth", 6},
+        {"lat", 7}, {"latitude", 7}, {"lon", 8}, {"lng", 8}, {"long", 8}, {"longitude", 8},
+        {"position", 9}, {"pos", 9}, {"coordinates", 9}, {"coords", 9}, {"latlon", 9}, {"latlong", 9}, {"latitudelongitude", 9}, {"geo", 9}};
+    for (const auto& e : t) if (h == e.w) { role = e.r; return true; }
+    return false;
+}
+
+char detectDelimiter(const std::vector<std::string>& lines) {
+    const size_t n = std::min<size_t>(lines.size(), 12);
+    const char cand[] = {'\t', ';', '|', ',', ' '};
+    for (char d : cand) {
+        std::vector<size_t> cnt;
+        for (size_t i = 0; i < n; i++) cnt.push_back(splitRow(lines[i], d).size() - 1);
+        size_t most = 0; for (size_t c : cnt) most = std::max(most, c);
+        if (most == 0) continue;
+        size_t good = 0; for (size_t c : cnt) if (c >= 1) good++;      // data rows may miss trailing fields
+        if (good * 2 >= n) return d;
+    }
+    return ',';
+}
+
+struct Parsed {
+    char delim = ',';
+    bool header = false;
+    Cols cols;
+    std::vector<std::vector<std::string>> rows;     // data rows (header excluded)
+    std::vector<std::string> head;
+};
+
+Parsed parseTable(const std::string& text) {
+    Parsed P;
     std::vector<std::string> lines;
     for (size_t p = 0; p < text.size();) {
         size_t e = text.find('\n', p);
         if (e == std::string::npos) e = text.size();
         std::string l = text.substr(p, e - p);
         p = e + 1;
-        if (!l.empty() && l[0] == '\xEF') l.erase(0, 3);       // byte order mark
+        if (!l.empty() && l[0] == '\xEF' && l.size() >= 3) l.erase(0, 3);       // byte order mark
         if (trimS(l).empty() || trimS(l)[0] == '#') continue;
         lines.push_back(l);
     }
-    if (lines.empty()) return 0;
-    const std::string& f = lines[0];
-    const char d = f.find('\t') != std::string::npos ? '\t' : f.find(';') != std::string::npos ? ';' : ',';
-    // columns: indexes of mmsi, name, callsign, type, country, station, location, lat, lon
-    int col[9] = {0, 1, 2, 3, 4, 5, 6, 7, 8};   // headerless: the order of exportTsv
-    size_t first = 0;
-    const auto head = splitRow(lines[0], d);
-    if (!nineDigits(trimS(head[0]))) {
-        first = 1;
-        for (int& c : col) c = -1;
-        for (size_t i = 0; i < head.size(); i++) {
-            const std::string h = lowerS(head[i]);
-            if (h == "mmsi") col[0] = (int)i;
-            else if (h == "name" || h == "shipname" || h == "ship name" || h == "vessel") col[1] = (int)i;
-            else if (h == "callsign" || h == "call sign" || h == "call") col[2] = (int)i;
-            else if (h == "type" || h == "shiptype" || h == "ship type") col[3] = (int)i;
-            else if (h == "country" || h == "flag") col[4] = (int)i;
-            else if (h == "station" || h == "coast station" || h == "coast") col[5] = (int)i;
-            else if (h == "location" || h == "place" || h == "city") col[6] = (int)i;
-            else if (h == "lat" || h == "latitude") col[7] = (int)i;
-            else if (h == "lon" || h == "lng" || h == "longitude") col[8] = (int)i;
+    if (lines.empty()) return P;
+    P.delim = detectDelimiter(lines);
+    std::vector<std::vector<std::string>> all;
+    for (const auto& l : lines) all.push_back(splitRow(l, P.delim));
+    // header: no cell of the first row is an MMSI, and at least one names a column we know
+    bool anyMmsi = false, anyRole = false;
+    Cols c;
+    for (size_t i = 0; i < all[0].size(); i++) {
+        if (!normaliseMmsi(all[0][i]).empty()) anyMmsi = true;
+        int role;
+        if (headerRole(all[0][i], role)) {
+            anyRole = true;
+            int* dst[] = {&c.mmsi, &c.name, &c.call, &c.type, &c.country, &c.station, &c.loc, &c.lat, &c.lon, &c.pos};
+            if (*dst[role] < 0) *dst[role] = (int)i;
         }
-        if (col[0] < 0) return 0;
     }
+    if (!anyMmsi && anyRole) { P.header = true; P.head = all[0]; P.cols = c; all.erase(all.begin()); }
+    P.rows = all;
+    Cols& k = P.cols;
+    size_t ncol = P.header ? P.head.size() : 0;
+    for (const auto& r : P.rows) ncol = std::max(ncol, r.size());
+    const size_t sample = std::min<size_t>(P.rows.size(), 40);
+    auto frac = [&](size_t col, int what) {      // share of the sample rows that read as: 0 MMSI, 1 coordinate (strict), 2 position pair
+        size_t ok = 0, seen = 0;
+        for (size_t i = 0; i < sample; i++) {
+            if (col >= P.rows[i].size() || P.rows[i][col].empty()) continue;
+            seen++;
+            const std::string& s = P.rows[i][col];
+            double a, b;
+            if (what == 0 && !normaliseMmsi(s).empty()) ok++;
+            else if (what == 1 && parseCoordinate(s, a, nullptr, true)) ok++;
+            else if (what == 2 && parsePosition(s, a, b)) ok++;
+        }
+        return seen ? (double)ok / (double)seen : 0.0;
+    };
+    std::vector<bool> used(ncol, false);
+    auto take = [&](int c2) { if (c2 >= 0 && (size_t)c2 < ncol) used[(size_t)c2] = true; };
+    if (k.mmsi < 0) {      // find the column that holds the numbers
+        double best = 0.6;
+        for (size_t i = 0; i < ncol; i++) { const double f = frac(i, 0); if (f > best) { best = f; k.mmsi = (int)i; } }
+    }
+    if (k.mmsi < 0) return P;
+    take(k.mmsi); take(k.name); take(k.call); take(k.type); take(k.country); take(k.station); take(k.loc); take(k.lat); take(k.lon); take(k.pos);
+    // a "location" column that holds a position is one
+    if (k.loc >= 0 && k.pos < 0 && frac((size_t)k.loc, 2) >= 0.6) { k.pos = k.loc; k.loc = -1; }
+    if (k.pos < 0 && (k.lat < 0 || k.lon < 0)) {
+        for (size_t i = 0; i < ncol; i++) if (!used[i] && frac(i, 2) >= 0.6 && frac(i, 1) < 0.6) { k.pos = (int)i; take(k.pos); break; }
+    }
+    if (k.pos < 0 && (k.lat < 0 || k.lon < 0)) {
+        std::vector<size_t> cc;
+        for (size_t i = 0; i < ncol; i++) if (!used[i] && frac(i, 1) >= 0.6) cc.push_back(i);
+        if (cc.size() >= 2) {
+            // decide which is which: a letter E/W or a value past 90 makes a longitude, else the first is the latitude
+            auto isLon = [&](size_t col) {
+                for (size_t i = 0; i < sample; i++) { double v; char h = 0; if (col < P.rows[i].size() && parseCoordinate(P.rows[i][col], v, &h, true) && (h == 'E' || h == 'W' || std::fabs(v) > 90)) return true; }
+                return false; };
+            size_t a = cc[0], b = cc[1];
+            if (isLon(a) && !isLon(b)) std::swap(a, b);
+            k.lat = (int)a; k.lon = (int)b; take(k.lat); take(k.lon);
+        }
+    }
+    if (!P.header) {      // headerless: the text columns left, in the order name, call sign, type, country, station, location
+        int* order[] = {&k.name, &k.call, &k.type, &k.country, &k.station, &k.loc};
+        size_t oi = 0;
+        for (size_t i = 0; i < ncol && oi < 6; i++) {
+            if (used[i]) continue;
+            *order[oi++] = (int)i; used[i] = true;
+        }
+    }
+    return P;
+}
+} // namespace
+
+ImportPreview ShipDb::preview(const std::string& text, size_t maxRows) {
+    ImportPreview pv;
+    const Parsed P = parseTable(text);
+    pv.delim = P.delim;
+    pv.header = P.header;
+    if (P.cols.mmsi < 0) return pv;
+    pv.ok = true;
+    static const char* const names[] = {"mmsi", "name", "callsign", "type", "country", "station", "location", "lat", "lon", "position"};
+    const int idx[] = {P.cols.mmsi, P.cols.name, P.cols.call, P.cols.type, P.cols.country, P.cols.station, P.cols.loc, P.cols.lat, P.cols.lon, P.cols.pos};
+    size_t ncol = P.head.size();
+    for (const auto& r : P.rows) ncol = std::max(ncol, r.size());
+    pv.columns.assign(ncol, "");
+    for (int i = 0; i < 10; i++) if (idx[i] >= 0 && (size_t)idx[i] < ncol) pv.columns[(size_t)idx[i]] = names[i];
+    for (size_t i = 0; i < P.rows.size() && i < maxRows; i++) pv.rows.push_back(P.rows[i]);
+    for (const auto& r : P.rows) if ((size_t)P.cols.mmsi < r.size() && !normaliseMmsi(r[(size_t)P.cols.mmsi]).empty()) pv.records++;
+    return pv;
+}
+
+int ShipDb::importText(const std::string& text) { return importDetailed(text).read; }
+
+ImportStats ShipDb::importDetailed(const std::string& text) {
+    ImportStats st;
+    const Parsed P = parseTable(text);
+    const Cols& k = P.cols;
+    if (k.mmsi < 0) return st;
     std::lock_guard<std::mutex> lk(mu_);
-    for (size_t li = first; li < lines.size(); li++) {
-        const auto c = splitRow(lines[li], d);
-        auto at = [&](int k) { return k >= 0 && (size_t)k < c.size() ? c[(size_t)k] : std::string(); };
-        const std::string mmsi = at(col[0]);
-        if (!nineDigits(mmsi)) continue;
+    for (const auto& c : P.rows) {
+        auto at = [&](int i) { return i >= 0 && (size_t)i < c.size() ? c[(size_t)i] : std::string(); };
+        const std::string mmsi = normaliseMmsi(at(k.mmsi));
+        if (mmsi.empty()) { st.skipped++; continue; }
         ShipRec r;
         auto it = m_.find(mmsi);
-        if (it != m_.end()) r = it->second;
+        const bool existed = it != m_.end();
+        if (existed) r = it->second;
+        const ShipRec before = r;
         r.mmsi = mmsi;
-        auto set = [&](std::string& dst, int k) { const std::string v = at(k); if (!v.empty()) dst = v.substr(0, 60); };
-        set(r.name, col[1]); set(r.callsign, col[2]); set(r.type, col[3]); set(r.country, col[4]); set(r.station, col[5]); set(r.location, col[6]);
-        double la, lo;
-        if (numberOf(at(col[7]), la) && numberOf(at(col[8]), lo) && std::fabs(la) <= 90 && std::fabs(lo) <= 180) { r.hasPos = true; r.lat = la; r.lon = lo; }
-        if (r.name.empty() && r.callsign.empty() && r.type.empty() && r.country.empty() && r.station.empty() && r.location.empty() && !r.hasPos) continue;   // an MMSI alone carries nothing
+        auto set = [&](std::string& dst, int i) { const std::string v = at(i); if (!v.empty()) dst = v.substr(0, 60); };     // an empty cell never erases what is known
+        set(r.name, k.name); set(r.callsign, k.call); set(r.type, k.type); set(r.country, k.country); set(r.station, k.station); set(r.location, k.loc);
+        double la = 0, lo = 0;
+        bool gotPos = false;
+        if (k.pos >= 0) gotPos = parsePosition(at(k.pos), la, lo);
+        if (!gotPos && k.lat >= 0 && k.lon >= 0) gotPos = parseCoordinate(at(k.lat), la) && parseCoordinate(at(k.lon), lo) && std::fabs(la) <= 90 && std::fabs(lo) <= 180;
+        if (gotPos && !(la == 0 && lo == 0)) { r.hasPos = true; r.lat = la; r.lon = lo; }
+        if (r.name.empty() && r.callsign.empty() && r.type.empty() && r.country.empty() && r.station.empty() && r.location.empty() && !r.hasPos) { st.skipped++; continue; }   // an MMSI alone carries nothing
         r.source = 1;
+        const bool changed = !existed || before.name != r.name || before.callsign != r.callsign || before.type != r.type || before.country != r.country || before.station != r.station ||
+                             before.location != r.location || before.hasPos != r.hasPos || before.lat != r.lat || before.lon != r.lon;
         m_[mmsi] = r;
-        n++;
+        st.read++;
+        if (!existed) st.added++; else if (changed) st.updated++; else st.unchanged++;
+        if (r.hasPos) st.withPos++;
+        const MmsiKind kd = mmsiInfo(mmsi).kind;
+        if (kd == MmsiKind::CoastStation) st.coast++; else if (kd == MmsiKind::Ship) st.ships++;
     }
-    if (n) { ver_++; dirty_ = true; }
-    return n;
+    if (st.read) { ver_++; dirty_ = true; }
+    return st;
 }
 
 std::string ShipDb::exportTsv() const {
@@ -211,7 +444,7 @@ std::string ShipDb::exportTsv() const {
 }
 
 void ShipDb::learn(const std::string& mmsi, const std::string& name, const std::string& callsign, const std::string& type) {
-    if (!nineDigits(mmsi) || (name.empty() && callsign.empty() && type.empty())) return;
+    if (mmsi.size() != 9 || normaliseMmsi(mmsi) != mmsi || (name.empty() && callsign.empty() && type.empty())) return;
     std::lock_guard<std::mutex> lk(mu_);
     ShipRec& r = m_[mmsi];
     const ShipRec before = r;

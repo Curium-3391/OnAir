@@ -304,3 +304,6 @@ TETRA > Listen to: first clear voice, slot 1-4, talkgroup or ISSI (saved as tetr
 ## 2026-10-22 TETRA talkgroup / ISSI from clear calls (tetra-ids-030)
 Rust CallInfo now carries gssi/issi (ABI version 4): from D-SETUP only, GSSI = MAC-RESOURCE SSI address of a group call, ISSI = calling party SSI (type 2 element, EN 300 392-2 14.7.1.12 layout recalled, not checked against the spec text: no spec locally). Dropped (-1) when the end-to-end encryption flag is set; D-CONNECT/D-TX-* still give the call id only, CallTracker keeps the IDs from the set-up per slot (encrypted is sticky, IDs cleared). IDs feed SlotInfo for the slot selector and slot display only; never logged, no feeds/exports (no TETRA CSV exists, so no checkbox). Tests: rust call_setup_ids_only_when_clear, tests/tetra/test_tetra_slots.cpp (tracker + selector). No golden test changed.
 
+## 2026-10-22 DSC list import and map (dsc-map-030)
+ShipDb gets a content-based importer (preview + importDetailed with stats, delimiter/header/column detection, DM/DMS/decimal coordinates, position strings, zero repair) and the DSC map a station table, type/heard filters, grey unheard coast stations, call lines and an import dialog. Tests: tests/marine/test_marine_shipdb_import.cpp. Not built in the full app; marine_ui.cpp syntax-checked only.
+
