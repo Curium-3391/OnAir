@@ -76,6 +76,13 @@ jobs:
       - name: Version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "ONAIR_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"; fi
+      - name: libusb source (official tag, for the USB radios; own empty folder, nothing from it is run)
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/libusb-src"
+          git clone --depth 1 --branch v1.0.27 https://github.com/libusb/libusb "$RUNNER_TEMP/libusb-src"
+          echo "libusb v1.0.27 commit $(git -C "$RUNNER_TEMP/libusb-src" rev-parse HEAD)"
+          echo "LIBUSB_SRC=$RUNNER_TEMP/libusb-src" >> "$GITHUB_ENV"
       - name: libonair.so (core + JNI bridge)
         run: JOBS=$(sysctl -n hw.ncpu) android/tools/build_native.sh
       - name: Signing key from secrets
