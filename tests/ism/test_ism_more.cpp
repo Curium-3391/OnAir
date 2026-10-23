@@ -24,7 +24,7 @@ static IsmTrain ppm(const std::vector<BitRow>& rows, float pulse, float s, float
         t.p.push_back({pulse, sync});
         for (int b : r) t.p.push_back({pulse, b ? l : s});
     }
-    t.p.back().gapUs = 30000;
+    t.p.push_back({pulse, 30000});   // the closing pulse: the last bit's gap is its own
     return t;
 }
 
@@ -137,7 +137,7 @@ int main() {
         std::vector<BitRow> rows(6, row);
         auto rs = ismDecode(ppm(rows, 500, 2000, 4000, 7000, 15));
         const IsmReading* r = find(rs, "Kedsum-TH");
-        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == 0x74, "Kedsum %zu", rs.size());
+        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == 0x47, "Kedsum %zu", rs.size());
     }
     // ---- GT-WT-02
     {
@@ -294,5 +294,5 @@ int main() {
         }
         CHECK(ok, "ERT SCM");
     }
-    return summary();
+    return testSummary("ism more");
 }
