@@ -304,10 +304,10 @@ const ModeUi kTetrapolUi = {
     .tabName = "TETRAPOL",
     .tabIcon = Ic::Radio,
     .tab = tab,
-    .tuner = tuner,
     .receiver = receiver,
     .list = list,
     .status = status,
     .summary = summary,
+    .tuner = tuner,   // in the order ModeUi declares them (GCC refuses another order)
     .tick = tick,
 };
