@@ -41,6 +41,7 @@ struct State {
     bool unlocked = false;                   // secrets decrypted into secretEntries / secretPrefs
     std::vector<bk::Entry> secretEntries;
     std::vector<bk::PrefItem> secretPrefs;
+    std::map<std::string, bool> confirmTick; // settings that need an explicit tick before a restore applies them (key -> ticked)
     std::string dry;                         // dry-run report
     bool confirmReplace = false;
     // automatic
@@ -224,7 +225,7 @@ void autoTick(App&) {
 
 // ---- restore ----
 void loadArchive(State& s, const std::string& path) {
-    s.loaded = false; s.dry.clear(); s.unlocked = false; s.secretEntries.clear(); s.secretPrefs.clear(); s.rpass[0] = 0; s.confirmReplace = false;
+    s.loaded = false; s.dry.clear(); s.unlocked = false; s.secretEntries.clear(); s.secretPrefs.clear(); s.rpass[0] = 0; s.confirmReplace = false; s.confirmTick.clear();
     s.msg.clear(); s.msgBad = true;
     if (!readAll(dect2::u8file(path), s.raw, (uintmax_t)bk::Limits().maxTotalBytes + (64u << 20))) { s.msg = tr("That file could not be read (or it is too large)."); return; }
     std::string e = bk::zipUnpack(s.raw, s.entries);
@@ -275,6 +276,14 @@ void applyPref(const bk::PrefItem& p) {
     }
 }
 
+// Settings of the backup split by what a restore may do with them (see bk::prefRestorePolicy).
+void restorePrefSets(State& s, std::vector<bk::PrefItem>& allow, std::vector<bk::PrefItem>& confirm, std::vector<std::string>& refused) {
+    auto e = std::find_if(s.entries.begin(), s.entries.end(), [](const bk::Entry& x) { return x.name == "settings.txt"; });
+    std::vector<bk::PrefItem> plain;
+    if (e != s.entries.end() && bk::parsePrefs(e->data, plain)) bk::classifyRestorePrefs(plain, false, allow, confirm, refused);
+    if (s.unlocked) bk::classifyRestorePrefs(s.secretPrefs, true, allow, confirm, refused);
+}
+
 std::string doRestore(State& s, bool dryRun) {
     bool needSecrets = false;
     std::vector<bk::PlanOp> plan = makePlan(s, needSecrets);
@@ -293,16 +302,23 @@ std::string doRestore(State& s, bool dryRun) {
     // settings
     std::vector<bk::PrefItem> prefs;
     std::set<std::string> have;
+    std::string prefNote;
     if (wantSettings) {
         auto e = std::find_if(s.entries.begin(), s.entries.end(), [](const bk::Entry& x) { return x.name == "settings.txt"; });
-        if (e != s.entries.end() && !bk::parsePrefs(e->data, prefs)) return tr("settings.txt in the backup is damaged.");
-        if (s.unlocked) prefs.insert(prefs.end(), s.secretPrefs.begin(), s.secretPrefs.end());
+        { std::vector<bk::PrefItem> chk; if (e != s.entries.end() && !bk::parsePrefs(e->data, chk)) return tr("settings.txt in the backup is damaged."); }
+        std::vector<bk::PrefItem> allow, confirm;
+        std::vector<std::string> refused;
+        restorePrefSets(s, allow, confirm, refused);
+        prefs = allow;
+        int skippedConfirm = 0;
+        for (const bk::PrefItem& p : confirm) { auto t = s.confirmTick.find(p.key); if (t != s.confirmTick.end() && t->second) prefs.push_back(p); else skippedConfirm++; }
         for (const auto& k : plat::basePrefs().dumpAll()) have.insert(k.key);
         prefs = bk::selectPrefs(prefs, mode, have);
+        prefNote = std::to_string(skippedConfirm) + " " + tr("settings that need a tick were left out") + ", " + std::to_string(refused.size()) + " " + tr("refused");
     }
     if (dryRun) {
         bk::ExtractReport r = bk::extractTo(dataRoot(), src, plan, true);
-        std::string o = std::to_string(r.written) + " " + tr("files would be written") + ", " + std::to_string(r.skipped) + " " + tr("kept as they are") + ", " + std::to_string(prefs.size()) + " " + tr("settings would be set") + ".";
+        std::string o = std::to_string(r.written) + " " + tr("files would be written") + ", " + std::to_string(r.skipped) + " " + tr("kept as they are") + ", " + std::to_string(prefs.size()) + " " + tr("settings would be set") + ". " + prefNote;
         for (const auto& e : r.errors) o += "\n" + e;
         return o;
     }
@@ -337,7 +353,7 @@ std::string doRestore(State& s, bool dryRun) {
     }
     if (haveChannels && (mode == bk::Mode::Replace || b.getChannels().empty())) b.setChannels(chans);
     b.flush();
-    std::string o = std::to_string(r.written) + " " + tr("files restored") + ", " + std::to_string(nPref) + " " + tr("settings set") + ". " +
+    std::string o = std::to_string(r.written) + " " + tr("files restored") + ", " + std::to_string(nPref) + " " + tr("settings set") + ". " + prefNote + " " +
                     tr("Close OnAir and start it again now, without changing anything first: a running OnAir would write its old settings over the restored ones.");
     for (const auto& e : r.errors) o += "\n" + e;
     return o;
@@ -435,6 +451,16 @@ void backupWindow(App& a) {
             ImGui::SameLine();
             if (ImGui::Button(tr("Unlock"))) { if (unlock(s)) { s.msg = tr("Secrets unlocked."); s.msgBad = false; s.rtick["voicekeys"] = true; } }
             if (s.unlocked) ImGui::TextDisabled("%s", tr("Secrets unlocked."));
+        }
+        if (s.rtick["settings"]) {
+            std::vector<bk::PrefItem> allow, confirm; std::vector<std::string> refused;
+            restorePrefSets(s, allow, confirm, refused);
+            if (!refused.empty()) ImGui::TextDisabled("%d %s", (int)refused.size(), tr("settings in this backup are never restored (credentials in the plain part, odd names)."));
+            if (!confirm.empty()) {
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", tr("These settings can open the program to the network, change server addresses, uploads, transmit options or paths. They are NOT restored unless you tick them:"));
+                for (const bk::PrefItem& p : confirm) ImGui::Checkbox(p.key.c_str(), &s.confirmTick[p.key]);
+            }
         }
         ImGui::RadioButton(tr("Merge: keep what is here, add what is missing"), &s.mode, 0);
         ImGui::RadioButton(tr("Replace: overwrite with the backup's copy"), &s.mode, 1);

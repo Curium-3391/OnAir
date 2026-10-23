@@ -124,6 +124,10 @@ static void testManifest() {
     CHECK(!checkManifestAgainst(bad, e).empty());
     Manifest bad2 = m; bad2.files.push_back({"x", 1, "nosuchitem"});
     CHECK(!checkManifestAgainst(bad2, e).empty());
+    // a file outside the places its item may use (here: the codecs folder, whose libraries are loaded at run time) is refused
+    Manifest bad3 = m; bad3.files.push_back({"codecs/libmbe.dylib", 4, "layouts"});
+    std::vector<Entry> e3 = e; e3.push_back({"data/codecs/libmbe.dylib", "evil"}); e3.push_back({"secrets.enc", "s"});
+    CHECK(!checkManifestAgainst(bad3, e3).empty());
 
     std::string msg;
     Manifest v = m;
@@ -259,7 +263,76 @@ static void testAuto() {
     CHECK(autoBackupsToDelete(n, 0).size() == 3);   // keep is at least one
 }
 
+static void testMalicious() {
+    // every file of a crafted manifest must sit where its item keeps files, never in a code or library location
+    auto mk = [](const std::string& name, const std::string& item) {
+        Manifest m; m.format = 1; m.app = "3.0";
+        m.files = {{name, 4, item}};
+        return m;
+    };
+    auto entries = [](const std::string& name) { return std::vector<Entry>{{"manifest.txt", "m"}, {"data/" + name, "evil"}}; };
+    const char* bad[] = {"codecs/libmbe.dylib", "codecs/libmbe.so", "codecs/x.dll", "plugins/a.so", "Codecs/lib.dylib", "layouts/evil.dylib", "layouts/evil.dll", "layouts/run.sh",
+                         "layouts/a.exe", "layouts/libx.so.1", "automations/x.so", "automations/x.bat", "layouts/a.ini.onairtmp"};
+    for (const char* n : bad) {
+        for (const char* item : {"layouts", "presets", "scheduler", "codecs", "settings"}) {
+            Manifest m = mk(n, item);
+            CHECK(!checkManifestAgainst(m, entries(n)).empty());   // wrong item, or a forbidden place or extension
+        }
+    }
+    CHECK(!restorablePath("codecs/libmbe.dylib") && !restorablePath("plugins/x") && !restorablePath("a/b.dll") && !restorablePath("../x"));
+    CHECK(restorablePath("layouts/a.ini") && restorablePath("memories.json") && restorablePath("automations/rule.json"));
+    // an item that does not match the file's place
+    CHECK(!checkManifestAgainst(mk("memories.json", "layouts"), entries("memories.json")).empty());
+    CHECK(checkManifestAgainst(mk("memories.json", "memories"), entries("memories.json")).empty());
+    // the same file listed twice
+    { Manifest m = mk("memories.json", "memories"); m.files.push_back(m.files[0]); CHECK(!checkManifestAgainst(m, entries("memories.json")).empty()); }
+    // a plan and the writer refuse a forbidden path even when the caller builds the plan by hand
+    const fs::path root = fs::temp_directory_path() / "onair_backup_test_mal";
+    std::error_code ec;
+    fs::remove_all(root, ec); fs::create_directories(root, ec);
+    std::vector<Entry> ent = {{"data/codecs/libmbe.dylib", "evil"}, {"data/plugins/p.so", "evil"}, {"data/layouts/ok.ini", "ok"}};
+    std::vector<PlanOp> plan = {{"codecs/libmbe.dylib", PlanOp::Write, false}, {"plugins/p.so", PlanOp::Write, false}, {"layouts/ok.ini", PlanOp::Write, false}};
+    ExtractReport r = extractTo(root.string(), ent, plan, false);
+    CHECK(r.written == 1 && r.errors.size() == 2 && !fs::exists(root / "codecs") && !fs::exists(root / "plugins") && fs::exists(root / "layouts" / "ok.ini"));
+    // planRestore drops files that do not belong to the item
+    { Manifest m = mk("codecs/libmbe.dylib", "layouts"); CHECK(planRestore(m, {"layouts"}, Mode::Replace, {}).empty()); }
+#ifndef _WIN32
+    // the target itself a symlink: refused, nothing written through it
+    const fs::path outside = fs::temp_directory_path() / "onair_backup_test_mal_out";
+    fs::remove_all(outside, ec); fs::create_directories(outside, ec);
+    { std::ofstream o(outside / "victim.txt"); o << "keep"; }
+    fs::create_directories(root / "layouts", ec);
+    fs::create_symlink(outside / "victim.txt", root / "layouts" / "link.ini", ec);
+    ExtractReport sl = extractTo(root.string(), {{"data/layouts/link.ini", "PWN"}}, {{"layouts/link.ini", PlanOp::Write, true}}, false);
+    CHECK(sl.written == 0 && sl.errors.size() == 1);
+    { std::ifstream i(outside / "victim.txt"); std::string t((std::istreambuf_iterator<char>(i)), std::istreambuf_iterator<char>()); CHECK(t == "keep"); }
+    fs::remove_all(outside, ec);
+#endif
+    fs::remove_all(root, ec);
+}
+
+static void testRestorePrefs() {
+    // exposure, servers, uploads, transmit, paths and consents need a tick; unknown keys too; credentials in the plain part are dropped
+    for (const char* k : {"apiOn", "apiLan", "apiPort", "shareOn", "shareLan", "shareControl", "feedLan", "feedAprsServer", "monNet", "monBindAll", "iridiumNetHost", "mapServer", "rcUrl",
+                          "ham.up.qrz", "ham.up.auto", "automationAllowRun", "pluginsSafeMode", "txEnabled", "txNoticeAccepted", "tx.kaal.text", "tvrec_dir", "vi.accepted", "rotHost",
+                          "a_brand_new_key", "update.channel"})
+        CHECK(prefRestorePolicy(k, 'S', false) == PrefPolicy::Confirm);
+    for (const char* k : {"apiToken", "ham.up.qrzKey", "ham.up.clubPw", "feedAprsPass", "someSecret", "x_password"}) CHECK(prefRestorePolicy(k, 'S', false) == PrefPolicy::Never);
+    CHECK(prefRestorePolicy("", 'S', false) == PrefPolicy::Never && prefRestorePolicy("a b", 'S', false) == PrefPolicy::Never);
+    CHECK(prefRestorePolicy(std::string(200, 'a'), 'S', false) == PrefPolicy::Never);
+    for (const char* k : {"wfMin", "specMax", "genGain", "uiTypography", "adsbZoom", "freqFav"}) CHECK(prefRestorePolicy(k, 'D', false) == PrefPolicy::Allow);
+    CHECK(prefRestorePolicy("channel", 'C', false) == PrefPolicy::Allow);
+    // the passphrase block never applies silently, even for a harmless name
+    CHECK(prefRestorePolicy("wfMin", 'D', true) == PrefPolicy::Confirm && prefRestorePolicy("ham.up.qrzKey", 'S', true) == PrefPolicy::Confirm);
+    std::vector<PrefItem> in = {{"wfMin", 'D', "1"}, {"apiOn", 'B', "1"}, {"apiToken", 'S', "x"}, {"mapServer", 'S', "http://evil"}, {"channel", 'C', "1|1|a|b|0|0|0"}};
+    std::vector<PrefItem> allow, confirm; std::vector<std::string> refused;
+    classifyRestorePrefs(in, false, allow, confirm, refused);
+    CHECK(allow.size() == 2 && confirm.size() == 2 && refused.size() == 1 && refused[0] == "apiToken");
+}
+
 int main() {
+    testMalicious();
+    testRestorePrefs();
     testPaths();
     testZip();
     testManifest();

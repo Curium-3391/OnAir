@@ -53,6 +53,28 @@ std::string itemOfPath(const std::string& rel) {
     return std::string();
 }
 
+bool restorablePath(const std::string& rel) {
+    if (!safeRelPath(rel)) return false;
+    std::string l;
+    for (char c : rel) l += (char)std::tolower((unsigned char)c);
+    // folders whose content the program loads as code, and anything that looks like a library or an executable, never come from a backup
+    static const char* const kDirs[] = {"codecs", "plugins", "plugin", "bin", "lib", "libs", "sdk"};
+    const size_t slash = l.find('/');
+    const std::string first = slash == std::string::npos ? l : l.substr(0, slash);
+    for (const char* d : kDirs) if (first == d) return false;
+    if (l.find(".onairtmp") != std::string::npos) return false;
+    static const char* const kExt[] = {".dylib", ".so", ".dll", ".exe", ".bat", ".cmd", ".com", ".msi", ".sh", ".command", ".app", ".jar", ".apk", ".scr", ".ps1", ".vbs", ".js", ".py", ".pl", ".rb", ".lnk", ".desktop", ".jnilib", ".node", ".bundle", ".framework", ".plugin"};
+    const size_t dot = l.rfind('.');
+    const size_t sl = l.rfind('/');
+    if (dot != std::string::npos && (sl == std::string::npos || dot > sl)) {
+        const std::string ext = l.substr(dot);
+        for (const char* e : kExt) if (ext == e) return false;
+    }
+    // shared libraries with a version suffix (libx.so.1)
+    if (l.find(".so.") != std::string::npos) return false;
+    return true;
+}
+
 bool isSecretPrefKey(const std::string& key) {
     std::string k;
     for (char c : key) k += (char)std::tolower((unsigned char)c);
@@ -115,6 +137,103 @@ std::vector<PrefItem> selectPrefs(const std::vector<PrefItem>& in, Mode mode, co
     std::vector<PrefItem> o;
     for (const PrefItem& p : in) if (mode == Mode::Replace || p.type == 'C' || !have.count(p.key)) o.push_back(p);
     return o;
+}
+
+// ---------------------------------------------------------------- restore allow-list for settings
+// Default deny: only the keys listed here are applied without asking. Everything the program may expose to a network, send to a server,
+// write outside the data folder, turn into a transmission or accept as a consent is listed as "confirm" (the UI asks per key), and a key
+// not known at all is treated like a confirm key. Update this table when a setting is added (the test checks that every key of the
+// table is classified and that unknown keys are never silently applied).
+static const char* const kRestoreSafe[] = {
+    "ac.adv", "acarsChans", "acarsThr", "acarsZoom", "adsbLat", "adsbLon", "adsbMap", "adsbSources", "adsbSpeedUnit", "adsbSrcAny", "adsbUnits",
+    "adsbWinds", "adsbZoom", "aeroSat", "aeroSnrSound", "aeroZoom", "airChans", "airHang", "airHold", "airNr", "airNrStr", "airOnlyActive",
+    "airScan", "airSquelch", "aisZoom", "aleListen", "antWheelMm", "ardopListen", "astroCustom", "astroDeg", "astroFft", "astroInt", "astroLine",
+    "astroXVel", "astroY", "atvDeint", "audioRecFmt", "audioRecGate", "audioRecKeep", "audioRecSplit", "bleHop", "bleHopSec", "bletrkMin",
+    "bletrkNear", "capBg", "capLines", "capModes", "capOn", "capSave", "capShow", "capSize", "capSource", "capTop", "cdDwell", "cdScan", "clipAudio",
+    "clipAudioSec", "clipRows", "clipWf", "clipWfMB", "clipWfMin", "cquamMode", "cquamSquelch", "cquamWidth", "cubesatCcsdsLen", "cubesatKiss",
+    "cubesatSats", "cwPitch", "cwSidetone", "cwThreshold", "dabAnnMask", "dabAnnOn", "dabFollow", "dabRecFmt", "dabRecLog", "dabTiiCountry",
+    "devName", "dfCal", "dfCompass", "dfGeo", "dfLock", "dfMethod", "dfMhz", "dfN", "dfOrient", "dfShare", "dfSpacing", "dfSrc", "dfUseCal",
+    "djiDecode", "dpmrScan", "dstarZoom", "dtmbThreads", "dvbcAnnexC", "dvbcQam", "dvbcSr", "dvbsLnbPol", "dvbsSr", "dvbsStd", "dvbsTxPol", "dwFmt",
+    "eczasAudio", "eczasTone", "elektroAutoSave", "elektroCraft", "elektroFilter", "elektroLink", "family", "faxListen", "flarmZoom", "fmSaved",
+    "fmScanFullRds", "fmScanHiMhz", "fmScanLoMhz", "fmStations", "fpvDeint", "fpvSub", "freqFav", "freqTab", "ftxLineColour", "ftxLineDone",
+    "ftxLineFade", "ftxLineLabels", "ftxLineMin", "ftxLineSel", "ftxLines", "ftxZoom", "galleryCapMb", "genAfHp", "genAfLp", "genAfNotch", "genAgc",
+    "genDeNfm", "genDeWfm", "genDemod", "genFlac", "genGain", "genMp3", "genOffset", "genPitch", "genPreRoll", "genSqAuto", "genSqDb", "genSqOn",
+    "genTxHang", "genTxIq", "gnssElMask", "gnssZoom", "goesAutoSave", "goesFilter", "goesSaveCadu", "ham.audioOut", "ham.call", "ham.cwWpm",
+    "ham.grid", "ham.licence", "ham.name", "ham.qth", "ham.rig", "ham.txHz", "hdrAm9k", "hdrLastAm", "hdrLastFm", "hfbClock", "hfbDwell", "hfbHop",
+    "hfbListen", "hfbPpm", "hfbView", "hfdigHamdrmAutoSave", "hfdigListen", "hfdigSstvAutoSave", "hfdigView", "hfdlChans", "hfdlZoom",
+    "hiddenRadios", "hlB", "hlBody", "hlDec", "hlDwell", "hlL", "hlRa", "hlReg2", "hlRegion", "hlRx", "hlScan", "hlTsys", "hlWidth", "hrptVar",
+    "hrptView", "hwVideo", "inmcSat", "inmcSearch", "ionoDbHi", "ionoLocked", "ionoRange", "ionoTraces", "iridiumBitsName", "iridiumBitsOn",
+    "iridiumThr", "iridiumZoom", "js8Listen", "js8Zoom", "lrAutoBw", "lrAutoSf", "lrBw", "lrCr", "lrCrc", "lrImplicit", "lrLdro", "lrLen", "lrPre",
+    "lrSf", "lrSync", "m17Can", "m17Zoom", "mapCapMb", "mapColCoast", "mapColGrid", "mapColLabel", "mapColPreset", "mapColSea", "mapColTint",
+    "mapKeepTiles", "mapMbMode", "mapZoom", "marineIoc", "marineLpm", "marineSaveNavtex", "marineScanDwell", "marineScanSets", "marineService",
+    "mbMaskHi", "mbMaskLo", "mbOn", "memDesc", "memGrouped", "memSort", "memTab", "meshCorePreset", "meshMtPreset", "meshMtRegion", "meshPresets",
+    "meshRegion", "meshView", "meshZoom", "meteorAutoSave", "meteorEnh", "meteorMod", "meteorView", "monDemod", "monDev", "monDev2", "monLatency",
+    "monOut2", "monVol", "monVol2", "monWav", "monYield", "mt63Bandwidth", "mt63Interleave", "mt63Listen", "navChime", "navNight", "navZoom",
+    "ndbListen", "ndbTone", "orbcommMaxCh", "orbcommZoom", "pagerDecodedOnly", "passCubes", "passDopMeasure", "passMinEl", "passNotifyMin",
+    "passResv", "passResvFrom", "passResvTo", "passSched", "passTleAuto", "passTleOk", "passTleTry", "passUseDerived", "pocsagBaud", "pocsagRead",
+    "pocsagReadAddr", "popH", "popW", "popX", "popY", "prIll", "prLock", "prMhz", "prNlms", "prSrc", "prTaps", "prTxLat", "prTxLon", "prTxSet",
+    "prop_bw", "prop_d", "prop_eirp", "prop_env", "prop_f", "prop_gnd", "prop_h", "prop_lat", "prop_lon", "prop_mi", "prop_mo", "prop_nf",
+    "prop_now", "prop_power", "prop_punit", "prop_res", "prop_rxg", "prop_rxh", "prop_sfi", "prop_snr", "prop_txg", "prop_txh", "prop_y",
+    "prop_zoom", "pskListen", "pskMode", "pskThreshold", "qo100AutoCorr", "qo100AutoListen", "qo100AutoMask", "qo100CalBeaconMhz", "qo100Cpu",
+    "qo100Dial", "qo100Listen", "qo100LnbPpm", "qo100LoCustom", "qo100LoPreset", "qo100Slots", "qo100Squelch", "qo100View", "rcAlpha", "rcBands",
+    "rcCenter", "rcFloor", "rcFov", "rcHi", "rcLo", "rcMarkers", "rcMin", "rcOn", "rcPic", "rcProj", "recFormat", "recSigmf", "rfiBin", "rfiEvery",
+    "rfiFrom", "rfiLat", "rfiLon", "rfiTo", "ridZoom", "rxAltM", "rxOpen", "sameCounties", "sameCountry", "sameListen", "sameZoom", "sarsatView",
+    "sarsatZoom", "scanBandDwell", "scanBandMode", "scanBandStart", "scanBandStep", "scanBandStop", "scanDbCity", "scanDbCountry", "scanHang",
+    "scanList", "scanPrio", "scanThr", "scanUseBand", "selfcal.hist", "setupGoals", "setupLoc", "setupRegion", "sondeZoom", "specMax", "specMin",
+    "specanAutoKeep", "specanAutoSecs", "specxAuto", "specxAvg", "specxBookmarks", "specxFft", "specxLnbKind", "specxLnbLo", "specxLnbOn",
+    "specxLnbPreset", "specxPeak", "subMode", "timeAudio", "timeClockPermille", "timeListen", "timePref60", "timeStation", "timeTone", "tmDecim",
+    "tmMB", "tmOn", "tmPost", "tmPre", "tmSec", "tmSquelch", "tonesGateCode", "tonesGateInv", "tonesGateKind", "tonesGateMode", "tonesGateTone",
+    "tonesListen", "touchStepHz", "tvBufMb", "tvRecAtH", "tvRecAtM", "tvRecAtOn", "tvRecMin", "tvrec_autotune", "tvrec_loss", "tvrec_minfree",
+    "tvrec_post", "tvrec_pre", "tvrec_shift", "tvrec_shiftmin", "tvrec_subs", "tvrec_tpl", "tvrec_tuners", "uatLat", "uatLon", "uiTypography",
+    "userAccentOn", "vdl2Chans", "vdl2Zoom", "vorDb", "vorDwell", "vorFixA", "vorFixB", "vorIdFilter", "vorScan", "vorZoom", "wbAuto", "wbBaud",
+    "wbCmap", "wbDbMax", "wbDbMin", "wbFft", "wbKind", "wbOvl", "wbWin", "wfMax", "wfMin", "wfRate", "wideMaskHi", "wideMaskLo", "wifiBand",
+    "wifiDomain", "wifiDwellMs", "wifiHop", "wifiPsc", "workspaces", "wsBand", "wsRegion", "zbDwell", "zbScan", "zwRegion",
+};
+static const char* const kRestoreConfirm[] = {
+    "adsbGpsJam", "aleNets", "antAnyNet", "apiLan", "apiOn", "apiPort", "apiToken", "astroTsys", "automationAllowRun", "backup.auto", "backup.keep",
+    "backup.last", "clockSyncSource", "displayServer", "feedAcarsHost", "feedAcarsPort", "feedAisHost", "feedAisPort", "feedAprsCall",
+    "feedAprsPass", "feedAprsServer", "feedAprsServerPort", "feedBeastPort", "feedBleHost", "feedBlePort", "feedGnssHost", "feedGnssPort",
+    "feedKissPort", "feedLan", "feedLoraHost", "feedLoraPort", "feedSbsPort", "feedStationId", "feedTgtCount", "feedVdl2Host", "feedVdl2Port",
+    "ham.up.auto", "ham.up.club", "ham.up.clubApi", "ham.up.clubEmail", "ham.up.clubPw", "ham.up.eqsl", "ham.up.eqslPw", "ham.up.eqslUser",
+    "ham.up.qrz", "ham.up.qrzKey", "hamlibRigs", "iridiumNetHost", "iridiumNetOn", "iridiumNetPort", "iridiumNetTcp", "kaft.saveDir", "kavb.listen",
+    "kavb.outFile", "listenWizardHide", "mapMbPath", "mapServer", "marineAutoSlant", "marineSlant", "meshKeys", "meshProtocols", "monBindAll",
+    "monNet", "monOn", "monPort", "netRadios", "ocidKey", "packetListen", "packetZoom", "packsMaxZoom", "packsRadiusKm", "pluginsSafeMode",
+    "prop_feed", "pskrAntenna", "pskrCall", "pskrLocator", "pskrOn", "rcPath", "rcUrl", "rfiGps", "rfiNmea", "rotAuto", "rotAzLim", "rotAzMax",
+    "rotAzMin", "rotAzOff", "rotBaud", "rotElLim", "rotElMax", "rotElMin", "rotElOff", "rotHost", "rotLink", "rotParkAz", "rotParkEl", "rotSerial",
+    "rotShortPath", "rotShowMech", "rotTcpPort", "rxWarnDone", "scanDbAsk", "setupDone", "shareControl", "shareLan", "shareOn", "sharePort",
+    "specanAutoDir", "tvrec_dir", "tx.callsign", "tx.destKind", "tx.dryRun", "tx.grid", "tx.ifFormat", "tx.ifPath", "tx.ifRateHz", "tx.kaal.beacon",
+    "tx.kaal.bitrate", "tx.kaal.callsign", "tx.kaal.grid", "tx.kaal.lat", "tx.kaal.lon", "tx.kaal.power", "tx.kaal.text", "tx.kaft.callsign",
+    "tx.kaft.file", "tx.kaft.passes", "tx.kaft.profile", "tx.kaft.width", "tx.kait.callsign", "tx.kait.file", "tx.kait.profile", "tx.kapp.callsign",
+    "tx.kapp.file", "tx.kapp.passes", "tx.kapp.profile", "tx.kapp.text", "tx.kavb.callsign", "tx.kavb.fec", "tx.kavb.file", "tx.kavb.profile",
+    "tx.kavb.seconds", "tx.kaws.align", "tx.kaws.callsign", "tx.kaws.dest", "tx.kaws.eirp", "tx.kaws.grid", "tx.kaws.kind", "tx.kaws.passes",
+    "tx.kaws.profile", "tx.kaws.text", "tx.offsetMhz", "tx.recent", "tx.text", "txAirband", "txDays", "txEnabled", "txLang", "txMarine", "txModel",
+    "txNoticeAccepted", "txOther", "txThreads", "txTranslate", "vi.accepted", "wifiSkipDfs", "wsprNetCall", "wsprNetLocator", "wsprNetOn",
+};
+
+static bool inTable(const char* const* t, size_t n, const std::string& k) {
+    for (size_t i = 0; i < n; i++) if (k == t[i]) return true;
+    return false;
+}
+
+PrefPolicy prefRestorePolicy(const std::string& key, char type, bool fromSealedBlock) {
+    if (type == 'C') return PrefPolicy::Allow;
+    if (key.empty() || key.size() > 96) return PrefPolicy::Never;
+    for (char c : key) if (!(std::isalnum((unsigned char)c) || c == '_' || c == '.')) return PrefPolicy::Never;
+    if (!fromSealedBlock && isSecretPrefKey(key)) return PrefPolicy::Never;   // a credential belongs only in the passphrase block
+    if (fromSealedBlock) return PrefPolicy::Confirm;
+    if (inTable(kRestoreConfirm, sizeof kRestoreConfirm / sizeof *kRestoreConfirm, key)) return PrefPolicy::Confirm;
+    if (inTable(kRestoreSafe, sizeof kRestoreSafe / sizeof *kRestoreSafe, key)) return PrefPolicy::Allow;
+    return PrefPolicy::Confirm;
+}
+
+void classifyRestorePrefs(const std::vector<PrefItem>& in, bool fromSealedBlock, std::vector<PrefItem>& allow, std::vector<PrefItem>& confirm, std::vector<std::string>& refused) {
+    for (const PrefItem& p : in) {
+        switch (prefRestorePolicy(p.key, p.type, fromSealedBlock)) {
+            case PrefPolicy::Allow: allow.push_back(p); break;
+            case PrefPolicy::Confirm: confirm.push_back(p); break;
+            default: refused.push_back(p.key); break;
+        }
+    }
 }
 
 // ---------------------------------------------------------------- zip
@@ -267,10 +386,15 @@ std::string checkManifestAgainst(const Manifest& m, const std::vector<Entry>& en
     std::set<std::string> have;
     for (const Entry& e : entries) have.insert(e.name);
     if (!have.count("manifest.txt")) return "manifest.txt is missing";
+    std::set<std::string> seenNames;
     for (const auto& f : m.files) {
         if (!safeRelPath(f.name)) return "unsafe path in the manifest: " + f.name;
+        if (!restorablePath(f.name)) return "a file that must not be restored (code or library location): " + f.name;
+        if (!seenNames.insert(f.name).second) return "a file is listed twice in the manifest: " + f.name;
         const ItemDef* d = findItem(f.item);
         if (!d) return "unknown item in the manifest: " + f.item;
+        // a file may only sit where its item keeps files; otherwise a crafted manifest could restore e.g. codecs/libmbe.dylib (loaded at run time)
+        if (itemOfPath(f.name) != f.item) return "a file does not belong to its item: " + f.name;
         if (d->secret) { if (!m.secrets) return "secret file listed but the archive has no secrets"; continue; }
         want.insert("data/" + f.name);
         auto it = std::find_if(entries.begin(), entries.end(), [&](const Entry& e) { return e.name == "data/" + f.name; });
@@ -314,6 +438,7 @@ std::vector<PlanOp> planRestore(const Manifest& m, const std::set<std::string>& 
     std::vector<PlanOp> ops;
     for (const auto& f : m.files) {
         if (!ids.count(f.item)) continue;
+        if (!restorablePath(f.name) || itemOfPath(f.name) != f.item) continue;   // defence in depth: checkManifestAgainst refuses these first
         const bool ex = existing.count(f.name) != 0;
         ops.push_back({f.name, mode == Mode::Merge && ex ? PlanOp::SkipExisting : PlanOp::Write, ex});
     }
@@ -366,7 +491,10 @@ ExtractReport extractTo(const std::string& root, const std::vector<Entry>& entri
         for (const Entry& x : entries) if (x.name == "data/" + op.name || x.name == op.name) { e = &x; break; }
         if (!e) { rep.errors.push_back("not in the archive: " + op.name); continue; }
         fs::path target;
+        if (!restorablePath(op.name)) { rep.errors.push_back("refused (code or library location): " + op.name); continue; }
         if (!insideRoot(u8file(root), op.name, target)) { rep.errors.push_back("refused (outside the data folder): " + op.name); continue; }
+        { std::error_code ec; const fs::file_status st = fs::symlink_status(target, ec);
+          if (!ec && fs::exists(st) && !fs::is_regular_file(st)) { rep.errors.push_back("refused (target is not a plain file): " + op.name); continue; } }
         if (dryRun) { rep.written++; continue; }
         if (writeAtomicP(target, e->data)) rep.written++;
         else rep.errors.push_back("could not write: " + op.name);
