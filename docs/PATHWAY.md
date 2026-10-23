@@ -190,3 +190,6 @@ Frame pace as a pure, tested policy (app/ui/frame_pace.h): a covered window (mac
 ## 2026-10-22 Idle and background power (perf-power-030)
 Power policy (core/include/dect2/power): Low power mode and Save power when hidden (View > Power), battery/thermal probes, macOS QoS by thread name, App Nap held only while an engine runs. Idle polling cut: share/feeds/remote API/rotator/msgdb/WSPRnet/Discord threads (share+feeds idle wakeups 49.7/s to 7.0/s, tests/power/test_power_idle.cpp). Details and open items in docs/PERFORMANCE-POWER.md.
 
+## 2026-10-22 Signal-processing CPU (perf-dsp-030)
+New standalone cost table tools/bench/bench_dsp.{cpp,sh} (kernels + receivers, CPU s per signal s, not in ctest); results and method in docs/PERFORMANCE-DSP.md. Wins: wide-bank carrier mixer -66%, FM -31%, general NFM/AM/SSB -27%, TETRA -23%, LTR/EDACS front -45%, RationalResampler -20%, DVB-T search -33..50%, ATSC search -21%; mostly std::complex products written out (same bits) and table mixers. Viterbi chunks on the shared pool. Tests channelizer_mix, viterbi_simd.
+

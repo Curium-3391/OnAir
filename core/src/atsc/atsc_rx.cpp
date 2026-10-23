@@ -604,6 +604,7 @@ struct Core {
     }
     uint64_t dEnd() const { return dBase + d.size(); }
 
+    std::vector<float> searchMags;   // scratch of the segment sync search (kept: no allocation per search)
     void stageC() {
         if (dbg && (++stageCnt % 40) == 0) fprintf(stderr, "[atsc] stage C: seg %d tau %.0f dBase %llu dEnd %llu rate %.5f segAbs %llu inBase %llu pos %.0f\n", (int)seg, tau, (unsigned long long)dBase, (unsigned long long)dEnd(), rate, (unsigned long long)segAbs, (unsigned long long)inBase, pos);
         if (!seg) {
@@ -618,16 +619,20 @@ struct Core {
                     lastSearch = accIdx;
                     int m = 0;
                     for (int i = 1; i < kSegSamples; i++) if (acc[i] > acc[m]) m = i;
-                    // noise level of the correlation: the median magnitude away from the peak (a second peak caused by an echo must not count)
-                    std::vector<float> mags;
-                    mags.reserve(kSegSamples);
-                    for (int i = 0; i < kSegSamples; i++) {
-                        int dd = std::abs(i - m); dd = std::min(dd, kSegSamples - dd);
-                        if (dd > 8) mags.push_back(std::fabs(acc[i]));
+                    // noise level of the correlation: the median magnitude away from the peak (a second peak caused by an echo must not count).
+                    // Only needed when the peak passes the absolute test: on noise or an empty channel (13 000 searches a second) the median
+                    // was a fifth of the receiver's cost while it had nothing to lock to.
+                    bool strong = false;
+                    if (acc[m] > 8.0) {
+                        searchMags.clear();
+                        for (int i = 0; i < kSegSamples; i++) {
+                            int dd = std::abs(i - m); dd = std::min(dd, kSegSamples - dd);
+                            if (dd > 8) searchMags.push_back(std::fabs(acc[i]));
+                        }
+                        std::nth_element(searchMags.begin(), searchMags.begin() + searchMags.size() / 2, searchMags.end());
+                        const double rms = 1.4826 * searchMags[searchMags.size() / 2];
+                        strong = acc[m] > 5.0 * rms;
                     }
-                    std::nth_element(mags.begin(), mags.begin() + mags.size() / 2, mags.end());
-                    const double rms = 1.4826 * mags[mags.size() / 2];
-                    const bool strong = acc[m] > 8.0 && acc[m] > 5.0 * rms;
                     if (strong && lastPeak >= 0 && std::min(std::abs(m - lastPeak), kSegSamples - std::abs(m - lastPeak)) <= 1) peakRun++;
                     else peakRun = strong ? 1 : 0;
                     lastPeak = strong ? m : -1;

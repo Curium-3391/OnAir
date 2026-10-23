@@ -76,9 +76,11 @@ ThreadPool& ThreadPool::background() {
     return pool;
 }
 
-void ThreadPool::parallelFor(size_t n, const std::function<void(size_t)>& fn) {
+void ThreadPool::parallelFor(size_t n, const std::function<void(size_t)>& fn) { parallelFor(n, fn, (size_t)-1); }
+
+void ThreadPool::parallelFor(size_t n, const std::function<void(size_t)>& fn, size_t maxHelpers) {
     if (n == 0) return;
-    if (n == 1 || threads_.empty()) { for (size_t i = 0; i < n; i++) fn(i); return; }
+    if (n == 1 || threads_.empty() || maxHelpers == 0) { for (size_t i = 0; i < n; i++) fn(i); return; }
     // The loop state lives in a shared_ptr: a helper task that is still queued when the loop is done finds next >= n and returns at once.
     struct State {
         std::atomic<size_t> next{0};
@@ -98,15 +100,16 @@ void ThreadPool::parallelFor(size_t n, const std::function<void(size_t)>& fn) {
             if (i >= st->n) return;
             std::exception_ptr e;
             try { (*st->fn)(i); } catch (...) { e = std::current_exception(); }
+            bool last;
             {
                 std::lock_guard<std::mutex> lk(st->m);
                 if (e && !st->err) st->err = e;
-                st->done++;
+                last = ++st->done == st->n;
             }
-            st->cv.notify_all();
+            if (last) st->cv.notify_all();   // only the caller waits, and only for the last one (no wake-up per index)
         }
     };
-    const size_t helpers = std::min(n - 1, threads_.size());
+    const size_t helpers = std::min({n - 1, threads_.size(), maxHelpers});
     for (size_t h = 0; h < helpers; h++) enqueue(run);
     run();   // the caller helps; when it returns every index is claimed (not yet finished: a worker may still run its index)
     std::unique_lock<std::mutex> lk(st->m);

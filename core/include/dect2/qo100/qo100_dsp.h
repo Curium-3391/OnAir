@@ -37,11 +37,17 @@ class Nco {
 public:
     void set(double hz, double fs);
     void reset() { rot_ = std::complex<double>(1, 0); k_ = 0; }
+    // The products are written out: std::complex's operator* checks the result for NaN after every product (that check was most of the
+    // cost of a per-sample mixer). The same products and sums in the same order, one per statement (nothing fused): the same bits.
     cf32 mix(cf32 x) {
-        const std::complex<double> y = std::complex<double>(x.real(), x.imag()) * rot_;
-        rot_ *= step_;
+        const double a = x.real(), b = x.imag(), c = rot_.real(), d = rot_.imag();
+        const double ac = a * c, bd = b * d, ad = a * d, bc = b * c;
+        const double yr = ac - bd, yi = ad + bc;
+        const double s = step_.real(), t = step_.imag();
+        const double cs = c * s, dt = d * t, ct = c * t, ds = d * s;
+        rot_ = std::complex<double>(cs - dt, ct + ds);
         if (++k_ >= 4096) { k_ = 0; rot_ /= std::abs(rot_); }
-        return cf32((float)y.real(), (float)y.imag());
+        return cf32((float)yr, (float)yi);
     }
     double hz() const { return hz_; }
 private:

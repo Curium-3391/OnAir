@@ -29,13 +29,20 @@ std::vector<int> CarrierFinder::takeRemoved() { std::vector<int> r; r.swap(remov
 
 void CarrierFinder::feed(const cf32* x, size_t n) {
     if (nfft_ <= 0) return;
-    std::vector<cf32> w((size_t)nfft_);
-    for (size_t i = 0; i < n; i++) {
-        buf_[(size_t)fill_++] = x[i];
+    // whole pieces of the block at a time (the samples are copied once, no buffer is allocated per call)
+    if (wbuf_.size() != (size_t)nfft_) wbuf_.resize((size_t)nfft_);
+    cf32* w = wbuf_.data();
+    size_t i = 0;
+    while (i < n) {
+        const size_t take = std::min(n - i, (size_t)(nfft_ - fill_));
+        std::copy(x + i, x + i + take, buf_.begin() + fill_);
+        fill_ += (int)take; i += take;
         if (fill_ == nfft_) {
-            for (int k = 0; k < nfft_; k++) w[(size_t)k] = buf_[(size_t)k] * win_[(size_t)k];
-            fft_->f.forward(w.data());
-            for (int k = 0; k < nfft_; k++) acc_[(size_t)k] += (double)std::norm(w[(size_t)k]);
+            const float* wn = win_.data(); const cf32* b = buf_.data();
+            for (int k = 0; k < nfft_; k++) w[k] = b[k] * wn[k];
+            fft_->f.forward(w);
+            double* acc = acc_.data();
+            for (int k = 0; k < nfft_; k++) acc[k] += (double)(w[k].real() * w[k].real() + w[k].imag() * w[k].imag());   // std::norm without its infinity checks
             fill_ = 0;
             if (++nAvg_ >= avgTarget_) { update(); std::fill(acc_.begin(), acc_.end(), 0.0); nAvg_ = 0; }
         }
@@ -123,19 +130,45 @@ void CarrierFinder::update() {
 }
 
 bool Channelizer::configure(double inRate, double outRate, double shiftHz, double occupiedHz) {
-    inRate_ = inRate; shift_ = shiftHz; phase_ = 0;
+    inRate_ = inRate; shift_ = shiftHz;
+    const double w = inRate > 0 ? -2 * M_PI * shiftHz / inRate : 0;
+    tre_.resize(kTab); tim_.resize(kTab);
+    for (size_t k = 0; k < kTab; k++) { tre_[k] = (float)std::cos(w * (double)k); tim_[k] = (float)std::sin(w * (double)k); }
+    stepRe_ = std::cos(w * (double)kTab); stepIm_ = std::sin(w * (double)kTab);
+    phRe_ = 1; phIm_ = 0; pos_ = 0;
     return rs_.configure(inRate, outRate, nullptr, occupiedHz);
 }
 
-void Channelizer::reset() { rs_.reset(); phase_ = 0; }
+void Channelizer::reset() { rs_.reset(); phRe_ = 1; phIm_ = 0; pos_ = 0; }
 
 void Channelizer::process(const cf32* x, size_t n, std::vector<cf32>& out) {
+    if (!n) return;
     if (mix_.size() < n) mix_.resize(n);
-    const double w = -2 * M_PI * shift_ / inRate_;
-    const std::complex<double> rot(std::cos(w), std::sin(w));
-    std::complex<double> p(std::cos(phase_), std::sin(phase_));
-    for (size_t i = 0; i < n; i++) { mix_[i] = x[i] * cf32((float)p.real(), (float)p.imag()); p *= rot; if ((i & 1023) == 1023) p /= std::abs(p); }
-    phase_ = std::arg(p);
+    if (shift_ == 0 || tre_.empty()) std::copy(x, x + n, mix_.begin());
+    else {
+        size_t i = 0;
+        while (i < n) {
+            const size_t seg = std::min(n - i, kTab - pos_);
+            const float pr = (float)phRe_, pi = (float)phIm_;
+            const float* __restrict tr = tre_.data() + pos_;
+            const float* __restrict ti = tim_.data() + pos_;
+            const float* __restrict in = reinterpret_cast<const float*>(x + i);
+            float* __restrict o = reinterpret_cast<float*>(mix_.data() + i);
+            for (size_t k = 0; k < seg; k++) {
+                const float lr = tr[k] * pr - ti[k] * pi, li = tr[k] * pi + ti[k] * pr;
+                const float xr = in[2 * k], xi = in[2 * k + 1];
+                o[2 * k] = xr * lr - xi * li;
+                o[2 * k + 1] = xr * li + xi * lr;
+            }
+            i += seg; pos_ += seg;
+            if (pos_ == kTab) {
+                pos_ = 0;
+                const double nr = phRe_ * stepRe_ - phIm_ * stepIm_, ni = phRe_ * stepIm_ + phIm_ * stepRe_;
+                const double m = std::sqrt(nr * nr + ni * ni);
+                phRe_ = nr / m; phIm_ = ni / m;
+            }
+        }
+    }
     rs_.process(mix_.data(), n, out);
 }
 

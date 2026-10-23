@@ -60,7 +60,7 @@ private:
     int nfft_ = 0, fill_ = 0, nAvg_ = 0, avgTarget_ = 1;
     std::vector<float> win_;
     std::vector<double> acc_;
-    std::vector<cf32> buf_;
+    std::vector<cf32> buf_, wbuf_;
     struct FftHolder;
     std::shared_ptr<FftHolder> fft_;
     struct Track { Carrier c; double aboveSec = 0; bool reported = false; };
@@ -82,9 +82,15 @@ public:
     double shiftHz() const { return shift_; }
 
 private:
+    // The mixer: a table of the first kTab phasor steps in float and one double phasor per table period (renormalised), the loop body plain
+    // float arithmetic the compiler vectorises (the std::complex<double> phasor with its NaN checks per sample cost more than the resampler).
+    static constexpr size_t kTab = 1024;
     RationalResampler rs_;
     std::vector<cf32> mix_;
-    double inRate_ = 0, shift_ = 0, phase_ = 0;
+    std::vector<float> tre_, tim_;
+    double inRate_ = 0, shift_ = 0;
+    double phRe_ = 1, phIm_ = 0, stepRe_ = 1, stepIm_ = 0;
+    size_t pos_ = 0;
 };
 
 } // namespace dect2

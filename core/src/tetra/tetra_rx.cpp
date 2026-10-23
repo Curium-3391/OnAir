@@ -40,7 +40,17 @@ std::vector<cf32> channelize(const cf32* x, size_t n, double fs, double shift) {
             std::complex<double> o(std::cos(w * (double)i0), std::sin(w * (double)i0));
             const std::complex<double> st(std::cos(w), std::sin(w));
             const size_t e = std::min(n, i0 + 4096);
-            for (size_t i = i0; i < e; i++) { m[i] = x[i] * cf32((float)o.real(), (float)o.imag()); o *= st; }
+            // the complex products written out (std::complex's operator* checks each product for NaN): the same products and sums, one per
+            // statement (nothing fused), so the same bits
+            double orr = o.real(), oi = o.imag();
+            const double sr = st.real(), si = st.imag();
+            for (size_t i = i0; i < e; i++) {
+                const float a = x[i].real(), b = x[i].imag(), c = (float)orr, d = (float)oi;
+                const float ac = a * c, bd = b * d, ad = a * d, bc = b * c;
+                m[i] = cf32(ac - bd, ad + bc);
+                const double pr = orr * sr, qi = oi * si, pi = orr * si, qr = oi * sr;
+                orr = pr - qi; oi = pi + qr;
+            }
         }
     }
     const int d1 = std::max(1, (int)std::floor(fs / 288e3));
@@ -720,7 +730,15 @@ void TetraReceiver::feed(const cf32* x, size_t n) {
     double rate, center;
     { std::lock_guard<std::mutex> lk(m.mu); rate = m.rateSet; center = m.centerHz; }
     if (rate < tetraTuning().minSampleRate - 1 || m.want == 0) return;
-    for (size_t i = 0; i < n; i++) { const cf32 v = x[i]; if (std::isfinite(v.real()) && std::isfinite(v.imag())) m.levelAcc += std::norm(v); }
+    {   // branch-free; the same additions in the same order as the loop with std::norm
+        double lv = m.levelAcc;
+        for (size_t i = 0; i < n; i++) {
+            const float re = x[i].real(), im = x[i].imag();
+            const float p = re * re + im * im;
+            lv += (std::isfinite(re) && std::isfinite(im)) ? p : 0.f;
+        }
+        m.levelAcc = lv;
+    }
     m.levelN += n;
     m.total += n;
     const uint64_t g = m.gen.load();
@@ -730,10 +748,14 @@ void TetraReceiver::feed(const cf32* x, size_t n) {
     for (size_t i = 0; i < n;) {
         if (m.acc.empty()) { m.accCenter = center; m.acc.reserve(m.want); }
         const size_t take = std::min(n - i, m.want - m.acc.size());
-        for (size_t k = 0; k < take; k++) {
-            cf32 v = x[i + k];
-            if (!std::isfinite(v.real()) || !std::isfinite(v.imag())) v = cf32(0, 0);
-            m.acc.push_back(v);
+        {   // one resize, then plain stores (push_back checked the capacity for every sample)
+            const size_t at = m.acc.size();
+            m.acc.resize(at + take);
+            cf32* __restrict d = m.acc.data() + at;
+            for (size_t k = 0; k < take; k++) {
+                const cf32 v = x[i + k];
+                d[k] = (std::isfinite(v.real()) && std::isfinite(v.imag())) ? v : cf32(0, 0);
+            }
         }
         i += take;
         if (m.acc.size() < m.want || !m.idle.load()) break;
