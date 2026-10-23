@@ -279,7 +279,7 @@ struct FmReceiver::Impl {
     float lastSnr = 60.f, sqGain = 1.f;
     bool sqOpen = true;
     int bwSet = 0;
-    struct LpBiquad {
+    struct BwBiquad {   // not "Biquad": that name is already used above in this class (GCC: changes meaning)
         double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
         void lowpass(double fc, double q, double fs) {
             const double w = 2 * kPi * fc / fs, c = std::cos(w), al = std::sin(w) / (2 * q), a0 = 1 + al;
@@ -287,7 +287,7 @@ struct FmReceiver::Impl {
         }
         float process(float x) { const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return (float)y; }
     };
-    LpBiquad bwF[2][2];   // [channel][section]
+    BwBiquad bwF[2][2];   // [channel][section]
     std::atomic<int> toneBass{0}, toneTreble{0};   // setTone(): the requested tone; the audio thread reconfigures tone when they change
     std::atomic<bool> toneWarm{false};
     FmTone tone;
