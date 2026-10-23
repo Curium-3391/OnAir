@@ -250,6 +250,7 @@ void sidebar(App& a) {
         tool("Protocol lab...", a.protolabOpen, N_("Work out an unknown digital signal: modulation, baud rate, sync word, CRC and fields, with an export"));
         tool("Signal Lab...", a.signallabOpen, N_("Blind analysis of an unknown digital signal from the spectrum or a recording, stage by stage with confidences, a bit viewer and a Mode Builder export"));
         tool("Mode Builder...", a.modeBuilderOpen, N_("Build a decoder without code: describe the modulation, sync word, frame, FEC, CRC and fields, test it on a recording, add it to the mode list"));
+        tool("TX studio...", a.txStudioOpen, N_("Make a transmit signal as a file: spectrum, waterfall, measurements and a decoder check. No radio, nothing is transmitted"));
         tool("Watchlists...", a.watchlistOpen, N_("Alerts when listed aircraft, ships, call signs, frequencies or words are heard: notification, sound, ntfy, Telegram or webhook"));
         tool("Automations...", a.automationOpen, N_("Rules and scripts: when something is decoded, notify, record, tune or call a webhook"));
         tool("Plugins...", a.pluginsOpen, N_("Add decoders and actions without rebuilding OnAir: install, enable and set up plugins"));
@@ -553,6 +554,8 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Signal Lab..."), nullptr, &a.signallabOpen);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Blind analysis of an unknown digital signal: select it on the spectrum (Identify or Shift+drag) or load a recording"));
         ImGui::MenuItem(tr("Mode Builder..."), nullptr, &a.modeBuilderOpen);
+        ImGui::MenuItem(tr("TX studio..."), nullptr, &a.txStudioOpen);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Make a transmit signal as a file, with spectrum, waterfall, measurements and a decoder check. No radio, nothing is transmitted."));
         ImGui::MenuItem(tr("Watchlists..."), nullptr, &a.watchlistOpen);
         ImGui::MenuItem(tr("Automations..."), nullptr, &a.automationOpen);
         ImGui::MenuItem(tr("Plugins..."), nullptr, &a.pluginsOpen);

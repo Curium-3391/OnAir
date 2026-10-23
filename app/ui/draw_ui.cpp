@@ -221,6 +221,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     signallabWindow(a);
     modeBuilderFrame(a);
     modeBuilderWindow(a);
+    txStudioWindow(a);
     pluginFrame(a);
     pluginManagerWindow(a);
     msgdbWindow(a);
