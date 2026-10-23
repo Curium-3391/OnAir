@@ -29,6 +29,7 @@ public:
     Band band;
     bool useBand = false;           // scan the band instead of the list
     double hangSec = 3;             // after activity ends, stay this long before moving on
+    double holdMaxSec = 0;          // longest stay on one active channel (0: as long as it stays active)
     double prioritySec = 5;         // the priority entry is checked this often (0: never)
     double settleSec = 0.3;         // activity is not believed for this long after the receiver is ready
 
@@ -55,15 +56,15 @@ public:
         const bool act = believed && active;
         switch (st_) {
         case Dwell:
-            if (act) { st_ = Hold; hit_ = true; lastAct_ = now; return false; }
+            if (act) { st_ = Hold; hit_ = true; lastAct_ = now; holdStart_ = now; return false; }
             if (readyAt_ >= 0 && now - readyAt_ >= settleSec + cur_.dwellSec) return advance(now);
             if (readyAt_ < 0 && now - tunedAt_ >= 10) return advance(now);   // the receiver never came up here
             return false;
         case Hold:
-            if (act) { lastAct_ = now; return priorityDue(now) ? goPriority(now, true) : false; }
+            if (act) { lastAct_ = now; if (holdMaxSec > 0 && now - holdStart_ >= holdMaxSec) return advance(now); return priorityDue(now) ? goPriority(now, true) : false; }
             st_ = Hang; return false;
         case Hang:
-            if (act) { st_ = Hold; lastAct_ = now; return false; }
+            if (act) { st_ = Hold; lastAct_ = now; if (holdMaxSec > 0 && now - holdStart_ >= holdMaxSec) return advance(now); return false; }
             if (now - lastAct_ >= hangSec) return advance(now);
             return false;
         default: return false;
@@ -88,7 +89,7 @@ private:
     State st_ = Idle;
     Target cur_;
     int pos_ = -1, resume_ = -1;
-    double tunedAt_ = 0, readyAt_ = -1, lastAct_ = 0, lastPrio_ = 0;
+    double tunedAt_ = 0, readyAt_ = -1, lastAct_ = 0, lastPrio_ = 0, holdStart_ = 0;
     bool hit_ = false;
 
     int count() const { return useBand ? bandSteps() : (int)list.size(); }

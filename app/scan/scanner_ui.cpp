@@ -36,6 +36,7 @@ struct State {
     int addMode = -1;                // mode of a new entry (kModes index; -1: the current mode)
     bool fromMemory = false;         // the list is the scan-flagged memories (scannerLoadList): never saved over the user's own list, which waits in userList
     std::vector<Entry> userList;
+    uint64_t hitSeq = 0;
 };
 State S;
 
@@ -182,7 +183,7 @@ void tick(App& a) {
         Hit h; h.wall = time(nullptr); h.mhz = t.mhz; h.mode = t.mode; h.name = t.name; h.levelDb = S.level; h.what = S.what; h.startT = h.endT = now;
         S.log.push_back(h);
         if (S.log.size() > 500) S.log.erase(S.log.begin());
-        S.logging = true;
+        S.logging = true; S.hitSeq++;
         char b[160]; snprintf(b, sizeof b, "scanner: activity on %.4f MHz (%s), %.1f dB, %s", t.mhz, modeName(t.mode), S.level, S.what.c_str());
         a.engine.log(b);
     }
@@ -395,15 +396,15 @@ void scannerPanel(App& a) {
 std::string scanModeKey(const ModeDef& m) { return modeKey(m); }
 int scanModeIndex(const std::string& key) { return modeIndex(key); }
 
-void scannerLoadList(App& a, const std::vector<ScanSeed>& list) {
+void scannerLoadList(App& a, const std::vector<ScanSeed>& list, bool openClassic) {
     load();
     if (S.m.running()) { S.m.stop(); closeHit(glfwGetTime()); }
     if (!S.fromMemory) S.userList = S.m.list;
     S.fromMemory = true;
     S.m.list.clear();
-    for (const ScanSeed& q : list) { Entry e; e.mhz = q.mhz; e.mode = q.mode; e.name = q.name; e.dwellSec = q.dwellSec > 0 ? q.dwellSec : 2; S.m.list.push_back(e); }
+    for (const ScanSeed& q : list) { Entry e; e.mhz = q.mhz; e.mode = q.mode; e.name = q.name; e.dwellSec = q.dwellSec > 0 ? q.dwellSec : 2; e.priority = q.priority; e.lockout = q.lockout; S.m.list.push_back(e); }
     S.m.useBand = false;
-    a.scannerOpen = true;
+    if (openClassic) a.scannerOpen = true;
     startScan(a);
 }
 
@@ -415,7 +416,7 @@ void scannerWindow(App& a) {
 }
 
 void scannerButton(App& a) {
-    if (ImGui::SmallButton(tr("Scanner (highly experimental)..."))) a.scannerOpen = true;
+    if (ImGui::SmallButton(tr("Scanner (highly experimental)..."))) a.scanViewOpen = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("HIGHLY EXPERIMENTAL: step through a list of frequencies and modes, or a band, and stop on activity"));
 }
 
@@ -427,4 +428,22 @@ bool scannerResultsLoad(const std::string& blob) {
     S.log = std::move(log);
     S.logging = false;
     return true;
+}
+
+ScanLive scannerLive() {
+    ScanLive l;
+    l.running = S.m.running(); l.state = (int)S.m.state(); l.levelDb = S.level; l.hitSeq = S.hitSeq; l.what = S.what;
+    if (l.running) { const scanlist::Target& t = S.m.target(); l.mhz = t.mhz; l.mode = t.mode; l.name = t.name; l.priority = t.priority; l.entry = t.entry; }
+    return l;
+}
+void scannerControl(App& a, int what) {
+    if (!S.m.running()) return;
+    const double now = glfwGetTime();
+    closeHit(now);
+    if (what == 0) S.m.stop();
+    else if (what == 1) { if (S.m.skip(now)) tuneTo(a, S.m.target()); }
+    else if (what == 2) { if (S.m.lockout(now)) tuneTo(a, S.m.target()); }
+}
+void scannerTuning(float squelchDb, double hangSec, double holdMaxSec, double prioritySec) {
+    S.thrDb = squelchDb; S.m.hangSec = hangSec; S.m.holdMaxSec = holdMaxSec; S.m.prioritySec = prioritySec;
 }
