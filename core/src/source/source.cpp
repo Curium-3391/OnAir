@@ -704,13 +704,4 @@ std::unique_ptr<IqSource> makeFileSource(const std::string& path, FileFormat fmt
 }
 
 } // namespace dect2
-
-// Windows (MinGW-w64) only: the static FFmpeg of the Windows prefix was built against a newer MinGW runtime that names these two calls with a
-// 64 suffix; an older toolchain (the CI laptop's) does not have them. Weak, so a runtime that has them wins.
-#if defined(_WIN32) && defined(__MINGW32__)
-#include <time.h>
-extern "C" {
-__attribute__((weak)) int clock_gettime64(clockid_t c, struct timespec* t) { return clock_gettime(c, t); }
-__attribute__((weak)) int nanosleep64(const struct timespec* a, struct timespec* b) { return nanosleep(a, b); }
-}
 #endif
