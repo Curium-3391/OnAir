@@ -56,6 +56,34 @@ int main() {
         rx.telemetry(t, 0);
         CHECK(t.state == 2 && rx.ensemble().valid, "no lock after the DAB signal started: state %d", t.state);
     }
+    {   // the scan's verdict "no DAB here": noise alone is quiet (no null symbol) within a second; a weak DAB signal never is
+        auto quiet = [&](double snr, bool dab) {
+            DabReceiver rx;
+            rx.configure(rate);
+            rx.audio().setSilent(true);
+            std::vector<cf32> y((size_t)(1.0 * rate));
+            if (dab) {
+                dabgen::TxConfig tc;
+                tc.utcSeconds = 1700000000;
+                SynthConfig sc;
+                sc.snrDb = snr;
+                auto syn = makeDabSynth(tc, sc, rate);
+                syn->generate(y.data(), y.size());
+            } else for (auto& v : y) v = cf32{nd(g), nd(g)};
+            double worst = 0;
+            for (size_t i = 0; i < y.size(); i += 8192) {
+                rx.feed(y.data() + i, std::min<size_t>(8192, y.size() - i));
+                DabTelemetry t;
+                rx.telemetry(t, 0);
+                worst = std::max(worst, t.quietMs);
+            }
+            return worst;
+        };
+        const double n = quiet(0, false), d0 = quiet(0, true), d3 = quiet(3, true);
+        printf("quiet input: noise %.0f ms, DAB at 0 dB %.0f ms, at 3 dB %.0f ms\n", n, d0, d3);
+        CHECK(n > 700, "noise: only %.0f ms quiet in 1 s", n);
+        CHECK(d0 < 300 && d3 < 300, "DAB taken for quiet: %.0f / %.0f ms", d0, d3);
+    }
     if (fails) { printf("%d FAILED\n", fails); return 1; }
     printf("test_dab_search: all passed\n");
     return 0;

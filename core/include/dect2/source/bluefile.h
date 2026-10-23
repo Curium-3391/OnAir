@@ -61,6 +61,7 @@ private:
     FILE* f_ = nullptr;
     uint64_t left_ = 0;
     std::vector<uint8_t> raw_;
+    std::vector<int16_t> s16_;   // 16-bit samples, aligned for the conversion
 };
 
 struct WriteSpec {
