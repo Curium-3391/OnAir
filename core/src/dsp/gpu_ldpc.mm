@@ -13,6 +13,8 @@ static NSString* const kSource = @R"MSL(
 using namespace metal;
 constant int Z = 360;
 struct P { int k, n, q, G, maxIter; float alpha; uint msgPer; uint postPer; };
+// log(1 + e^-t), t >= 0: the four tangents of softplusNeg in ldpc.cpp
+inline float spNeg(float t) { return max(0.f, max(max(0.6854f - 0.4378f * t, 0.5822f - 0.2689f * t), max(0.3653f - 0.1192f * t, 0.1323f - 0.0293f * t))); }
 
 inline int vidx(int j, int nc0, int c0, int r, int m, int q, int G, device const int* cGrp, device const int* cSh) {
     if (j < nc0) { int n = m - cSh[c0 + j]; if (n < 0) n += Z; return cGrp[c0 + j] * Z + n; }
@@ -54,6 +56,7 @@ kernel void ldpc(constant P& p [[buffer(0)]], device const int* lStart [[buffer(
                 if (a < min1) { min2 = min1; min1 = a; idx1 = j; }
                 else if (a < min2) min2 = a;
             }
+            if (p.alpha < 0.f) min1 = max(0.f, min1 + spNeg(min1 + min2) - spNeg(min2 - min1));   // the two-minimum correction (LdpcCode::decodeFast)
             // A layer may reach the same variable group twice (a variable then has two edges in the layer, owned by different
             // threads). Every new message is computed from the posteriors as they were at the start of the layer, and the
             // posterior increments are applied afterwards: unique edges at once, repeated ones one rank at a time.
@@ -62,7 +65,7 @@ kernel void ldpc(constant P& p [[buffer(0)]], device const int* lStart [[buffer(
             for (int j = 0; j < nc; j++) {
                 const int vi = vidx(j, nc0, c0, r, m, q, G, cGrp, cSh);
                 float x = inf[vi] - mr[j * Z + m];
-                float mag = (idx1 == j ? min2 : min1) * p.alpha;
+                float mag = (idx1 == j ? min2 : min1) * fabs(p.alpha);
                 float nm = as_type<float>(as_type<uint>(mag) | (sg ^ (as_type<uint>(x) & 0x80000000u)));
                 const float d = nm - mr[j * Z + m];
                 mr[j * Z + m] = nm;
@@ -267,7 +270,7 @@ GpuLdpc& GpuLdpc::instance() { static GpuLdpc g; return g; }
 bool GpuLdpc::available() const { return p_->pso != nil; }
 const char* GpuLdpc::deviceName() const { return p_->dev ? p_->dev.name.UTF8String : "none"; }
 
-bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter, uint8_t* hard, uint8_t* ok, int* iters, float alpha) {
+bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter, uint8_t* hard, uint8_t* ok, int* iters, float alpha, bool boxCorr) {
     if (!available() || code.q() * 360 != code.n() - code.k()) return false;
     std::lock_guard<std::mutex> lk(p_->mu);
     @autoreleasepool {
@@ -286,7 +289,7 @@ bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter
                 s.cap = cnt;
             }
             memcpy(s.llr.contents, llr + (size_t)b0 * n, (size_t)cnt * n * 4);
-            struct { int k, n, q, G, maxIter; float alpha; uint32_t msgPer, postPer; } P = {code.k(), n, code.q(), code.groups(), maxIter, alpha, s.msgPer, s.postPer};
+            struct { int k, n, q, G, maxIter; float alpha; uint32_t msgPer, postPer; } P = {code.k(), n, code.q(), code.groups(), maxIter, boxCorr ? -alpha : alpha, s.msgPer, s.postPer};   // negative: the two-minimum correction
             id<MTLCommandBuffer> cb = [d.queue commandBuffer];
             id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
             [enc setComputePipelineState:d.pso];
