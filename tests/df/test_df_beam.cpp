@@ -92,11 +92,6 @@ int main() {
         double sirDs = 10 * std::log10((sDs - nDs) / std::max(iDs - nDs, 1e-12)), sirLc = 10 * std::log10((sLc - nLc) / std::max(iLc - nLc, 1e-12));
         printf("output wanted/interferer ratio: DS %.1f dB, LCMV %.1f dB (input was -25 dB)\n", sirDs, sirLc);
         CHECK(sirLc > sirDs + 15, "LCMV improves SIR by %.1f dB", sirLc - sirDs);
-        // without calibration the null is damaged: the correction matters
-        Frame raw = scene;
-        auto rraw = covariance(raw);
-        auto wraw = lcmvWeights(rraw, arr, LAM, look, {intf}, 1e-3);
-        printf("uncalibrated LCMV null %.1f dB (calibrated %.1f dB)\n", nullDepthDb(wraw, arr, LAM, look, intf), ndLc);
     }
 
     // bank: two beams, one auto-steered; samples out match the block length

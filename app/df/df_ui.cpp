@@ -7,6 +7,7 @@
 #include "../ui/scale.h"
 #include "rfcam_ui.h"
 #include "../adsb/adsb_map.h"
+#include "dect2/df/beam.h"
 #include "dect2/df/df.h"
 #include "dect2/df/position.h"
 #include "dect2/df/source.h"
@@ -78,6 +79,11 @@ struct State {
     double jsonBearing = 0, jsonConf = 0; bool jsonOk = false;
     std::unique_ptr<MultiChannelSource> source;
     int builtKey = -1;
+    // beamformer
+    CMat lastR;
+    int bfType = 1, bfBeam = 0;
+    float bfAz[4] = {0, 90, 180, 270}, bfEl[4] = {0, 0, 0, 0}, bfNullAz = 180.f;
+    bool bfNull = false, bfAuto = false;
     // fix
     std::vector<BearingLine> lines;
     Fix fix;
@@ -187,6 +193,7 @@ bool step(double hz, size_t n, CMat* covOut = nullptr) {
     if (S.useCal && (int)S.cal.size() == S.elements) r = applyCalibration(r, S.cal);
     Options o;
     o.method = (Method)S.method; o.sources = S.sources; o.forwardBackward = S.fb; o.gridStepDeg = 1.0; o.compassOffsetDeg = S.compass;
+    S.lastR = r;
     S.res = estimate(r, arrayFor(hz), dect2::df::kC / hz, o);
     return true;
 }
@@ -290,6 +297,50 @@ void polarPlot(float size) {
         dl->AddLine(c, ImVec2(c.x + std::sin(th) * R, c.y - std::cos(th) * R), kCol, 2.5f * gUi);
         dl->AddCircleFilled(c, 3 * gUi, kCol);
     }
+}
+
+// The beamformer panel: steering controls and the polar pattern of the chosen beam (weights from the live calibrated covariance)
+void beamSection(double hz) {
+    ImGui::TextWrapped("%s", tr("Steer a receive beam of the array. The chosen beam can feed the receiver as a virtual input (Beam 1 to Beam 4)."));
+    ImGui::SetNextItemWidth(60 * gUi); ImGui::SliderInt(tr("Beam"), &S.bfBeam, 0, 3, "%d"); S.bfBeam = std::clamp(S.bfBeam, 0, 3);
+    const int b = S.bfBeam;
+    const char* ty[] = {N_("Delay and sum"), N_("MVDR (Capon)"), N_("Null steering (LCMV)")};
+    ImGui::SetNextItemWidth(190 * gUi);
+    if (ImGui::BeginCombo(tr("Beamformer"), tr(ty[S.bfType]))) { for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(ty[i]), S.bfType == i)) S.bfType = i; ImGui::EndCombo(); }
+    ImGui::Checkbox(tr("Follow the strongest MUSIC peak"), &S.bfAuto);
+    if (!S.bfAuto) { ImGui::SetNextItemWidth(160 * gUi); ImGui::SliderFloat(tr("Azimuth"), &S.bfAz[b], 0, 359.9f, "%.0f\xC2\xB0"); }
+    ImGui::SetNextItemWidth(160 * gUi); ImGui::SliderFloat(tr("Elevation (3D arrays)"), &S.bfEl[b], -10, 90, "%.0f\xC2\xB0");
+    if (S.bfType == 2) { ImGui::SetNextItemWidth(160 * gUi); ImGui::SliderFloat(tr("Null toward"), &S.bfNullAz, 0, 359.9f, "%.0f\xC2\xB0"); }
+    const int n = S.elements;
+    if (S.lastR.n != n) { ImGui::TextDisabled("%s", tr("Waiting for samples.")); return; }
+    const Array arr = arrayFor(hz);
+    const double lam = dect2::df::kC / hz;
+    dect2::df::BeamSpec sp;
+    sp.type = (dect2::df::BeamType)S.bfType;
+    sp.look = {S.bfAz[b], S.bfEl[b]};
+    if (S.bfAuto) { Options o; o.method = Method::Music; o.sources = S.sources; double az; if (dect2::df::strongestPeak(S.lastR, arr, lam, o, az)) sp.look.azDeg = az; }
+    if (S.bfType == 2) sp.nulls.push_back({S.bfNullAz, 0});
+    const auto w = dect2::df::makeWeights(sp, S.lastR, arr, lam);
+    const auto pat = dect2::df::beamPattern(w, arr, lam, sp.look.elDeg, 2.0);
+    const float size = 220 * gUi;
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##beampolar", ImVec2(size, size));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 c(p0.x + size / 2, p0.y + size / 2);
+    const float R = size / 2 - 14 * gUi;
+    dl->AddCircleFilled(c, R + 3, IM_COL32(18, 20, 22, 255), 72);
+    for (int i = 1; i <= 3; i++) dl->AddCircle(c, R * i / 3, IM_COL32(70, 74, 78, 255), 72);
+    std::vector<ImVec2> pts;
+    for (size_t i = 0; i < pat.size(); i++) {   // radius: -40 dB at the centre, 0 dB at the rim
+        const float th = (float)(i * 2.0 + S.compass) * 0.0174533f, r = R * (float)std::clamp((pat[i] + 40.0) / 40.0, 0.0, 1.0);
+        pts.push_back(ImVec2(c.x + std::sin(th) * r, c.y - std::cos(th) * r));
+    }
+    dl->AddPolyline(pts.data(), (int)pts.size(), IM_COL32(120, 230, 140, 255), ImDrawFlags_Closed, 1.6f * gUi);
+    const float lt = (float)(sp.look.azDeg + S.compass) * 0.0174533f;
+    dl->AddLine(c, ImVec2(c.x + std::sin(lt) * R, c.y - std::cos(lt) * R), kCol, 2.f * gUi);
+    if (S.bfType == 2) { const float nt = (float)(S.bfNullAz + S.compass) * 0.0174533f; dl->AddLine(c, ImVec2(c.x + std::sin(nt) * R, c.y - std::cos(nt) * R), IM_COL32(255, 90, 90, 255), 1.5f * gUi); }
+    ImGui::Text(tr("Look %.0f\xC2\xB0, beamwidth %.0f\xC2\xB0, noise gain %.1f dB"), sp.look.azDeg, dect2::df::beamwidthDeg(w, arr, lam, sp.look), dect2::df::whiteNoiseGainDb(w));
+    if (S.bfType == 2) ImGui::Text(tr("Response toward the null: %.0f dB"), dect2::df::nullDepthDb(w, arr, lam, sp.look, sp.nulls[0]));
 }
 
 bool gFull = false;   // the window over the whole display (the shared full-screen button; Esc leaves)
@@ -444,6 +495,7 @@ void drawWindow(App& a) {
         ImGui::SetNextItemWidth(70 * gUi); ImGui::InputInt(tr("Sources"), &S.sources); S.sources = std::clamp(S.sources, 1, std::max(1, S.elements - 1));
         ImGui::Checkbox(tr("Forward-backward averaging (reflections)"), &S.fb);
     }
+    if (typo::collapsingHeader(tr("Beamformer"))) beamSection(hz);
     if (typo::collapsingHeader(tr("Calibration"))) {
         ImGui::TextWrapped("%s", tr("1. Feed all channels the same signal: the receiver's noise source (KrakenSDR: switch it on in the DAQ), or a signal from a known bearing. 2. Choose the matching mode and press Calibrate. The offsets between the channels are measured and removed."));
         ImGui::RadioButton(tr("Common noise source"), &S.calMode, 0); ImGui::SameLine(); ImGui::RadioButton(tr("Known bearing"), &S.calMode, 1);
