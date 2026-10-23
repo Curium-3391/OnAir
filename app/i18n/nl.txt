@@ -381,7 +381,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Versterker
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	versterkingshulp %d/%d ...
 ADC OVERLOAD - %s	ADC OVERBELAST - %s
 AGC is lowering the gain	AGC verlaagt de versterking
@@ -668,7 +667,6 @@ CPU load now: %.0f%% (100%% = one core)	CPU-belasting nu: %.0f%% (100%% = één 
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	Gesprekken en data worden getoond, maar de spraak blijft stil tot je zelf de codec installeert. OnAir levert hem niet mee (patenten).
 Cancel	Annuleren
 Carrier MHz	Draaggolf MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Draaggolven in het bereik (klik: luisteren en tonen; dubbelklik: erop afstemmen)
 Channel MHz	Kanaal MHz
 Channel raster	Kanaalraster
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Controleer of PulseAudio of PipeWire draait en of in de geluidsinstellingen een uitgang is gekozen.
@@ -685,7 +683,6 @@ Close programs that hold the sound device exclusively.	Sluit programma's die het
 Close the other program (a second OnAir, SDR software, hackrf_info).	Sluit het andere programma (een tweede OnAir, SDR-software, hackrf_info).
 Close this receiver: it stops and lets go of its radio	Deze ontvanger sluiten: hij stopt en laat zijn radio los
 Colour map	Kleurenkaart
-Colours	Kleuren
 Converter (up-converter / LNB)	Converter (upconverter / LNB)
 Copy the command	Opdracht kopiëren
 Copy the restart command	Herstartopdracht kopiëren
@@ -732,7 +729,6 @@ It is streaming to another program: stop it there first.	Het streamt naar een an
 Japan	Japan
 Journaline	Journaline
 Just explore	Gewoon verkennen
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	Houd het watervalbereik op de ruisvloer en het sterkste signaal (klik opnieuw om te stoppen met volgen)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO-correctie (ppm)
 Let other computers connect (LAN)	Andere computers laten verbinden (LAN)
@@ -900,7 +896,6 @@ dBm offset (dB)	dBm-offset (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	elk kanaal in het bereik decoderen: een ontvanger per bezet kanaal, één speelt af, de andere blijven decoderen\n(rechtsklik: hoeveel tegelijk, waar de kanalen liggen)
 decode every signal in the visible span, not just the tuned one	elk signaal in het zichtbare bereik decoderen, niet alleen het afgestemde
 empty	leeg
-held	vastgehouden
 holds	houdt vast
 last send %s	laatst verzonden %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	luistert op %s poort %d, %d client(s), %.1f MB verzonden, %.1f MB verworpen
@@ -908,7 +903,6 @@ max	max
 on air	in de lucht
 partial	gedeeltelijk
 point %s	punt %s
-power (dBm)	vermogen (dBm)
 searching for Hermes Lite 2 radios…	zoeken naar Hermes Lite 2-radio's…
 up-converter	upconverter
 waiting	wachten
@@ -1117,7 +1111,6 @@ start the receiver to see the frames	start de ontvanger om de frames te zien
 Showing %s only	Alleen %s
 Copy	Kopiëren
 %.0f frames/s	%.0f frames/s
-Time UTC	Tijd UTC
 Preamble	Preambule
 Type	Type
 Len	Lengte
@@ -1277,7 +1270,6 @@ Group	Groep
 Groups	Groepen
 Import failed: 	Importeren mislukt:
 Import...	Importeren...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	%zu geheugens geïmporteerd, %zu overgeslagen (duplicaten of regels zonder frequentie).
 Include in the memory scan	Opnemen in de geheugenscan
 Informative: the channel width at the time. The mode's own width options are in the options below.	Ter informatie: de kanaalbreedte destijds. De eigen breedte-opties van de modus staan in de opties hieronder.
 Keep the gains	Versterkingen behouden
@@ -1293,7 +1285,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Notities
 Options	Opties
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Leest een geheugen-CSV- of JSON-bestand, een eenvoudige lijst met regels 'frequentie,naam' (MHz), of een export van SDR++ Frequency Manager. Geheugens die al op dezelfde frequentie en modus zijn opgeslagen, worden overgeslagen.
 Recall	Oproepen
 Recall frequency only	Alleen frequentie oproepen
 Sample rate (kHz)	Samplesnelheid (kHz)
@@ -1389,7 +1380,6 @@ phase of the carrier	fase van de draaggolf
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	De laatste twee seconden van de fase van de draaggolf, één punt per 8 ms, nieuwste het helderst. De dienst schakelt de fase tussen twee toestanden die 36 graden verschillen (50 bit/s); een schoon signaal toont twee compacte clusters.
 signal at the bit slicer	signaal bij de bitslicer
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	De faseverandering over elke bit van 20 ms: een stap van +-1 is een bit dat de keying-toestand verandert, 0 een bit dat dat niet doet; de slicer beslist op de helft (gestippeld). De laatste twee seconden.
-Computer UTC	Computer-UTC
 Frame	Frame
 Result	Resultaat
 no frame yet: a time packet comes every few slots of the minute frame	nog geen frame: een tijdpakket komt om de paar slots van het minuutframe
@@ -2397,18 +2387,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Kalibreren...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	De frequentiefout van deze radio meten aan een FM-zender of een draaggolf met bekende frequentie
 Frequency calibration	Frequentiekalibratie
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Meet hoeveel de klok van deze radio afwijkt van een signaal met bekende frequentie en stelt de ppm-correctie in.
 Not with a converter in front of the radio.	Niet met een converter voor de radio.
 Start the receiver first.	Start eerst de ontvanger.
-FM station (stereo pilot) at the tuned frequency	FM-zender (stereopiloot) op de afgestemde frequentie
-Carrier of known frequency (MHz)	Draaggolf met bekende frequentie (MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Stem eerst af op een sterke FM-zender. De piloot van een zender is niet altijd exact: herhaal op twee of drie zenders.
 Ready.	Klaar.
 Looking for a reference signal.	Zoeken naar een referentiesignaal.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	Meten: %+.2f ppm, onzekerheid %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Klaar: %+.2f ppm (onzekerheid %.2f ppm).
 No usable reference signal was found.	Er is geen bruikbaar referentiesignaal gevonden.
-Apply %+.2f ppm	%+.2f ppm toepassen
 Current setting: %.2f ppm	Huidige instelling: %.2f ppm
 No measurements of this radio yet.	Nog geen metingen van deze radio.
 History of this radio (ppm)	Geschiedenis van deze radio (ppm)
@@ -3323,15 +3307,11 @@ extra channels:	extra kanalen:
 none inside the capture	geen binnen de opname
 Ship and coast station names	Namen van schepen en kuststations
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	items; scheepsnamen, roepletters en types worden geleerd uit AIS (statische gegevens) en je kunt een eigen lijst importeren.
-Import list	Lijst importeren
-%d records read	%d records gelezen
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	Een TSV- of CSV-bestand: MMSI, naam, roepletters, type, land, plaats. Een kopregel (mmsi, name, callsign, type, country, station, location, lat, lon) kan de kolommen herordenen; lat en lon zetten kuststations op de kaart.
 Export list	Lijst exporteren
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Er is geen meegeleverde kuststationlijst: er bestaat er geen met een open licentie, dus breng je eigen bestand mee.
 Marine bands	Maritieme banden
 A click tunes the radio and opens the mode for it.	Een klik stemt de radio af en opent de bijbehorende modus.
 Protocols	Protocollen
-distress only	alleen nood
 positions	posities
 Export KML	KML exporteren
 Export GPX	GPX exporteren

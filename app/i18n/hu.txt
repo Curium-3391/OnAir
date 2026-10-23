@@ -384,7 +384,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Erősítő
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	erősítéssegéd %d/%d ...
 ADC OVERLOAD - %s	ADC TÚLVEZÉRLÉS - %s
 AGC is lowering the gain	Az AGC csökkenti az erősítést
@@ -661,7 +660,6 @@ CPU load now: %.0f%% (100%% = one core)	Jelenlegi CPU-terhelés: %.0f%% (100%% =
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	A hívások és az adatok megjelennek, de a hang némán marad, amíg Ön nem telepíti a kodeket. Az OnAir nem tartalmazza (szabadalmak).
 Cancel	Mégse
 Carrier MHz	Vivő MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Vivők a tartományban (kattintás: hallgatás és megjelenítés; dupla kattintás: ráhangolás)
 Channel MHz	Csatorna MHz
 Channel raster	Csatornakiosztás
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Ellenőrizze, hogy fut-e a PulseAudio vagy a PipeWire, és hogy van kimenet kiválasztva a hangbeállításokban.
@@ -678,7 +676,6 @@ Close programs that hold the sound device exclusively.	Zárja be azokat a progra
 Close the other program (a second OnAir, SDR software, hackrf_info).	Zárja be a másik programot (egy második OnAir, SDR-szoftver, hackrf_info).
 Close this receiver: it stops and lets go of its radio	A vevő bezárása: leáll és elengedi a rádióját
 Colour map	Színskála
-Colours	Színek
 Converter (up-converter / LNB)	Konverter (felfelé konverter / LNB)
 Copy the command	Parancs másolása
 Copy the restart command	Újraindítási parancs másolása
@@ -725,7 +722,6 @@ It is streaming to another program: stop it there first.	Egy másik programnak s
 Japan	Japán
 Journaline	Journaline
 Just explore	Csak felfedezem
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	A vízesés tartománya kövesse a zajszintet és a legerősebb jelet (újabb kattintás: követés vége)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO-korrekció (ppm)
 Let other computers connect (LAN)	Más számítógépek csatlakozhatnak (LAN)
@@ -895,7 +891,6 @@ dBm offset (dB)	dBm-eltolás (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	a tartomány minden csatornájának dekódolása: minden foglalt csatornához egy vevő, az egyik szól, a többi dekódol tovább\n(jobb kattintás: hány egyszerre, hol vannak a csatornák)
 decode every signal in the visible span, not just the tuned one	a látható tartomány minden jelének dekódolása, nem csak a behangoltnak
 empty	üres
-held	tartva
 holds	tart
 last send %s	utolsó küldés %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	figyel: %s, %d. port, %d kliens, %.1f MB elküldve, %.1f MB eldobva
@@ -903,7 +898,6 @@ max	max
 on air	adásban
 partial	részleges
 point %s	pont: %s
-power (dBm)	teljesítmény (dBm)
 searching for Hermes Lite 2 radios…	Hermes Lite 2 rádiók keresése…
 up-converter	felfelé konverter
 waiting	várakozik
@@ -1103,7 +1097,6 @@ start the receiver to see the frames	indítsd el a vevőt a keretek megtekintés
 Showing %s only	Csak %s látszik
 Copy	Másolás
 %.0f frames/s	%.0f keret/s
-Time UTC	Idő UTC
 Preamble	Preambulum
 Type	Típus
 Len	Hossz
@@ -1263,7 +1256,6 @@ Group	Csoport
 Groups	Csoportok
 Import failed: 	Az importálás sikertelen:
 Import...	Importálás...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	%zu memória importálva, %zu kihagyva (duplikátum vagy frekvencia nélküli sor).
 Include in the memory scan	Szerepeljen a memóriapásztázásban
 Informative: the channel width at the time. The mode's own width options are in the options below.	Tájékoztató: a csatorna szélessége az adott időpontban. Az üzemmód saját szélességi opciói az alábbi opciók között vannak.
 Keep the gains	Erősítések megtartása
@@ -1279,7 +1271,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Jegyzetek
 Options	Opciók
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Beolvas egy memória CSV vagy JSON fájlt, egy egyszerű „frekvencia,név” soros listát (MHz), vagy egy SDR++ Frequency Manager exportot. Az ugyanazon a frekvencián és üzemmódban már tárolt memóriák kimaradnak.
 Recall	Előhívás
 Recall frequency only	Csak a frekvencia előhívása
 Sample rate (kHz)	Mintavételi sebesség (kHz)
@@ -1375,7 +1366,6 @@ phase of the carrier	a vivő fázisa
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	A vivő fázisa az utolsó két másodpercből, 8 ms-onként egy pont, a legújabb a legfényesebb. A szolgáltatás a fázist két, 36 fokkal eltérő állapot között billenti (50 bit/s); tiszta jel két szűk csoportot mutat.
 signal at the bit slicer	jel a bitdöntőnél
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	A fázisváltozás minden 20 ms-os bit felett: a +-1 lépés a kulcsolási állapotot váltó bit, a 0 az, amelyik nem; a döntő a felénél dönt (szaggatott). Az utolsó két másodperc.
-Computer UTC	Számítógép UTC
 Frame	Keret
 Result	Eredmény
 no frame yet: a time packet comes every few slots of the minute frame	még nincs keret: időcsomag a perckeret néhány időrésenként érkezik
@@ -2383,18 +2373,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Kalibrálás...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	A rádió frekvenciahibájának mérése egy FM-adóhoz vagy ismert frekvenciájú vivőhöz képest
 Frequency calibration	Frekvenciakalibrálás
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Megméri, mennyire tér el a rádió órajele egy ismert frekvenciájú jeltől, és beállítja a ppm-korrekciót.
 Not with a converter in front of the radio.	Nem a rádió előtti konverterrel.
 Start the receiver first.	Előbb indítsa el a vevőt.
-FM station (stereo pilot) at the tuned frequency	FM-adó (sztereó pilot) a beállított frekvencián
-Carrier of known frequency (MHz)	Ismert frekvenciájú vivő (MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Előbb hangoljon egy erős FM-adóra. Az adók pilotjele nem mindig pontos: ismételje meg két-három adón.
 Ready.	Kész.
 Looking for a reference signal.	Referenciajel keresése.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	Mérés: %+.2f ppm, bizonytalanság %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Kész: %+.2f ppm (bizonytalanság %.2f ppm).
 No usable reference signal was found.	Nem található használható referenciajel.
-Apply %+.2f ppm	%+.2f ppm alkalmazása
 Current setting: %.2f ppm	Jelenlegi beállítás: %.2f ppm
 No measurements of this radio yet.	Ehhez a rádióhoz még nincs mérés.
 History of this radio (ppm)	A rádió előzményei (ppm)
@@ -3309,15 +3293,11 @@ extra channels:	további csatornák:
 none inside the capture	nincs a felvételen belül
 Ship and coast station names	Hajók és parti állomások nevei
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	bejegyzés; a hajónevek, hívójelek és típusok az AIS-ből (statikus adatok) tanulódnak, saját lista is importálható.
-Import list	Lista importálása
-%d records read	%d rekord beolvasva
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	TSV vagy CSV fájl: MMSI, név, hívójel, típus, ország, hely. Egy fejléc (mmsi, name, callsign, type, country, station, location, lat, lon) átrendezheti az oszlopokat; a lat és lon a parti állomásokat a térképre teszi.
 Export list	Lista exportálása
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Nincs mellékelt parti állomás lista: nyílt licencű nem érhető el, hozza a saját fájlját.
 Marine bands	Tengerészeti sávok
 A click tunes the radio and opens the mode for it.	Egy kattintás ráhangolja a rádiót és megnyitja a hozzá tartozó módot.
 Protocols	Protokollok
-distress only	csak vészhívás
 positions	pozíciók
 Export KML	KML exportálása
 Export GPX	GPX exportálása

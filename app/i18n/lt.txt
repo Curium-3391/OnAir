@@ -388,7 +388,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Stiprintuvas
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	stiprinimo pagalbininkas %d/%d ...
 ADC OVERLOAD - %s	ADC PERKROVA - %s
 AGC is lowering the gain	AGC mažina stiprinimą
@@ -675,7 +674,6 @@ CPU load now: %.0f%% (100%% = one core)	Dabartinė procesoriaus apkrova: %.0f%% 
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	Skambučiai ir duomenys rodomi, bet balsas tylės, kol pats neįdiegsite kodeko. OnAir jo nepateikia (patentai).
 Cancel	Atšaukti
 Carrier MHz	Nešlys MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Nešlio dažniai juostoje (spustelėkite: klausyti ir rodyti; dukart: derinti)
 Channel MHz	Kanalas MHz
 Channel raster	Kanalų žingsnis
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Patikrinkite, ar veikia PulseAudio ar PipeWire ir ar garso nustatymuose pasirinktas išvestis.
@@ -692,7 +690,6 @@ Close programs that hold the sound device exclusively.	Uždarykite programas, ku
 Close the other program (a second OnAir, SDR software, hackrf_info).	Uždarykite kitą programą (antrą OnAir, SDR programinę įrangą, hackrf_info).
 Close this receiver: it stops and lets go of its radio	Uždaryti šį imtuvą: jis sustos ir paleis savo radiją
 Colour map	Spalvų žemėlapis
-Colours	Spalvos
 Converter (up-converter / LNB)	Keitiklis (kėlimo keitiklis / LNB)
 Copy the command	Kopijuoti komandą
 Copy the restart command	Kopijuoti perkrovimo komandą
@@ -739,7 +736,6 @@ It is streaming to another program: stop it there first.	Jis perduoda srautą ki
 Japan	Japonija
 Journaline	Journaline
 Just explore	Tiesiog naršyti
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	Laikyti krioklio ribas ties triukšmo lygiu ir stipriausiu signalu (spustelėkite dar kartą, kad nustotumėte sekti)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO korekcija (ppm)
 Let other computers connect (LAN)	Leisti prisijungti kitiems kompiuteriams (LAN)
@@ -909,7 +905,6 @@ dBm offset (dB)	dBm poslinkis (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	dekoduoti kiekvieną juostos kanalą: po imtuvą kiekvienam užimtam kanalui, vienas groja, kiti toliau dekoduoja\n(dešinysis spustelėjimas: kiek vienu metu, kur yra kanalai)
 decode every signal in the visible span, not just the tuned one	dekoduoti kiekvieną matomos juostos signalą, ne tik suderintą
 empty	tuščia
-held	išlaikyta
 holds	išlaiko
 last send %s	paskutinis siuntimas %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	klausoma %s prievadu %d, %d klientas(-ai), išsiųsta %.1f MB, praleista %.1f MB
@@ -917,7 +912,6 @@ max	maks.
 on air	eteryje
 partial	dalinis
 point %s	taškas %s
-power (dBm)	galia (dBm)
 searching for Hermes Lite 2 radios…	ieškoma Hermes Lite 2 radijų…
 up-converter	kėlimo keitiklis
 waiting	laukiama
@@ -1117,7 +1111,6 @@ start the receiver to see the frames	paleisk imtuvą, kad pamatytum kadrus
 Showing %s only	Rodomas tik %s
 Copy	Kopijuoti
 %.0f frames/s	%.0f kadrų/s
-Time UTC	Laikas UTC
 Preamble	Preambulė
 Type	Tipas
 Len	Ilgis
@@ -1277,7 +1270,6 @@ Group	Grupė
 Groups	Grupės
 Import failed: 	Importuoti nepavyko:
 Import...	Importuoti...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Importuota atmintinės įrašų: %zu, praleista: %zu (dublikatai arba eilutės be dažnio).
 Include in the memory scan	Įtraukti į atmintinės skenavimą
 Informative: the channel width at the time. The mode's own width options are in the options below.	Informacinis: tuometinis kanalo plotis. Paties režimo pločio parinktys yra žemiau esančiose parinktyse.
 Keep the gains	Palikti stiprinimus
@@ -1293,7 +1285,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Pastabos
 Options	Parinktys
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Skaito atmintinės CSV ar JSON failą, paprastą „dažnis,pavadinimas“ eilučių sąrašą (MHz) arba SDR++ Frequency Manager eksportą. Atmintinės įrašai, jau išsaugoti tuo pačiu dažniu ir režimu, praleidžiami.
 Recall	Prisiminti
 Recall frequency only	Prisiminti tik dažnį
 Sample rate (kHz)	Diskretizavimo dažnis (kHz)
@@ -1389,7 +1380,6 @@ phase of the carrier	nešlio fazė
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Paskutinės dvi nešlio fazės sekundės, vienas taškas per 8 ms, naujausias ryškiausias. Paslauga perjungia fazę tarp dviejų būsenų, nutolusių 36 laipsniais (50 bit/s); švarus signalas rodo du glaudžius spiečius.
 signal at the bit slicer	signalas prie bitų sprendiklio
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	Fazės pokytis per kiekvieną 20 ms bitą: +-1 žingsnis yra bitas, keičiantis raktavimo būseną, 0 – nekeičiantis; sprendimo ribą nustato pusė (punktyras). Paskutinės dvi sekundės.
-Computer UTC	Kompiuterio UTC
 Frame	Kadras
 Result	Rezultatas
 no frame yet: a time packet comes every few slots of the minute frame	kadro dar nėra: laiko paketas ateina kas kelis minutės kadro laiko tarpus
@@ -2397,18 +2387,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Kalibruoti...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	Išmatuoti šio radijo dažnio paklaidą pagal FM stotį arba žinomo dažnio nešlį
 Frequency calibration	Dažnio kalibravimas
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Išmatuoja, kiek šio radijo taktas nukrypsta nuo žinomo dažnio signalo, ir nustato ppm pataisą.
 Not with a converter in front of the radio.	Netinka, jei prieš radiją yra keitiklis.
 Start the receiver first.	Pirmiausia paleiskite imtuvą.
-FM station (stereo pilot) at the tuned frequency	FM stotis (stereo pilotas) nustatytu dažniu
-Carrier of known frequency (MHz)	Žinomo dažnio nešlys (MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Pirmiausia nustatykite stiprią FM stotį. Stoties pilotas ne visada tikslus: pakartokite su dviem ar trimis stotimis.
 Ready.	Paruošta.
 Looking for a reference signal.	Ieškoma atskaitos signalo.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	Matuojama: %+.2f ppm, neapibrėžtis %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Baigta: %+.2f ppm (neapibrėžtis %.2f ppm).
 No usable reference signal was found.	Tinkamo atskaitos signalo nerasta.
-Apply %+.2f ppm	Taikyti %+.2f ppm
 Current setting: %.2f ppm	Dabartinis nustatymas: %.2f ppm
 No measurements of this radio yet.	Šio radijo matavimų dar nėra.
 History of this radio (ppm)	Šio radijo istorija (ppm)
@@ -3323,15 +3307,11 @@ extra channels:	papildomi kanalai:
 none inside the capture	nė vieno įraše
 Ship and coast station names	Laivų ir pakrantės stočių pavadinimai
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	įrašų; laivų pavadinimai, šaukiniai ir tipai išmokstami iš AIS (statiniai duomenys), taip pat galima importuoti savo sąrašą.
-Import list	Importuoti sąrašą
-%d records read	perskaityta įrašų: %d
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	TSV arba CSV failas: MMSI, pavadinimas, šaukinys, tipas, šalis, vieta. Antraštės eilutė (mmsi, name, callsign, type, country, station, location, lat, lon) gali pakeisti stulpelių tvarką; lat ir lon pakrantės stotis deda į žemėlapį.
 Export list	Eksportuoti sąrašą
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Pakrantės stočių sąrašo komplekte nėra: atviros licencijos sąrašo nėra, todėl naudokite savo failą.
 Marine bands	Jūrų juostos
 A click tunes the radio and opens the mode for it.	Spustelėjus imtuvas suderinamas ir atidaromas atitinkamas režimas.
 Protocols	Protokolai
-distress only	tik pagalbos šauksmai
 positions	pozicijos
 Export KML	Eksportuoti KML
 Export GPX	Eksportuoti GPX

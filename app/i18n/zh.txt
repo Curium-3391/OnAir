@@ -388,7 +388,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	放大器
 LNA	LNA
 VGA	VGA
-AGC	自动增益
 gain helper %d/%d ...	增益助手 %d/%d ...
 ADC OVERLOAD - %s	ADC 过载 - %s
 AGC is lowering the gain	自动增益正在降低增益
@@ -675,7 +674,6 @@ CPU load now: %.0f%% (100%% = one core)	当前 CPU 负载：%.0f%%（100%% = 一
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	会显示通话和数据，但在您自行安装编解码器之前语音是静音的。OnAir 不附带它（专利原因）。
 Cancel	取消
 Carrier MHz	载波 MHz
-Carriers in the span (click: listen and show; double click: tune to it)	范围内的载波（单击：收听并显示；双击：调谐到它）
 Channel MHz	信道 MHz
 Channel raster	信道间隔
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	请确认 PulseAudio 或 PipeWire 正在运行，并已在声音设置中选择了输出设备。
@@ -692,7 +690,6 @@ Close programs that hold the sound device exclusively.	请关闭独占声音设�
 Close the other program (a second OnAir, SDR software, hackrf_info).	请关闭另一个程序（第二个 OnAir、SDR 软件、hackrf_info）。
 Close this receiver: it stops and lets go of its radio	关闭此接收器：它会停止并释放其电台
 Colour map	色图
-Colours	颜色
 Converter (up-converter / LNB)	变频器（上变频器 / LNB）
 Copy the command	复制命令
 Copy the restart command	复制重启命令
@@ -739,7 +736,6 @@ It is streaming to another program: stop it there first.	它正在向另一个�
 Japan	日本
 Journaline	Journaline
 Just explore	随便看看
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	让瀑布图范围跟随底噪和最强信号（再次点击停止跟随）
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO 校正 (ppm)
 Let other computers connect (LAN)	允许其他电脑连接（局域网）
@@ -909,7 +905,6 @@ dBm offset (dB)	dBm 偏移 (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	解码范围内的每个信道：每个有信号的信道一个接收器，一个出声，其他继续解码\n（右键：同时数量、信道位置）
 decode every signal in the visible span, not just the tuned one	解码可见范围内的每个信号，而不仅是已调谐的那个
 empty	空
-held	已保持
 holds	保持
 last send %s	上次发送 %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	正在监听 %s 端口 %d，%d 个客户端，已发送 %.1f MB，已丢弃 %.1f MB
@@ -917,7 +912,6 @@ max	最大
 on air	播出中
 partial	部分
 point %s	点 %s
-power (dBm)	功率 (dBm)
 searching for Hermes Lite 2 radios…	正在查找 Hermes Lite 2 电台…
 up-converter	上变频器
 waiting	等待中
@@ -1117,7 +1111,6 @@ start the receiver to see the frames	启动接收机以查看帧
 Showing %s only	仅显示 %s
 Copy	复制
 %.0f frames/s	%.0f 帧/秒
-Time UTC	时间 UTC
 Preamble	前导码
 Type	类型
 Len	长度
@@ -1277,7 +1270,6 @@ Group	分组
 Groups	分组
 Import failed: 	导入失败：
 Import...	导入...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	已导入 %zu 个存储，跳过 %zu 个（重复或没有频率的行）。
 Include in the memory scan	纳入存储扫描
 Informative: the channel width at the time. The mode's own width options are in the options below.	仅供参考：当时的信道宽度。该模式自身的宽度选项在下方选项中。
 Keep the gains	保持增益
@@ -1293,7 +1285,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	备注
 Options	选项
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	读取存储的 CSV 或 JSON 文件、由“频率,名称”行（MHz）组成的纯列表，或 SDR++ Frequency Manager 导出文件。同一频率和模式上已有的存储会被跳过。
 Recall	调用
 Recall frequency only	仅调用频率
 Sample rate (kHz)	采样率 (kHz)
@@ -1389,7 +1380,6 @@ phase of the carrier	载波相位
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	载波相位的最近两秒，每 8 ms 一个点，最新的最亮。该业务在相隔 36 度的两个状态之间键控相位（50 bit/s）；干净的信号呈现两个紧密的簇。
 signal at the bit slicer	位判决器处的信号
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	每个 20 ms 比特上的相位变化：±1 的步进表示改变键控状态的比特，0 表示不改变；判决器在一半处判决（虚线）。最近两秒。
-Computer UTC	计算机 UTC
 Frame	帧
 Result	结果
 no frame yet: a time packet comes every few slots of the minute frame	尚无帧：时间数据包每隔几个分钟帧时隙出现一次
@@ -2397,18 +2387,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	校准...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	用FM电台或已知频率的载波测量此电台的频率误差
 Frequency calibration	频率校准
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	测量此无线电的时钟相对于已知频率信号的偏差，并设置ppm校正。
 Not with a converter in front of the radio.	无线电前接有变频器时不可用。
 Start the receiver first.	请先启动接收机。
-FM station (stereo pilot) at the tuned frequency	已调谐频率上的FM电台(立体声导频)
-Carrier of known frequency (MHz)	已知频率的载波(MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	请先调谐到一个强FM电台。电台的导频并不总是精确:请在两三个电台上重复。
 Ready.	就绪。
 Looking for a reference signal.	正在寻找参考信号。
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	测量中: %+.2f ppm，不确定度 %.2f ppm。
-Done: %+.2f ppm (uncertainty %.2f ppm).	完成: %+.2f ppm(不确定度 %.2f ppm)。
 No usable reference signal was found.	未找到可用的参考信号。
-Apply %+.2f ppm	应用 %+.2f ppm
 Current setting: %.2f ppm	当前设置: %.2f ppm
 No measurements of this radio yet.	此无线电尚无测量记录。
 History of this radio (ppm)	此无线电的历史(ppm)
@@ -3323,15 +3307,11 @@ extra channels:	附加频道:
 none inside the capture	采集范围内没有
 Ship and coast station names	船舶与海岸电台名称
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	条目;船名、呼号和类型从 AIS(静态数据)中学习,也可导入你自己的列表。
-Import list	导入列表
-%d records read	已读取 %d 条记录
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	TSV 或 CSV 文件:MMSI、名称、呼号、类型、国家、地点。标题行(mmsi, name, callsign, type, country, station, location, lat, lon)可重排列;lat 和 lon 会把海岸电台放到地图上。
 Export list	导出列表
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	未内置海岸电台列表:没有开放许可的来源,请自备文件。
 Marine bands	海事频段
 A click tunes the radio and opens the mode for it.	点击即可调谐接收机并打开相应模式。
 Protocols	协议
-distress only	仅遇险
 positions	位置
 Export KML	导出 KML
 Export GPX	导出 GPX

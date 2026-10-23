@@ -388,7 +388,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Verst.
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	Verstärkungshelfer %d/%d ...
 ADC OVERLOAD - %s	ADC ÜBERSTEUERT - %s
 AGC is lowering the gain	AGC senkt die Verstärkung
@@ -675,7 +674,6 @@ CPU load now: %.0f%% (100%% = one core)	CPU-Last jetzt: %.0f%% (100%% = ein Kern
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	Anrufe und Daten werden angezeigt, die Sprache bleibt aber stumm, bis du den Codec selbst installierst. OnAir liefert ihn nicht mit (Patente).
 Cancel	Abbrechen
 Carrier MHz	Träger MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Träger im Ausschnitt (Klick: anhören und anzeigen; Doppelklick: darauf abstimmen)
 Channel MHz	Kanal MHz
 Channel raster	Kanalraster
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Prüfe, ob PulseAudio oder PipeWire läuft und in den Klangeinstellungen ein Ausgang gewählt ist.
@@ -692,7 +690,6 @@ Close programs that hold the sound device exclusively.	Schließe Programme, die 
 Close the other program (a second OnAir, SDR software, hackrf_info).	Schließe das andere Programm (ein zweites OnAir, SDR-Software, hackrf_info).
 Close this receiver: it stops and lets go of its radio	Diesen Empfänger schließen: er stoppt und gibt sein Radio frei
 Colour map	Farbskala
-Colours	Farben
 Converter (up-converter / LNB)	Konverter (Aufwärtskonverter / LNB)
 Copy the command	Befehl kopieren
 Copy the restart command	Neustart-Befehl kopieren
@@ -739,7 +736,6 @@ It is streaming to another program: stop it there first.	Es streamt an ein ander
 Japan	Japan
 Journaline	Journaline
 Just explore	Einfach erkunden
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	Wasserfallbereich auf Rauschteppich und stärkstes Signal halten (erneut klicken zum Beenden)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO-Korrektur (ppm)
 Let other computers connect (LAN)	Andere Computer verbinden lassen (LAN)
@@ -909,7 +905,6 @@ dBm offset (dB)	dBm-Offset (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	jeden Kanal im Ausschnitt dekodieren: ein Empfänger je belegtem Kanal, einer spielt Ton, die anderen dekodieren weiter\n(Rechtsklick: wie viele gleichzeitig, wo die Kanäle liegen)
 decode every signal in the visible span, not just the tuned one	jedes Signal im sichtbaren Ausschnitt dekodieren, nicht nur das eingestellte
 empty	leer
-held	gehalten
 holds	hält
 last send %s	letztes Senden %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	lauscht auf %s Port %d, %d Client(s), %.1f MB gesendet, %.1f MB verworfen
@@ -917,7 +912,6 @@ max	max
 on air	auf Sendung
 partial	teilweise
 point %s	Punkt %s
-power (dBm)	Leistung (dBm)
 searching for Hermes Lite 2 radios…	suche nach Hermes-Lite-2-Radios …
 up-converter	Aufwärtskonverter
 waiting	wartet
@@ -1117,7 +1111,6 @@ start the receiver to see the frames	Empfänger starten, um die Frames zu sehen
 Showing %s only	Nur %s
 Copy	Kopieren
 %.0f frames/s	%.0f Frames/s
-Time UTC	Zeit UTC
 Preamble	Präambel
 Type	Typ
 Len	Länge
@@ -1277,7 +1270,6 @@ Group	Gruppe
 Groups	Gruppen
 Import failed: 	Import fehlgeschlagen:
 Import...	Importieren...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	%zu Speicherplätze importiert, %zu übersprungen (Duplikate oder Zeilen ohne Frequenz).
 Include in the memory scan	In den Speicher-Suchlauf aufnehmen
 Informative: the channel width at the time. The mode's own width options are in the options below.	Zur Information: die damalige Kanalbreite. Die eigenen Breitenoptionen des Modus stehen in den Optionen unten.
 Keep the gains	Verstärkungen beibehalten
@@ -1293,7 +1285,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Notizen
 Options	Optionen
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Liest eine Speicher-CSV- oder JSON-Datei, eine einfache Liste mit „Frequenz,Name“-Zeilen (MHz) oder einen SDR++-Frequency-Manager-Export. Speicherplätze mit gleicher Frequenz und gleichem Modus werden übersprungen.
 Recall	Abrufen
 Recall frequency only	Nur Frequenz abrufen
 Sample rate (kHz)	Samplerate (kHz)
@@ -1389,7 +1380,6 @@ phase of the carrier	Phase des Trägers
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Die letzten zwei Sekunden der Trägerphase, ein Punkt pro 8 ms, der neueste am hellsten. Der Dienst tastet die Phase zwischen zwei Zuständen im Abstand von 36 Grad (50 bit/s); ein sauberes Signal zeigt zwei enge Cluster.
 signal at the bit slicer	Signal am Bit-Entscheider
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	Die Phasenänderung über jedes 20-ms-Bit: ein Schritt von +-1 ist ein Bit, das den Tastzustand ändert, 0 eines, das ihn nicht ändert; der Slicer entscheidet bei der Hälfte (gestrichelt). Die letzten zwei Sekunden.
-Computer UTC	Computer-UTC
 Frame	Rahmen
 Result	Ergebnis
 no frame yet: a time packet comes every few slots of the minute frame	noch kein Rahmen: ein Zeitpaket kommt alle paar Slots des Minutenrahmens
@@ -2397,18 +2387,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Kalibrieren...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	Den Frequenzfehler dieses Radios an einem UKW-Sender oder einem Träger bekannter Frequenz messen
 Frequency calibration	Frequenzkalibrierung
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Misst, wie weit der Takt dieses Radios gegenüber einem Signal bekannter Frequenz abweicht, und setzt die ppm-Korrektur.
 Not with a converter in front of the radio.	Nicht mit einem Konverter vor dem Radio.
 Start the receiver first.	Zuerst den Empfänger starten.
-FM station (stereo pilot) at the tuned frequency	UKW-Sender (Stereo-Pilotton) auf der eingestellten Frequenz
-Carrier of known frequency (MHz)	Träger bekannter Frequenz (MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Zuerst einen starken UKW-Sender einstellen. Der Pilotton eines Senders ist nicht immer exakt: auf zwei oder drei Sendern wiederholen.
 Ready.	Bereit.
 Looking for a reference signal.	Suche ein Referenzsignal.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	Messung: %+.2f ppm, Unsicherheit %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Fertig: %+.2f ppm (Unsicherheit %.2f ppm).
 No usable reference signal was found.	Es wurde kein brauchbares Referenzsignal gefunden.
-Apply %+.2f ppm	%+.2f ppm übernehmen
 Current setting: %.2f ppm	Aktuelle Einstellung: %.2f ppm
 No measurements of this radio yet.	Noch keine Messungen dieses Radios.
 History of this radio (ppm)	Verlauf dieses Radios (ppm)
@@ -3323,15 +3307,11 @@ extra channels:	zusätzliche Kanäle:
 none inside the capture	keine innerhalb der Aufnahme
 Ship and coast station names	Namen von Schiffen und Küstenfunkstellen
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	Einträge; Schiffsnamen, Rufzeichen und Typen werden aus AIS (statische Daten) gelernt, eine eigene Liste lässt sich importieren.
-Import list	Liste importieren
-%d records read	%d Datensätze gelesen
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	Eine TSV- oder CSV-Datei: MMSI, Name, Rufzeichen, Typ, Land, Ort. Eine Kopfzeile (mmsi, name, callsign, type, country, station, location, lat, lon) kann die Spalten umordnen; lat und lon setzen Küstenfunkstellen auf die Karte.
 Export list	Liste exportieren
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Es gibt keine mitgelieferte Küstenfunkstellenliste: Eine offen lizenzierte ist nicht verfügbar, bringen Sie also Ihre eigene Datei mit.
 Marine bands	Seefunkbänder
 A click tunes the radio and opens the mode for it.	Ein Klick stimmt das Funkgerät ab und öffnet den passenden Modus.
 Protocols	Protokolle
-distress only	nur Notrufe
 positions	Positionen
 Export KML	KML exportieren
 Export GPX	GPX exportieren

@@ -375,7 +375,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Усилитель
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	помощник по усилению %d/%d ...
 ADC OVERLOAD - %s	ПЕРЕГРУЗКА АЦП - %s
 AGC is lowering the gain	AGC снижает усиление
@@ -651,7 +650,6 @@ CPU load now: %.0f%% (100%% = one core)	Загрузка CPU сейчас: %.0f%
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	Вызовы и данные показываются, но голос беззвучен, пока вы сами не установите кодек. OnAir его не включает (патенты).
 Cancel	Отмена
 Carrier MHz	Несущая MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Несущие в полосе (щелчок: слушать и показать; двойной щелчок: настроиться)
 Channel MHz	Канал MHz
 Channel raster	Сетка каналов
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Проверьте, что работает PulseAudio или PipeWire и что в настройках звука выбран выход.
@@ -668,7 +666,6 @@ Close programs that hold the sound device exclusively.	Закройте прог
 Close the other program (a second OnAir, SDR software, hackrf_info).	Закройте другую программу (второй OnAir, SDR-программу, hackrf_info).
 Close this receiver: it stops and lets go of its radio	Закрыть этот приёмник: он остановится и освободит своё радио
 Colour map	Цветовая карта
-Colours	Цвета
 Converter (up-converter / LNB)	Конвертер (повышающий / LNB)
 Copy the command	Копировать команду
 Copy the restart command	Копировать команду перезапуска
@@ -715,7 +712,6 @@ It is streaming to another program: stop it there first.	Идёт передач
 Japan	Япония
 Journaline	Journaline
 Just explore	Просто посмотреть
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	Держать диапазон водопада по уровню шума и самому сильному сигналу (щёлкните ещё раз, чтобы прекратить слежение)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	Поправка LO (ppm)
 Let other computers connect (LAN)	Разрешить подключение других компьютеров (LAN)
@@ -883,7 +879,6 @@ dBm offset (dB)	Смещение dBm (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	декодировать каждый канал в полосе: по приёмнику на каждый занятый канал, один воспроизводит, остальные продолжают декодировать\n(правый щелчок: сколько одновременно, где расположены каналы)
 decode every signal in the visible span, not just the tuned one	декодировать каждый сигнал в видимой полосе, а не только выбранный
 empty	пусто
-held	удержан
 holds	удерживает
 last send %s	последняя отправка %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	слушает %s порт %d, клиентов: %d, отправлено %.1f MB, отброшено %.1f MB
@@ -891,7 +886,6 @@ max	макс
 on air	в эфире
 partial	частично
 point %s	точка %s
-power (dBm)	мощность (dBm)
 searching for Hermes Lite 2 radios…	поиск радио Hermes Lite 2…
 up-converter	повышающий конвертер
 waiting	ожидание
@@ -1100,7 +1094,6 @@ start the receiver to see the frames	запусти приёмник, чтобы
 Showing %s only	Показано только %s
 Copy	Копировать
 %.0f frames/s	%.0f кадров/с
-Time UTC	Время UTC
 Preamble	Преамбула
 Type	Тип
 Len	Длина
@@ -1260,7 +1253,6 @@ Group	Группа
 Groups	Группы
 Import failed: 	Не удалось импортировать:
 Import...	Импорт...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Импортировано ячеек памяти: %zu, пропущено: %zu (дубликаты или строки без частоты).
 Include in the memory scan	Включить в сканирование памяти
 Informative: the channel width at the time. The mode's own width options are in the options below.	Для справки: ширина канала на тот момент. Собственные варианты ширины режима находятся в параметрах ниже.
 Keep the gains	Сохранить усиление
@@ -1276,7 +1268,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Заметки
 Options	Параметры
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Читает CSV- или JSON-файл памяти, простой список строк «частота,имя» (MHz) или экспорт SDR++ Frequency Manager. Ячейки памяти с той же частотой и режимом пропускаются.
 Recall	Вызвать
 Recall frequency only	Вызвать только частоту
 Sample rate (kHz)	Частота дискретизации (kHz)
@@ -1372,7 +1363,6 @@ phase of the carrier	фаза несущей
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Последние две секунды фазы несущей, одна точка на 8 мс, новейшая самая яркая. Сервис манипулирует фазой между двумя состояниями на 36 градусов (50 bit/s); чистый сигнал показывает два плотных кластера.
 signal at the bit slicer	сигнал на решающем устройстве
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	Изменение фазы за каждый бит 20 мс: шаг +-1 - бит, меняющий состояние манипуляции, 0 - не меняющий; решающее устройство решает на половине (пунктир). Последние две секунды.
-Computer UTC	UTC компьютера
 Frame	Кадр
 Result	Результат
 no frame yet: a time packet comes every few slots of the minute frame	кадров пока нет: пакет времени приходит каждые несколько слотов минутного кадра
@@ -2380,18 +2370,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Калибровка...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	Измерить ошибку частоты этого радио по FM-станции или несущей известной частоты
 Frequency calibration	Калибровка частоты
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Измеряет, насколько тактовая частота этого радио отличается от сигнала известной частоты, и задаёт поправку в ppm.
 Not with a converter in front of the radio.	Не работает с конвертером перед радио.
 Start the receiver first.	Сначала запустите приёмник.
-FM station (stereo pilot) at the tuned frequency	FM-станция (стереопилот) на настроенной частоте
-Carrier of known frequency (MHz)	Несущая известной частоты (МГц)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Сначала настройтесь на сильную FM-станцию. Пилот станции не всегда точен: повторите на двух-трёх станциях.
 Ready.	Готово.
 Looking for a reference signal.	Поиск опорного сигнала.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	Измерение: %+.2f ppm, неопределённость %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Готово: %+.2f ppm (неопределённость %.2f ppm).
 No usable reference signal was found.	Подходящий опорный сигнал не найден.
-Apply %+.2f ppm	Применить %+.2f ppm
 Current setting: %.2f ppm	Текущая настройка: %.2f ppm
 No measurements of this radio yet.	Измерений этого радио пока нет.
 History of this radio (ppm)	История этого радио (ppm)
@@ -3306,15 +3290,11 @@ extra channels:	дополнительные каналы:
 none inside the capture	нет в пределах захвата
 Ship and coast station names	Названия судов и береговых станций
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	записей; названия, позывные и типы судов берутся из AIS (статические данные), можно импортировать и свой список.
-Import list	Импорт списка
-%d records read	прочитано записей: %d
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	Файл TSV или CSV: MMSI, название, позывной, тип, страна, место. Строка заголовка (mmsi, name, callsign, type, country, station, location, lat, lon) может менять порядок столбцов; lat и lon ставят береговые станции на карту.
 Export list	Экспорт списка
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Списка береговых станций в комплекте нет: списка с открытой лицензией не существует, используйте свой файл.
 Marine bands	Морские диапазоны
 A click tunes the radio and opens the mode for it.	Щелчок настраивает приёмник и открывает нужный режим.
 Protocols	Протоколы
-distress only	только бедствие
 positions	позиции
 Export KML	Экспорт KML
 Export GPX	Экспорт GPX

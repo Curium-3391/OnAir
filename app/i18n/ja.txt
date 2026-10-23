@@ -381,7 +381,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	アンプ
 LNA	LNA
 VGA	VGA
-AGC	AGC
 gain helper %d/%d ...	ゲインヘルパー %d/%d ...
 ADC OVERLOAD - %s	ADC 過負荷 - %s
 AGC is lowering the gain	AGC がゲインを下げています
@@ -668,7 +667,6 @@ CPU load now: %.0f%% (100%% = one core)	現在の CPU 負荷: %.0f%% (100%% = 1 
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	通話とデータは表示されますが、コーデックを自分でインストールするまで音声は無音です。OnAir には特許の関係で同梱されていません。
 Cancel	キャンセル
 Carrier MHz	キャリア MHz
-Carriers in the span (click: listen and show; double click: tune to it)	範囲内のキャリア (クリック: 聴いて表示、ダブルクリック: 同調)
 Channel MHz	チャンネル MHz
 Channel raster	チャンネルラスター
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	PulseAudio または PipeWire が動作していること、サウンド設定で出力が選ばれていることを確認してください。
@@ -685,7 +683,6 @@ Close programs that hold the sound device exclusively.	サウンドデバイス�
 Close the other program (a second OnAir, SDR software, hackrf_info).	他のプログラム (2 つ目の OnAir、SDR ソフトウェア、hackrf_info) を閉じてください。
 Close this receiver: it stops and lets go of its radio	この受信機を閉じる: 停止して無線機を解放します
 Colour map	カラーマップ
-Colours	色
 Converter (up-converter / LNB)	コンバーター (アップコンバーター / LNB)
 Copy the command	コマンドをコピー
 Copy the restart command	再起動コマンドをコピー
@@ -732,7 +729,6 @@ It is streaming to another program: stop it there first.	別のプログラム�
 Japan	日本
 Journaline	Journaline
 Just explore	まずは見てみる
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	ウォーターフォールの範囲をノイズフロアと最強信号に合わせ続けます (もう一度クリックで追従を停止)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	LO 補正 (ppm)
 Let other computers connect (LAN)	他のコンピューターからの接続を許可 (LAN)
@@ -900,7 +896,6 @@ dBm offset (dB)	dBm オフセット (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	範囲内のすべてのチャンネルをデコード: 使用中のチャンネルごとに受信機を用意し、1 つが再生し、他はデコードを続けます\n(右クリック: 同時数、チャンネルの配置)
 decode every signal in the visible span, not just the tuned one	同調中の信号だけでなく、表示範囲内のすべての信号をデコード
 empty	空
-held	保持
 holds	保持中
 last send %s	最終送信 %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	%s ポート %d で待ち受け中、クライアント %d 件、送信 %.1f MB、破棄 %.1f MB
@@ -908,7 +903,6 @@ max	最大
 on air	運用中
 partial	一部
 point %s	地点 %s
-power (dBm)	電力 (dBm)
 searching for Hermes Lite 2 radios…	Hermes Lite 2 を検索中…
 up-converter	アップコンバーター
 waiting	待機中
@@ -1117,7 +1111,6 @@ start the receiver to see the frames	受信を開始するとフレームが表�
 Showing %s only	%s のみ表示中
 Copy	コピー
 %.0f frames/s	%.0f フレーム/秒
-Time UTC	時刻 UTC
 Preamble	プリアンブル
 Type	種類
 Len	長さ
@@ -1277,7 +1270,6 @@ Group	グループ
 Groups	グループ
 Import failed: 	インポートに失敗しました:
 Import...	インポート...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	メモリを %zu 件インポートし、%zu 件をスキップしました (重複または周波数のない行)。
 Include in the memory scan	メモリスキャンに含める
 Informative: the channel width at the time. The mode's own width options are in the options below.	参考情報: 当時のチャンネル幅。モード固有の幅オプションは下のオプションにあります。
 Keep the gains	ゲインを維持
@@ -1293,7 +1285,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	メモ
 Options	オプション
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	メモリの CSV または JSON ファイル、「周波数,名前」形式 (MHz) のプレーンなリスト、または SDR++ Frequency Manager のエクスポートを読み込みます。同じ周波数とモードですでに保存されているメモリはスキップされます。
 Recall	呼び出し
 Recall frequency only	周波数のみ呼び出し
 Sample rate (kHz)	サンプルレート (kHz)
@@ -1389,7 +1380,6 @@ phase of the carrier	搬送波の位相
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	キャリア位相の直近2秒間を8 ms ごとに1点で表示し、新しいほど明るく描きます。サービスは位相を36度離れた2つの状態の間でキーイングします (50 bit/s)。クリーンな信号では2つの密なクラスターが現れます。
 signal at the bit slicer	ビット判定器の信号
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	20 ms ビットごとの位相変化: ±1 のステップはキーイング状態が変わるビット、0 は変わらないビットです。スライサーは中間 (破線) で判定します。直近2秒間。
-Computer UTC	コンピュータ UTC
 Frame	フレーム
 Result	結果
 no frame yet: a time packet comes every few slots of the minute frame	フレームはまだありません。時刻パケットは 1 分フレームの数スロットごとに届きます
@@ -2397,18 +2387,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	校正...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	FM局または周波数既知のキャリアに対して、このラジオの周波数誤差を測定します
 Frequency calibration	周波数校正
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	周波数が既知の信号に対してこのラジオのクロックがどれだけずれているかを測り、ppm補正を設定します。
 Not with a converter in front of the radio.	ラジオの前にコンバーターがある場合は使えません。
 Start the receiver first.	先に受信を開始してください。
-FM station (stereo pilot) at the tuned frequency	同調している周波数のFM局(ステレオパイロット)
-Carrier of known frequency (MHz)	周波数既知のキャリア(MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	まず強いFM局に同調してください。局のパイロットは常に正確とは限りません。2〜3局で繰り返してください。
 Ready.	準備完了。
 Looking for a reference signal.	基準信号を探しています。
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	測定中: %+.2f ppm、不確かさ %.2f ppm。
-Done: %+.2f ppm (uncertainty %.2f ppm).	完了: %+.2f ppm(不確かさ %.2f ppm)。
 No usable reference signal was found.	使える基準信号が見つかりませんでした。
-Apply %+.2f ppm	%+.2f ppm を適用
 Current setting: %.2f ppm	現在の設定: %.2f ppm
 No measurements of this radio yet.	このラジオの測定はまだありません。
 History of this radio (ppm)	このラジオの履歴(ppm)
@@ -3323,15 +3307,11 @@ extra channels:	追加チャンネル:
 none inside the capture	帯域内になし
 Ship and coast station names	船舶・海岸局の名前
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	件。船名・コールサイン・種類はAIS(静的データ)から学習され、独自のリストも取り込めます。
-Import list	リストを取り込む
-%d records read	%d 件を読み込みました
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	TSV または CSV ファイル:MMSI、名前、コールサイン、種類、国、場所。ヘッダー行(mmsi, name, callsign, type, country, station, location, lat, lon)で列の順序を変えられ、lat と lon で海岸局を地図に表示します。
 Export list	リストを書き出す
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	同梱の海岸局リストはありません。オープンライセンスのものがないため、ご自身のファイルを取り込んでください。
 Marine bands	海上バンド
 A click tunes the radio and opens the mode for it.	クリックすると無線機を同調し、対応するモードを開きます。
 Protocols	プロトコル
-distress only	遭難のみ
 positions	位置
 Export KML	KMLを書き出す
 Export GPX	GPXを書き出す

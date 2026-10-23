@@ -374,11 +374,6 @@ ISDB-T channel width: 6 MHz in Japan, Brazil and the rest of the Americas, 8 MHz
 Amp	Amp
 LNA	LNA
 VGA	VGA
-AGC	AGC
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	Mantém a entrada no melhor ponto de funcionamento para o modo: um bom nível do ADC, o ruído acima do próprio ADC e os vizinhos fortes de fora. Mexe no LNA e no VGA (o amplificador só se o permitir com a roda dentada) e fica quieto enquanto um decodificador estiver sincronizado.\nTocar num controlo de ganho desliga-o.
-Auto-tune	Ajuste automático
-Stop tune	Parar ajuste
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Assistente de ganho: experimenta combinações de LNA/VGA durante cerca de 40 s e guarda a de melhor SNR sem saturar.\nPrecisa de um sinal a que o recetor se consiga sincronizar. O amplificador fica como o definiu.
 gain helper %d/%d ...	assistente de ganho %d/%d ...
 ADC OVERLOAD - %s	SOBRECARGA DO ADC - %s
 AGC is lowering the gain	o AGC está reduzindo o ganho
@@ -654,7 +649,6 @@ CPU load now: %.0f%% (100%% = one core)	Carga do CPU agora: %.0f%% (100%% = um n
 Calls and data are shown, but the voice is silent until you install the codec yourself. OnAir does not ship it (patents).	As chamadas e os dados são mostrados, mas a voz fica silenciosa até instalar o codec por si. O OnAir não o inclui (patentes).
 Cancel	Cancelar
 Carrier MHz	Portadora MHz
-Carriers in the span (click: listen and show; double click: tune to it)	Portadoras no intervalo (clique: ouvir e mostrar; duplo clique: sintonizar)
 Channel MHz	Canal MHz
 Channel raster	Grelha de canais
 Check that PulseAudio or PipeWire runs, and that an output is chosen in the sound settings.	Verifique se o PulseAudio ou o PipeWire está a funcionar e se há uma saída escolhida nas definições de som.
@@ -671,7 +665,6 @@ Close programs that hold the sound device exclusively.	Feche os programas que ma
 Close the other program (a second OnAir, SDR software, hackrf_info).	Feche o outro programa (um segundo OnAir, software SDR, hackrf_info).
 Close this receiver: it stops and lets go of its radio	Fechar este receptor: pára e liberta o seu rádio
 Colour map	Mapa de cores
-Colours	Cores
 Converter (up-converter / LNB)	Conversor (up-converter / LNB)
 Copy the command	Copiar o comando
 Copy the restart command	Copiar o comando de reinício
@@ -718,7 +711,6 @@ It is streaming to another program: stop it there first.	Está a transmitir para
 Japan	Japão
 Journaline	Journaline
 Just explore	Só explorar
-Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)	Mantém a gama da cascata no nível de ruído e no sinal mais forte (clique novamente para deixar de seguir)
 LO (MHz)	LO (MHz)
 LO correction (ppm)	Correção do LO (ppm)
 Let other computers connect (LAN)	Permitir que outros computadores se liguem (LAN)
@@ -876,9 +868,6 @@ Weather alerts, 162.55 MHz	Alertas meteorológicos, 162,55 MHz
 Weather pictures, 1.7 GHz	Imagens meteorológicas, 1,7 GHz
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	O que somar a um nível em dBFS para obter dBm para este rádio (a sua calibração: um sinal conhecido na porta da antena mostra-o). Também nas definições do rádio.
 Which language do you want OnAir in?	Em que idioma quer o OnAir?
-Which radio do you have?	Que rádio tem?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Pode mudar o modo a qualquer momento e executar esta configuração novamente em Ajuda > Assistente de configuração.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Pode continuar sem um: o sinal sintético e os arquivos IQ funcionam sem hardware.
 Your callsign	O seu indicativo
 Your locator	O seu localizador
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Zoom: roda do mouse (ambos os eixos), Ctrl+roda (frequência), Shift+roda (nível).\nCtrl+PageUp / PageDown: avança a vista um tela em frequência. Duplo clique: repor.
@@ -889,7 +878,6 @@ dBm offset (dB)	Desvio dBm (dB)
 decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)	decodificar todos os canais no intervalo: um receptor para cada canal ocupado, um reproduz, os outros continuam a decodificar\n(botão direito: quantos em simultâneo, onde estão os canais)
 decode every signal in the visible span, not just the tuned one	decodificar todos os sinais no intervalo visível, não só o sintonizado
 empty	vazio
-held	retido
 holds	retém
 last send %s	último envio %s
 listening on %s port %d, %d client(s), %.1f MB sent, %.1f MB dropped	a escutar em %s porta %d, %d cliente(s), %.1f MB enviados, %.1f MB descartados
@@ -897,7 +885,6 @@ max	máx
 on air	no ar
 partial	parcial
 point %s	ponto %s
-power (dBm)	potência (dBm)
 searching for Hermes Lite 2 radios…	a procurar rádios Hermes Lite 2…
 up-converter	conversor ascendente
 waiting	em espera
@@ -1106,7 +1093,6 @@ start the receiver to see the frames	inicia o recetor para ver as tramas
 Showing %s only	A mostrar só %s
 Copy	Copiar
 %.0f frames/s	%.0f tramas/s
-Time UTC	Hora UTC
 Preamble	Preâmbulo
 Type	Tipo
 Len	Comp.
@@ -1266,7 +1252,6 @@ Group	Grupo
 Groups	Grupos
 Import failed: 	A importação falhou:
 Import...	Importar...
-Imported %zu memories, %zu skipped (duplicates or lines without a frequency).	Importadas %zu memórias, %zu ignoradas (duplicadas ou linhas sem frequência).
 Include in the memory scan	Incluir na busca de memórias
 Informative: the channel width at the time. The mode's own width options are in the options below.	Informativo: a largura do canal na altura. As opções de largura do próprio modo estão nas opções abaixo.
 Keep the gains	Manter os ganhos
@@ -1282,7 +1267,6 @@ No memories yet. Tune to a frequency you want to keep and press Store current; o
 Notes	Notas
 Options	Opções
 RX%d: %s	RX%d: %s
-Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped.	Lê um ficheiro CSV ou JSON de memórias, uma lista simples de linhas 'frequência,nome' (MHz), ou uma exportação do Frequency Manager do SDR++. As memórias já guardadas na mesma frequência e modo são ignoradas.
 Recall	Recuperar
 Recall frequency only	Recuperar só a frequência
 Sample rate (kHz)	Taxa de amostragem (kHz)
@@ -1378,7 +1362,6 @@ phase of the carrier	fase da portadora
 The last two seconds of the carrier's phase, one point per 8 ms, newest brightest. The service keys the phase between two states 36 degrees apart (50 bit/s); a clean signal shows two tight clusters.	Os últimos dois segundos da fase da portadora, um ponto por 8 ms, o mais recente mais brilhante. O serviço comuta a fase entre dois estados separados por 36 graus (50 bit/s); um sinal limpo mostra dois grupos compactos.
 signal at the bit slicer	sinal no decisor de bits
 The phase change over each 20 ms bit: a step of +-1 is a bit that changes the keying state, 0 one that does not; the slicer decides at half (dashed). The last two seconds.	A variação de fase em cada bit de 20 ms: um passo de +-1 é um bit que muda o estado de chaveamento, 0 um que não muda; o slicer decide a meio (tracejado). Os últimos dois segundos.
-Computer UTC	UTC do computador
 Frame	Trama
 Result	Resultado
 no frame yet: a time packet comes every few slots of the minute frame	ainda sem trama: um pacote de hora chega a cada poucos slots da trama do minuto
@@ -2386,18 +2369,12 @@ For every 0.5 degree square (about 55 km) around your ADS-B receiver: how many a
 Calibrate...	Calibrar...
 Measure this radio's frequency error against an FM station or a carrier of known frequency	Medir o erro de frequência deste rádio com uma estação FM ou uma portadora de frequência conhecida
 Frequency calibration	Calibração de frequência
-Measures how far this radio's clock is off against a signal of known frequency and sets the ppm correction.	Mede quanto o relógio deste rádio se desvia de um sinal de frequência conhecida e define a correção em ppm.
 Not with a converter in front of the radio.	Não com um conversor à frente do rádio.
 Start the receiver first.	Inicie primeiro o recetor.
-FM station (stereo pilot) at the tuned frequency	Estação FM (piloto estéreo) na frequência sintonizada
-Carrier of known frequency (MHz)	Portadora de frequência conhecida (MHz)
-Tune a strong FM station first. A station's pilot is not always exact: repeat on two or three stations.	Sintonize primeiro uma estação FM forte. O piloto de uma estação nem sempre é exato: repita em duas ou três estações.
 Ready.	Pronto.
 Looking for a reference signal.	A procurar um sinal de referência.
 Measuring: %+.2f ppm, uncertainty %.2f ppm.	A medir: %+.2f ppm, incerteza %.2f ppm.
-Done: %+.2f ppm (uncertainty %.2f ppm).	Concluído: %+.2f ppm (incerteza %.2f ppm).
 No usable reference signal was found.	Não foi encontrado nenhum sinal de referência utilizável.
-Apply %+.2f ppm	Aplicar %+.2f ppm
 Current setting: %.2f ppm	Definição atual: %.2f ppm
 No measurements of this radio yet.	Ainda não há medições deste rádio.
 History of this radio (ppm)	Histórico deste rádio (ppm)
@@ -3312,15 +3289,11 @@ extra channels:	canais adicionais:
 none inside the capture	nenhum dentro da captura
 Ship and coast station names	Nomes de navios e estações costeiras
 entries; ship names, call signs and types are learned from AIS (static data), and your own list can be imported.	entradas; nomes, indicativos e tipos de navios são aprendidos do AIS (dados estáticos) e pode importar a sua própria lista.
-Import list	Importar lista
-%d records read	%d registos lidos
-A TSV or CSV file: MMSI, name, call sign, type, country, location. A header row (mmsi, name, callsign, type, country, station, location, lat, lon) may reorder the columns; lat and lon place coast stations on the map.	Um arquivo TSV ou CSV: MMSI, nome, indicativo, tipo, país, local. Uma linha de cabeçalho (mmsi, name, callsign, type, country, station, location, lat, lon) pode reordenar as colunas; lat e lon colocam as estações costeiras no mapa.
 Export list	Exportar lista
 There is no bundled coast station list: no openly licensed one is available, so bring your own file.	Não há lista de estações costeiras incluída: não existe nenhuma com licença aberta, por isso traga o seu próprio arquivo.
 Marine bands	Bandas marítimas
 A click tunes the radio and opens the mode for it.	Um clique sintoniza o rádio e abre o modo correspondente.
 Protocols	Protocolos
-distress only	apenas socorro
 positions	posições
 Export KML	Exportar KML
 Export GPX	Exportar GPX
