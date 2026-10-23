@@ -4,6 +4,7 @@
 // receivers, a level meter with a clip light and the audio spectrum + waterfall strip (click it to put the notch there).
 // The settings of a mode are saved in the preferences as one string, "acl.<family>"; the decoders always get the untouched sound.
 #include "../app.h"
+#include "state/presets_app.h"
 #include "i18n/i18n.h"
 #include "platform/platform.h"
 #include "dect2/audio/audio_control.h"
@@ -192,7 +193,37 @@ bool gDevOpen = false;
 
 }  // namespace
 
+namespace {
+// The per-mode presets (app/state/presets_app.h) save and apply the audio settings of the mode on screen: the "audio.*" keys of
+// dect2::presets::settingSpecs(). A filter switched off reads as 0 Hz; a preset with 0 Hz switches it off.
+void registerPresetProviders() {
+    using dect2::presets::Value;
+    auto ready = [](App& a) { if (S.curFamily != a.family || !S.loaded) { S.loaded = true; loadFamily(a); } };
+    auto changed = [](App& a) { a.volume = S.s.volume; a.muted = S.s.muted; push(a); applyConfig(); savePrefs(a.family); S.savedVol = a.volume; S.savedMute = a.muted; };
+    auto num = [&](const char* key, float AudioControlSettings::*f) {
+        presetsapp::registerProvider({key, [=](App& a, Value& v) { ready(a); v = Value::n(S.s.*f); return true; },
+                                      [=](App& a, const Value& v) { ready(a); S.s.*f = (float)v.num; changed(a); }});
+    };
+    num("audio.volume", &AudioControlSettings::volume);
+    num("audio.sqOpenDb", &AudioControlSettings::sqOpenDb);
+    num("audio.sqHystDb", &AudioControlSettings::sqHystDb);
+    num("audio.sqHangMs", &AudioControlSettings::sqHangMs);
+    num("audio.shiftHz", &AudioControlSettings::shiftHz);
+    num("audio.ctcssHz", &AudioControlSettings::ctcssHz);
+    presetsapp::registerProvider({"audio.muted", [=](App& a, Value& v) { ready(a); v = Value::f(S.s.muted); return true; },
+                                  [=](App& a, const Value& v) { ready(a); S.s.muted = v.flag; changed(a); }});
+    auto filt = [&](const char* key, bool AudioControlSettings::*on, float AudioControlSettings::*hz) {
+        presetsapp::registerProvider({key, [=](App& a, Value& v) { ready(a); v = Value::n(S.s.*on ? S.s.*hz : 0.f); return true; },
+                                      [=](App& a, const Value& v) { ready(a); S.s.*on = v.num > 0; if (v.num > 0) S.s.*hz = (float)v.num; changed(a); }});
+    };
+    filt("audio.hpHz", &AudioControlSettings::hp, &AudioControlSettings::hpHz);
+    filt("audio.lpHz", &AudioControlSettings::lp, &AudioControlSettings::lpHz);
+}
+}  // namespace
+
 void audioControlTick(App& a) {
+    static const bool registered = (registerPresetProviders(), true);
+    (void)registered;
     if (&a != receiverHeard()) return;   // the heard receiver drives the chain
     if (S.curFamily != a.family || !S.loaded) { S.loaded = true; loadFamily(a); }
     // the volume and mute of this mode are remembered (written at most twice a second)
