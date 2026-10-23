@@ -259,7 +259,7 @@ void sidebar(App& a) {
         tool("Frequencies...", a.freqOpen, "Known frequencies of every mode (Ctrl+Shift+F)");
         tool("Transmit...", txViewFlag(), N_("Send this mode's own signal through a radio that can transmit. Off until you start it; needs a licence or permission."));
         tool("Map", a.mapOpen, "A world map: find a position by coordinates or Maidenhead locator, distance and bearing from your location");
-        tool("Propagation...", a.propOpen, "Where a transmitter can be received: predicted SNR on the map from power, frequency, time and the SNR you need (no terrain)");
+        tool("Propagation...", a.propOpen, "Where a transmitter can be received: Simple (a preset, power, a plain answer and a coverage map) or Advanced (link budget, receiver and SDR, sweeps, compare, terrain from your own elevation file)");
         tool("Antenna rotator...", a.rotatorOpen, "Connect a GS-232-compatible rotator (serial or TCP), set azimuth and elevation");
         tool("Sweep scanner", a.sweepOpen, N_("Fast wideband sweep with a noise-floor measurement, signal log and waterfall"));
         tool("Station health", a.stationHealthOpen, N_("Noise floor, ADC level and reference stations per band, with plain advice on gain, filters and antenna placement"));

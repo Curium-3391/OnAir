@@ -331,3 +331,11 @@ Issue #266 comment (DRA works for CDR but not DTMB audio). New core/src/tv/tv_dr
 ## 2026-10-22 Ionosphere from my own receptions (iono-obs-030)
 HF beacons screen > "My ionosphere": a local log (data dir, ionosphere-observations.tsv, 30 days, 4 MB / 200000 cap, CSV export, never uploaded) fed by FT8/FT4/WSPR decodes with a locator and by beacons / time-station carriers with a known place. Shows a heard grid per band x UTC hour, a reception map (great-circle paths coloured by SNR, night shade, terminator), a MUF estimate per distance bin (highest band heard there, an observation not a model) and predicted vs observed open bands using prop::mufMHz of the propagation tool. Pure functions in core/src/iono/iono_obs.cpp, test tests/iono/test_iono_obs.cpp (picked up by the per-mode test glob). Not fed yet: HFDL stations and ionosonde results (no station positions wired); the model MUF is evaluated at the receiver, not the path midpoint.
 
+## 2026-10-22 Propagation tool rework (prop-rework-030)
+Branch prop-rework-030. Model fixes: VHF/UHF had a ~47 dB step at the radio horizon (free space, then P.526 far field) and no ground
+reflection; now P.526 3.2 smooth earth with its LOS blend + plane earth + P.452 troposcatter, P.2108 clutter, rain, gases, polarisation.
+HF absorption used the D-layer-reflected ray angle (43 dB at 7.1 MHz / 1000 km, now ~19 dB); ground wave got curvature and polarisation,
+above-MUF loss, K index, P.533 excess loss, atmospheric noise, Friis receive chain. New: prop_scenario (presets, SDR noise figures, checks,
+verdict, budget, sweeps, CSV), prop_terrain (SRTM .hgt / GeoTIFF, delta-Bullington), antenna pattern file hook. Screen redesigned: Simple /
+Advanced toggle, compare A/B, link-budget table with tooltips, sweeps incl. HF MUF/LUF day chart. Tests: tests/prop/test_prop_{model,scenario,terrain}.cpp.
+

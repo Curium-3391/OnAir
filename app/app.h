@@ -808,7 +808,7 @@ void passesMapSatellites(std::vector<MapSatRef>& out);   // passes_ui.cpp: the l
 struct MapCellTower { double lat = 0, lon = 0; int rangeM = 0; std::string label; unsigned colour = 0; };
 void cellMapTowers(const dect2::CellTelemetry& t, std::vector<MapCellTower>& out);   // cell_ui.cpp: the towers placed (OpenCelliD / CSV)
 void mapWindow(App& a);                             // map_ui.cpp: View > Map (a.mapOpen): coordinates, Maidenhead locators, distance and bearing
-void propagationWindow(App& a);                     // prop_ui.cpp: Tools > Propagation (a.propOpen): coverage heat map, range and a probe point (no terrain)
+void propagationWindow(App& a);                     // prop_ui.cpp: Tools > Propagation (a.propOpen): Simple / Advanced coverage prediction (prop_adv.cpp)
 void mapSendServerMenu(App& a);                     // map_send.cpp: Server menu (opt-in public map)
 void mapSendButton(App& a);                         // classic interface: the same choice as a button
 void mapSendTick(App& a);                           // POST current decoded positions when opted in
