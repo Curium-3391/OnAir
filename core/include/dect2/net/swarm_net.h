@@ -15,6 +15,9 @@ namespace dect2::swarm {
 constexpr const char* kGroup = "239.255.77.31";
 constexpr int kPort = 47831;
 
+struct IfaceAddr { uint32_t ip = 0, mask = 0; };   // host order
+std::vector<IfaceAddr> privateInterfaces();       // up, multicast-capable, non-loopback IPv4 interfaces with a private address (never a public one)
+
 struct NetStats {
     bool running = false;
     uint64_t sent = 0, received = 0, rejected = 0;
