@@ -624,6 +624,8 @@ if(DECT2_BUILD_APP)
   add_test(NAME frame_pace COMMAND test_frame_pace)
   add_executable(test_gl_level tests/app/test_gl_level.cpp)   # OpenGL 3.2 -> 3.1 -> 3.0 fallback table (#283)
   add_test(NAME gl_level COMMAND test_gl_level)
+  add_executable(test_tex_shrink tests/app/test_tex_shrink.cpp)   # pictures over the GPU's texture limit (4096 on a Raspberry Pi, #284)
+  add_test(NAME tex_shrink COMMAND test_tex_shrink)
   if(NOT WIN32)   # thread CPU clocks (POSIX)
     add_executable(bench_ui_power tests/bench/bench_ui_power.cpp app/i18n/i18n.cpp)   # docs/PERFORMANCE.md: frame pacing, ring wake-ups, tr(), RF camera
     target_include_directories(bench_ui_power PRIVATE app ${CMAKE_BINARY_DIR}/generated)
