@@ -377,8 +377,13 @@ static void syncSpectrumEngine(App& a) {
     }
 }
 
+double specBinsPerPixel();   // plots.cpp: FFT bins per pixel column of the spectrum as last drawn
+
 void ingestSpectrum(App& a) {
     syncSpectrumEngine(a);
+    Waterfall::themeMode() = pal::wfMode();
+    static const bool legacy = getenv("DECT2_SPEC_LEGACY") != nullptr;   // the pre-3.0 pipeline, for CPU comparisons (core spectrum.cpp too)
+    if (legacy) { a.wf.detail = 0; a.wf.rowTau = 0; }
     if (a.specDemo && !a.engine.running()) {   // --specdemo: the synthetic test spectrum (spec_look.h), 30 frames a second, no radio needed
         static double nextT = 0;
         const double t = glfwGetTime();
@@ -396,13 +401,22 @@ void ingestSpectrum(App& a) {
     const float dt = a.specLastT > 0 ? (float)std::min(0.5, std::max(0.001, now - a.specLastT)) : 1.f / 30;
     a.specLastT = now;
     size_t n = f.dbfs.size();
-    if (a.smooth.size() != n || a.peak.size() != n) { a.smooth = f.dbfs; a.peak = f.dbfs; a.minPk.clear(); }   // the lines always have the frame size (a retune clears the hold lines)
-    if (a.minHold && a.minPk.size() != n) a.minPk = f.dbfs;
-    const float alpha = a.specAvgSec <= 0.001f ? 1.f : 1.f - std::exp(-dt / a.specAvgSec);   // a time constant, so the look does not depend on the frame rate
+    // the frame as the plots show it: dB per Hz (the floor does not move when the FFT size changes) or the engine's dB per bin
+    {
+        const double fsHz = a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate;
+        const float off = a.specPerHz ? spipe::perHzOffset(fsHz, n) : 0.f;
+        a.specView.resize(n);
+        const float* src = f.dbfs.data(); float* dst = a.specView.data();
+        for (size_t i = 0; i < n; i++) dst[i] = src[i] - off;
+    }
+    if (a.smooth.size() != n || a.peak.size() != n) { a.smooth = a.specView; a.peak = a.specView; a.minPk.clear(); a.smoothPow.clear(); }   // the lines always have the frame size (a retune clears the hold lines)
+    if (a.minHold && a.minPk.size() != n) a.minPk = a.specView;
     const float fall = a.holdDecay * dt;
-    float* sm = a.smooth.data(); float* pk = a.peak.data(); const float* in = f.dbfs.data();
+    float* pk = a.peak.data(); const float* in = a.specView.data();
+    // the trace: averaged in POWER with a time constant (the look does not depend on the frame rate) that grows with the bins each pixel
+    // column covers, so a big FFT on a narrow plot keeps a smooth noise floor instead of a comb (shared with tools/spec_render)
+    spipe::powerEma(a.smoothPow, in, a.smooth.data(), n, spipe::alphaFor(dt, spipe::traceTau(a.specAvgSec, specBinsPerPixel())));
     // the choice of peak rule is made once, outside the loops, so each is a plain loop the compiler vectorises (the branch inside kept it scalar)
-    for (size_t i = 0; i < n; i++) sm[i] += alpha * (in[i] - sm[i]);
     if (a.holdDecay > 0) for (size_t i = 0; i < n; i++) pk[i] = std::max(pk[i] - fall, in[i]);
     else for (size_t i = 0; i < n; i++) pk[i] = std::max(pk[i], in[i]);
     if (a.minHold && a.minPk.size() == n) {   // the min-hold line: the lowest level, rising back at the hold decay
@@ -417,15 +431,33 @@ void ingestSpectrum(App& a) {
     }
     // frames the screen did not take (it drew slower than they came): the row is repeated for them, so the picture keeps its true speed (#246)
     const int missed = a.wf.rowsPerSec <= 0 ? specaxis::missedRows(prevSeq, f.seq) : 0;
-    if (a.wf.offer(f.dbfs, now, missed)) {
+    if (a.wf.offer(a.specView, now, missed)) {
         const int k = a.wf.slow() ? 1 : 1 + missed;   // one time stamp per row, spread over the gap
         const double t0 = a.wf.pushT > 0 && a.wf.pushT < now ? a.wf.pushT : now;
         for (int i = 1; i <= k; i++) a.wf.stamp(t0 + (now - t0) * i / k);
         wfExportRow(a, now);
     }
-    roomsFeedRow(f.dbfs, a.wf.minDb, a.wf.maxDb);   // Live rooms (a flag check when not live)
+    roomsFeedRow(a.specView, a.wf.minDb, a.wf.maxDb);   // Live rooms (a flag check when not live)
     clipsui::feed(f.dbfs);   // radio clips: the retroactive history
-    if (a.wf.autoTrack && !a.wf.paused && now - a.wf.trackT > 0.25) { a.wf.trackT = now; a.wf.fitRange(a.smooth, false); }
+    if (a.wf.autoTrack && !a.wf.paused && now - a.wf.trackT > 0.25) {
+        const float tdt = a.wf.trackT > 0 ? (float)std::min(2.0, now - a.wf.trackT) : 0.25f;
+        a.wf.trackT = now; a.wf.fitRange(a.smooth, false, tdt);
+    }
+    // the spectrum's own dB range on the floor of the view (specAutoDb): the look puts the floor specBelow dB over the bottom, the span stays
+    static double specT = 0;
+    if (a.specAutoDb && now - specT > 0.25 && n >= 64) {
+        const float tdt = specT > 0 ? (float)std::min(2.0, now - specT) : 0.25f;
+        specT = now;
+        size_t i0 = (size_t)(std::max(0.0, std::min(1.0, a.wf.viewU0)) * n), i1 = (size_t)(std::max(0.0, std::min(1.0, a.wf.viewU1)) * n);
+        if (i1 < i0 + 32) { i0 = 0; i1 = n; }
+        static std::vector<float> scratch;
+        const float fl = a.specFloor.update(spipe::noiseFloor(a.smooth.data() + i0, i1 - i0, scratch), tdt);
+        if (std::isfinite(fl)) {
+            const slook::LookSet& L = slook::lookSet(a.specLook);
+            const float span = std::max(30.f, a.yMax - a.yMin), lo = std::round((fl - L.specBelow) * 2.f) / 2.f;   // half-dB steps: the labels do not shimmer
+            if (std::fabs(lo - a.yMin) >= 0.5f) { a.yMin = lo; a.yMax = lo + span; }
+        }
+    }
 }
 
 // The level offset to dBm of the selected radio (what the antenna feeds in for a full-scale sample: found with a signal generator), kept per radio by name

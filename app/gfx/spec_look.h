@@ -1,9 +1,9 @@
-// The spectrum and waterfall looks (Settings: Spectrum > Look) and the pure maths behind them, no ImGui: the look presets ("OnAir", the
-// default, unchanged; "SDR++ look"; "SDRoxide look"), the frequency ticks (1-2-5 steps, minor ticks, labels that never touch or leave the
-// panel, kHz / MHz, or offsets from the tuned frequency), the trace at one point per pixel column (the highest bin of the column, so no
-// peak is lost; between bins linear or cubic), its mild smoothing, the waterfall auto range (a percentile noise floor and a headroom),
-// the level interpolation and the 2D low-pass of the waterfall view, and a synthetic test spectrum (FM carriers, an OFDM block, an SSB
-// voice) for the screenshots. Tested in tests/app/test_spec_look.cpp.
+// The spectrum and waterfall look and the pure maths behind it, no ImGui: OnAir's one look (measured against reference screenshots,
+// docs/SPECTRUM-RESEARCH.md), the noise floor's place in each palette, the frequency ticks (1-2-5 steps, minor ticks, labels that never
+// touch or leave the panel, kHz / MHz, or offsets from the tuned frequency), the trace at one point per pixel column (the highest bin of
+// the column, so no peak is lost; between bins linear or cubic), its mild smoothing, the level interpolation and the 2D low-pass of the
+// waterfall view, and a synthetic test spectrum (FM carriers, an OFDM block, an SSB voice) for the screenshots.
+// Tested in tests/app/test_spec_look.cpp.
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -16,7 +16,7 @@ namespace slook {
 
 struct Rgba { float r = 0, g = 0, b = 0, a = 1; };
 
-enum Look { OnAir, SdrPP, SdrOxide, NumLooks };
+enum Look { OnAir, NumLooks };
 enum LabelMode { LabelsAbsolute, LabelsOffset };
 enum Interp { InterpLinear, InterpCubic };
 
@@ -50,32 +50,34 @@ struct LookSet {
     bool wfSmooth;               // the waterfall view interpolates levels between columns (no stair steps)
     bool tooltipBox;             // the cursor readout as a floating box
     Rgba tipBg, tipBorder, tipText;
+    float wfBelow = 4.f, wfSpan = 55.f;   // the waterfall auto range: the map starts wfBelow dB under the noise floor and spans wfSpan dB
+    float specBelow = 10.f;               // the spectrum's auto dB range: the noise floor this far over the bottom edge
 };
 
-// the new colour maps (colormap.h) the looks use, by number (they are at the end of cmap::Map)
-constexpr int kMapSdrppSmooth = 13, kMapOxide = 14;
-// the trace presets (colormap.h): cyan, light blue
-constexpr int kTraceCyan = 3, kTraceLightBlue = 8;
+// the colour maps (colormap.h) by number (they are at the end of cmap::Map)
+constexpr int kMapSdrppSmooth = 13, kMapOxide = 14, kMapNavyHeat = 15, kMapBlueGreen = 16;
+// the trace presets (colormap.h): cyan, light blue, pale cyan, pale steel
+constexpr int kTraceCyan = 3, kTraceLightBlue = 8, kTracePaleCyan = 9, kTracePaleSteel = 10;
 
-inline const LookSet& lookSet(int l) {
-    static const LookSet k[NumLooks] = {
-        // OnAir: what the plots always were (the fields below are not read while classic)
-        {"OnAir", true, {}, {}, {}, true, 0, 0, 0, 1.2f, true, 0.18f, 0.03f, 0, InterpLinear, {}, {}, {}, 1, {}, 1, {}, 0, false, {}, {}, 1, false,
-         LabelsAbsolute, -1, false, false, {}, {}, {}},
-        // SDR++: black, a light grid both ways, a cyan trace over a translucent fill, the VFO a light block with a red bandwidth edge and a
-        // yellow centre, kHz offsets on a black strip, the smooth blue-cyan-yellow-orange waterfall
-        {"SDR++ look", false, {0, 0, 0, 1}, {0, 0, 0, 1}, {0.78f, 0.80f, 0.82f, 0.17f}, true, 0.10f, 0.f, kTraceCyan, 1.3f, true, 0.42f, 0.20f, 0,
-         InterpLinear, {1, 1, 1, 0.17f}, {1, 1, 1, 0.17f}, {1.f, 0.16f, 0.16f, 0.95f}, 1.f, {1.f, 0.90f, 0.10f, 0.95f}, 1.f, {1, 1, 1, 0.07f}, 0.55f,
-         true, {0, 0, 0, 1}, {0.96f, 0.96f, 0.96f, 1}, 1.05f, false, LabelsOffset, kMapSdrppSmooth, true, true,
-         {0.06f, 0.06f, 0.07f, 0.92f}, {0.5f, 0.5f, 0.52f, 0.8f}, {0.95f, 0.95f, 0.95f, 1}},
-        // SDRoxide: navy to grey, faint vertical lines only, a thin light-blue smoothed trace without fill, a warm red-brown passband with a
-        // red centre and soft edges, big white mono labels on a dark strip, the deep-blue waterfall with cyan/green lines
-        {"SDRoxide look", false, {0.09f, 0.15f, 0.26f, 1}, {0.24f, 0.26f, 0.29f, 1}, {0.80f, 0.86f, 0.92f, 0.09f}, false, 0.10f, 0.07f, kTraceLightBlue, 1.4f,
-         false, 0.f, 0.f, 1, InterpCubic, {0.55f, 0.24f, 0.17f, 0.20f}, {0.82f, 0.36f, 0.20f, 0.40f}, {0.96f, 0.86f, 0.80f, 0.35f}, 1.f,
-         {1.f, 0.27f, 0.25f, 0.92f}, 1.2f, {0.85f, 0.40f, 0.25f, 0.08f}, 0.75f, true, {0.055f, 0.06f, 0.075f, 1}, {0.97f, 0.97f, 0.97f, 1}, 1.2f, true,
-         LabelsAbsolute, kMapOxide, true, true, {0.02f, 0.03f, 0.05f, 0.86f}, {0.75f, 0.80f, 0.86f, 0.55f}, {0.96f, 0.97f, 0.98f, 1}},
-    };
-    return k[l < 0 || l >= NumLooks ? 0 : l];
+// OnAir's look (one look; the palette, the trace colour and the rest stay the user's): black, a (35,35,35) grid both ways, a pale cyan
+// trace (140,226,237) over a fill of the same colour at alpha 0.2, the tuned channel a white block at alpha 0.2 with a red edge and a yellow
+// centre, big kHz offsets on a black strip, the Navy heat waterfall with the noise floor at its dark end. Any saved look number (the old
+// presets) reads as this one.
+inline const LookSet& lookSet(int) {
+    static const LookSet k = {"OnAir", false, {0, 0, 0, 1}, {0, 0, 0, 1}, {0.78f, 0.80f, 0.82f, 0.17f}, true, 0.f, 0.f, kTracePaleCyan, 1.5f, true, 0.21f, 0.21f, 0,
+         InterpCubic, {1, 1, 1, 0.20f}, {1, 1, 1, 0.20f}, {1.f, 0.10f, 0.08f, 0.95f}, 1.f, {1.f, 0.95f, 0.10f, 0.95f}, 1.f, {1, 1, 1, 0.f}, 0.f,
+         true, {0, 0, 0, 1}, {0.96f, 0.96f, 0.96f, 1}, 1.35f, false, LabelsOffset, kMapNavyHeat, true, true,
+         {0.06f, 0.06f, 0.07f, 0.92f}, {0.5f, 0.5f, 0.52f, 0.8f}, {0.95f, 0.95f, 0.95f, 1}, 3.f, 80.f, 3.f};
+    return k;
+}
+
+// Where a palette puts the noise floor (the waterfall's auto range): the map starts `below` dB under the floor and spans `span` dB.
+// Measured: Navy heat on spectrum-ref-44 (the floor in the map's dark end, (0,0,41)), Blue green on spectrum-ref-43 (the floor in its
+// mid blue, (1,5,124)); the others start a little under the floor.
+inline void floorPlace(int map, float& below, float& span) {
+    if (map == kMapNavyHeat) { below = 3.f; span = 80.f; }
+    else if (map == kMapBlueGreen) { below = 8.f; span = 48.f; }
+    else { below = 4.f; span = 60.f; }
 }
 
 // ---------------------------------------------------------------- frequency ticks

@@ -3,7 +3,9 @@
 #include "../../app/gfx/spec_look.h"
 #include "../../app/gfx/colormap.h"
 #include "../../app/gfx/wf_view.h"
+#include "../../app/gfx/spec_pipe.h"
 #include <cstdio>
+#include <random>
 #include <string>
 #include <vector>
 static int fails = 0;
@@ -131,11 +133,23 @@ int main() {
         check(v.update(lv.data(), W, H, 0, H - 1, H, lut, 1, 1000, 1002, 800, 1, full, dirty) && full, "mode change rebuilds");
     }
     {   // the looks and their maps
-        check(lookSet(OnAir).classic && !lookSet(SdrPP).classic && !lookSet(SdrOxide).classic && std::string(lookSet(99).name) == "OnAir", "looks");
-        check(lookSet(SdrPP).fill && !lookSet(SdrOxide).fill && lookSet(SdrPP).strip && lookSet(SdrOxide).monoLabels, "look traits");
-        check(lookSet(SdrPP).wfMap == cmap::SdrppSmooth && lookSet(SdrOxide).wfMap == cmap::OxideBlue && kMapSdrppSmooth == cmap::SdrppSmooth && kMapOxide == cmap::OxideBlue, "look maps");
+        check(NumLooks == 1 && !lookSet(OnAir).classic && std::string(lookSet(OnAir).name) == "OnAir" && &lookSet(1) == &lookSet(0) && &lookSet(2) == &lookSet(0), "one look; old saved numbers read as it");
+        check(lookSet(0).fill && lookSet(0).strip && lookSet(0).interp == InterpCubic, "look traits");
+        check(lookSet(0).wfMap == cmap::NavyHeat && kMapSdrppSmooth == cmap::SdrppSmooth && kMapOxide == cmap::OxideBlue
+              && kMapNavyHeat == cmap::NavyHeat && kMapBlueGreen == cmap::BlueGreen, "look map (measured on the reference)");
+        for (int m = 0; m < cmap::NumMaps; m++) {   // no competitor names in what the user sees
+            const std::string nm = cmap::name(m);
+            check(nm.find("SDR") == std::string::npos && nm.find("Oxide") == std::string::npos, "neutral palette names");
+        }
+        check(std::string(cmap::kTracePresets[kTracePaleCyan].name) == "Pale cyan" && std::string(cmap::kTracePresets[kTracePaleSteel].name) == "Pale steel", "measured trace colours");
+        // Navy heat is SDR++'s Classic: navy floor (0,0,32), white at 5/14, yellow at 6/14, dark red at the top
+        check(cmap::color(cmap::NavyHeat, 0.f) == 0xFF200000u && cmap::color(cmap::NavyHeat, 5.f / 14) == 0xFFFFFFFFu && cmap::color(cmap::NavyHeat, 6.f / 14) == 0xFF00FFFFu, "navy heat stops");
+        const uint32_t bg = cmap::color(cmap::BlueGreen, 0.2f);
+        check(((bg >> 16) & 255) > 100 && ((bg >> 8) & 255) < 20 && (bg & 255) < 5, "blue green: a mid blue floor");
+        float b1, s1_, b2, s2_; floorPlace(cmap::NavyHeat, b1, s1_); floorPlace(cmap::BlueGreen, b2, s2_);
+        check(b1 < b2 && s1_ > s2_ && s2_ > 30, "floor places: Navy heat's floor at the dark end, Blue green's in its mid blue");
         check(kTraceLightBlue < cmap::kNumTracePresets && std::string(cmap::kTracePresets[kTraceLightBlue].name) == "Light blue" && std::string(cmap::kTracePresets[kTraceCyan].name) == "Cyan", "look trace presets");
-        check(std::string(cmap::name(cmap::SdrppSmooth)) == "SDR++ smooth" && std::string(cmap::name(cmap::OxideBlue)) == "Oxide blue", "map names");
+        check(std::string(cmap::name(cmap::SdrppSmooth)) == "Smooth heat" && std::string(cmap::name(cmap::OxideBlue)) == "Deep blue" && std::string(cmap::name(cmap::SdrClassic)) == "Deep heat", "map names");
         const uint32_t s0 = cmap::color(cmap::SdrppSmooth, 0.f), s1 = cmap::color(cmap::SdrppSmooth, 1.f), o0 = cmap::color(cmap::OxideBlue, 0.02f);
         check(s0 == 0xFF000000u && s1 == 0xFFFFFFFFu, "SDR++ smooth: black to white");
         check(((o0 >> 16) & 255) > (o0 & 255) && ((o0 >> 16) & 255) > ((o0 >> 8) & 255), "Oxide: deep blue at the floor");
@@ -160,6 +174,56 @@ int main() {
         float ofdm = 0; for (int i = 8192 * 40 / 100; i < 8192 * 48 / 100; i++) ofdm += d[(size_t)i];
         ofdm /= 8192 * 8 / 100.f;
         check(ofdm > fl + 15 && ofdm < fl + 40, "demo: the OFDM block");
+    }
+    {   // the pipeline steps (spec_pipe.h): the floor, its tracker, the floor-anchored range, the levels
+        std::vector<float> s(4096, -100.f), scr;
+        for (size_t i = 0; i < s.size(); i++) s[i] = -100.f + (float)(i % 7) * 0.5f;   // noise between -100 and -97
+        for (size_t i = 1000; i < 3000; i++) s[i] = -60.f;                           // a block over half the band
+        const float fl = spipe::noiseFloor(s.data(), s.size(), scr);
+        check(fl >= -100.f && fl <= -99.f, "floor: the low part of the noise, not the block");
+        spipe::FloorTracker t;
+        check(t.update(-90.f, 0.25f) == -90.f, "tracker: the first value at once");
+        const float a1 = t.update(-80.f, 0.25f);
+        check(a1 > -90.f && a1 < -88.f, "tracker: a step is followed slowly (2 s)");
+        check(t.update(-40.f, 0.25f) == -40.f, "tracker: a jump of more than 15 dB at once");
+        float lo, hi;
+        spipe::floorRange(-100.f, 3.f, 80.f, lo, hi);
+        check(lo == -103.f && hi == -23.f, "floor range");
+        std::vector<uint8_t> l(4);
+        const float row[8] = {-103, -103, -63, -103, -23, -20, -200, -103};
+        spipe::levelsRow(row, 8, 4, -103.f, -23.f, l.data());
+        check(l[0] == 0 && l[1] == 128 && l[2] == 255 && l[3] == 0, "levels: the highest bin of each column, clamped");
+        std::vector<float> sm(3, 0.f); const float in[3] = {10, 10, 10};
+        spipe::emaStep(sm.data(), in, 3, 1.f / 30, 0.f);
+        check(sm[0] == 10.f, "ema: tau 0 is the raw frame");
+    }
+    {   // the owner's comb (a big FFT on a 1600 px plot drew a wall of spikes): ADS-B-like noise at 1024..131072 bins over 4 MHz, two FFT
+        // blocks a frame (chi-square noise per bin), 3 s of frames through the power average whose time constant follows the bins per
+        // pixel, then one value per pixel column (the highest bin): the noise floor's roughness stays under 1.5 dB and, per Hz, its level
+        // moves less than 2.5 dB from the smallest to the largest FFT
+        std::mt19937 rng(7);
+        std::exponential_distribution<float> ex(1.f);
+        const double fs = 4e6; const int px = 1600;
+        float lo = 1e9f, hi = -1e9f;
+        for (size_t n = 1024; n <= 131072; n *= 2) {
+            const float off = spipe::perHzOffset(fs, n);
+            std::vector<float> fr(n), sm(n), pw, col;
+            const double bpp = (double)n / px;
+            const float alpha = spipe::alphaFor(1.f / 30, spipe::traceTau(0.08f, bpp));
+            for (int f = 0; f < 90; f++) {
+                for (size_t i = 0; i < n; i++) fr[i] = 10.f * std::log10((ex(rng) + ex(rng)) * 0.5f * (float)(fs / n) * 1e-12f) - off;   // -120 dBFS/Hz noise
+                spipe::powerEma(pw, fr.data(), sm.data(), n, alpha);
+            }
+            slook::decimate(sm.data(), n, -fs / 2e6, fs / 1e6 / n, -fs / 2e6, fs / 2e6, px, InterpCubic, false, col);
+            const double r = spipe::roughness(col.data(), col.size());
+            std::vector<float> c(col), scr; const float fl = spipe::noiseFloor(c.data(), c.size(), scr);
+            lo = std::min(lo, fl); hi = std::max(hi, fl);
+            char w[96]; snprintf(w, sizeof w, "smooth trace at %zu bins (roughness %.2f dB)", n, r);
+            check(r < 1.5, w);
+        }
+        char w[96]; snprintf(w, sizeof w, "per Hz the floor stays (%.1f .. %.1f dB)", lo, hi);
+        check(hi - lo < 2.5f && lo > -125 && hi < -115, w);
+        check(std::fabs(spipe::fastDb10(spipe::fastPow10db(-73.3f)) + 73.3f) < 0.01f && std::fabs(spipe::fastPow10db(10.f) - 10.f) < 0.001f, "fast dB maths");
     }
     if (fails) { printf("%d failed\n", fails); return 1; }
     printf("spec_look: all passed\n");

@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "gfx/plot.h"
+#include "gfx/tune_stat.h"
 #include "gfx/autolabel_logic.h"
 #include "i18n/i18n.h"
 #include "state/fm_saved.h"
@@ -72,175 +73,7 @@
 
 using namespace dect2;
 
-// ------------------------------------------------------------------ waterfall texture
-
-struct Waterfall {
-    static constexpr int W = 8192, H = 512;   // W: the standard history width (and the view texture's); cols may be finer (#243)
-    static constexpr int kMaxCols = 65536;    // the cap of the finer history: 32 MB of levels
-    enum Map { Classic = cmap::Classic, Viridis = cmap::Viridis, Inferno = cmap::Inferno, Grey = cmap::Grey, Turbo = cmap::Turbo, Cividis = cmap::Cividis,   // Cividis: made to read the same with red-green colour blindness
-               Magma = cmap::Magma, SdrClassic = cmap::SdrClassic, Ice = cmap::Ice, Fire = cmap::Fire, NightRed = cmap::NightRed, HighContrast = cmap::HighContrast,
-               Custom = cmap::Custom, NumMaps = cmap::NumMaps };
-    static const char* mapName(int m) { return cmap::name(m); }
-    gfx::Image* img = nullptr;       // the history as a texture at the standard width (other waterfalls draw it; not written for a finer history)
-    uint32_t lut[256] = {};
-    int builtMap = -1, lutGen = 0;   // lutGen: counts the colour table rebuilds (and the history moves: the view is made again)
-    int cols = W;                    // the history width: W, or finer (detail)
-    int detail = 0;                  // the wanted width (0: W); the history is never wider than the FFT gives (specaxis::historyCols)
-    std::vector<uint8_t> lv;         // the history as levels (0..255, the index into lut), cols x H: the view is made from it
-    long long rows = 0;              // rows written since the start; the newest is number rows - 1, at writeRow
-    gfx::Image* viewImg = nullptr;   // the history at the size it is shown (the main waterfall; made on first use, W x H)
-    plt::WfView view;
-    w3d::State s3d;                  // the 3D view of the history (wf3d.h, drawn by wf3d_plot.cpp): its settings, camera and cached mesh
-    float gamma = 1.f, builtGamma = 1.f;   // contrast: the level ^ gamma picks the colour (below 1 lifts weak signals)
-    float brightness = 0.f, contrast = 1.f, builtBright = 0.f, builtContrast = 1.f;   // the level shifted and stretched before the gamma
-    int builtCustom = 0;             // the custom gradient's version the table was made with
-    static int& customGen() { static int g = 0; return g; }   // bumped when the custom gradient changes
-    double histC = NAN, histFs = 0;  // the band the rows were taken from (MHz): a retune moves them along (follow)
-    std::vector<uint32_t> row;      // scratch for the row being written (kept: no allocation per frame)
-    std::vector<float> acc, floorScratch;   // the highest level per bin since the last row; the samples of the noise floor estimate
-    bool accEmpty = true;
-    int writeRow = 0; // newest row; older rows follow at writeRow+1 ... wrapping
-    int filled = 0;
-    double pushT = 0; // when the newest row came in (glfwGetTime)
-    double rowDt = 1.0 / 30; // steady seconds per row, for the time labels and the scrolling
-    double stamps[128] = {};
-    int nStamps = 0;
-    float minDb = -100, maxDb = -32;
-    int map = -1;            // the colour map (Map); -1: the one that goes with the interface theme
-    bool autoTrack = false;  // the intensity range follows the noise floor
-    float autoBelow = 6.f, autoHeadroom = 2.f;   // the auto range: dB under the noise floor, dB over the strongest signal
-    float rowsPerSec = 0;    // 0: one row per spectrum frame (about 30 a second); else this many rows a second, each the highest level of the frames in between
-    bool paused = false;     // no new rows: the picture stays and can be scrolled back
-    double nextRowT = 0;
-    double trackT = 0;
-
-    // average over the last 128 rows, and move only when that drifts by more than 2%: the labels stay put
-    void stamp(double t) {
-        const int N = 128;
-        if (nStamps >= N) {
-            const double dt = (t - stamps[nStamps % N]) / N;
-            if (dt > 0 && std::fabs(dt - rowDt) > 0.02 * rowDt) rowDt = dt;
-        } else if (nStamps >= 8) rowDt = (t - stamps[0]) / nStamps;   // starting up: whatever we have
-        stamps[nStamps % N] = t;
-        nStamps++;
-        pushT = t;
-    }
-    bool slow() const { return rowsPerSec > 0.05f && rowsPerSec < 28.f; }   // rows come at a set, slower pace
-    bool timeKnown() const { return nStamps >= 128 || slow(); }
-    void setRate(float r) { rowsPerSec = r; nStamps = 0; nextRowT = 0; accEmpty = true; rowDt = slow() ? 1.0 / r : 1.0 / 30; }
-
-    int effMap() const { return map >= 0 && map < NumMaps ? map : pal::wfMode() == 2 ? Turbo : pal::wfMode() == 1 ? Grey : Classic; }
-    static int& curMap() { static int m = 0; return m; }   // the map in use, for the other waterfalls (modes with their own picture) that colour with jet()
-    static uint32_t jet(float v) { return color(curMap(), v); }
-    bool paletteStale() const {
-        return effMap() != builtMap || gamma != builtGamma || brightness != builtBright || contrast != builtContrast || (builtMap == Custom && builtCustom != customGen());
-    }
-    void palette() {   // after the map, the level controls or the interface palette changed
-        builtMap = effMap(); curMap() = builtMap;
-        for (int i = 0; i < 256; i++) lut[i] = color(builtMap, cmap::levelTransform(i / 255.0f, brightness, contrast, gamma));
-        builtGamma = gamma; builtBright = brightness; builtContrast = contrast; builtCustom = customGen(); lutGen++;
-    }
-    void init(gfx::Backend* gfx) {
-        img = gfx->createImage(W, H, 0xFF000000u);
-        row.assign(W, 0);
-        lv.assign((size_t)cols * H, 0);
-        palette();
-    }
-    static uint32_t color(int map, float v) { return cmap::color(map, v); }
-    // a new history width: the rows start again (black)
-    void setCols(int c) {
-        c = std::max(W, std::min(kMaxCols, c));
-        if (c == cols && lv.size() == (size_t)c * H) return;
-        cols = c;
-        lv.assign((size_t)cols * H, 0);
-        filled = 0; accEmpty = true; lutGen++;
-    }
-    // The radio moved from the band the rows were taken from: move them along so each signal stays under its frequency (#270); a new
-    // sample rate starts them again. The view is made again (lutGen).
-    void follow(double centreMhz, double fsMhz) {
-        if (!(fsMhz > 0) || !std::isfinite(centreMhz)) return;
-        if (histFs != fsMhz || !std::isfinite(histC)) {
-            if (histFs > 0 && histFs != fsMhz && filled > 0) { std::fill(lv.begin(), lv.end(), 0); filled = 0; lutGen++; }
-            histC = centreMhz; histFs = fsMhz; return;
-        }
-        const int s = specaxis::retuneShift(histC, centreMhz, fsMhz, cols);
-        if (s == 0) return;
-        if (s >= cols || s <= -cols) { histC = centreMhz; std::fill(lv.begin(), lv.end(), 0); filled = 0; lutGen++; return; }
-        histC -= (double)s * fsMhz / cols;   // what the moved rows now stand for (a part of a column stays as the remainder)
-        for (int r = 0; r < H; r++) specaxis::shiftRow(lv.data() + (size_t)r * cols, cols, s, 0);
-        lutGen++;
-    }
-
-    // One spectrum frame arrives: it becomes a row of the history, now or (rows at a set pace) when the next row is due. True when a row was written.
-    // extra: frames the screen missed (it drew slower than they came, #246): the row is repeated for them, so the time scale stays true.
-    bool offer(const std::vector<float>& dbfs, double now, int extra = 0) {
-        if (paused || dbfs.empty()) return false;
-        if (paletteStale()) palette();
-        const float* d = dbfs.data();
-        if (slow()) {   // the highest level of every bin since the last row, so a short burst is not missed
-            if (acc.size() != dbfs.size() || accEmpty) { acc = dbfs; accEmpty = false; }
-            else for (size_t i = 0; i < dbfs.size(); i++) acc[i] = std::max(acc[i], dbfs[i]);
-            if (now < nextRowT) return false;
-            const double dt = 1.0 / rowsPerSec;
-            nextRowT = now - nextRowT > dt ? now + dt : nextRowT + dt;
-            accEmpty = true;
-            d = acc.data();
-            extra = 0;
-        }
-        for (int i = 0; i <= extra; i++) writeFrom(d, dbfs.size());
-        return true;
-    }
-    // the bins of the frame onto the history columns (the highest of those that share a column), the levels onto the colour table
-    void writeFrom(const float* d, size_t n) {
-        if (lv.size() != (size_t)cols * H) lv.assign((size_t)cols * H, 0);
-        const float inv = 255.f / std::max(1.f, maxDb - minDb);
-        writeRow = (writeRow + H - 1) % H;
-        uint8_t* l = lv.data() + (size_t)writeRow * cols;
-        const int C = cols;
-        if (n >= (size_t)C && n % C == 0) {   // the usual 8k..256k FFT: the same number of bins in every column, so no division and a fixed-length max (vectorised)
-            const size_t k = n / C;
-            for (int x = 0; x < C; x++) {
-                const float* c = d + (size_t)x * k;
-                float m = c[0];
-                for (size_t j = 1; j < k; j++) m = std::max(m, c[j]);
-                const float v = (m - minDb) * inv;
-                l[x] = (uint8_t)(v <= 0.f ? 0 : v >= 255.f ? 255 : (int)v);
-            }
-        } else {
-            for (int x = 0; x < C; x++) {
-                const size_t a = (size_t)x * n / C, b = std::max(a + 1, (size_t)(x + 1) * n / C);
-                float m = d[a];
-                for (size_t k = a + 1; k < b; k++) m = std::max(m, d[k]);
-                const float v = (m - minDb) * inv;
-                l[x] = (uint8_t)(v <= 0.f ? 0 : v >= 255.f ? 255 : (int)v);
-            }
-        }
-        if (img && C == W) {   // the standard-width texture (the other waterfalls draw it)
-            if (row.size() != (size_t)W) row.assign(W, 0);
-            uint32_t* r = row.data();
-            for (int x = 0; x < W; x++) r[x] = lut[l[x]];
-            img->update(0, writeRow, W, 1, r);
-        }
-        filled = std::min(H, filled + 1);
-        rows++;
-    }
-    // the range from the spectrum: the noise floor is the 20th percentile, the top is the strongest signal (at most 45 dB above the floor).
-    // instant: set it at once; else move a part of the way (called a few times a second, so the colours do not jump)
-    void fitRange(const std::vector<float>& s, bool instant) {
-        const size_t n = s.size();
-        if (n < 64) return;
-        const size_t step = std::max<size_t>(1, n / 1024);
-        floorScratch.clear();
-        float top = -300;
-        for (size_t i = 0; i < n; i += step) { floorScratch.push_back(s[i]); top = std::max(top, s[i]); }
-        const size_t k = floorScratch.size() / 5;
-        std::nth_element(floorScratch.begin(), floorScratch.begin() + (long)k, floorScratch.end());
-        const float fl = floorScratch[k];
-        float lo = 0, hi = 0;
-        slook::autoRange(fl, top, autoBelow, autoHeadroom, 45.f, 12.f, lo, hi);
-        if (instant) { minDb = lo; maxDb = hi; } else { minDb += (lo - minDb) * 0.25f; maxDb += (hi - maxDb) * 0.25f; }
-    }
-};
+#include "gfx/waterfall.h"
 
 extern std::string gForceTab;
 
@@ -565,9 +398,13 @@ struct App {
     int tab = 0;
     SpectrumFrame spec;
     std::vector<float> smooth, peak;
+    std::vector<float> smoothPow, specView;   // the trace averaged in power; the frame as the plots show it (dB per Hz with specPerHz)
+    bool specPerHz = true;              // levels in dB per Hz: the noise floor stays where it is when the FFT size changes (else per bin)
     uint64_t lastSeq = 0;
     Waterfall wf;
     float yMin = -110, yMax = -30;
+    bool specAutoDb = true;             // the spectrum's dB range follows the noise floor of the view (the look says how high it sits); a drag of Min/Max turns it off
+    spipe::FloorTracker specFloor;      // that floor (the same estimate as the waterfall's)
     float specZoom = 0.f;   // 0..1 frequency zoom for the vertical slider (0 = full bandwidth, 1 = ~1 kHz span)
     int tuningMode = 0;                 // 0 retune the radio LO on spectrum click, 1 decode offset only (sticky LO)
     bool dragMovesTuned = false;        // dragging past the band: true = the tuned frequency travels with the radio centre
@@ -591,7 +428,7 @@ struct App {
     float specLine = 1.2f;     // thickness of the spectrum trace
     bool specFill = true, specGrid = true, specPeaks = false, specReadout = true, specDbm = false;   // fill under the line, grid, peak markers, level at the cursor, dBm instead of dBFS
     // The spectrum look (gfx/spec_look.h: 0 OnAir, 1 SDR++ look, 2 SDRoxide look) and the choices around it
-    int specLook = 0;
+    int specLook = 1;
     int specAxisLabels = -1;   // the frequency labels: -1 as the look has them, 0 frequencies, 1 offsets from the tuned frequency
     float specLabelSize = 1.f; // the axis label size, times the look's
     int specSmoothTrace = -1;  // mild smoothing passes over the trace: -1 as the look has it, else 0..4
@@ -888,6 +725,7 @@ void memoryQuickBar(App& a);                       // memory_lists_ui.cpp: the s
 void memoryToolbarButton(App& a);                  // memory_ui.cpp: the same quick list as a small "M" button with a pop-up (the classic toolbar)
 void memoryMenu(App& a);                           // memory_ui.cpp: the "M" menu of the menu bar: open, store, the favourites and the ten most recent
 double generalListenHz(const App& a);
+void generalSetListenHz(App& a, double hz);       // general_ui.cpp: move the listening frequency (SDR++: the VFO inside the captured band, else the radio)
 int generalApiDemod();                              // general_ui.cpp, for the remote API: the demodulator (GeneralDemod), set it, the squelch
 bool generalApiSetDemod(int demod);
 void generalApiSquelch(bool on, bool autoLevel, double db);
@@ -1081,6 +919,10 @@ void txTick(App& a);               // every frame: gives the radio back when a t
 void txShutdown();                 // stops a running transmission (the radio goes quiet before it returns); the program's end
 bool txActive();
 void savePrefs(const App& a);
+void savePrefsSoon(const App& a);   // a tuning event: the save follows 0.6 s after the last one, not on the UI thread's mouse path
+void savePrefsTick();               // each frame
+void savePrefsFlush();              // at exit
+tunestat::Stats& tuneStats();
 int adcBitsFor(const DeviceInfo& d, double rateHz);
 void ingestSpectrum(App& a);
 void ingestRx(App& a);

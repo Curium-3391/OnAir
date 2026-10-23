@@ -4,6 +4,9 @@
 #include <functional>
 #include "ui2_internal.h"
 #include "setpos_guard.h"
+#include "../state/listen_freq.h"
+#include "dect2/source/converter.h"
+#include <cfloat>
 
 using namespace ui2;
 
@@ -193,9 +196,41 @@ float freqDigitsImpl(App& a, double& mhzRef, double lo, double hi, const std::fu
     return endX;
 }
 
+
+// The big readout: the frequency being LISTENED to (SDR++), or the radio centre (right click: the choice, kept). Beside it a small line
+// names the other one, and the hardware frequency when a converter moves it (freq_model.h), so the three are never confused (user report:
+// an AM station on 11.710 MHz while the readout said 11.520.000, the radio centre).
 float freqDigits(App& a, float fontSize) {
     const ModeTuning* mt = a.family >= 6 ? modeTuning(a.family + 2) : nullptr;
-    return freqDigitsImpl(a, a.freqMhz, mt ? mt->minMhz : 0.001, dect2::kMaxTuneMhz, [&a](double v) { tuneFreq(a, v); }, fontSize);
+    static int showCentre = -1;
+    if (showCentre < 0) showCentre = plat::prefs().getB("bigReadoutCentre", false) ? 1 : 0;
+    const double centreMhz = radioCenterMhz(a);
+    double shown = showCentre ? centreMhz : listenMhz(a);
+    float end = freqDigitsImpl(a, shown, mt ? mt->minMhz : 0.001, dect2::kMaxTuneMhz,
+                               [&a](double v) { if (showCentre) tuneFreq(a, v); else tuneListen(a, v); }, fontSize);
+    const ImVec2 hzPos = ImGui::GetItemRectMin();   // the "Hz" label
+    if (gFreqHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##readoutopt");
+    if (ImGui::BeginPopup("##readoutopt")) {
+        ImGui::TextDisabled("%s", tr("The big readout shows"));
+        if (ImGui::RadioButton(tr("Listening frequency (the VFO)"), showCentre == 0)) { showCentre = 0; plat::prefs().setB("bigReadoutCentre", false); }
+        if (ImGui::RadioButton(tr("Radio centre"), showCentre == 1)) { showCentre = 1; plat::prefs().setB("bigReadoutCentre", true); }
+        ImGui::EndPopup();
+    }
+    // the small line: the other frequency, and the radio's own when a converter is in the way
+    double hwHz = centreMhz * 1e6;
+    if (a.devIdx >= 0 && a.devIdx < (int)a.devices.size() && a.devices[a.devIdx].isRadio()) {
+        const dect2::Converter c = dect2::converterFromRadio(a.tune.radio);
+        if (c.active && c.reachable(hwHz)) hwHz = c.rfToIf(hwHz);
+    }
+    const fmodel::Freqs f = fmodel::compute(listenMhz(a) * 1e6, 0, centreMhz * 1e6, hwHz);
+    const std::string line = fmodel::secondaryLine(f, showCentre == 1);
+    if (!line.empty()) {
+        const ImVec2 p = hzPos;
+        const float fs = ImGui::GetFontSize() * 0.85f;
+        ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), fs, ImVec2(end + 10 * gUi, p.y + 1 * gUi), u32(T.dim), line.c_str());
+        end += 10 * gUi + ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, line.c_str()).x;
+    }
+    return end;
 }
 
 // the same readout for any frequency (the transmitter's): `tune` gets every change

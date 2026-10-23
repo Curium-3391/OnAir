@@ -65,6 +65,7 @@ int main() {
     check(historyCols(0, 65536) == 8192, "standard width");
     check(historyCols(32768, 65536) == 32768 && historyCols(262144, 262144) == 65536, "finer, with a cap");
     check(historyCols(65536, 16384) == 16384 && historyCols(65536, 4096) == 8192, "no wider than the FFT, never under 8192");
+    check(historyCols(-1, 32768) == 32768 && historyCols(-1, 262144) == 65536 && historyCols(-1, 4096) == 8192, "auto: as fine as the FFT, with the cap");
     // frame pacing (#246)
     Pace p; p.running = true; p.focused = false; p.liveWaterfall = true;
     check(near(frameInterval(p), 1.0 / 30), "unfocused live waterfall keeps the spectrum's rate");

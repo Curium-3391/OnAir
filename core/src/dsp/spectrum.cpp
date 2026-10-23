@@ -5,12 +5,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 #include <mutex>
 
 namespace dect2 {
 
-constexpr size_t kMaxBlocksPerFrame = 16;
 
 // 10*log10(p) for p > 0 as a branch-free loop body the compiler vectorises (std::log10f is a library call per bin: with a 64k FFT that was
 // two million calls a second, most of the cost at low sample rates). p = m * 2^e with m in [0.707, 1.414); log2(m) = 2/ln2 * atanh(z),
@@ -30,6 +30,9 @@ static inline float fastDb(float p) {
 
 float spectrumDb(float p) { return fastDb(p); }
 
+// DECT2_SPEC_LEGACY=1: the analyser as it was before 3.0 (16 blocks a frame, bins of 250 Hz up to 32k): for CPU comparisons only
+static bool legacySpectrum() { static const bool l = std::getenv("DECT2_SPEC_LEGACY") != nullptr; return l; }
+
 struct SpectrumAnalyzer::Impl {
     int log2n = 0;
     std::vector<float> window, re, im, accum;
@@ -42,6 +45,7 @@ struct SpectrumAnalyzer::Impl {
     uint32_t hist[64] = {};
     uint64_t seq = 0;
     std::atomic<bool> transform{true};
+    std::atomic<size_t> maxBlocks{SpectrumAnalyzer::kDefaultBlocks};   // blocks averaged into one frame (the rest of the samples only count for the stats)
     std::mutex mu;   // the worker thread feeds, the analysis thread takes frames and resets
 };
 
@@ -52,6 +56,7 @@ SpectrumAnalyzer::SpectrumAnalyzer(size_t fftSize) : p_(new Impl), n_(fftSize) {
     p_->re.resize(n_);
     p_->im.resize(n_);
     p_->accum.assign(n_, 0.f);
+    if (legacySpectrum()) p_->maxBlocks = 16;
 }
 
 SpectrumAnalyzer::~SpectrumAnalyzer() {
@@ -112,6 +117,7 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
     s.count += n;
 
     // display doesn't need every block
+    const size_t kMaxBlocksPerFrame = s.maxBlocks.load(std::memory_order_relaxed);
     if (!s.transform || s.blocks >= kMaxBlocksPerFrame) { s.pending.clear(); return; }
     // One block: window into split re/im, FFT, add the power. Whole blocks are read straight from the caller's samples; only a partial
     // block at the end is copied (and completed by the next call): the old code copied every sample into a queue and erased the front.
@@ -138,10 +144,15 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
 }
 
 void SpectrumAnalyzer::setTransform(bool on) { p_->transform = on; }
+void SpectrumAnalyzer::setBlocksPerFrame(size_t n) { p_->maxBlocks = std::max<size_t>(1, std::min<size_t>(64, n)); }
+size_t SpectrumAnalyzer::blocksPerFrame() const { return p_->maxBlocks.load(); }
 
 size_t SpectrumAnalyzer::autoSize(double fs) {
+    // bins of about 125 Hz or finer, 8192..65536: a zoomed-in view keeps its detail (with two blocks a frame a 64k transform costs a
+    // quarter of what 16 blocks of 32k did)
     size_t n = 8192;
-    while (n < 32768 && fs / (double)n > 250.0) n *= 2;
+    if (legacySpectrum()) { while (n < 32768 && fs / (double)n > 250.0) n *= 2; return n; }
+    while (n < 65536 && fs / (double)n > 125.0) n *= 2;
     return n;
 }
 

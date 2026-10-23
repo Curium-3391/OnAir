@@ -3,6 +3,7 @@
 #include "dect2/engine/engine.h"
 #include "dect2/tv/dvb_text.h"
 #include "dect2/automation/engine.h"
+#include "engine_ctl.h"
 #include "engine_internal.h"
 #include "dect2/source/converter.h"
 #include "dect2/net/share.h"
@@ -119,6 +120,7 @@ std::vector<cpu::Usage> Engine::cpuUsage() const {
 Engine::~Engine() { stop(); flushResults(); }
 
 void Engine::stop() {
+    std::lock_guard<std::recursive_mutex> ctl(engineControlMutex());   // never in the middle of a retune on the tuning thread
     monitor_.stop();   // the audio goes quiet with the radio (the setting stays; the next start brings it back)
     stopSecondary();   // stays asked for: the next start() brings it back
     player_.select(-1);

@@ -71,8 +71,10 @@ inline double widthFromEdge(double centre, double mouse, double minW, double max
 
 // The waterfall history width for the chosen detail (0: the standard 8192 columns): a power of two, at least 8192, at most the cap
 // (65536: 32 MB of history), and no wider than the FFT gives (more columns than bins only repeat them).
+// want < 0: automatic, as fine as the FFT (the default since 3.0: a zoomed-in waterfall keeps every bin).
 inline int historyCols(int want, size_t fftBins, int cap = 65536) {
     int c = 8192;
+    if (want < 0) want = (int)std::min<size_t>((size_t)cap, fftBins);
     if (want <= 0) return c;
     while (c < want && c < cap) c *= 2;
     while (c > 8192 && (size_t)c > fftBins) c /= 2;

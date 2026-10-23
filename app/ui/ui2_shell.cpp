@@ -4,6 +4,7 @@
 #include "transcribe/transcribe_app.h"
 #include "dect2/dsp/baseband_filter.h"
 #include "ui2_internal.h"
+#include "../state/listen_freq.h"
 #include "../codec/speech_codec_ui.h"
 #include "../voice/voice_monitor_ui.h"
 #include "ui_common.h"
@@ -220,9 +221,7 @@ void sidebar(App& a) {
         wfAutoButton(a);
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
-        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Look")); ImGui::SameLine(col);
-        specLookCombo(a, std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
-        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Colours")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Palette")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
         if (ImGui::BeginCombo("##wfmap", tr(Waterfall::mapName(a.wf.effMap())))) {   // also in the Waterfall popup on the plot
             for (int i = 0; i < Waterfall::NumMaps; i++)
                 if (ImGui::Selectable(tr(Waterfall::mapName(i)), a.wf.effMap() == i)) { a.wf.map = i; a.wf.palette(); savePrefs(a); }
@@ -337,7 +336,7 @@ void statusLine(App& a) {
         const auto textW = [&](const std::string& s, ImFont* f, float sz) { ImGui::PushFont(f, sz); const float w = ImGui::CalcTextSize(s.c_str()).x; ImGui::PopFont(); return w; };
         const std::string capF = upper(tr("Frequency")), capM = upper(tr("Mode")), capR = upper(tr("Receiver")), capS2 = upper(tr("State")), capC = "CPU";
         const std::string stateTxt = tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped");
-        const statusstrip::FreqParts fp = statusstrip::splitFreq(a.freqMhz);
+        const statusstrip::FreqParts fp = statusstrip::splitFreq(listenMhz(a));   // the listening frequency (the VFO), as the big readout
         const std::string rxTxt = std::to_string(a.rxId), mhzTxt = " MHz";
         char pc[16]; snprintf(pc, sizeof pc, "%.0f%%", cpuPct);
         const float lampW = 9 * gUi, barW = 44 * gUi, mhzSz = valS * 0.62f;

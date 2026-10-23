@@ -6,6 +6,7 @@
 #endif
 #include "app.h"
 #include "ui/contrast.h"
+#include "state/tune_worker.h"
 #include "ui/touch.h"
 #include "dect2/source/iq_file.h"
 #include "panels/gallery.h"
@@ -224,12 +225,16 @@ static void statusLog(App& app) {
 
 // after the --shot picture: the stream and player state on stderr
 static void shotReport(App& app) {
+    { for (int i = 0; i < 20; i++) savePrefs(app);   // the cost of the save that every tuning event used to cost on the UI thread, 20 runs
+      const tunestat::Stats& ts = tuneStats(); fprintf(stderr, "tune: settings save mean %.2f ms max %.2f ms (n=%u); retunes %u mean %.2f ms max %.2f ms; saves deferred by the debounce %u\n", ts.saveMsMean(), ts.saveMsMax, ts.saves, ts.retunes, ts.retuneMsMean(), ts.retuneMsMax, ts.savesDeferred);
+      const tunework::Stats tw = tunework::stats(); fprintf(stderr, "tune thread: posted %llu, radio calls %llu, coalesced %llu, UI post max %.3f ms, driver call mean %.2f ms max %.2f ms\n", (unsigned long long)tw.posted, (unsigned long long)tw.done, (unsigned long long)tw.coalesced, tw.postMsMax, tw.callMsMean, tw.callMsMax); }
     { PlayerStats ps = app.engine.player().stats(); { BbStats bb = app.engine.bbStats(); fprintf(stderr, "stream: BB frames %llu lost %llu, PLP frames dropped by busy decoder %llu, FEC blocks ok %llu bad %llu, samples dropped %llu, CPU decode %.0f ms\n", (unsigned long long)bb.frames, (unsigned long long)bb.framesLost, (unsigned long long)app.rx.plpFramesDropped, (unsigned long long)app.rx.blocksOk, (unsigned long long)app.rx.blocksBad, (unsigned long long)app.engine.droppedSamples(), app.rx.plpDecodeMs); }
     fprintf(stderr, "player: %s hw=%d %s %dx%d decoded %llu shown %llu late %llu errors %llu audio %s ch %d buf %.0f ms underruns %d A/V %+.0f ms\n", ps.status.c_str(), ps.hardware, ps.videoCodec.c_str(), ps.width, ps.height, (unsigned long long)ps.decoded, (unsigned long long)ps.shown, (unsigned long long)ps.late, (unsigned long long)ps.errors, ps.audioCodec.c_str(), ps.audioChannels, ps.audioBufferMs, ps.underruns, ps.avOffsetMs); }
 }
 
 // orderly shutdown: transmitter quiet, receivers stopped, results saved, windows and back end closed
 static void shutdownApp(App& app, gfx::Backend* gfxBackend, GLFWwindow* window) {
+    savePrefsFlush();
     layoutSaveNow();
     workspaceSessionEnd(app);   // the last-session file is marked clean first: the state is the one at exit
     delete gDiscord;   // clears the status and joins its thread
@@ -329,6 +334,7 @@ int main(int argc, char** argv) {
         layoutTick(app, !app.touchUi && !o.shotPath);   // per-mode window positions (desktop; not in --shot runs)
         workspaceSessionTick(app);   // every few seconds: the last-session file (crash restore)
         discordTick(app);
+        savePrefsTick();   // a deferred tuning save (savePrefsSoon), once the tuning has been still
         {
             const PaceInfo pi = paceFrame(window, app, o, frameNext, lastInputT);
             glfwPollEvents();

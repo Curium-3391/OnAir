@@ -533,6 +533,7 @@ if(DECT2_BUILD_APP)
     third_party/imgui/backends/imgui_impl_glfw.cpp)
   set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/presets_app.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/mode_visibility.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/tv_hd.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/scan/scan_view_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_lists_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/panels/enhance_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/ui/learn.cpp app/ui/autogain_firstrun.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/modebuilder_ui.cpp app/panels/signallab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/audio_control_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/ui/meter_ui.cpp app/platform/proc_cpu.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp app/panels/backup_ui.cpp app/panels/scheduler_ui.cpp app/panels/recmgr_ui.cpp app/ui/dock_tree.cpp app/ui/ui2_dock.cpp app/panels/swarm_ui.cpp)
   list(APPEND APP_SOURCES app/ui/synth_group_ui.cpp)
+  list(APPEND APP_SOURCES app/state/tune_worker.cpp)   # the radio retune off the UI thread, newest request wins
   list(APPEND APP_SOURCES app/scan/fast_scan_ui.cpp)
   list(APPEND APP_SOURCES app/map/contact_lines.cpp)   # contact lines on the QSO-mode maps
   foreach(m ${DECT2_MODES})   # app/<mode>/*.cpp: the screens of a mode added after FM
@@ -660,6 +661,12 @@ if(DECT2_BUILD_APP)
   add_executable(test_wf3d tests/app/test_wf3d.cpp)   # the 3D waterfall: projection, decimation, mesh, pick, a software-rasterised picture and the CPU time
   target_link_libraries(test_wf3d PRIVATE imgui)
   add_test(NAME wf3d COMMAND test_wf3d)
+  # the offscreen render harness of the spectrum and waterfall (the app's pipeline and plot drawing, rasterised in software to a PNG)
+  add_executable(spec_render tools/spec_render.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp)
+  target_include_directories(spec_render PRIVATE app)
+  target_link_libraries(spec_render PRIVATE dect2core imgui)
+  add_executable(test_freq_model tests/app/test_freq_model.cpp)   # listening / centre / hardware frequency and the SDR++ VFO rule
+  add_test(NAME freq_model COMMAND test_freq_model)
   add_executable(test_spec_look tests/app/test_spec_look.cpp)
   add_test(NAME spec_look COMMAND test_spec_look)
   add_executable(test_typography tests/app/test_typography.cpp app/ui/typography.cpp)
@@ -766,6 +773,9 @@ if(DECT2_BUILD_TESTS)
   target_link_libraries(bench_resample PRIVATE dect2core)
   add_executable(bench_rx tests/bench/bench_rx.cpp)
   target_link_libraries(bench_rx PRIVATE dect2core)
+  add_executable(test_latest_slot tests/dsp/test_latest_slot.cpp)   # the tuning mailbox: the newest request wins, the rest coalesce
+  target_include_directories(test_latest_slot PRIVATE core/include)
+  add_test(NAME latest_slot COMMAND test_latest_slot)
   add_executable(test_spectrum_fastlog tests/dsp/test_spectrum_fastlog.cpp)
   target_link_libraries(test_spectrum_fastlog PRIVATE dect2core)
   add_test(NAME spectrum_fastlog COMMAND test_spectrum_fastlog)

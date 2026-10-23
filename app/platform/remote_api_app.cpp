@@ -2,6 +2,7 @@
 // published telemetry, the preferences and the settings panel (in View > Data feeds). Off by default; RX 1 only.
 #include "../app.h"
 #include "../ui/typography.h"
+#include "../state/listen_freq.h"
 #include "dect2/automation/engine.h"
 #include "dect2/general/general_rx.h"
 #include "dect2/net/api_policy.h"
@@ -193,10 +194,10 @@ struct Host : RemoteApiHost {
             std::string mode = "";
             for (int i = 0; i < kNumModes; i++) if (kModes[i].family == a.family && (!kModes[i].subId || subIndexOf(kModes[i].subId) == a.sub)) { mode = kModes[i].name; break; }
             const double gain = d.isGeneric() ? a.tune.gainDb : (double)(a.tune.lnaDb + a.tune.vgaDb + (a.tune.ampOn ? 14 : 0));
-            char b[256];
+            char b[320];
             std::string o = std::string("{\"running\":") + (run ? "true" : "false") + ",\"receiver\":" + std::to_string(a.rxId) + ",\"deviceIndex\":" + std::to_string(a.devIdx) +
                             ",\"device\":\"" + jsonEscape(d.name) + "\",\"deviceKind\":\"" + kindName(d.kind) + "\",\"family\":" + std::to_string(a.family) + ",\"mode\":\"" + jsonEscape(mode) + "\"";
-            snprintf(b, sizeof b, ",\"frequencyHz\":%.0f,\"sampleRateHz\":%.0f,\"gainDb\":%s,\"agc\":%s,\"gainMinDb\":%s,\"gainMaxDb\":%s", a.freqMhz * 1e6,
+            snprintf(b, sizeof b, ",\"frequencyHz\":%.0f,\"centreHz\":%.0f,\"sampleRateHz\":%.0f,\"gainDb\":%s,\"agc\":%s,\"gainMinDb\":%s,\"gainMaxDb\":%s", listenMhz(a) * 1e6, radioCenterMhz(a) * 1e6,
                      run ? a.engine.radioRate() : a.tune.sampleRate, jsonNum(gain).c_str(), a.agcOn ? "true" : "false",
                      jsonNum(d.isGeneric() ? d.gainMinDb : 0).c_str(), jsonNum(d.isGeneric() ? d.gainMaxDb : (d.kind == DeviceInfo::HackRF ? 116 : 0)).c_str());
             return o + b + ",\"autogain\":" + autogainStatusJson(a) + "}";   // read-only: the mode, meters, advice, recent changes (docs/AUTOGAIN.md)
@@ -324,7 +325,7 @@ struct RigAdapter : apipol::RigctlRadio {
     explicit RigAdapter(Host& h) : host(h) {}
     Host& host;
     static int demodOf(const std::string& m) { return m == "FM" || m == "FMN" || m == "NFM" || m == "PKTFM" ? dect2::GenNfm : m == "WFM" ? dect2::GenWfm : m == "AM" || m == "AMN" || m == "SAM" ? dect2::GenAm : m == "USB" || m == "PKTUSB" ? dect2::GenUsb : m == "LSB" || m == "PKTLSB" ? dect2::GenLsb : m == "CW" || m == "CWR" ? dect2::GenCw : -1; }
-    bool getFreq(double& hz) override { std::string e; return host.run([&](App& a, std::string&) { hz = a.freqMhz * 1e6; return true; }, e); }
+    bool getFreq(double& hz) override { std::string e; return host.run([&](App& a, std::string&) { hz = listenMhz(a) * 1e6; return true; }, e); }   // the listening frequency (the VFO), as the big readout
     bool setFreq(double hz) override { std::string e; return host.run([hz](App& a, std::string&) { tuneFreq(a, hz / 1e6); return true; }, e); }
     bool getMode(std::string& m, int& pb) override {
         std::string e;
