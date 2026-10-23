@@ -72,7 +72,11 @@ public:
     void setAmDetector(int det);
     // Noise blanker (NFM, AM, SSB, CW; off by default): impulses more than thresholdDb (6 .. 30) above the mean power are cut out before the
     // channel filter, so they cannot ring through it
-    void setNoiseBlanker(bool on, float thresholdDb = 12);                    // CW: the tone a carrier on the channel frequency gives (BFO)
+    void setNoiseBlanker(bool on, float thresholdDb = 12);
+    // AM Auto quality (am_proc.h): synchronous detection with the cleaner sideband, adaptive bandwidth, blanker, whistle and hum notches,
+    // noise reduction, leveler. nr: -1 auto, 0 off, 1 .. 100; bandwidthHz: 0 auto; enhance: synthetic treble above the received edge.
+    // Off (the default here; the panel turns it on) keeps the envelope detector exactly as before.
+    void setAmAuto(bool on, int nr = -1, int bandwidthHz = 0, bool enhance = false);                    // CW: the tone a carrier on the channel frequency gives (BFO)
 
     void setVolume(float v);                         // 0 .. 1
     void setMuted(bool m);

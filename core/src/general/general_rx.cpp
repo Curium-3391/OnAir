@@ -1,6 +1,7 @@
 // General receiver (see general_rx.h): one channel of the band mixed down, filtered, demodulated (NFM, WFM, AM, USB, LSB, CW),
 // squelched and played; optionally recorded to WAV, one file per transmission.
 #include "dect2/general/general_rx.h"
+#include "dect2/general/am_proc.h"
 #include "dect2/dsp/baseband_filter.h"
 #include "dect2/audio/flac_enc.h"
 #include "dect2/audio/mp3_enc.h"
@@ -85,6 +86,9 @@ struct Cfg {
     int amDet = 0;              // AM: 0 envelope, 1 synchronous (both sidebands), 2 synchronous upper sideband, 3 lower
     bool nbOn = false;          // noise blanker
     float nbDb = 12;            // a sample this far above the mean power is an impulse
+    bool amAuto = false;        // AM: the Auto quality processor (am_proc.h)
+    int amNr = -1, amBw = 0;    // its noise reduction (-1 auto, 0 off, 1 .. 100) and audio bandwidth (0 auto)
+    bool amEnhance = false;
 };
 
 void put16(FILE* f, uint16_t v) { uint8_t b[2] = {(uint8_t)v, (uint8_t)(v >> 8)}; fwrite(b, 1, 2, f); }
@@ -307,13 +311,34 @@ struct GeneralReceiver::Impl {
             const double p = std::norm(v[i]);
             if (nbMean < 0) nbMean = p;
             const bool imp = nbMean > 0 && p > thr * nbMean;
+            // the mean is fed with every sample clipped to the threshold: it follows a signal that rises (from the silence at the start)
+            // instead of taking all of it for impulses
+            nbMean += (std::min(p, thr * std::max(nbMean, 1e-30)) - nbMean) * a;
+            if (nbMean <= 0) nbMean = p;
             if (imp) {
                 if (nbHold == 0) { nbFill = nbG2; if (i > 0) v[i - 1] = nbFill; }   // the edge before it goes too
                 nbHold = 3;
-            } else if (nbHold == 0) nbMean += (p - nbMean) * a;
+            }
             if (nbHold > 0) { v[i] = nbFill; nbHold--; nbBlanked++; }
             else { nbG2 = nbG1; nbG1 = v[i]; }
         }
+    }
+    // AM through the processor (Auto quality, or a synchronous detector chosen by hand)
+    AmProcessor amp;
+    std::vector<float> ampOut;
+    bool useAmp() const { return cfg.demod == GenAm && !wide && (cfg.amAuto || cfg.amDet > 0); }
+    void ampConfig() {
+        AmProcConfig c;
+        c.autoQuality = cfg.amAuto;
+        c.detector = cfg.amAuto ? (cfg.amDet > 0 ? cfg.amDet : -1) : cfg.amDet;
+        c.bandwidthHz = cfg.amAuto ? cfg.amBw : (int)std::lround(cfg.width / 2);
+        c.nr = cfg.amAuto ? cfg.amNr : 0;
+        c.nbDb = cfg.nbOn ? (int)std::lround(cfg.nbDb) : (cfg.amAuto ? -1 : 0);
+        c.notch = cfg.amAuto ? -1 : 0;
+        c.eq = cfg.amAuto ? -1 : 0;
+        c.enhance = cfg.amAuto && cfg.amEnhance;
+        c.agc = cfg.agc; c.leveler = cfg.amAuto; c.gainDb = cfg.gainDb;
+        amp.setConfig(c);
     }
     // squelch
     double blkPow = 0, lvl = -1;
@@ -388,6 +413,7 @@ struct GeneralReceiver::Impl {
         design();
         mixHz = 1e300;
         built = true;
+        amp.configure(demodRate);
         clearState();
     }
 
@@ -503,7 +529,7 @@ struct GeneralReceiver::Impl {
             break;
         }
         case GenAm: {
-            if (cfg.amDet > 0) { a = samDemod(z); break; }
+            if (useAmp()) { have = false; break; }   // the processor makes the sound (feed)
             const double e = std::abs(z);
             if (!carInit) { car = e; carInit = true; }
             car += carK * (e - car);
@@ -524,6 +550,9 @@ struct GeneralReceiver::Impl {
         }
         }
         if (!have) return;
+        emit(a);
+    }
+    void emit(float a) {
         const float dry = std::clamp(a, -1.f, 1.f);
         const float target = open ? 1.f : 0.f;
         ramp += std::clamp(target - ramp, -1.f / 240, 1.f / 240);   // 5 ms
@@ -601,6 +630,11 @@ struct GeneralReceiver::Impl {
         t.dataValid = noisePow > 0 && lvl > 0;
         t.snrDb = t.dataValid ? t.levelDb - t.noiseDb : 0;
         t.squelchOpen = open;
+        if (useAmp()) {
+            const AmProcStatus s = amp.status();
+            t.amActive = true; t.amLocked = s.locked; t.amCarrierHz = (float)s.carrierHz; t.amBandwidthHz = s.bandwidthHz; t.amSnrDb = s.snrDb;
+            t.amDetector = s.detector; t.amNrDb = s.nrDb; t.amStatus = s.text;
+        }
         t.squelchDb = !cfg.sqOn ? -200 : cfg.sqAuto ? (noisePow > 0 ? t.noiseDb + 6 : -200) : cfg.sqDb;
         t.state = !built || lvl < 0 ? 0 : open ? 2 : 1;
         if (fmN) { cfo = fmSum / fmN; fmSum = 0; fmN = 0; }
@@ -767,6 +801,8 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
         m.deAl = c.deemphUs > 0 ? (float)(1 - std::exp(-1.0 / (kGeneralAudioRate * c.deemphUs * 1e-6))) : 1.f;
         if (rebuild) m.build();
         else if (refilter) { m.design(); m.prev = cf32(0, 0); m.carInit = false; m.env = 0; m.deY = 0; m.samReset(); }
+        if (!rebuild && demodCh) m.amp.reset();
+        m.ampConfig();
         if (retuned && !rebuild) { m.acc.assign(kNoiseN, 0.0); m.accN = 0; m.fbuf.clear(); m.noisePsd = -1; m.noisePsdIn = -1; m.lvl = -1; }
     }
     if (m.resetReq.exchange(false) && m.built) m.clearState();
@@ -781,11 +817,13 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
     }
     m.decd.clear();
     m.dec.process(m.clean.data(), n, m.decd);
-    if (m.cfg.nbOn) m.blank(m.decd, m.decRate);
+    if (m.cfg.nbOn && !m.useAmp()) m.blank(m.decd, m.decRate);   // AM through the processor has its own blanker
     m.noiseFeed(m.decd.data(), m.decd.size());
     m.base.clear();
     m.rs.process(m.decd.data(), m.decd.size(), m.base);
     m.aud.clear(); m.dryAud.clear(); m.iqBlk.clear();
+    m.ampOut.clear();
+    if (m.useAmp()) m.amp.process(m.base.data(), m.base.size(), m.ampOut);
     const int T = (int)m.taps.size();
     for (const cf32 v : m.base) {
         m.hist[(size_t)m.hpos] = v; m.hist[(size_t)(m.hpos + T)] = v;
@@ -803,6 +841,7 @@ void GeneralReceiver::feed(const cf32* x, size_t n) {
         if (m.iqThis || m.wantIq.load(std::memory_order_relaxed)) m.iqBlk.push_back(z);
         m.demod(z);
     }
+    for (float v : m.ampOut) m.emit(v);
     m.play();
     m.pubAcc += n / m.curRate;
     if (m.pubAcc >= 0.1) { m.pubAcc = 0; m.publish(); }
@@ -841,6 +880,11 @@ void GeneralReceiver::setAmDetector(int det) {
     std::lock_guard<std::mutex> lk(p_->mu);
     det = std::clamp(det, 0, 3);
     if (p_->cfgSet.amDet != det) { p_->cfgSet.amDet = det; p_->cfgDirty = true; }
+}
+void GeneralReceiver::setAmAuto(bool on, int nr, int bandwidthHz, bool enhance) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    Cfg& c = p_->cfgSet;
+    if (c.amAuto != on || c.amNr != nr || c.amBw != bandwidthHz || c.amEnhance != enhance) { c.amAuto = on; c.amNr = nr; c.amBw = bandwidthHz; c.amEnhance = enhance; p_->cfgDirty = true; }
 }
 void GeneralReceiver::setNoiseBlanker(bool on, float thresholdDb) {
     std::lock_guard<std::mutex> lk(p_->mu);

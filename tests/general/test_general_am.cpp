@@ -51,7 +51,7 @@ static std::vector<cf32> make(const Sig& s, double secs) {
     return x;
 }
 
-static std::vector<float> demod(const std::vector<cf32>& x, int det, bool nb = false) {
+static std::vector<float> demod(const std::vector<cf32>& x, int det, bool nb = false, bool autoQ = false, std::string* status = nullptr) {
     GeneralReceiver r;
     r.configure(kRate);
     r.setSignalOffset(0);
@@ -61,9 +61,15 @@ static std::vector<float> demod(const std::vector<cf32>& x, int det, bool nb = f
     r.setSquelch(false, false, -100);
     r.setAmDetector(det);
     r.setNoiseBlanker(nb, 12);
+    r.setAmAuto(autoQ);
     std::vector<float> a;
     r.setAudioTap([&](const float* p, size_t n) { a.insert(a.end(), p, p + n); });
-    for (size_t i = 0; i < x.size(); i += 25000) r.feed(x.data() + i, std::min<size_t>(25000, x.size() - i));
+    uint64_t seq = 0;
+    for (size_t i = 0; i < x.size(); i += 25000) {
+        r.feed(x.data() + i, std::min<size_t>(25000, x.size() - i));
+        GeneralTelemetry t;
+        if (r.telemetry(t, seq)) { seq = t.seq; if (status) *status = t.amStatus; }
+    }
     return std::vector<float>(a.begin() + std::min(a.size(), (size_t)(2 * kGeneralAudioRate)), a.end());   // after 2 s
 }
 
@@ -140,6 +146,27 @@ int main() {
         printf("impulses +25 dB SINAD blanker off %5.1f  on %5.1f (sync %5.1f) | no impulses, 20 dB: off %5.1f on %5.1f\n", off, on, onSync, cleanOff, cleanOn);
         CHECK(on > off + 10, "blanker: %.1f dB against %.1f dB without", on, off);
         CHECK(cleanOn > cleanOff - 0.5, "blanker on a clean station: %.1f dB against %.1f dB", cleanOn, cleanOff);
+    }
+    {   // Auto quality against the envelope detector: noise, a whistle, impulses (the 1 kHz tone with the 400 Hz programme tone)
+        struct A { const char* name; Sig s; double minGain; };
+        Sig awgn; awgn.cnrDb = 10;
+        Sig wh; wh.cnrDb = 30; wh.adjKhz = 0;
+        Sig imp; imp.cnrDb = 30; imp.impDb = 25;
+        const A cases[] = {{"AWGN 10 dB", awgn, 2.0}, {"impulses +25 dB", imp, 10.0}};
+        for (const A& c : cases) {
+            const auto x = make(c.s, 10);
+            std::string st;
+            const double e = sinad(demod(x, 0)), a = sinad(demod(x, 0, false, true, &st));
+            printf("Auto quality, %-16s SINAD envelope %5.1f  auto %5.1f  (%s)\n", c.name, e, a, st.c_str());
+            CHECK(a > e + c.minGain, "Auto quality %s: %.1f dB against %.1f dB", c.name, a, e);
+        }
+        {   // clean: Auto must not spoil it
+            Sig s; s.cnrDb = 40;
+            const auto x = make(s, 8);
+            const double e = sinad(demod(x, 0)), a = sinad(demod(x, 0, false, true));
+            printf("Auto quality, clean 40 dB  SINAD envelope %5.1f  auto %5.1f\n", e, a);
+            CHECK(a > e - 1.5, "Auto quality clean: %.1f dB against %.1f dB", a, e);
+        }
     }
     return fails ? 1 : 0;
 }
