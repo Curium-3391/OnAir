@@ -175,7 +175,7 @@ onair_rust_use(dect2core)   # links the Rust library onair_rs
 target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_choice.cpp core/src/geo/passes.cpp core/src/dsp/imgproc.cpp core/src/dsp/wxstudio.cpp core/src/dsp/wx_vectors.cpp core/src/engine/sig_ident.cpp core/src/geo/maidenhead.cpp core/src/geo/maplayers.cpp core/src/geo/tilecache.cpp core/src/mesh/mesh_report.cpp core/src/df/df.cpp core/src/df/source.cpp core/src/df/position.cpp core/src/df/rfcam.cpp core/src/df/group.cpp core/src/df/rtl_group.cpp core/src/geo/pass_sched.cpp core/src/geo/doppler_fit.cpp core/src/engine/sig_known.cpp core/src/engine/sig_known_gen.cpp core/src/radar/passive.cpp core/src/rfi/rfi.cpp core/src/map/contact_graph.cpp)
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
-target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
+target_sources(dect2core PRIVATE core/src/packs/packs.cpp core/src/packs/datasets.cpp core/src/packs/datasets_inventory.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
 # User-supplied voice decryption keys: the key store, standard cipher primitives, per-call decryption and encrypted-at-rest persistence (docs/KEYS.md). Never an auto-decrypter.
 target_sources(dect2core PRIVATE core/src/voicekeys/voice_crypto.cpp core/src/voicekeys/voice_keys.cpp core/src/voicekeys/voice_decrypt.cpp core/src/voicekeys/key_persist.cpp)
 # TLS for the remote-control API (headless server): OpenSSL, off by default so the packages need no extra library (docs/headless-server.md)
@@ -546,7 +546,7 @@ if(DECT2_BUILD_APP)
   list(APPEND APP_SOURCES app/i18n/i18n.cpp app/platform/remote_api_app.cpp app/panels/gain_opt_ui.cpp app/panels/agc_ui.cpp app/panels/autogain_ui.cpp app/panels/station_health_ui.cpp app/panels/photo_links_ui.cpp app/panels/tx_ui.cpp app/panels/tx_payload_ui.cpp app/panels/tx_params.cpp app/panels/tx_panel.cpp app/panels/tx_step_signal.cpp app/panels/tx_step_settings.cpp app/panels/tx_step_send.cpp app/panels/tx_preview.cpp)
   list(APPEND APP_SOURCES app/gfx/autolabel.cpp)   # names drawn on the spectrum and waterfall (logic: app/gfx/autolabel_logic.h)
   list(APPEND APP_SOURCES app/gfx/wf_export.cpp)   # waterfall export: PNG frames and a timelapse into a folder (no video encoder)
-  list(APPEND APP_SOURCES app/packs/packs_ui.cpp)
+  list(APPEND APP_SOURCES app/packs/packs_ui.cpp app/packs/datasets_ui.cpp)
   list(APPEND APP_SOURCES app/platform/power.cpp app/ui/perf_overlay.cpp)   # battery, occlusion, App Nap; View > Performance overlay
   add_executable(test_frame_pace tests/app/test_frame_pace.cpp)   # the redraw policy of the frame loop (app/ui/frame_pace.h)
   add_test(NAME frame_pace COMMAND test_frame_pace)
@@ -1139,6 +1139,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_packs tests/packs/test_packs.cpp)   # offline packs: tile pack plan, download over file copies, resume, checksum, disk guard, verify, delete
   target_link_libraries(test_packs PRIVATE dect2core)
   add_test(NAME packs COMMAND test_packs)
+  add_executable(test_datasets tests/packs/test_datasets.cpp)   # reference datasets: manifest, versions, allow-list, validation, layering, import / reset
+  target_link_libraries(test_datasets PRIVATE dect2core)
+  add_test(NAME datasets COMMAND test_datasets)
   add_executable(test_mbtiles tests/geo/test_mbtiles.cpp)
   target_link_libraries(test_mbtiles PRIVATE dect2core)
   add_test(NAME mbtiles COMMAND test_mbtiles)

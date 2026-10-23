@@ -1,5 +1,6 @@
 // Airport table (see airports.h): the built-in text, search, near, and the channels of an airport for the airband mode.
 #include "dect2/airports/airports.h"
+#include "dect2/packs/datasets.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -166,10 +167,14 @@ std::string AirportDb::toTsv() const {
     return o;
 }
 
+const char* builtinAirportText() { return kAirportData; }
+
 const AirportDb& AirportDb::builtin() {
     static const AirportDb db = [] {
         AirportDb d;
-        d.parseTsv(kAirportData);
+        const std::string over = dect2::datasets::userText("airports");   // the user's airports win over the bundled ones with the same code
+        if (over.empty()) d.parseTsv(kAirportData);
+        else d.parseTsv(dect2::datasets::layerGrouped(kAirportData, over, "A", 1));
         return d;
     }();
     return db;

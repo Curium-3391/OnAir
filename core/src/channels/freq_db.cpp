@@ -1,4 +1,5 @@
 #include "dect2/channels/freq_db.h"
+#include "dect2/packs/datasets.h"
 #include "dect2/engine/mode_tuning.h"
 #include <algorithm>
 #include <cmath>
@@ -100,6 +101,18 @@ const std::vector<FreqEntry>& builtinFrequencies() {
             std::vector<FreqEntry> one = parseFreqTsv(kFreqFiles[i], rep);
             for (const std::string& l : rep.log) fprintf(stderr, "frequencies: file %zu %s\n", i, l.c_str());
             all.insert(all.end(), one.begin(), one.end());
+        }
+        const std::string over = dect2::datasets::userText("frequencies");   // Tools > Data packs: the user's records win by frequency + mode + name
+        if (!over.empty()) {
+            FreqParseReport rep;
+            std::vector<FreqEntry> mine = parseFreqTsv(over, rep);
+            for (FreqEntry& e : mine) e.source = "Your data pack file";
+            auto key = [](const FreqEntry& e) {
+                std::string n = e.name;
+                for (char& c : n) c = (char)std::tolower((unsigned char)c);
+                return std::to_string((long long)std::llround(e.hz)) + "|" + e.mode + "|" + n;
+            };
+            all = dect2::datasets::layerByKey(std::move(all), mine, key);
         }
         std::stable_sort(all.begin(), all.end(), [](const FreqEntry& a, const FreqEntry& b) {
             if (a.mode != b.mode) return a.mode < b.mode;

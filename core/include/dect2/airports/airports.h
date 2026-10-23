@@ -44,6 +44,8 @@ double airportDistanceKm(double lat1, double lon1, double lat2, double lon2);   
 
 struct AirportHit { size_t index = 0; double km = -1; };   // km: distance from the position given to search / near, -1 when none was given
 
+const char* builtinAirportText();   // data/airports/airports.tsv as compiled in (Tools > Data packs exports it)
+
 class AirportDb {
 public:
     AirportReport parseTsv(const std::string& text);                    // replaces the contents; damaged lines are skipped and counted

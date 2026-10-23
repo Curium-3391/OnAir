@@ -339,6 +339,7 @@ struct App {
     bool schedulerOpen = false;         // Tools > Scheduler: timed and satellite-pass jobs that tune, record and restore (app/panels/scheduler_ui.cpp)
     bool recmgrOpen = false;            // Tools > Recordings: the recordings manager (app/panels/recmgr_ui.cpp)
     bool memoryOpen = false;            // the Memory window (View > Memory, Ctrl+M; app/memory)
+    bool datasetsOpen = false;          // the Datasets window (Tools > Datasets; app/packs/datasets_ui.cpp): reference data, user overrides, opt-in updates
     bool packsOpen = false;             // the Data packs window (View > Data packs; app/packs): offline map tiles, satellite elements, airports
     bool freqOpen = false;              // the Frequencies window (View > Frequencies, Ctrl+Shift+F; app/freqdb)
     bool freqTab = false;               // the Frequencies panel as a tab of the main screen (saved as freqTab)
@@ -823,6 +824,7 @@ bool dfMapLine(const App& a, DfMapLine& out);       // df_ui.cpp: the current be
 void satnogsWindow(App& a);                        // satnogs_ui.cpp: the SatNOGS DB transmitter browser window (a.satnogsOpen), every frame
 void passesWindow(App& a);                         // passes_ui.cpp: the satellite pass planner window (a.passesOpen) and its tracking, every frame
 void memoryWindow(App& a);                         // memory_ui.cpp: the Memory window (a.memoryOpen), the Ctrl+M key, the scan of the flagged memories, every frame
+void datasetsWindow(App& a);                        // datasets_ui.cpp: the Datasets window (a.datasetsOpen), every frame
 void packsWindow(App& a);                           // packs_ui.cpp: the Data packs window (a.packsOpen), every frame
 void freqdbWindow(App& a);                          // freqdb_ui.cpp: the Frequencies window (a.freqOpen), the Ctrl+Shift+F key, every frame
 void freqdbTabItem(App& a);                         // freqdb_ui.cpp: the "Frequencies" tab when it is switched on (inside the main tab bar)
