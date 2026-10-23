@@ -1018,6 +1018,7 @@ void applyUiTheme(App& a);              // ui2.cpp: classic or new colours and s
 bool dockActive(const App& a);          // docking is on and usable (new interface, touch interface off)
 void dockFrameBegin(App& a);            // before the interface is drawn: installs the window placement hook
 void dockFrameEnd(App& a);              // after every window: drop targets, docking on release, window order, shortcuts
+void dockDevSelfTest();                 // --dockselftest: scripted drag / keyboard / layout checks, then exit
 void dockDevTree(const char* text);     // --docktree: start with this layout (dock_tree.h text form)
 void dockRegisterIni();                 // once, before the first per-mode layout file is read: the dock layout is kept in that file
 // plots.cpp

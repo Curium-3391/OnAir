@@ -9,6 +9,8 @@
 #include "dock_tree.h"
 #include "../state/layout.h"
 #include "../platform/platform.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -437,7 +439,139 @@ void dockMenu(App& a) {
 
 }  // namespace ui2
 
+// --dockselftest: drives the mouse and keyboard through ImGui's input queue in a hidden run (drag to dock, drag out, the keyboard
+// commands, named layouts, the per-mode file), prints one line per check and exits with the number of failures
+namespace {
+struct SelfTest { bool on = false; int f = 0, step = 0, t0 = 0, fails = 0; ImVec2 from, to; std::string saved; } gST;
+void stCheck(bool ok, const char* m) { std::printf("dock selftest: %s %s\n", ok ? "ok  " : "FAIL", m); std::fflush(stdout); if (!ok) gST.fails++; }
+bool stDrag(int rel) {   // press at `from`, move to `to` in steps, let go
+    ImGuiIO& io = ImGui::GetIO();
+    if (rel == 0) io.AddMousePosEvent(gST.from.x, gST.from.y);
+    else if (rel == 1) io.AddMouseButtonEvent(0, true);
+    else if (rel <= 13) { const float t = (rel - 1) / 12.f; io.AddMousePosEvent(gST.from.x + (gST.to.x - gST.from.x) * t, gST.from.y + (gST.to.y - gST.from.y) * t); }
+    else if (rel == 15) io.AddMouseButtonEvent(0, false);
+    return rel >= 19;
+}
+bool stChord(int rel, ImGuiKey k) {   // Ctrl+Alt+k
+    ImGuiIO& io = ImGui::GetIO();
+    if (rel == 0) { io.AddKeyEvent(ImGuiMod_Ctrl, true); io.AddKeyEvent(ImGuiMod_Alt, true); }
+    else if (rel == 1) io.AddKeyEvent(k, true);
+    else if (rel == 2) { io.AddKeyEvent(k, false); std::printf("dock selftest: (keys ctrl %d alt %d super %d focus '%s' nav '%s')\n", io.KeyCtrl, io.KeyAlt, io.KeySuper, gFocus.c_str(), GImGui->NavWindow ? GImGui->NavWindow->Name : "-"); }
+    else if (rel == 3) { io.AddKeyEvent(ImGuiMod_Ctrl, false); io.AddKeyEvent(ImGuiMod_Alt, false); }
+    return rel >= 5;
+}
+ImGuiWindow* stWin(const char* k) { const auto it = gF.win.find(k); return it == gF.win.end() ? nullptr : it->second; }
+const dock::LeafBox* stLeaf(const char* k) { for (const auto& b : gF.leaves) for (const auto& t : b.tabs) if (t == k) return &b; return nullptr; }
+ImVec2 stTitle(ImGuiWindow* w) { return ImVec2(w->Pos.x + 40 * gUi, w->Pos.y + ImGui::GetFrameHeight() * 0.5f); }
+void stNext() { gST.step++; gST.t0 = gST.f; }
+
+void selfTestFrame(App& a) {
+    ImGuiContext& g = *GImGui;
+    const int rel = ++gST.f - gST.t0;
+    ImGuiWindow* map = stWin("Map");
+    switch (gST.step) {
+    case 0:   // settle: the map open and floating, the default layout, no popup in the way
+        a.mapOpen = true;
+        if (g.OpenPopupStack.Size) ImGui::ClosePopupToLevel(0, false);
+        if (gST.f < 240 || !map || !gF.space || !stLeaf(kMain)) return;
+        gFloat.clear(); applyTree(defaultTree());
+        map->Pos = ImVec2(gF.r.x + gF.r.w * 0.35f, gF.r.y + gF.r.h * 0.3f);
+        stNext();
+        return;
+    case 1:   // drag the map's title onto the right target of the spectrum's box
+        if (rel == 0) {
+            const dock::LeafBox* b = stLeaf(kMain);
+            const dock::Rect q = dock::zoneRect(b->r, dock::Zone::Right, 32 * gUi, false);
+            gST.from = stTitle(map); gST.to = ImVec2(q.x + q.w * 0.5f, q.y + q.h * 0.5f);
+        }
+        if (!stDrag(rel)) return;
+        std::printf("dock selftest: (tree %s, from %.0f,%.0f to %.0f,%.0f, map at %.0f,%.0f)\n", dock::serialise(gTree).c_str(), gST.from.x, gST.from.y, gST.to.x, gST.to.y, map->Pos.x, map->Pos.y);
+        stCheck(dock::contains(gTree, "Map") && dock::leafOf(gTree, "Map") != dock::leafOf(gTree, kMain), "dragged onto a target: docked beside the spectrum");
+        stNext();
+        return;
+    case 2:   // let the layout settle, then drag it out by its title to a place without a target
+        if (rel < 4) return;
+        if (rel == 4) { gST.from = stTitle(map); gST.to = ImVec2(gST.from.x + 50 * gUi, gST.from.y + 60 * gUi); }
+        if (!stDrag(rel - 4)) return;
+        stCheck(!dock::contains(gTree, "Map"), "a docked window dragged by its title floats");
+        stNext();
+        return;
+    case 3:   // now floating: drag it onto the list's centre target
+        if (rel < 4) return;
+        if (rel == 4) { const dock::LeafBox* b = stLeaf("###dk_list"); const dock::Rect q = dock::zoneRect(b->r, dock::Zone::Centre, 32 * gUi, false);
+                        gST.from = stTitle(map); gST.to = ImVec2(q.x + q.w * 0.5f, q.y + q.h * 0.5f); }
+        if (!stDrag(rel - 4)) return;
+        stCheck(dock::leafOf(gTree, "Map") == dock::leafOf(gTree, "###dk_list") && dock::leafOf(gTree, "Map")->tabs.size() == 2, "centre target: a tab of the list");
+        stNext();
+        return;
+    case 4:   // Ctrl+Alt+PageDown: the next tab
+        if (rel < 4) return;
+        if (rel == 4 && map) ImGui::FocusWindow(map);
+        if (!stChord(rel - 4, ImGuiKey_PageDown)) return;
+        { const dock::Node* l = dock::leafOf(gTree, "Map"); stCheck(l && l->tabs[l->active] == "###dk_list", "Ctrl+Alt+PageDown: the next tab"); }
+        stNext();
+        return;
+    case 5:   // Ctrl+Alt+U, Ctrl+Alt+Left, Ctrl+Alt+Enter
+        if (rel < 4) return;
+        if (rel == 4 && map) ImGui::FocusWindow(map);
+        if (rel < 10) { stChord(rel - 4, ImGuiKey_U); return; }
+        if (rel == 10) stCheck(!dock::contains(gTree, "Map"), "Ctrl+Alt+U: undocked");
+        if (rel == 12 && map) ImGui::FocusWindow(map);
+        if (rel >= 12 && rel < 18) { stChord(rel - 12, ImGuiKey_LeftArrow); return; }
+        if (rel == 18) stCheck(gTree.kind == dock::Node::SplitH && gTree.kids[0].kind == dock::Node::Leaf && gTree.kids[0].tabs[0] == "Map", "Ctrl+Alt+Left: docked along the left edge");
+        if (rel == 20 && map) ImGui::FocusWindow(map);
+        if (rel >= 20 && rel < 26) { stChord(rel - 20, ImGuiKey_Enter); return; }
+        if (rel == 26) { stCheck(dock::leafOf(gTree, "Map") == dock::leafOf(gTree, kMain), "Ctrl+Alt+Enter: a tab of the spectrum"); stNext(); }
+        return;
+    case 6: {   // a splitter dragged
+        if (rel < 4) return;
+        if (rel == 4) {
+            if (gF.bars.empty()) { stCheck(false, "a splitter to drag"); stNext(); return; }
+            const dock::SplitBar& s = gF.bars[0];
+            gST.saved = dock::serialise(gTree);
+            gST.from = ImVec2(s.r.x + s.r.w * 0.5f, s.r.y + s.r.h * 0.5f);
+            gST.to = s.vertical ? ImVec2(gST.from.x + 60 * gUi, gST.from.y) : ImVec2(gST.from.x, gST.from.y + 60 * gUi);
+        }
+        if (!stDrag(rel - 4)) return;
+        stCheck(dock::serialise(gTree) != gST.saved, "a bar dragged: the split moved");
+        stNext();
+        return;
+    }
+    case 7: {   // named layouts and the per-mode file
+        const std::string mk = modeKey(a), mine = dock::serialise(gTree);
+        loadNamed();
+        dock::putNamed(gNamed, mk, "selftest", mine);
+        saveNamed();
+        gNamedLoaded = false; gNamed.clear(); loadNamed();
+        applyTree(defaultTree());
+        bool found = false;
+        for (const auto& l : gNamed) if (l.mode == mk && l.name == "selftest") { dock::Node t; found = dock::parse(l.tree, t); if (found) applyTree(t); }
+        stCheck(found && dock::serialise(gTree) == mine, "named layout saved, read back from the file and loaded");
+        const std::string ini = ImGui::SaveIniSettingsToMemory();
+        ImGui::ClearIniSettings();
+        const bool cleared = gTree.empty() && !gSaved;
+        ImGui::LoadIniSettingsFromMemory(ini.c_str(), ini.size());
+        stCheck(cleared && dock::serialise(gTree) == mine, "layout written to and read from the mode's layout file");
+        if (dock::dropNamed(gNamed, mk, "selftest")) saveNamed();
+        stNext();
+        return;
+    }
+    case 8:   // docking off: the windows float again
+        if (rel == 0) { a.dockOn = false; return; }
+        if (rel < 4) return;
+        if (map) std::printf("dock selftest: (map flags %x active %d tree %s)\n", (unsigned)map->Flags, map->Active, dock::serialise(gTree).c_str());
+        stCheck(map && !(map->Flags & ImGuiWindowFlags_NoResize), "docking off: the map is an ordinary window again");
+        std::printf("dock selftest: %d failed\n", gST.fails);
+        std::fflush(stdout);
+        std::exit(gST.fails ? 1 : 0);
+    }
+}
+}  // namespace
+
+void dockDevSelfTest() { gST.on = true; }
+
 void dockFrameEnd(App& a) {
+    struct Run { App& a; ~Run() { if (gST.on) selfTestFrame(a); } } run{a};
     ImGuiIO& io = ImGui::GetIO();
     if (!a.touchUi && a.newUi && !io.WantTextInput && io.KeyCtrl && io.KeyAlt && !io.KeySuper && ImGui::IsKeyPressed(ImGuiKey_D, false)) { a.dockOn = !a.dockOn; savePrefs(a); }
     if (!dockActive(a)) { gPend.on = false; return; }
