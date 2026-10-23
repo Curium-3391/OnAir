@@ -1228,7 +1228,7 @@ static void dragRetune(App& a) {
     if (std::fabs(r.centre - centre) < 1e-9) return;
     a.tune.centerHz = r.centre * 1e6;
     a.freqMhz = r.tuned;
-    a.engine.retune(a.tune);
+    { tunestat::RetuneTimer rtm(tuneStats()); a.engine.retune(a.tune); }
     a.engine.setDecodeShiftHz((r.tuned - r.centre) * 1e6);
     a.peak.clear(); a.minPk.clear();
     dragSaved = false;

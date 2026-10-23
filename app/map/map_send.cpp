@@ -902,6 +902,7 @@ void txOffToast() {
 void startupQuestion(App& a) {
     static bool asked = false;
     if (asked) return;
+    if (a.specDemo) { asked = true; return; }   // the --specdemo screenshot runs: no question over the picture, nothing sent
     App& s = rootApp(a);
     if (s.mapDeclined && s.mapDeclinedVersion != ONAIR_VERSION) { s.mapDeclined = false; s.mapDeclinedVersion.clear(); savePrefs(s); }   // an update: ask again
     if (!mapShouldAsk(s.mapConsent, s.mapDeclined, s.mapDeclinedVersion, ONAIR_VERSION, gTxHold || txActive())) { asked = true; return; }

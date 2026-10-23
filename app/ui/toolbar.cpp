@@ -468,9 +468,9 @@ void toolbarParts(App& a, int mask, bool vertical) {
         a.tune.centerHz = rt.dialHz;
         a.engine.log("retune " + std::to_string(a.freqMhz) + " MHz");
         if ((a.fmMode || a.family >= 6) && moved) a.engine.retuneReset(a.tune);   // forget the old station's name and flush its sound
-        else a.engine.retune(a.tune);
+        else { tunestat::RetuneTimer rtm(tuneStats()); a.engine.retune(a.tune); }
         a.peak.clear();
-        savePrefs(a);
+        savePrefsSoon(a);
     }
 
 }
@@ -492,7 +492,7 @@ void tuneDecode(App& a, double absMhz) {
     }
     a.freqMhz = dialMhzFromAbs(a, absMhz);
     if (a.engine.running()) a.engine.setDecodeShiftHz(absMhz * 1e6 - a.engine.captureCentreHz());
-    savePrefs(a);
+    savePrefsSoon(a);
 }
 
 void spectrumTune(App& a, double absMhz) {
@@ -522,11 +522,12 @@ void tuneFreq(App& a, double mhz) {
     a.freqMhz = mhz;
     a.tune.centerHz = mhz * 1e6;
     if (a.engine.running()) {
+        tunestat::RetuneTimer rtm(tuneStats());
         if ((a.fmMode || a.family >= 6) && moved) a.engine.retuneReset(a.tune);   // forget the old station's name and flush its sound
         else a.engine.retune(a.tune);
         a.peak.clear();
     }
-    savePrefs(a);
+    savePrefsSoon(a);
 }
 
 // The tuner panel's "Second mode": a second receiver decoding from the same samples (Engine::setSecondary); its screen is the tab
