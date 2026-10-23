@@ -374,7 +374,6 @@ struct GnssReceiver::Impl {
     // 11 kHz of all of them; with a fix it is measured. With nothing locked the window widens round by round (TCXO, HackRF, cheap dongle), then the
     // same with a four times longer integration for weak signals, and starts over.
     void planSearch();
-    int stageOrder(int st) const;
 
     // Galileo: searched once GPS has a fix. The receiver's frequency error is then measured, so the window is the satellites' Doppler alone
     // (+-5 kHz), and a sky without Galileo costs little (the search sleeps after a round without a find).

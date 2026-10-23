@@ -257,14 +257,6 @@ void GnssReceiver::Impl::resetState() {
 // Where and how long to search next. With satellites locked the radio's error lies within 5.5 kHz of each of their Dopplers, so the others are within
 // 11 kHz of all of them; with a fix it is measured. With nothing locked the window widens round by round (TCXO, HackRF, cheap dongle), then the
 // same with a four times longer integration for weak signals, and starts over.
-// The order of the cold searches: nominal, +-45 kHz, +-170 kHz, then the same with 64 ms. With the radio's frequency error known
-// (remembered for it), the long nominal search comes second: a weak sky (indoors, a small antenna) is then searched with 64 ms after
-// ~10 s instead of ~45 s, and the wide searches, unlikely to be needed then, follow.
-int GnssReceiver::Impl::stageOrder(int st) const {
-    static const int known[6] = {0, 3, 1, 2, 4, 5};
-    return cfoHintValid.load() ? known[st % 6] : st % 6;
-}
-
 void GnssReceiver::Impl::planSearch() {
     double lo = 1e18, hi = -1e18;
     int nLocked = 0, nPull = 0;
@@ -294,16 +286,15 @@ void GnssReceiver::Impl::planSearch() {
                 stage = (stage + 1) % 6;
                 static const char* what[6] = {"", "+-45 kHz (a radio without a TCXO, such as a HackRF)", "+-170 kHz (a dongle without a TCXO)",
                                                "with a 64 ms integration for weak signals", "+-45 kHz with a 64 ms integration", "+-170 kHz with a 64 ms integration"};
-                if (stage > 0) logf(std::string("nothing found yet: searching ") + what[stageOrder(stage)]);
+                if (stage > 0) logf(std::string("nothing found yet: searching ") + what[stage]);
             }
         }
-        const int eff = stageOrder(stage);
-        const int st = eff % 3;
+        const int st = stage % 3;
         if (st == 0) {
             // the frequency error that worked before (this run, or the one remembered for this radio)
             if (lastCfoValid) c = lastCfo; else if (cfoHintValid.load()) c = cfoHintHz.load();
         } else h = st == 1 ? kMidHz : kWideHz;
-        if (eff >= 3) ms = kLongMs;
+        if (stage >= 3) ms = kLongMs;
     }
     gpsAcq.setPlan(c, h, ms);
 }
