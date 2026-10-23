@@ -77,7 +77,7 @@ bool rtlTcpGreeting(const unsigned char* hdr, std::string& magic, bool& other) {
     other = g.other;
     return true;
 }
-bool rtlTcpThroughput(const std::string& addr, RtlTcpThroughput& out) {
+bool rtlTcpThroughputOf(const std::string& addr, dect2::RtlTcpThroughput& out) {
     std::lock_guard<std::mutex> lk(gStatMu);
     const auto it = gStat.find(addr);
     if (it == gStat.end()) return false;
@@ -339,4 +339,5 @@ void applyRadioOptionCaps(DeviceInfo& d, const TuneSettings& t) {
     if (d.kind != DeviceInfo::Native || d.board != "rtltcp") return;
     native::setCaps(d, radioOption(t, "server", "auto") == "other" || native::noted(d.nativeArgs), radioOption(t, "anyrate", "0") == "1");
 }
+bool rtlTcpThroughput(const std::string& addr, RtlTcpThroughput& out) { return native::rtlTcpThroughputOf(addr, out); }   // declared in dect2/net/netradio.h
 } // namespace dect2

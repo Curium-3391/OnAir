@@ -291,9 +291,9 @@ static void testRtlTcpRates() {
             std::string err;
             const bool ok = src->start(s, ring, err);
             if (kind == 2) {
-                // a real RTL-SDR: 3.2 Msps is the most, and it is held at 2.56
+                // a real RTL-SDR: 3.2 Msps is the most, and anything above 2.56 is held at 2.56
                 CHECK(ok == (r <= 3.2e6));
-                if (ok) CHECK(srv.waitFor(0x02, 2560000));
+                if (ok) CHECK(srv.waitFor(0x02, (uint32_t)std::min(r, 2.56e6)));
             } else {
                 CHECK(ok);
                 CHECK(srv.waitFor(0x02, (uint32_t)r));   // exactly as asked
