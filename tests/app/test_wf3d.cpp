@@ -141,6 +141,23 @@ int main(int argc, char** argv) {
         Proj pt = makeProj(preset(Preset_Top), 0, 0, 800, 400);   // straight down: still a basis
         check(project(pt, v3(0.4f, 0, 0), x, y, d) && x > 400, "top view: frequency still left to right");
     }
+    // ---- framing: at the preset distance the surface's box fills 90% of the tighter direction and stays inside, for any plot shape
+    for (int pr = 0; pr < NumPresets; pr++)
+        for (float aspect : {0.6f, 1.f, 3.7f, 6.f}) {
+            const float vh = 200, vw = vh * aspect;
+            Camera c = preset(pr); c.dist = Camera().dist; c.tx = c.tz = 0; c.ty = Camera().ty;
+            const Proj p = makeProj(c, 0, 0, vw, vh, fitScale(c, vw, vh, 0.35f, 1.f));
+            float mx = 0, my = 0, ax = 1e9f, bx = -1e9f, ay = 1e9f, by = -1e9f;
+            for (int i = 0; i < 8; i++) {
+                float x, y, d;
+                if (!project(p, v3(i & 1 ? 0.5f : -0.5f, i & 2 ? 0.35f : 0.f, i & 4 ? 0.5f : -0.5f), x, y, d)) continue;
+                mx = std::max(mx, std::fabs(x - vw / 2) / (vw / 2)); my = std::max(my, std::fabs(y - vh / 2) / (vh / 2));
+                ax = std::min(ax, x); bx = std::max(bx, x); ay = std::min(ay, y); by = std::max(by, y);
+            }
+            const bool centred = std::fabs((ax + bx) / 2 - vw / 2) < 0.01f * vw && std::fabs((ay + by) / 2 - vh / 2) < 0.01f * vh;
+            char msg[80]; snprintf(msg, sizeof msg, "fit %s aspect %.1f: %.2f / %.2f", presetName(pr), aspect, mx, my);
+            check(centred && std::max(mx, my) > 0.88f && std::max(mx, my) < 0.92f, msg);
+        }
     // ---- camera limits
     {
         Camera c; c.orbit(0, -100000); check(c.pitch >= 0.03f, "pitch floor");
