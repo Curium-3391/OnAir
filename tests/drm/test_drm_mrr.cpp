@@ -13,13 +13,15 @@
 #include "../common/jobs.h"
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 using namespace drmtest;
 using testjobs::jprintf;
 static std::atomic<int> fails{0};
 static testjobs::Jobs jobs;
 #define CHECK(c, ...) do { if (!(c)) { jprintf("FAIL: " __VA_ARGS__); jprintf("\n"); fails++; } } while (0)
 
-struct Ber { double ber = 1; uint64_t frames = 0, expected = 0; double bits = 0, errs = 0; double lockSecs = -1; };
+struct Ber { double ber = 1; uint64_t frames = 0, expected = 0; double bits = 0, errs = 0; double lockSecs = -1; DrmTelemetry tel; uint64_t lost = 0; };
 
 static int popc(uint8_t v) { int n = 0; while (v) { n += v & 1; v >>= 1; } return n; }
 
@@ -32,6 +34,7 @@ static Ber runBer(const Sig& s, double secs, double skip) {
     DrmReceiver rx;
     rx.setSilent(true);
     rx.configure(rate);
+    rx.setLogCallback([&b](const std::string& l) { if (l.find("signal lost") != std::string::npos) b.lost++; });
     double now = 0;
     std::unique_ptr<DrmAudioSource> refSrc;
     std::vector<std::vector<std::vector<uint8_t>>> refFrames;
@@ -87,13 +90,20 @@ static Ber runBer(const Sig& s, double secs, double skip) {
         now = (double)done / rate;
         rx.feed(buf.data(), n);
         DrmTelemetry t;
-        if (rx.telemetry(t, seq)) { seq = t.seq; if (b.lockSecs < 0 && t.dataValid) b.lockSecs = now; }
+        if (rx.telemetry(t, seq)) { seq = t.seq; b.tel = t; if (b.lockSecs < 0 && t.dataValid) b.lockSecs = now; }
     }
     // the super frames that never came: half their bits wrong
     b.expected = (uint64_t)((secs - skip) / 0.4);
     if (b.frames < b.expected && payloadBits > 0) { b.errs += 0.5 * payloadBits * (double)(b.expected - b.frames); b.bits += (double)payloadBits * (double)(b.expected - b.frames); }
     b.ber = b.bits > 0 ? b.errs / b.bits : 1;
     return b;
+}
+
+static void line(const char* name, double snr, const Ber& b) {
+    const DrmTelemetry& t = b.tel;
+    jprintf("  %-32s %5.1f dB  BER %.2e  frames %llu/%llu  lock %.1f s | mode %c state %d FAC %llu/%llu SDC %llu/%llu SNR %.1f Doppler %.1f Hz delay %.2f ms lost %llu\n",
+            name, snr, b.ber, (unsigned long long)b.frames, (unsigned long long)b.expected, b.lockSecs, t.modeName, t.state, (unsigned long long)t.facOk,
+            (unsigned long long)t.facBad, (unsigned long long)t.sdcOk, (unsigned long long)t.sdcBad, t.snrDb, t.dopplerHz, t.delaySpreadMs, (unsigned long long)b.lost);
 }
 
 struct Case { const char* name; int mode, qam16, prot, shortIl, channel; double hi; double maxOk; };
@@ -109,7 +119,9 @@ int main() {
         {"6: D 64-QAM R0.5, ch 6", 4, 0, 1, 0, 6, 40, 34},
     };
     double result[6];
-    for (int i = 0; i < 6; i++) jobs.add([i, &cases, &result] {
+    const char* only = getenv("ONAIR_MRR_CASE");   // "5": that case alone
+    for (int i = 0; i < 6; i++) result[i] = 0;
+    for (int i = 0; i < 6; i++) if (!only || atoi(only) == i + 1) jobs.add([i, &cases, &result] {
         const Case& c = cases[i];
         Sig s; s.mode = c.mode; s.qam16 = c.qam16; s.prot = c.prot; s.shortIl = c.shortIl; s.channel = c.channel;
         const double secs = 40, skip = 12;
@@ -119,14 +131,14 @@ int main() {
         for (; snr > 0; snr -= 2) {
             s.snrDb = snr;
             const Ber b = runBer(s, secs, skip);
-            jprintf("  %-32s %5.1f dB  BER %.2e  frames %llu/%llu  lock %.1f s\n", c.name, snr, b.ber, (unsigned long long)b.frames, (unsigned long long)b.expected, b.lockSecs);
+            line(c.name, snr, b);
             if (b.ber > 1e-4) break;
             ok = snr;
         }
         if (ok < 1e8 && snr > 0) {
             s.snrDb = ok - 1;
             const Ber b = runBer(s, secs, skip);
-            jprintf("  %-32s %5.1f dB  BER %.2e  frames %llu/%llu  lock %.1f s\n", c.name, s.snrDb, b.ber, (unsigned long long)b.frames, (unsigned long long)b.expected, b.lockSecs);
+            line(c.name, s.snrDb, b);
             if (b.ber <= 1e-4) ok = ok - 1;
         }
         result[i] = ok;
