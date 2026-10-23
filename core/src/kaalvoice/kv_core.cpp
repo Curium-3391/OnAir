@@ -787,6 +787,8 @@ void CoreDecoder::reset() {
     pfTilt_ = 0;
     pfAgc_ = 1.0;
     mute_ = 1.0;
+    std::memset(sub_, 0, sizeof sub_);
+    std::memset(excOut_, 0, sizeof excOut_);
 }
 
 void CoreDecoder::restart(const double* lsf) {
@@ -882,6 +884,19 @@ void CoreDecoder::decode(const FrameQ* q, const bool* fcbBad, bool pf, float* ou
             if (!(u[n] > -1e5f)) u[n] = -1e5f;
         }
         std::memcpy(exc + pos, u, sizeof(float) * (size_t)L);
+        std::memcpy(excOut_ + s * L, u, sizeof(float) * (size_t)L);
+        {
+            SubInfo& si = sub_[s];
+            std::memcpy(si.aq, aq, sizeof aq);
+            si.Ti = Ti;
+            si.lag = (double)units / P.lagRes;
+            si.gp = gp;
+            si.gc = gc;
+            double e2 = 0;
+            for (int n = 0; n < L; n++) e2 += (double)c[n] * c[n];
+            si.ecb = e2 / L;
+            si.rnd = randomPulses;
+        }
         iirA(aq, u, sy, L, st_.syn);
         for (int k = 0; k < kP; k++) {
             if (!(st_.syn[k] < 1e5f)) st_.syn[k] = 1e5f;

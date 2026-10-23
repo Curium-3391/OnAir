@@ -445,6 +445,70 @@ Metrics compare(const std::vector<int16_t>& ref, const std::vector<int16_t>& dec
         tot += d2 / nb;
     }
     m.bld = nl ? std::sqrt(tot / nl) : 0;
+    // frame level (loudness) error over the active frames: signed mean and mean absolute difference of the frame power in dB
+    {
+        double sb = 0, sa = 0;
+        int c = 0;
+        for (size_t f = 0; f < fe.size(); f++) {
+            if (fe[f] < fmax * 1e-4) continue;
+            double ey = 0;
+            for (double v : PY[f]) ey += v;
+            const double d = 10.0 * std::log10((ey + floorP) / (fe[f] + floorP));
+            sb += d;
+            sa += std::fabs(d);
+            c++;
+        }
+        if (c) { m.levelBias = sb / c; m.levelErr = sa / c; }
+    }
+    // short-time envelope correlation in 15 third-octave bands from 150 Hz (the STOI idea of Taal et al. 2011, simplified: 32 ms
+    // frames, 24-frame segments, clipping at -15 dB SDR); NOT the standard STOI implementation, an intelligibility proxy only
+    {
+        const int nbands = 15, seg = 24;
+        std::vector<int> lo((size_t)nbands), hi((size_t)nbands);
+        for (int j = 0; j < nbands; j++) {
+            const double fc = 150.0 * std::pow(2.0, j / 3.0);
+            lo[(size_t)j] = std::max(1, (int)std::lround(fc * std::pow(2.0, -1.0 / 6.0) / binHz));
+            hi[(size_t)j] = std::min(N / 2, (int)std::lround(fc * std::pow(2.0, 1.0 / 6.0) / binHz));
+        }
+        double fmaxDb = 0;
+        for (double e : fe) fmaxDb = std::max(fmaxDb, e);
+        std::vector<std::vector<double>> XR, XY;
+        for (size_t f = 0; f < fe.size(); f++) {
+            if (fe[f] < fmaxDb * 1e-4) continue;   // 40 dB below the loudest frame: silence
+            std::vector<double> a((size_t)nbands), b((size_t)nbands);
+            for (int j = 0; j < nbands; j++) {
+                double sr2 = 0, sy2 = 0;
+                for (int k = lo[(size_t)j]; k < hi[(size_t)j]; k++) { sr2 += PR[f][(size_t)k]; sy2 += PY[f][(size_t)k]; }
+                a[(size_t)j] = std::sqrt(sr2);
+                b[(size_t)j] = std::sqrt(sy2);
+            }
+            XR.push_back(a);
+            XY.push_back(b);
+        }
+        double acc = 0;
+        int cnt = 0;
+        const double clipK = std::pow(10.0, 15.0 / 20.0);
+        for (size_t s0 = 0; s0 + seg <= XR.size(); s0++) {
+            for (int j = 0; j < nbands; j++) {
+                double er = 0, ey = 0;
+                for (int t = 0; t < seg; t++) { er += XR[s0 + t][(size_t)j] * XR[s0 + t][(size_t)j]; ey += XY[s0 + t][(size_t)j] * XY[s0 + t][(size_t)j]; }
+                const double g = ey > 0 ? std::sqrt(er / ey) : 0.0;
+                double yv[64], xv[64], mx = 0, my = 0;
+                for (int t = 0; t < seg; t++) {
+                    xv[t] = XR[s0 + t][(size_t)j];
+                    yv[t] = std::min(g * XY[s0 + t][(size_t)j], xv[t] * (1.0 + clipK));
+                    mx += xv[t];
+                    my += yv[t];
+                }
+                mx /= seg;
+                my /= seg;
+                double cxy = 0, cxx = 0, cyy = 0;
+                for (int t = 0; t < seg; t++) { cxy += (xv[t] - mx) * (yv[t] - my); cxx += (xv[t] - mx) * (xv[t] - mx); cyy += (yv[t] - my) * (yv[t] - my); }
+                if (cxx > 0 && cyy > 0) { acc += cxy / std::sqrt(cxx * cyy); cnt++; }
+            }
+        }
+        m.stoi = cnt ? acc / cnt : 0.0;
+    }
     return m;
 }
 

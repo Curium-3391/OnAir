@@ -2,7 +2,8 @@
 // uses its own elementary functions and is built without fused multiply-add contraction). The digest covers several profiles, both
 // frame lengths, both sample rates, DTX with the in-band type bit, the noise suppressor and a lossy channel.
 // A different digest means the codec output changed: if that was intended (a codec change), the stream is a new bit-stream version:
-// update docs/KAAL-CODEC.md and record the new values with ONAIR_GOLDEN_DUMP=1.
+// update docs/KAAL-CODEC.md and record the new values with ONAIR_GOLDEN_DUMP=1. The receiver-side enhancer is off here (its output
+// is covered by test_kaalvoice_enhance), so this digest also shows that the plain decoder did not change.
 #include "kv_test_common.h"
 #include "../common/golden.h"
 #include <cstdio>
@@ -25,6 +26,7 @@ int main() {
         Config c = cfg(k.p, k.ms, k.fs, k.dtx);
         c.noiseSuppress = k.ns;
         c.inBandType = k.ib;
+        c.enhance = 0;   // the plain decoder: the enhancer has its own digest (test_kaalvoice_enhance)
         const std::vector<int16_t> x = eval::synthSpeech(k.fs, 2, 1.5, 3, k.noiseDb);
         auto channel = [](ChannelFrame& f) { f.lost = f.index % 13 == 7; };
         const Run r = run(c, x, channel);

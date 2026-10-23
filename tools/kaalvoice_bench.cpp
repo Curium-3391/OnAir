@@ -7,7 +7,9 @@
 #include "dect2/kaalvoice/kaal_voice.h"
 #include "dect2/kaalvoice/kaal_voice_eval.h"
 #include "../core/src/kaalvoice/kv_internal.h"
+#include <algorithm>
 #include <ctime>
+#include <memory>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +38,109 @@ std::vector<int16_t> run(FrameCodec& c, const std::vector<int16_t>& x, double* c
     }
     *cpuSec = (double)(std::clock() - t0) / CLOCKS_PER_SEC;
     return y;
+}
+
+// Encodes everything first, then decodes; decCpu = CPU time of the decoder alone (what the enhancer adds to).
+std::vector<int16_t> runSplit(const Config& cfg, const std::vector<int16_t>& x, double* decCpu, double lossRate = 0.0) {
+    Encoder e(cfg);
+    Decoder d(cfg);
+    const int n = e.info().frameSamples;
+    std::vector<std::vector<uint8_t>> frames;
+    std::vector<FrameType> types;
+    std::vector<int16_t> frame((size_t)n);
+    const size_t total = x.size() + (size_t)e.info().delaySamples + (size_t)n;
+    for (size_t pos = 0; pos < total; pos += (size_t)n) {
+        for (int i = 0; i < n; i++) frame[(size_t)i] = pos + i < x.size() ? x[pos + i] : 0;
+        std::vector<uint8_t> b;
+        types.push_back(e.encode(frame.data(), b));
+        frames.push_back(b);
+    }
+    uint32_t lcg = 12345;
+    std::vector<bool> lost(frames.size(), false);
+    for (size_t i = 0; i < frames.size(); i++) { lcg = lcg * 1664525u + 1013904223u; lost[i] = (lcg >> 8) / 16777216.0 < lossRate; }
+    std::vector<int16_t> y(frames.size() * (size_t)n), out((size_t)n);
+    const std::clock_t t0 = std::clock();
+    for (size_t i = 0; i < frames.size(); i++) {
+        if (lost[i]) d.erasure(out.data());
+        else d.decode(types[i], frames[i].empty() ? nullptr : frames[i].data(), frames[i].size(), out.data());
+        std::copy(out.begin(), out.end(), y.begin() + (long)(i * (size_t)n));
+    }
+    *decCpu = (double)(std::clock() - t0) / CLOCKS_PER_SEC;
+    return y;
+}
+
+struct Acc {
+    double seg = 0, lsd = 0, lsdHi = 0, bld = 0, stoi = 0, bias = 0, lerr = 0, rtf = 0;
+    int n = 0;
+    void add(const eval::Metrics& m, double rtfv) {
+        seg += m.segSnrLow; lsd += m.lsd; lsdHi += m.lsdHigh; bld += m.bld; stoi += m.stoi; bias += m.levelBias; lerr += m.levelErr; rtf += rtfv; n++;
+    }
+    void print(const char* name, const char* what) const {
+        const double k = n ? n : 1;
+        printf("%-26s %-10s %7.2f %6.2f %6.2f %6.3f %6.3f %+6.2f %6.2f %8.4f\n", name, what, seg / k, lsd / k, lsdHi / k, bld / k, stoi / k, bias / k,
+               lerr / k, rtf / k);
+    }
+};
+
+// Enhancer on / off for every profile, the old codec at 16 kbit/s, per-stage ablation, loss. Decode-only real-time factors.
+int enhanceMatrix(const std::vector<Sig>& sigs, bool ablate, bool perSignal) {
+    struct P { Profile p; int ms; };
+    const P ps[] = {{Profile::K3_2, 40}, {Profile::K4_8, 40}, {Profile::K6_0, 40}, {Profile::K4_8, 20}, {Profile::K6_0, 20},
+                    {Profile::K8_0, 40}, {Profile::HQ12, 20}, {Profile::HQ16, 20}};
+    printf("%-26s %-10s %7s %6s %6s %6s %6s %6s %6s %8s\n", "codec", "enhancer", "segSNRlo", "LSD", "LSDhi", "BLD", "STOI~", "lvl", "|lvl|", "decRTF");
+    auto runCfg = [&](const Config& c, const char* name, const char* what, double loss) {
+        Acc a;
+        for (const Sig& s : sigs) {
+            double cpu = 0;
+            const std::vector<int16_t> y = runSplit(c, s.pcm, &cpu, loss);
+            const eval::Metrics m = eval::compare(s.pcm, y, 16000, Decoder(c).info().delaySamples);
+            a.add(m, cpu / ((double)s.pcm.size() / 16000));
+            if (perSignal) {
+                Acc one;
+                one.add(m, cpu / ((double)s.pcm.size() / 16000));
+                one.print(("  " + s.name).c_str(), what);
+            }
+        }
+        a.print(name, what);
+        return a;
+    };
+    for (const P& p : ps) {
+        Config c;
+        c.profile = p.p; c.frameMs = p.ms; c.dtx = false;
+        const std::string nm = std::string("KV4 ") + profileName(p.p) + "/" + std::to_string(p.ms) + "ms";
+        c.enhance = 0;
+        runCfg(c, nm.c_str(), "off", 0.0);
+        c.enhance = 1;
+        runCfg(c, nm.c_str(), "on", 0.0);
+        if (ablate && profileBitsPer20ms(p.p) < 140) {
+            static const struct { uint32_t bit; const char* n; } st[] = {
+                {kEnhPitch, "-pitch"}, {kEnhFormant, "-formant"}, {kEnhBwe, "-bwe"}, {kEnhHbSmooth, "-hbsmooth"},
+                {kEnhLoudness, "-loudness"}, {kEnhComfort, "-comfort"}, {kEnhDeclick, "-declick"}};
+            for (const auto& s : st) {
+                c.enhanceStages = kEnhDefault & ~s.bit;
+                runCfg(c, nm.c_str(), s.n, 0.0);
+            }
+            c.enhanceStages = kEnhDefault | kEnhNoiseReduce;
+            runCfg(c, nm.c_str(), "+nr", 0.0);
+            c.enhanceStages = kEnhDefault;
+            c.enhance = 0;
+            runCfg(c, nm.c_str(), "off 3%loss", 0.03);
+            c.enhance = 1;
+            runCfg(c, nm.c_str(), "on 3%loss", 0.03);
+        }
+        printf("\n");
+    }
+    // the old codec at 16 kbit/s (through its FrameCodec wrapper; its RTF includes the encoder)
+    Acc a;
+    for (const Sig& s : sigs) {
+        Config c; c.payloadBits = 320;
+        std::unique_ptr<FrameCodec> fc = makeFrameCodec(CodecId::LegacyV3, c);
+        double cpu = 0;
+        const std::vector<int16_t> y = run(*fc, s.pcm, &cpu);
+        a.add(eval::compare(s.pcm, y, 16000, fc->info().delaySamples), cpu / ((double)s.pcm.size() / 16000));
+    }
+    a.print("old KaalCodec3 16k", "-");
+    return 0;
 }
 
 void lsfStats(const std::vector<Sig>& sigs) {
@@ -88,13 +193,16 @@ void lsfStats(const std::vector<Sig>& sigs) {
 int main(int argc, char** argv) {
     std::vector<std::string> wavs;
     std::string outDir;
-    bool quick = false, stats = false, synth = true;
+    bool quick = false, stats = false, synth = true, enhance = false, ablate = false, perSignal = false;
     for (int i = 1; i < argc; i++) {
         if (!std::strcmp(argv[i], "--wav") && i + 1 < argc) wavs.push_back(argv[++i]);
         else if (!std::strcmp(argv[i], "--out") && i + 1 < argc) outDir = argv[++i];
         else if (!std::strcmp(argv[i], "--quick")) quick = true;
         else if (!std::strcmp(argv[i], "--lsfstats")) stats = true;
         else if (!std::strcmp(argv[i], "--nosynth")) synth = false;
+        else if (!std::strcmp(argv[i], "--enhance")) enhance = true;
+        else if (!std::strcmp(argv[i], "--ablate")) ablate = true;
+        else if (!std::strcmp(argv[i], "--persignal")) perSignal = true;
     }
     std::vector<Sig> sigs;
     for (const std::string& w : wavs) {
@@ -111,6 +219,16 @@ int main(int argc, char** argv) {
     for (int v = 0; synth && v < 4; v++) sigs.push_back({vn[v], eval::synthSpeech(16000, v, secs, 11 + v), 16000});
     if (synth) sigs.push_back({"synth-male+noise15dB", eval::synthSpeech(16000, 0, secs, 21, -15.0), 16000});
     if (stats) { lsfStats(sigs); return 0; }
+    if (enhance) {
+        // sustained vowels and fricatives as well (formant synthesiser)
+        if (synth) {
+            sigs.push_back({"vowel-a-120Hz", eval::synthSound(16000, 'a', 120, 1.5, 3), 16000});
+            sigs.push_back({"vowel-i-220Hz", eval::synthSound(16000, 'i', 220, 1.5, 4), 16000});
+            sigs.push_back({"fric-s", eval::synthSound(16000, 's', 0, 1.0, 5), 16000});
+            sigs.push_back({"fric-sh", eval::synthSound(16000, 'S', 0, 1.0, 6), 16000});
+        }
+        return enhanceMatrix(sigs, ablate, perSignal);
+    }
 
     std::vector<Codec> codecs;
     auto kv = [&](Profile p, int ms, int fs = 16000) {

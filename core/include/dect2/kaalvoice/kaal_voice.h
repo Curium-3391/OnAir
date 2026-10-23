@@ -40,6 +40,20 @@ enum class FrameType : uint8_t { Speech = 0, Sid = 1, NoData = 2 };
 // Damaged importance classes, from the container's per-class checks (decode()).
 enum : uint32_t { kBadA = 1u, kBadB = 2u, kBadC = 4u };
 
+// Stages of the decoder-side speech enhancer (docs/KAAL-ENHANCE.md), each switchable for A/B tests (Config::enhanceStages).
+// Receiver only: the bit stream does not change.
+enum : uint32_t {
+    kEnhPitch = 1u << 0,         // adaptive long-term (pitch) post-filter
+    kEnhFormant = 1u << 1,       // adaptive formant post-filter with spectral-tilt compensation
+    kEnhBwe = 1u << 2,           // high band: harmonic extension from the low band for voiced speech (noise for unvoiced)
+    kEnhHbSmooth = 1u << 3,      // high band: temporal smoothing of the envelope, low-fluctuation noise (no chirping)
+    kEnhLoudness = 1u << 4,      // energy restoration of the sparse-pulse excitation (the codec's loudness loss)
+    kEnhComfort = 1u << 5,       // comfort-noise shaping (smoothed spectrum and level)
+    kEnhDeclick = 1u << 6,       // de-clicking at the first good frame after a loss
+    kEnhNoiseReduce = 1u << 7,   // gentle Wiener noise reduction from the decoder's own noise estimate (adds 5 ms delay)
+    kEnhDefault = kEnhPitch | kEnhFormant | kEnhBwe | kEnhHbSmooth | kEnhLoudness | kEnhComfort | kEnhDeclick,
+};
+
 struct Config {
     int sampleRate = 16000;         // 8000 or 16000 (encoder input and decoder output)
     int frameMs = 20;               // 20 or 40
@@ -47,7 +61,11 @@ struct Config {
     int payloadBits = 0;            // 0: the profile's budget; otherwise an exact speech-frame budget (custom slot sizes), see valid()
     bool dtx = true;                // encoder: voice activity detection + discontinuous transmission
     bool noiseSuppress = false;     // encoder: input noise suppression (adds 8 ms of delay)
-    bool postfilter = true;         // decoder: adaptive formant / pitch postfilter
+    bool postfilter = true;         // decoder: adaptive formant / pitch postfilter (also gates the enhancer's post-filter stages)
+    // decoder: speech enhancer (docs/KAAL-ENHANCE.md). -1 auto: on below 7 kbit/s (3.2 / 4.8 / 6.0), off for 8.0 / HQ12 / HQ16;
+    // 0 off (the plain KV4 decoder), 1 on. When it runs, its post-filter replaces the core postfilter above.
+    int enhance = -1;
+    uint32_t enhanceStages = kEnhDefault;
     // Fixed-size containers (the KAAL v4 slots): every Speech and Sid frame is payloadBytes long and its first bit tells them apart
     // (0 speech, 1 SID); speech then has payloadBits - 1 bits. NoData stays empty (the slot carries data instead).
     bool inBandType = false;
@@ -87,6 +105,34 @@ private:
     std::unique_ptr<Impl> p_;
 };
 
+// Decoder side information of one frame, handed to an external post-filter (a future neural post-filter, docs/KAAL-ENHANCE.md
+// section 6). Everything is what the decoder already has: no extra bits.
+struct EnhanceSide {
+    enum Kind : uint8_t { Speech = 0, Concealed = 1, ComfortNoise = 2 };
+    int sampleRate = 16000, frameSamples = 0;
+    Kind kind = Speech;
+    bool firstAfterGap = false;      // first speech frame after a loss, comfort noise or reset
+    int lostRun = 0;                 // consecutive lost frames up to this one (0 for a good frame)
+    bool enhanced = false;           // the classical enhancer ran on this frame
+    int subframes = 0, subLen8 = 0;  // core subframes, their length in 8 kHz samples
+    float lpc[16][11] = {};          // quantised LPC per subframe (8 kHz, lpc[s][0] = 1)
+    float lag[16] = {};              // pitch lag per subframe in 8 kHz samples
+    float pitchGain[16] = {}, codeGain[16] = {};
+    float voicing = 0;               // mean pitch gain of the frame, 0 .. ~1.2
+    int hbBlocks = 0;                // 5 ms high-band blocks (16 kHz only)
+    float hbLevelDb[8][6] = {};      // their band levels (dB per 100 Hz MDCT bin; -100 = none)
+    float noiseDb = -100;            // the decoder's background noise estimate (low band, dB per sample)
+};
+
+// A post-filter stage behind the classical enhancer (for example a neural post-filter). It sees the frame as floats at the output
+// rate (int16 scale), after the classical stages and before the conversion to int16, and must not add delay.
+class ExternalPostFilter {
+public:
+    virtual ~ExternalPostFilter() = default;
+    virtual void reset() {}
+    virtual void process(const EnhanceSide& side, float* pcm) = 0;
+};
+
 class Decoder {
 public:
     explicit Decoder(const Config& c);
@@ -99,6 +145,11 @@ public:
     void decode(FrameType t, const uint8_t* data, size_t nbytes, int16_t* pcm, uint32_t badClasses = 0);
     void erasure(int16_t* pcm) { decode(FrameType::Speech, nullptr, 0, pcm); }
     void reset();
+    // Optional stage after the classical enhancer (nullptr removes it). Runs whether or not the classical enhancer is on.
+    void setPostFilter(std::shared_ptr<ExternalPostFilter> pf);
+    // Side information of the last decoded frame.
+    const EnhanceSide& lastSide() const;
+    bool enhancing() const;   // the classical enhancer is on for this configuration
 private:
     struct Impl;
     std::unique_ptr<Impl> p_;

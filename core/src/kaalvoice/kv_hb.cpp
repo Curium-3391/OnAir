@@ -182,7 +182,7 @@ void HbDecoder::synthBlock(const double* bandDb, float* out) {
     std::memcpy(ola_, y + kHbM, sizeof ola_);
 }
 
-void HbDecoder::decode(const FrameQ* q, const bool* timeBad, float* out) {
+void HbDecoder::levels(const FrameQ* q, const bool* timeBad, double (*Lv)[kHbBands]) {
     const HbProf& h = P_.hb;
     for (int half = 0; half < P_.halves; half++) {
         double cur[kHbBands];
@@ -208,16 +208,31 @@ void HbDecoder::decode(const FrameQ* q, const bool* timeBad, float* out) {
         }
         if (!have_) { for (int j = 0; j < kHbBands; j++) lastDb_[j] = cur[j]; have_ = true; }
         for (int b = 0; b < 4; b++) {
-            double L[kHbBands];
+            double* L = Lv[half * 4 + b];
             for (int j = 0; j < kHbBands; j++) {
                 if (useTime) L[j] = cur[j] + tl[b];
                 else L[j] = lastDb_[j] + (b + 1) * 0.25 * (cur[j] - lastDb_[j]);
                 if (cur[j] < -60.0 && lastDb_[j] < -60.0) L[j] = -100.0;
             }
-            synthBlock(L, out + (half * 4 + b) * kHbM);
         }
         for (int j = 0; j < kHbBands; j++) lastDb_[j] = cur[j];
     }
+}
+
+void HbDecoder::synth(const double (*L)[kHbBands], int nb, float* out) {
+    for (int b = 0; b < nb; b++) synthBlock(L[b], out + b * kHbM);
+}
+
+void HbDecoder::decode(const FrameQ* q, const bool* timeBad, float* out) {
+    double L[8][kHbBands];
+    levels(q, timeBad, L);
+    synth(L, 4 * P_.halves, out);
+}
+
+void HbDecoder::comfortLevels(double levelDb, double tiltDb, double* L) {
+    for (int j = 0; j < kHbBands; j++) L[j] = levelDb + tiltDb * bandT(j);
+    for (int j = 0; j < kHbBands; j++) lastDb_[j] = L[j];
+    have_ = true;
 }
 
 void HbDecoder::comfort(double levelDb, double tiltDb, float* out, int n16) {

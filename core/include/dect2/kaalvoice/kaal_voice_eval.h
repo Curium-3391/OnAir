@@ -22,6 +22,8 @@ namespace eval {
 struct Metrics {
     double snr = 0, segSnr = 0, lsd = 0, lsdLow = 0, lsdHigh = 0, bld = 0;
     double snrLow = 0, segSnrLow = 0;   // 16 kHz signals: SNR of the band below 3.8 kHz (both low-passed); = snr at 8 kHz
+    double levelBias = 0, levelErr = 0; // loudness: signed mean and mean absolute frame-power difference decoded - reference (dB, active frames)
+    double stoi = 0;     // STOI-like envelope correlation (15 third-octave bands 150 Hz .. 4 kHz); intelligibility proxy, higher is better
     int delay = 0;       // alignment used (samples)
     int frames = 0;      // active frames scored
 };
