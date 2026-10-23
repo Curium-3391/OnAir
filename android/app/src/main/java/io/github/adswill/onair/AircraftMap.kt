@@ -193,6 +193,10 @@ private fun parseMarks(tabs: List<ResultTable>): List<Ac> {
 @Composable
 fun PositionMap(
     tabs: List<ResultTable>, selected: String?, onSelect: (String?) -> Unit, consent: Int, onConsent: (Int) -> Unit, modifier: Modifier = Modifier,
+    /** Extra drawing on top of the tile map (walk-around DF heat map); receives the lat/lon -> screen function. Not used by the offline plot. */
+    overlay: (androidx.compose.ui.graphics.drawscope.DrawScope.((Double, Double) -> Offset) -> Unit)? = null,
+    /** Centre the map here instead of on the last known location, at [startZoom]. */
+    homeOverride: Pair<Double, Double>? = null, startZoom: Float? = null,
 ) {
     val p = LocalPalette.current
     val ctx = LocalContext.current
@@ -209,7 +213,7 @@ fun PositionMap(
         }
         0
     }
-    val home = remember { lastLocation(ctx) }
+    val home = homeOverride ?: remember { lastLocation(ctx) }
     TileStore.dir = File(ctx.cacheDir, "osm-tiles")
     val failed = TileStore.failures >= 4 && !TileStore.loadedAny
     Column(modifier) {
@@ -230,12 +234,13 @@ fun PositionMap(
         }
         val m = Modifier.fillMaxWidth().weight(1f)
         if (consent != 1 || failed) OfflinePlot(list, trails, home, selected, onSelect, m, if (consent == 1) "offline - map tiles unavailable" else null)
-        else SlippyMap(list, trails, home, selected, onSelect, m)
+        else SlippyMap(list, trails, home, selected, onSelect, m, overlay, startZoom)
     }
 }
 
 @Composable
-private fun SlippyMap(list: List<Ac>, trails: Map<String, List<Pair<Double, Double>>>, home: Pair<Double, Double>?, selected: String?, onSelect: (String?) -> Unit, modifier: Modifier) {
+private fun SlippyMap(list: List<Ac>, trails: Map<String, List<Pair<Double, Double>>>, home: Pair<Double, Double>?, selected: String?, onSelect: (String?) -> Unit, modifier: Modifier,
+    overlay: (androidx.compose.ui.graphics.drawscope.DrawScope.((Double, Double) -> Offset) -> Unit)? = null, startZoom: Float? = null) {
     val p = LocalPalette.current
     val dens = LocalDensity.current.density
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -251,7 +256,7 @@ private fun SlippyMap(list: List<Ac>, trails: Map<String, List<Pair<Double, Doub
         val c = if (home != null) mercX(home.second) to mercY(home.first) else if (pts.isEmpty()) 0.5 to 0.5 else pts.sumOf { it.first } / pts.size to pts.sumOf { it.second } / pts.size
         cx = c.first; cy = c.second
         val span = (pts.maxOfOrNull { max(abs(it.first - c.first), abs(it.second - c.second)) } ?: 0.0) * 2.4
-        z = if (pts.isEmpty()) (if (home != null) 8f else 3f)
+        z = if (pts.isEmpty()) (if (home != null) (startZoom ?: 8f) else 3f)
             else if (span <= 1e-7) 8f
             else log2(min(size.width, size.height) / (256.0 * dens) / span).toFloat().coerceIn(3f, 12f)
     }
@@ -301,6 +306,7 @@ private fun SlippyMap(list: List<Ac>, trails: Map<String, List<Pair<Double, Doub
             }
             if (home != null) { val h = toScreen(home.first, home.second); drawCircle(Color(0xFF1A73E8), 9f, h); drawCircle(Color.White, 9f, h, style = Stroke(3f)) }
             drawMarks(cur, trails, selected, ::toScreen, onMap = true, text = Color(0xFF111418), halo = Color.White)
+            overlay?.invoke(this, ::toScreen)
         }
         Text("© OpenStreetMap contributors", Modifier.align(Alignment.BottomEnd).background(Color.White.copy(alpha = 0.8f)).padding(horizontal = 4.dp, vertical = 1.dp),
             color = Color(0xFF222222), fontSize = TextUnit(9f, TextUnitType.Sp))

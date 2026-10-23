@@ -13,13 +13,15 @@
 
     <!-- rtl_tcp (localhost or the network) and SpyServer. No storage permission: files come through the system picker. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Walk-around direction finding (ui/panels/walkdf): GPS while a walk runs. Positions stay on the device. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- The receive session (ReceiverService): foreground service that plays the decoded audio, keeps the CPU and Wi-Fi awake. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Its notification (Android 13+ asks; the receiver runs without it too). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Not declared yet (ui/Permissions.kt): ACCESS_FINE_LOCATION for direction finding. -->
+
 
     <application
         android:name=".OnAirApplication"
