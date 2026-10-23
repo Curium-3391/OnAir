@@ -364,6 +364,7 @@ struct App {
     ImVec2 tgMin[8], tgMax[8];   // screen rectangles of the parts of the window the tour points at
     VideoTex video;
     float volume = 1.f;
+    int tetraSingle = 0;   // TETRA carrier choice: 0 search the span, 1 single carrier (one 25 kHz channel at the dial frequency); saved
     int tetraSlotMode = 0, tetraSlotNum = 1, tetraSlotId = 0;   // TETRA 'Listen to': 0 auto, 1 slot (tetraSlotNum 1..4), 2 talkgroup, 3 ISSI (tetraSlotId); saved
     bool muted = false, subsOn = true;
     int playReq = -1;
