@@ -53,4 +53,28 @@ struct SlotPayload {   // one slot of one superframe
     uint8_t seq = 0;               // per stream, wraps
 };
 
+// The voice codec plugs in here (the codec module registers itself; the PHY never includes codec headers). One encoder / decoder per
+// slot, 640 samples of 16 kHz speech per 40 ms payload. Until a codec is registered the transmitter sends data only and the receiver
+// plays nothing.
+class SlotVoiceEncoder {
+public:
+    virtual ~SlotVoiceEncoder() = default;
+    // pcm: kPcmPerPayload samples. packed: payloadBits(p) bits MSB first (40 bytes room). False: nothing to send (e.g. silence / DTX).
+    virtual bool encode(const int16_t* pcm, Profile p, uint8_t* packed) = 0;
+};
+class SlotVoiceDecoder {
+public:
+    virtual ~SlotVoiceDecoder() = default;
+    // packed: the payload, or nullptr for an erasure (conceal). pcm: kPcmPerPayload samples out.
+    virtual void decode(const uint8_t* packed, Profile p, int16_t* pcm) = 0;
+};
+struct SlotCodec {
+    const char* name = nullptr;
+    SlotVoiceEncoder* (*makeEncoder)() = nullptr;   // new'ed, the caller deletes it
+    SlotVoiceDecoder* (*makeDecoder)() = nullptr;
+    bool (*supports)(Profile) = nullptr;            // the voice profiles the codec offers
+};
+void registerSlotCodec(const SlotCodec& c);         // kaal_v4.cpp; the last registration wins
+const SlotCodec* slotCodec();                       // nullptr while none is registered
+
 }  // namespace dect2::kaal::v4

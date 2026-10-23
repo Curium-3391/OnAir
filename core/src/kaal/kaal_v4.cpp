@@ -981,3 +981,15 @@ RxStatsV4 FrameRx::stats() const { return p_->st; }
 void FrameRx::setLogCallback(std::function<void(const std::string&)> cb) { p_->log = std::move(cb); }
 
 }  // namespace dect2::kaal::v4
+
+namespace dect2::kaal::v4 {
+namespace {
+std::mutex& codecMu() { static std::mutex m; return m; }
+SlotCodec& codecSlot() { static SlotCodec c; return c; }
+}  // namespace
+void registerSlotCodec(const SlotCodec& c) { std::lock_guard<std::mutex> lk(codecMu()); codecSlot() = c; }
+const SlotCodec* slotCodec() {
+    std::lock_guard<std::mutex> lk(codecMu());
+    return codecSlot().makeEncoder && codecSlot().makeDecoder ? &codecSlot() : nullptr;
+}
+}  // namespace dect2::kaal::v4

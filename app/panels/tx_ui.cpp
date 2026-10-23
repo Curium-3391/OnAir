@@ -185,6 +185,9 @@ TxRequest makeReq(const TxUi& s, const TxModeSpec& mode, bool carrier) {
         r.opt["kaal.powerDbm"] = s.kaalPower;
         r.opt["kaal.beacon"] = s.kaalBeacon ? 1.0 : 0.0;
         r.opt["kaal.bitrate"] = s.kaalBitrate;
+        r.opt["kaal.frame"] = s.kaalFrame;
+        r.opt["kaal.v4profile"] = s.kaalV4Profile;
+        r.opt["kaal.v4voice"] = s.kaalV4Voice;
     }
     if (std::string(mode.id) == "kavb") {
         r.opt["kavb.profile"] = s.kavbProfile;

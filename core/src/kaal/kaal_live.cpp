@@ -3,6 +3,7 @@
 #include "dect2/kaal/kaal_rx.h"
 #include "dect2/kaal/kaal_beacon.h"
 #include "dect2/kaal/kaal_tel.h"
+#include "dect2/kaal/kaal_v4.h"
 #include "dect2/audio/audioout.h"
 #include "dect2/dsp/fftutil.h"
 #include "dect2/dsp/resampler.h"
@@ -57,6 +58,17 @@ struct KaalLiveReceiver::Impl {
     float lastSample = 0;                    // for the 16 kHz to 48 kHz interpolation
     std::vector<int16_t> pcm;
     std::vector<float> stereo;
+    // frame version 4: its own receiver on the 96 kHz stream brought to 48 kHz with the full 20 kHz band (not the mixed one: it has +-4 kHz of
+    // capture itself and must not see the jumps of the v3 coarse carrier search)
+    kaal::v4::FrameRx v4rx;
+    RationalResampler r48;
+    std::vector<cf32> v48;
+    bool v4locked = false;
+    std::unique_ptr<kaal::v4::SlotVoiceDecoder> v4dec;
+    int v4play = -1;
+    std::string v4call[4];
+    uint64_t v4texts = 0;
+    std::vector<int16_t> v4pcm;
     // the last beacon
     bool beaconValid = false;
     uint64_t beacons = 0;
@@ -200,6 +212,10 @@ struct KaalLiveReceiver::Impl {
             mixed[i] = v * cf32((float)std::cos(mixPhase), (float)std::sin(mixPhase));
         }
         sinceDecision += n;
+        v48.clear();
+        r48.process(x, n, v48);
+        if (!v48.empty()) { v4rx.feed(v48.data(), v48.size()); v4drain(); }
+        if (v4locked) return;   // a v4 signal: the v3 receivers would only search
         if (!locked && sinceDecision >= 48000 && psdCount > 20) { sinceDecision = 0; coarseDecide(); }
         const cf32* p = mixed.data();
         size_t m = n;
@@ -235,11 +251,44 @@ struct KaalLiveReceiver::Impl {
         }
     }
 
+    void v4drain() {
+        v4locked = v4rx.stats().locked;
+        kaal::v4::RxSuperframe r;
+        while (v4rx.popSuperframe(r)) {
+            if (v4play < 0 || !kaal::v4::profileVoice(r.slot[v4play].profile))
+                for (int s = 0; s < kaal::v4::kSlots; s++) if (r.slot[s].ok && kaal::v4::profileVoice(r.slot[s].profile)) { v4play = s; break; }
+            if (v4play < 0) continue;
+            const kaal::v4::SlotPayload& p = r.slot[v4play];
+            if (!kaal::v4::profileVoice(p.profile)) continue;
+            if (!v4dec) { const kaal::v4::SlotCodec* c = kaal::v4::slotCodec(); if (c) v4dec.reset(c->makeDecoder()); }
+            if (!v4dec) continue;
+            v4pcm.assign(kaal::v4::kPcmPerPayload, 0);
+            v4dec->decode(p.ok ? p.bits : nullptr, p.profile, v4pcm.data());
+            if (tap) tap(v4pcm.data(), v4pcm.size());
+            play(v4pcm.data(), v4pcm.size());
+        }
+        kaal::BeaconFields f;
+        while (v4rx.pollBeacon(f)) {
+            bf = f; beaconValid = true; beacons++;
+            beaconAtSec = rate > 0 ? (double)samples / rate : 0;
+        }
+        std::string t;
+        while (v4rx.pollText(t)) { btext = t; v4texts++; }
+        int s;
+        std::string c;
+        while (v4rx.pollSlotCall(s, c)) v4call[s & 3] = c;
+    }
+
     void startStream() {
         resampling = std::fabs(rate - kWR) > 1e-6;
         if (resampling) resampling = rs.configure(rate, kWR);
         if (resampling) rs.reset();
         dec.configure(kWR, 48000.0);
+        r48.configure(kWR, 48000.0);
+        r48.reset();
+        v4rx.configure(48000.0);
+        v4locked = false; v4dec.reset(); v4play = -1; v4texts = 0;
+        for (auto& c : v4call) c.clear();
         win.resize((size_t)kN);
         for (int k = 0; k < kN; k++) win[(size_t)k] = (float)(0.5 - 0.5 * std::cos(2 * 3.141592653589793 * k / kN));
         seg.clear(); psd.assign((size_t)kN, 0.0); psdCount = 0; carrier = 0; fine = 0; finePhase = 0; decided = false; refined = false; badRestarts = 0; mixPhase = 0; dcm = cf32(0, 0); locked = false; sinceDecision = 0; wide = false;
@@ -254,6 +303,27 @@ struct KaalLiveReceiver::Impl {
         const kaal::RxStats st = vrx.stats();
         KaalTelemetry t;
         t.seq = ++seq;
+        if (v4locked) {
+            const kaal::v4::RxStatsV4 s4 = v4rx.stats();
+            t.state = 2; t.frameVersion = 4;
+            t.cfoHz = s4.cfoHz; t.symRate = kaal::v4::kRs; t.snrDb = s4.esn0Db;
+            t.audioLevel = level; level *= 0.7f;
+            t.blocksOk = s4.slotsOk; t.blocksBad = s4.slotsBad;
+            t.v4SlotsOk = s4.slotsOk; t.v4SlotsBad = s4.slotsBad; t.v4Texts = v4texts; t.v4PlaySlot = v4dec ? v4play : -1;
+            for (int i = 0; i < 4; i++) { t.v4Profile[i] = (int)s4.lastProfile[i]; t.v4Call[i] = v4call[i]; }
+            t.dataValid = s4.slotsOk > 0;
+            t.inputRate = rate;
+            t.timeSec = rate > 0 ? (double)samples / rate : 0;
+            t.beaconValid = beaconValid; t.beacons = beacons;
+            t.beaconAgeSec = beaconValid ? std::max(0.0, t.timeSec - beaconAtSec) : 0;
+            t.text = btext;
+            if (beaconValid) { t.callsign = bf.callsign; t.grid = bf.grid; t.lat = bf.lat; t.lon = bf.lon; t.powerDbm = bf.powerDbm; t.linkQuality = bf.linkQuality; }
+            std::function<void(const std::string&)> lg;
+            { std::lock_guard<std::mutex> lk(pubMu); pub = t; lg = log; }
+            if (lg && !wasLocked) lg("KAAL v4 locked");
+            wasLocked = true;
+            return;
+        }
         t.state = st.locked ? 2 : samples ? 1 : 0;
         if (st.locked && !refined && std::fabs((double)st.cfoHz) > 15.0) {
             // The coarse estimate (the spectrum edge) is good to a few hundred hertz; the receiver measures what is left to a few hertz at lock. Take it
