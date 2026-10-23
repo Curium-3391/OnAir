@@ -59,6 +59,13 @@ data class Settings(
     val freqMhz: Map<Int, Double> = emptyMap(),
     /** The radio's own settings per source kind. */
     val radio: Map<SourceKind, RadioOptions> = emptyMap(),
+    /** The USB radio of the USB source, "vid:pid:serial" (data/RadioRepository.prefOf); "" = the first one ready. */
+    val usbDevice: String = "",
+    /** The network radios (netradio/NetworkRadioList: the core's text form plus labels) and the one in use. */
+    val netRadios: String = "",
+    val netSelected: Int = 0,
+    /** mDNS discovery of network radios: off unless the user turns it on (no network scans by default). */
+    val netDiscovery: Boolean = false,
 ) {
     fun freqFor(modeIndex: Int, def: Double): Double = freqMhz[modeIndex]?.takeIf { it > 0 } ?: def
     fun radioFor(kind: Int): RadioOptions = radio[SourceKind.of(kind)] ?: RadioOptions("")
@@ -103,6 +110,11 @@ class SettingsStore(ctx: Context) {
         val mapConsent = intPreferencesKey("mapConsent")
         // new in 0.3.0: bumped when a key changes meaning, so a later migration knows what it reads
         val schema = intPreferencesKey("schema")
+        // radio access (android-usb-030)
+        val usbDevice = stringPreferencesKey("usbDevice")
+        val netRadios = stringPreferencesKey("netRadios")
+        val netSelected = intPreferencesKey("netSelected")
+        val netDiscovery = booleanPreferencesKey("netDiscovery")
         fun freq(mode: Int) = stringPreferencesKey("f.$mode")
         fun radio(kind: SourceKind) = stringPreferencesKey("radio.${kind.code}")
     }
@@ -148,6 +160,10 @@ class SettingsStore(ctx: Context) {
             mapConsent = p[K.mapConsent] ?: d.mapConsent,
             freqMhz = freqs,
             radio = radios,
+            usbDevice = p[K.usbDevice] ?: d.usbDevice,
+            netRadios = p[K.netRadios] ?: d.netRadios,
+            netSelected = p[K.netSelected] ?: d.netSelected,
+            netDiscovery = p[K.netDiscovery] ?: d.netDiscovery,
         )
     }
 
@@ -188,6 +204,10 @@ class SettingsStore(ctx: Context) {
         put(K.genSquelchDb, s.genSquelchDb, old.genSquelchDb)
         put(K.sheet, s.sheetFraction, old.sheetFraction)
         put(K.mapConsent, s.mapConsent, old.mapConsent)
+        put(K.usbDevice, s.usbDevice, old.usbDevice)
+        put(K.netRadios, s.netRadios, old.netRadios)
+        put(K.netSelected, s.netSelected, old.netSelected)
+        put(K.netDiscovery, s.netDiscovery, old.netDiscovery)
         p[K.schema] = SCHEMA
         for ((m, f) in s.freqMhz) if (old.freqMhz[m] != f) p[K.freq(m)] = f.toString()
         for ((k, r) in s.radio) if (old.radio[k] != r) p[K.radio(k)] = r.encoded

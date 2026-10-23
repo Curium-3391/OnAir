@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- USB radios: optional, so the app installs on every phone. The USB agent adds the device filter and connectedDevice. -->
+    <!-- USB radios (docs/USB.md): optional, so the app installs on every phone. Each radio gets the system's per-device permission
+         dialog (UsbManager), not a runtime permission; res/xml/usb_device_filter.xml lists the radios. -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <!-- The sound-card source records through AudioRecord, only while a session with it runs (audio/SoundCardInput.kt). -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Foreground-service types of a session with a USB radio / the sound-card input (ReceiverService.foregroundType). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- rtl_tcp (localhost or the network) and SpyServer. No storage permission: files come through the system picker. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -12,7 +19,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Its notification (Android 13+ asks; the receiver runs without it too). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Not declared yet (ui/Permissions.kt): RECORD_AUDIO for audio-input modes, ACCESS_FINE_LOCATION for direction finding. -->
+    <!-- Not declared yet (ui/Permissions.kt): ACCESS_FINE_LOCATION for direction finding. -->
 
     <application
         android:name=".OnAirApplication"
@@ -40,12 +47,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="onair" android:host="tune" />
             </intent-filter>
+            <!-- A supported radio plugged in: Android offers OnAir ("always open for this device" grants the permission for good) -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
         </activity>
 
         <service
             android:name=".service.ReceiverService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:foregroundServiceType="mediaPlayback|connectedDevice|microphone" />
 
         <!-- Sharing the log and crash log (diag/CrashLog.kt): only cache/share/ is exposed. -->
         <provider

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The USB radios OnAir drives (usb/UsbCatalog.kt, core/src/source/usb_fd.cpp usbFdKindForId; DeviceFilterTest checks they agree).
+     Used by MainActivity's USB_DEVICE_ATTACHED filter: plugging one in offers to open OnAir, with "always open OnAir for this device".
+     Ids in decimal (vendor-id / product-id), hex in the comments. SDRplay is not supported (closed API, no Android build). -->
+<resources>
+    <!-- RTL2832U: 0bda:2832, 0bda:2838 (generic, RTL-SDR Blog V3 / V4 / V4L, NooElec NESDR) -->
+    <usb-device vendor-id="3034" product-id="10290" />
+    <usb-device vendor-id="3034" product-id="10296" />
+    <!-- RTL2832U DVB-T sticks (librtlsdr's list): Terratec 0ccd:00a9 00b3 00d3 00e0 -->
+    <usb-device vendor-id="3277" product-id="169" />
+    <usb-device vendor-id="3277" product-id="179" />
+    <usb-device vendor-id="3277" product-id="211" />
+    <usb-device vendor-id="3277" product-id="224" />
+    <!-- Compro 185b:0620 0650 -->
+    <usb-device vendor-id="6235" product-id="1568" />
+    <usb-device vendor-id="6235" product-id="1616" />
+    <!-- GTek 1f4d:b803 c803 -->
+    <usb-device vendor-id="8013" product-id="47107" />
+    <usb-device vendor-id="8013" product-id="51203" />
+    <!-- Twintech 1b80:d3a4 -->
+    <usb-device vendor-id="7040" product-id="54180" />
+    <!-- Dexatek 1d19:1101 1102 1103 -->
+    <usb-device vendor-id="7449" product-id="4353" />
+    <usb-device vendor-id="7449" product-id="4354" />
+    <usb-device vendor-id="7449" product-id="4355" />
+    <!-- Genius 0458:707f -->
+    <usb-device vendor-id="1112" product-id="28799" />
+    <!-- HanfTek 15f4:0131 0133 -->
+    <usb-device vendor-id="5620" product-id="305" />
+    <usb-device vendor-id="5620" product-id="307" />
+    <!-- HackRF One / Pro 1d50:6089, Jawbreaker 1d50:604b, rad1o 1d50:cc15 -->
+    <usb-device vendor-id="7504" product-id="24713" />
+    <usb-device vendor-id="7504" product-id="24651" />
+    <usb-device vendor-id="7504" product-id="52245" />
+    <!-- Airspy R2 / Mini 1d50:60a1 -->
+    <usb-device vendor-id="7504" product-id="24737" />
+    <!-- Airspy HF+ (Dual, Discovery) 03eb:800c -->
+    <usb-device vendor-id="1003" product-id="32780" />
+</resources>

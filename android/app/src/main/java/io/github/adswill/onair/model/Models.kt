@@ -11,11 +11,18 @@ import org.json.JSONObject
 
 /** Where the IQ samples come from. [code] is the number the JNI bridge uses (enum Source in jni_onair.cpp). */
 enum class SourceKind(val code: Int) {
-    TEST_SIGNAL(0), IQ_FILE(1), RTL_TCP(2), SPYSERVER(3);
+    TEST_SIGNAL(0), IQ_FILE(1), RTL_TCP(2), SPYSERVER(3),
+    /** A radio on the phone's USB port (usb/, docs/USB.md); which one: Settings.usbDevice. */
+    USB(4),
+    /** A network radio of the list (rtl_tcp, SpyServer, KiwiSDR, TCI, ...; netradio/); which one: Settings.netSelected. */
+    NETWORK(5),
+    /** The phone's sound input (microphone, USB audio) through AudioRecord (audio/SoundCardInput.kt). */
+    SOUND_CARD(6);
 
-    /** The highest sample rate this kind of source can give, for the "needs a wider radio" note of the mode list. */
-    val maxRateHz: Double get() = when (this) { RTL_TCP -> 2.56e6; SPYSERVER -> 10e6; else -> 1e12 }
-    val isNetwork: Boolean get() = this == RTL_TCP || this == SPYSERVER
+    /** The highest sample rate this kind of source can give, for the "needs a wider radio" note of the mode list (USB and network:
+     *  the radio decides, see RadioInfo.maxRateHz). */
+    val maxRateHz: Double get() = when (this) { RTL_TCP -> 2.56e6; SPYSERVER -> 10e6; SOUND_CARD -> 48e3; else -> 1e12 }
+    val isNetwork: Boolean get() = this == RTL_TCP || this == SPYSERVER || this == NETWORK
 
     companion object {
         fun of(code: Int): SourceKind = entries.firstOrNull { it.code == code } ?: TEST_SIGNAL

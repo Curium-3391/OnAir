@@ -3,6 +3,7 @@
 #include "dect2/common/thread_name.h"
 #include "dect2/audio/audioin.h"
 #include "dect2/source/audio_if.h"
+#include "dect2/source/audio_push.h"
 #include "dect2/dsp/resampler.h"
 #include "dect2/source/source.h"
 
@@ -48,6 +49,23 @@ public:
     bool start(const TuneSettings& s, IqRing& ring, std::string& err) override {
         stop();
         cfg_ = audioIfConfigOf(s);
+        push_ = dev_.serial.rfind("push", 0) == 0;
+        if (push_) {   // the platform records and pushes the frames in (audio_push.h: Android's AudioRecord); nothing is opened here
+            if (audioPushRate() <= 0) { err = "The sound-card input is not recording (no microphone permission?)"; return false; }
+            audioPushReset();
+            live_ = true;
+            pace_ = 1.0;
+            rate_ = audioPushRate();
+            st_ = AudioIfState();
+            cfg_.rate = (int)rate_;
+            factor_ = audioOutFactor(rate_, cfg_.minOutRate);
+            baseRate_ = rate_;
+            rate_ = baseRate_ * factor_;
+            ring_ = &ring;
+            run_ = true;
+            th_ = dect2::namedThread("onair-srcaud", [this] { loop(); });
+            return true;
+        }
         in_ = std::make_unique<AudioIn>();
         AudioIn::Kind k = AudioIn::Mic;
         std::string arg = dev_.serial;
@@ -108,9 +126,12 @@ private:
         std::vector<cf32> iq(2048);
         auto t0 = Clock::now();
         uint64_t sent = 0;
-        while (run_ && in_) {
+        while (run_ && (in_ || push_)) {
             int n = 1024;
-            if (live_) {   // paced by the card's own clock: take what has been captured, wait when there is none (no zeros inserted, no frames repeated)
+            if (push_) {   // paced by the platform's recorder, like a live card
+                n = (int)audioPushRead(st.data(), 2048);
+                if (n <= 0) { std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue; }
+            } else if (live_) {   // paced by the card's own clock: take what has been captured, wait when there is none (no zeros inserted, no frames repeated)
                 n = in_->readAvailable(st.data(), 2048);
                 if (n <= 0) { std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue; }
             } else in_->read(st.data(), n);
@@ -142,6 +163,7 @@ private:
 
     DeviceInfo dev_;
     std::unique_ptr<AudioIn> in_;
+    bool push_ = false;   // frames come from audio_push.h instead of AudioIn
     IqRing* ring_ = nullptr;
     double rate_ = 48000;
     bool live_ = true;

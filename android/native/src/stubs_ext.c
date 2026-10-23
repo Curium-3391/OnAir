@@ -100,6 +100,12 @@ KEEP long hackrf_set_vga_gain(void) { return -1; }
 KEEP long hackrf_start_rx(void) { return -1; }
 KEEP long hackrf_start_rx_sweep(void) { return -1; }
 KEEP long hackrf_stop_rx(void) { return -1; }
+#ifndef ONAIR_REAL_LIBUSB
+/* libusb: replaced by the real library when native/CMakeLists.txt is given LIBUSB_SRC (android/docs/USB.md). Without it a HackRF is listed
+ * from the app's descriptor but cannot be opened (libusb_wrap_sys_device answers LIBUSB_ERROR_NOT_SUPPORTED). The two entry points the
+ * descriptor path uses (libusb_set_option, libusb_wrap_sys_device) were added by hand. */
+KEEP long libusb_set_option(void) { return -1; }
+KEEP long libusb_wrap_sys_device(void) { return -12; }   /* LIBUSB_ERROR_NOT_SUPPORTED */
 KEEP void* libusb_alloc_transfer(void) { return NULL; }
 KEEP long libusb_cancel_transfer(void) { return -1; }
 KEEP long libusb_claim_interface(void) { return -1; }
@@ -125,6 +131,7 @@ KEEP long libusb_kernel_driver_active(void) { return -1; }
 KEEP long libusb_open(void) { return -1; }
 KEEP long libusb_release_interface(void) { return -1; }
 KEEP long libusb_submit_transfer(void) { return -1; }
+#endif
 KEEP long swr_alloc_set_opts2(void) { return -1; }
 KEEP long swr_convert(void) { return -1; }
 KEEP long swr_free(void) { return -1; }

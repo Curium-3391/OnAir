@@ -1,5 +1,6 @@
 // Native driver for the Airspy R2 / Mini: the radio's own library is loaded at run time when it is installed. See native_common.h.
 #include "native_common.h"
+#include "dect2/source/usb_fd.h"   // Android: radios handed over as descriptors
 #include <algorithm>
 #include <map>
 
@@ -36,6 +37,7 @@ struct AirspyApi {
     int (DECT2_CALL* is_streaming)(airspy_device*) = nullptr;   // optional
     const char* (DECT2_CALL* error_name)(int) = nullptr;   // optional: libairspy's name of an error code
     int (DECT2_CALL* version_string_read)(airspy_device*, char*, uint8_t) = nullptr;   // optional: tells a Mini ("AirSpy MINI ...") from an R2
+    int (DECT2_CALL* open_fd)(airspy_device**, int) = nullptr;   // optional (libairspy 1.0.10+ built for Android): a descriptor the system opened
     bool ok = false;
     DynLib lib;
     AirspyApi() {
@@ -50,6 +52,11 @@ struct AirspyApi {
         lib.opt(is_streaming, "airspy_is_streaming");
         lib.opt(version_string_read, "airspy_version_string_read");
         lib.opt(error_name, "airspy_error_name");
+        lib.opt(open_fd, "airspy_open_fd");
+        if (ok && usbFdPlatform() && !open_fd) {   // Android without the descriptor entry point: it could only scan the bus, which it may not
+            fprintf(stderr, "Airspy: the bundled libairspy has no airspy_open_fd: Airspy radios are not available on this phone\n");
+            ok = false;
+        }
         if (ok) ok = init() == 0;
     }
 };
@@ -95,6 +102,13 @@ std::string airspyError(int rc) {
     std::string s = "libairspy error " + std::to_string(rc);
     if (airspy().error_name) { const char* n = airspy().error_name(rc); if (n && *n) s += std::string(" ") + n; }
     return s;
+}
+// Android (usb_fd.h): the Airspy the app handed over whose serial is `sn` (0 = the first one), opened through its descriptor. 0 or a libairspy error.
+int openFromFd(uint64_t sn, AirspyApi::airspy_device** dev) {
+    if (!airspy().open_fd) return -1;
+    for (const UsbFdRadio& r : usbFdList("airspy"))   // the USB serial string is "AIRSPY SN:<16 hex>": match on the number
+        if (!sn || usbFdAirspySerial(r.serial) == sn) return airspy().open_fd(dev, r.fd);
+    return -1;
 }
 std::string mspsText(double hz) { char b[24]; snprintf(b, sizeof b, "%g", hz / 1e6); return b; }
 void probe(uint64_t sn, AirspyApi::airspy_device* d) {
@@ -232,7 +246,8 @@ private:
                         streamed_ = reused_ = true;
                         return true;
                     }
-                const int r = serial_ ? airspy().open_sn(&dev_, serial_) : airspy().open(&dev_);
+                const int r = usbFdPlatform() ? openFromFd(serial_, &dev_)
+                                              : serial_ ? airspy().open_sn(&dev_, serial_) : airspy().open(&dev_);
                 if (r == 0 && dev_) { gOpenHandles++; return true; }
                 dev_ = nullptr;
                 // only just closed (the receiver was stopped for the scanner): give the system a moment to release the radio
@@ -293,7 +308,15 @@ void listAirspy(std::vector<DeviceInfo>& out) {
     int found = 0;
     {
         std::lock_guard<std::mutex> lk(gDevMu);
-        if (airspy().list_devices) {
+        if (usbFdPlatform()) {   // Android: the radios the app was given (no bus scan); each opened for a moment for its rates and model
+            for (const UsbFdRadio& r : usbFdList("airspy")) {
+                const uint64_t sn = usbFdAirspySerial(r.serial);
+                serials.push_back(sn);
+                AirspyApi::airspy_device* d = nullptr;
+                if (gOpenHandles == 0 && airspy().open_fd(&d, r.fd) == 0 && d) { probe(sn, d); airspy().close(d); gLastClose = SteadyClock::now(); }
+            }
+            found = (int)serials.size();
+        } else if (airspy().list_devices) {
             uint64_t sn[16] = {0};
             const int n = airspy().list_devices(sn, 16);
             found = n;

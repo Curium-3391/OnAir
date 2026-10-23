@@ -13,6 +13,10 @@
 #   CMAKE         cmake binary (else the SDK's cmake/3.31.5, else cmake on PATH)
 #   JOBS          parallel jobs (default: 4)
 #   BUILD_TYPE    Release (default) or RelWithDebInfo / Debug
+#   LIBUSB_SRC    a libusb 1.0.24+ source tree (git clone https://github.com/libusb/libusb, tag v1.0.27): builds libusb1.0.so and turns
+#                 on the HackRF (and the Airspy libraries below). Without it only the RTL-SDR works over USB (docs/USB.md).
+#   AIRSPY_SRC    airspyone_host source tree (needs LIBUSB_SRC): libairspy.so for the Airspy R2 / Mini
+#   AIRSPYHF_SRC  airspyhf source tree (needs LIBUSB_SRC): libairspyhf.so for the Airspy HF+
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"          # android/
@@ -53,10 +57,17 @@ echo "NDK:           $NDK"
 "$CM" -S "$HERE/native" -B "$B" -G "Unix Makefiles" \
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-28 -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-  -DCMAKE_MAKE_PROGRAM="$MAKE_BIN" -DONAIR_SRC="$ONAIR_SRC"
-"$CM" --build "$B" --target onair -j "$JOBS"
+  -DCMAKE_MAKE_PROGRAM="$MAKE_BIN" -DONAIR_SRC="$ONAIR_SRC" \
+  -DLIBUSB_SRC="${LIBUSB_SRC:-}" -DAIRSPY_SRC="${AIRSPY_SRC:-}" -DAIRSPYHF_SRC="${AIRSPYHF_SRC:-}"
+TARGETS=(onair)
+[ -n "${LIBUSB_SRC:-}" ] && TARGETS+=(usb1.0)
+[ -n "${LIBUSB_SRC:-}" ] && [ -n "${AIRSPY_SRC:-}" ] && TARGETS+=(airspy)
+[ -n "${LIBUSB_SRC:-}" ] && [ -n "${AIRSPYHF_SRC:-}" ] && TARGETS+=(airspyhf)
+"$CM" --build "$B" --target "${TARGETS[@]}" -j "$JOBS"
 
 OUT="$HERE/app/src/main/jniLibs/$ABI"
 mkdir -p "$OUT"
 "$STRIP" --strip-unneeded -o "$OUT/libonair.so" "$B/libonair.so"
-ls -la "$OUT/libonair.so"
+for t in "${TARGETS[@]:1}"; do "$STRIP" --strip-unneeded -o "$OUT/lib$t.so" "$B/lib$t.so"; done
+[ -n "${LIBUSB_SRC:-}" ] || rm -f "$OUT/libusb1.0.so" "$OUT/libairspy.so" "$OUT/libairspyhf.so"   # no stale USB libraries from an earlier build
+ls -la "$OUT"/*.so

@@ -116,5 +116,8 @@ normal tuning (the chip on the spectrum switches). Tap the frequency digits to t
 screen off; the notification has a Stop button. Settings > Log shows the app and core log and shares it (with the crash log, if any).
 Links `onair://tune?freq=100.5M&mode=FM%20broadcast` open the receiver there.
 
-Limits today: arm64-v8a only, minimum Android 9 (API 28), no direct USB radios yet (next: `android-usb-030`), patented voice
-codecs are not included (user-installed, see the desktop docs).
+USB radios (RTL-SDR always; HackRF and Airspy when built with `LIBUSB_SRC` etc.), network radios (rtl_tcp, SpyServer, KiwiSDR, TCI,
+SDR++ server) and the phone's sound input: [docs/USB.md](docs/USB.md). SDRplay radios cannot be used on Android.
+
+Limits today: arm64-v8a only, minimum Android 9 (API 28), patented voice codecs are not included (user-installed, see the desktop
+docs). JVM unit tests: `./gradlew testDebugUnitTest`; JNI declarations: `python3 tools/check_jni.py`.

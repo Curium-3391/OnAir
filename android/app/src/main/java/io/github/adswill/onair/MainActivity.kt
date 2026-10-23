@@ -2,6 +2,8 @@ package io.github.adswill.onair
 
 import android.content.Intent
 import android.graphics.Color as AColor
+
+import android.hardware.usb.UsbManager
 import android.os.Bundle
 import android.provider.Settings as SysSettings
 import android.view.WindowManager
@@ -22,6 +24,8 @@ import io.github.adswill.onair.ui.ReceiverViewModel
 import io.github.adswill.onair.ui.nav.DeepLink
 import kotlinx.coroutines.flow.MutableStateFlow
 
+import io.github.adswill.onair.usb.AndroidUsbBackend
+
 /**
  * The only activity: hosts the Compose UI and the system file picker. It owns no receiver state (that is in ReceiverRepository,
  * reached through [ReceiverViewModel]), so a rotation or a re-create changes nothing; the receive session itself lives in
@@ -39,6 +43,8 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) takeLink(intent)
+
+        if (savedInstanceState == null) usbAttached(intent)
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             val ui by vm.ui.collectAsStateWithLifecycle()
@@ -77,6 +83,17 @@ class MainActivity : ComponentActivity() {
     private fun systemAnimationsOff(): Boolean = try {
         SysSettings.Global.getFloat(contentResolver, SysSettings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     } catch (_: Exception) { false }
+
+
+        usbAttached(intent)
+    }
+
+    /** Opened by the USB_DEVICE_ATTACHED filter (a radio plugged in, the user picked OnAir): hand the device to the radio layer. */
+    private fun usbAttached(i: Intent?) {
+        if (i?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        val d = AndroidUsbBackend.deviceOf(i) ?: return
+        AppGraph.repository.radios.onAttachIntent(AndroidUsbBackend.ref(d))
+    }
 
     override fun onStart() { super.onStart(); vm.setUiVisible(true) }
     override fun onStop() { vm.setUiVisible(false); super.onStop() }
