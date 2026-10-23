@@ -1,4 +1,4 @@
-# OnAir 3.0 (draft, not released)
+# OnAir 3.0
 
 3.0 comes after 0.2.9. The next versions are 3.1, 3.2 and so on. This text is built from the project notes (docs/PATHWAY.md), the git history and the status tables of the work branches. Generated 2026-10-23 from pub/integ-30-final by tools/release/gen_changelog.py.
 

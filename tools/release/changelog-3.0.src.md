@@ -7,7 +7,7 @@ Rules
 - Placeholders: {{MODE_COUNT}} {{NEW_MODE_COUNT}} {{NEW_MODES}} {{ISSUES}} {{CONTRIBUTORS}} {{GENERATED}}
 - Issue lines: "- #n | status | text [[branches]]"; status = fixed | added | partly | answered | needs sample
 -->
-# OnAir 3.0 (draft, not released)
+# OnAir 3.0
 
 3.0 comes after 0.2.9. The next versions are 3.1, 3.2 and so on. This text is built from the project notes (docs/PATHWAY.md), the git history and the status tables of the work branches. {{GENERATED}}
 
