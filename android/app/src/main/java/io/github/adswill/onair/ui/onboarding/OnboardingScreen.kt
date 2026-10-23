@@ -68,7 +68,7 @@ private const val STEPS = 5
 
 /**
  * The first-run guide, mirroring the desktop's setup wizard (app/ui/wizard.cpp): welcome, which radio (with the permissions it
- * needs and the add-network-radio dialog), what to receive (becomes favourites and the start mode), the lessons (data/lessons/*.json,
+ * needs and the add-network-radio dialog), what to receive (becomes favourites and the start mode), the lessons (data/lessons/NAME.json,
  * when the build has any) and "all set". Every step can be skipped; Settings > Run the setup again brings it back.
  */
 @Composable
