@@ -353,7 +353,8 @@ struct HrptReceiver::Impl {
         spsEst += ki * eTn;
         spsEst = std::clamp(spsEst, sps * 0.995, sps * 1.005);
         nSym++;
-        if (nSym == (int64_t)(rs * 0.002)) loopGains(0.008);
+        // the narrow carrier loop: 0.002 (was 0.008); MetOp AHRPT now decodes every frame at 2.5 dB Es/N0 (was ~4 dB)
+        if (nSym == (int64_t)(rs * 0.002)) loopGains(0.002);
         const float r2 = In * In + Qn * Qn;
         if (bpsk) {
             lockAvg += 0.002f * (In * In - Qn * Qn) / std::max(r2, 1e-6f) - 0.002f * lockAvg;

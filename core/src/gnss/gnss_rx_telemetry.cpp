@@ -201,7 +201,7 @@ void GnssReceiver::Impl::telSearchAndStatus(GnssTelemetry& t, double signalNow, 
         t.acqSys = gpsAcq.lastPrn() > 0 ? l1caSystem(gpsAcq.lastPrn()) : GnssGps; t.acqPrn = gpsAcq.lastPrn(); t.acqDopplerHz = (float)gpsAcq.lastDoppler(); t.acqPeakToNoise = gpsAcq.lastRatio();
         t.acqCorr = gpsAcq.lastCorr(); t.acqPeakIndex = gpsAcq.lastPeakIndex();
         t.searchCenterHz = (float)gpsAcq.windowCenterHz(); t.searchHalfHz = (float)gpsAcq.windowHalfHz(); t.searchMs = gpsAcq.blocksNow();
-        t.searchStage = t.nTracked > 0 ? 0 : stage;
+        t.searchStage = t.nTracked > 0 ? 0 : stageOrder(stage);
     } else if (bdsActive) {
         t.searchSys = GnssBeidou; t.searchPrn = bdsAcq.currentPrn();
         t.searchProgress = bdsAcq.progress(); t.searchRounds = bdsAcq.rounds();

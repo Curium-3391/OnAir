@@ -2,10 +2,12 @@
 //   gnsstool gen <file.cs8|.cf32> <seconds> [options]     write the simulated sky (8 bit signed pairs, or 32 bit float pairs)
 //   gnsstool rx <file> --rate <Hz> [--format cs8|cu8|cf32] [--center <MHz>] [--secs <s>] [--quiet]   run the receiver over a recording
 //   gnsstool run <seconds> [options]                        generator straight into the receiver (no file)
+// rx and run: --rinex <file.obs> writes the measurements as RINEX 3.04 observations (code, Doppler, C/N0) for RTKLIB and similar tools
 // Generator options: --rate Hz (default 4e6)  --cn0 dBHz (zenith, default 44)  --cfo Hz  --sro ppm  --sats N  --cold (start 13 s into the frame)
 //   --seed N  --lat deg --lon deg --height m  --jammer  --dc X  --noise X (rms per component, default 0.14)
 //   --systems M (simulated systems, gnssSystemBit mask: 1 GPS, 2 GLONASS, 4 BeiDou, 8 Galileo, 16 QZSS, 32 SBAS; default 1)  --center MHz (the tune, default 1575.42)  --rxsys M (systems the receiver looks for, default all)
 // The simulated satellites are synthetic (see docs/modes/gnss.md): nothing here is a real signal.
+#include "dect2/gnss/gnss_rinex.h"
 #include "dect2/gnss/gnss_rx.h"
 #include "dect2/gnss/gnss_sim.h"
 #include <chrono>
@@ -26,6 +28,7 @@ struct Opt {
     unsigned rxSystems = 0;        // what the receiver looks for (0 = all it supports)
     bool cold = false, jammer = false, quiet = false;
     std::string format = "cs8";
+    std::string rinex;             // --rinex: the observation file to write
 };
 
 static GnssSimConfig simConfig(const Opt& o) {
@@ -60,6 +63,7 @@ static bool parseOpts(int argc, char** argv, int from, Opt& o) {
         else if (a == "--jammer") o.jammer = true;
         else if (a == "--quiet") o.quiet = true;
         else if (a == "--format" && i + 1 < argc) o.format = argv[++i];
+        else if (a == "--rinex" && i + 1 < argc) o.rinex = argv[++i];
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return false; }
     }
     return true;
@@ -86,9 +90,44 @@ static void printFix(const GnssTelemetry& t) {
     printf("  first fix after %.1f s of signal, %u fixes, receiver clock error %.1f m (%.1f ns)\n", f.firstFixSecs, f.fixCount, f.clockBiasM[0], f.clockBiasM[0] / 0.299792458);
 }
 
+// the measurements of a run, written as RINEX at the end (the header needs the week and the systems, known only then)
+struct RinexOut {
+    std::vector<std::vector<GnssMeasurement>> epochs;
+    void attach(GnssReceiver& rx, const Opt& o) { if (!o.rinex.empty()) rx.setMeasurementCallback([this](const std::vector<GnssMeasurement>& m) { if (!m.empty()) epochs.push_back(m); }); }
+    void write(const Opt& o, const GnssTelemetry& t, const GnssReceiver& rx) const {
+        if (o.rinex.empty()) return;
+        GnssRinexInfo info;
+        info.gpsWeek = t.fix.timeValid ? t.fix.gpsWeek : 0;
+        if (t.fix.valid) for (int k = 0; k < 3; k++) info.approxEcef[k] = t.fix.ecef[k];
+        if (!t.fix.timeValid) fprintf(stderr, "rinex: no GPS week decoded, the dates are of week 0\n");
+        GnssRinexWriter w(info);
+        std::string body;
+        for (const auto& e : epochs) body += w.epoch(e);
+        FILE* f = fopen(o.rinex.c_str(), "w");
+        if (!f) { fprintf(stderr, "cannot write %s\n", o.rinex.c_str()); return; }
+        const std::string h = w.header();
+        fwrite(h.data(), 1, h.size(), f); fwrite(body.data(), 1, body.size(), f);
+        fclose(f);
+        printf("rinex: %d epochs written to %s\n", w.epochs(), o.rinex.c_str());
+        // the GPS ephemerides next to it: <name>.nav
+        std::string nav = o.rinex;
+        const size_t dot = nav.rfind('.');
+        nav = (dot != std::string::npos && nav.find('/', dot) == std::string::npos ? nav.substr(0, dot) : nav) + ".nav";
+        std::string nb = gnssRinexNavHeader("OnAir");
+        int n = 0;
+        for (int prn = 1; prn <= 32; prn++) {
+            GpsEphemeris e; int wk = 0;
+            if (rx.getEphemeris(prn, e, &wk) && e.complete()) { nb += gnssRinexNavGps(e, wk); n++; }
+        }
+        if (FILE* g = fopen(nav.c_str(), "w")) { fwrite(nb.data(), 1, nb.size(), g); fclose(g); printf("rinex: %d GPS ephemerides written to %s\n", n, nav.c_str()); }
+    }
+};
+
 static int cmdRun(const Opt& o, double secs, bool toFile, FILE* fo, bool cs8) {
     GnssSim sim(simConfig(o), o.rate);
     GnssReceiver rx;
+    RinexOut ro;
+    if (!toFile) ro.attach(rx, o);
     if (!toFile) { rx.configure(o.rate); rx.setCenterMhz(o.center); if (o.rxSystems) rx.setSystems(o.rxSystems); rx.setLogCallback([](const std::string& s) { printf("    [log] %s\n", s.c_str()); }); }
     const size_t block = 65536;
     std::vector<cf32> buf(block);
@@ -127,6 +166,7 @@ static int cmdRun(const Opt& o, double secs, bool toFile, FILE* fo, bool cs8) {
     if (!toFile) {
         printTable(t);
         printFix(t);
+        ro.write(o, t, rx);
         printf("receiver: %.2f s of CPU for %.1f s of signal at %.3f Msps: %.1fx real time; acquisition FFTs %llu\n", cpuRx, secs, o.rate / 1e6, secs / cpuRx, (unsigned long long)rx.workUnitsUsed());
         double cf, ct, ca;
         rx.cpuBreakdown(&cf, &ct, &ca);
@@ -149,6 +189,8 @@ static int cmdRx(const std::string& path, const Opt& o) {
     rx.setCenterMhz(o.center);
     if (o.rxSystems) rx.setSystems(o.rxSystems);
     rx.setLogCallback([](const std::string& s) { printf("    [log] %s\n", s.c_str()); });
+    RinexOut ro;
+    ro.attach(rx, o);
     const size_t block = 65536;
     std::vector<cf32> buf(block);
     std::vector<uint8_t> raw(block * 8);
@@ -172,6 +214,7 @@ static int cmdRx(const std::string& path, const Opt& o) {
     fclose(f);
     printTable(t);
     printFix(t);
+    ro.write(o, t, rx);
     return 0;
 }
 

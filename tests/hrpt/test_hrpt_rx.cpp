@@ -11,6 +11,7 @@
 #include <ctime>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <random>
 using namespace dect2;
 #include "../common/test_util.h"
@@ -64,10 +65,20 @@ static void run(const Case& k) {
 }
 
 int main() {
+    if (const char* e = getenv("HRPT_SWEEP")) {   // HRPT_SWEEP="6,4,3": MetOp at these Es/N0 for a measurement (the checks print, nothing more)
+        for (const char* p = e; *p;) {
+            const double snr = atof(p);
+            char name[64]; snprintf(name, sizeof name, "MetOp, 8 Msps, Es/N0 %.1f dB, +30 kHz", snr);
+            run({name, 1, 8e6, snr, 30e3, 10, 0, 0, getenv("HRPT_SECS") ? atof(getenv("HRPT_SECS")) : 1.5, false, 0});
+            while (*p && *p != ',') p++; if (*p) p++;
+        }
+        return 0;
+    }
     // MetOp AHRPT
     run({"MetOp, 8 Msps, Es/N0 14 dB, +30 kHz, 40 ppm", 1, 8e6, 14, 30e3, 40, 0, 0, 0.7, false, 5});
     run({"MetOp, 8 Msps, Es/N0 10 dB, -45 kHz, carrier phase 200 deg", 1, 8e6, 10, -45e3, -30, 200, 0, 0.7, false, 5});
     run({"MetOp, 8 Msps, Es/N0 12 dB, +10 kHz and a Doppler ramp of -400 Hz/s", 1, 8e6, 12, 10e3, 0, 100, -400, 0.8, false, 5});
+    run({"MetOp, 8 Msps, Es/N0 2.5 dB, +30 kHz (the threshold; ~4 dB before 2026-10)", 1, 8e6, 2.5, 30e3, 10, 0, 0, 1.5, false, 5});
     run({"MetOp, 5 Msps, Es/N0 12 dB, +20 kHz", 1, 5e6, 12, 20e3, 0, 300, 0, 0.7, false, 5});
     run({"MetOp, 10 Msps, on the dial (the app's test signal), no noise", 1, 10e6, 99, 0, 0, 0, 0, 0.6, false, 5});
     // FY-3 AHRPT: frames only
