@@ -74,12 +74,14 @@ struct TxService {
     int bitrate = 48;                   // kbit/s of the sub-channel (a multiple of 8; DMB: a multiple of 136, see dmbService)
     bool dabPlus = true;                // DAB+ (AAC-LC) or DAB (MPEG-1 Layer II)
     bool dmb = false;                   // a DMB video service instead of audio (TS 102 428 profile 2: H.264 and AAC; dab_gen_dmb.cpp)
-    int sampleRate = 48000;             // DAB+: 48000 or 32000; DAB: 48000
+    int sampleRate = 48000;             // DAB+: 48000 or 32000; DAB: 48000 (or 24000, MPEG-2 half sampling rate)
+    int channels = 2;                   // DAB (MP2): 1 = mono (left tone only), 2 = stereo
     double leftHz = 1000, rightHz = 3000;   // the tones (periods that divide the frame length)
     bool slide = false;                 // DAB+: a slide show picture (a small PNG) in the PAD, once per 12 s loop
     bool melody = false;                // a tune instead of the tones (12 s, left: the tune, right: the same an octave higher)
     double amplitude = 0.5;             // peak of every channel, 1.0 = full scale
     int option = 0, level = 2;          // EEP-3A
+    bool ca = false;                    // signal conditional access (FIG 0/2 CAId 1 and the component's CA flag); the audio itself stays clear
     int uepIndex = -1;                  // 0..63: UEP (short form, table 6 of EN 300 401) instead of EEP; bitrate must be the table's
 };
 struct TxConfig {

@@ -17,6 +17,7 @@ struct AisPhyConfig {
     double chanPassHz = 7500, chanStopHz = 15000;   // the channel filter ahead of the discriminator (read by the receiver when it is configured)
     double narrowPassHz = 3500, narrowStopHz = 8500;   // the second, narrower filter that is applied to a burst after its own frequency is known (0 = off)
     bool mlse = true;           // when the hard decisions fail, a Viterbi search over the Gaussian pulse's intersymbol interference
+    bool coherent = true;       // when that fails too, coherent detection (phase at the bit boundaries, four-state Viterbi) guided by those levels
     int mode = 0;               // 0 integrate and dump
 };
 

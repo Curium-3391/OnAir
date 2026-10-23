@@ -56,6 +56,33 @@ code, transport (object carousel or HTTP URL base) and initial path; SCTE-35 cue
 **Multicast media** in the IP view: SAP announcements with their SDP (session names, media, codecs), RTP streams (payload type, codec, loss, rate) and MPEG-TS in UDP or RTP, each
 analysed by a TS demultiplexer (services found, scrambling noted). Audio and video are not decoded here.
 
+## Error correction near the threshold (3.0)
+
+The DVB-S2/S2X LDPC decoder is layered min-sum with the two-minimum box-plus correction (`LdpcCode::decodeFast(..., boxCorr)`): every edge except the one holding the smallest input gets the box-plus of the two smallest inputs instead of the smallest alone. That brings min-sum closer to belief propagation and cuts the iterations. The normalisation factor (`s2LdpcAlpha(mod, rate, short)`) is measured per MODCOD, all 55 S2X ones included. Before, it was set per code rate, and that cost 0.1 to 0.5 dB.
+
+The 8-bit decoder takes the same factor. 32APSK and up stay on the float decoder: the 8-bit range clips their weak bits. Metal and Direct3D 11 run the same rule. The Vulkan kernel still runs plain min-sum, and the CPU retry of the frames it fails gives the same answer. VL-SNR uses the corrected decoder too: BPSK 1/5 SF2 now decodes 0.3 dB below table 20.
+
+Measured through the whole receiver at 1 Msym/s, 2 Msps, 8-bit samples, 5 s per point. The threshold is the lowest Es/N0 from which every higher point has FER ≤ 15%, given relative to table 13:
+
+| MODCOD | before | after |
+|---|---|---|
+| QPSK 1/4 | +0.1 | −0.3 |
+| QPSK 1/2 | +0.2 | −0.1 |
+| QPSK 3/5 | +0.5 | ≤ 0.0 |
+| 8PSK 3/5 pilots | +0.3 | ≤ 0.0 |
+| 8PSK 2/3 pilots | −0.1 | −0.2 |
+| 32APSK 4/5 pilots | +0.2 | ≤ 0.0 |
+| QPSK 3/5 short | +0.3 | ≤ 0.0 |
+
+Two acquisition changes go with it:
+
+- The second header of the frequency fix is now looked for 8 symbols either side of where it is expected, because the symbol clock may slip while it settles.
+- A lock whose headers decode but whose first 16 frames all fail searches again, up to 3 times. The cause is a carrier frequency a whole number of cycles per frame off, which the headers cannot see.
+
+Before these changes, QPSK 1/4 at the table 13 value and 8PSK 2/3 0.2 dB below it lost the whole recording.
+
+`tests/dvbs/test_dvbs_s2fec.cpp` checks QPSK 3/5, 8PSK 3/5, 32APSK 4/5, short QPSK 3/5 and S2X 8PSK 23/36 0.15 dB above the table on an ideal channel (12 frames each).
+
 ## Credits
 
 The GSE, IP and MPE code is adapted from DecSAT by Arclamp (CasualArclamp, GPL-3.0-or-later; https://github.com/CasualArclamp/DecSAT), crates `decsat-gse` and `decsat-ip`, rewritten in

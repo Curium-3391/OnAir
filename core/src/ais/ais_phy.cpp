@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
+#include "dect2/dsp/fftutil.h"
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -74,6 +76,99 @@ void mlseBits(const std::vector<double>& y, double al, double be, ais::Bits& out
     }
 }
 
+
+// Coherent detection. GMSK with modulation index 0.5 turns the carrier by +-90 degrees per bit, so at the boundaries between bits the phase is
+// theta + 90 degrees * S, S being the running sum of the line levels (+-1) modulo 4. A half-sine window two bits wide centred on each boundary
+// collects the signal there; along a phase reference taken from the guide's levels (32 bits around each boundary, after a fine frequency search
+// over the whole burst by FFT) a four-state Viterbi over S finds the levels. The frequency discriminator's noise (the clicks near the threshold) is
+// gone, which is worth about 2 dB. `guide` holds line levels for the bits of the slice (bit i at tau + 5 (first + i)).
+static bool coherentTry(const cf32* x, size_t n, double tau, int first, const ais::Bits& guide, double off, ais::HdlcResult& out, Fft& fft,
+                        std::vector<cf32>& fbuf, ais::Bits* levels = nullptr, double* offOut = nullptr) {
+    const size_t K = guide.size();
+    if (K < 40) return false;
+    // boundary j sits before bit j: t = tau + 5 (first + j) - 2.5, j = 0 .. K
+    const size_t J = K + 1;
+    std::vector<std::complex<double>> z(J);
+    auto sampleAt = [&](double t) -> std::complex<double> {
+        if (t < 0 || t > (double)n - 1.001) return 0.0;
+        const size_t i = (size_t)t;
+        const double f = t - (double)i;
+        const cf32 v = x[i] * (float)(1 - f) + x[i + 1] * (float)f;
+        return std::polar(1.0, -off * t) * std::complex<double>(v.real(), v.imag());
+    };
+    for (size_t j = 0; j < J; j++) {
+        const double tb = tau + kAisSps * ((double)first + (double)j) - 2.5;
+        std::complex<double> acc = 0;
+        for (int d = -4; d <= 4; d++) acc += std::cos(kPi * d / 10.0) * sampleAt(tb + d);   // half sine over two bits (10 samples)
+        z[j] = acc;
+    }
+    // the guide's phase steps: S_j = sum of the levels before boundary j
+    std::vector<int> Sg(J, 0);
+    for (size_t j = 1; j < J; j++) Sg[j] = (Sg[j - 1] + (guide[j - 1] ? 1 : 3)) & 3;
+    static const std::complex<double> jpow[4] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+    std::vector<std::complex<double>> v(J);
+    for (size_t j = 0; j < J; j++) v[j] = z[j] * std::conj(jpow[Sg[j]]);
+    // fine frequency: the turn per bit that lines the boundaries up, within +-0.4 rad per bit (+-600 Hz)
+    {
+        const int N = fft.size();
+        fbuf.assign((size_t)N, cf32(0, 0));
+        for (size_t j = 0; j < J && (int)j < N; j++) fbuf[j] = cf32((float)v[j].real(), (float)v[j].imag());
+        fft.forward(fbuf.data());
+        const int Kb = (int)std::ceil(0.4 * N / (2 * kPi));
+        auto at = [&](int k) { return (double)std::norm(fbuf[(size_t)((k + N) % N)]); };
+        int bi = 0; double best = -1;
+        for (int k = -Kb; k <= Kb; k++) { const double e = at(k); if (e > best) { best = e; bi = k; } }
+        double kf = bi;
+        const double y0 = at(bi - 1), y1 = at(bi), y2 = at(bi + 1), den = y0 - 2 * y1 + y2;
+        if (den < 0) kf += 0.5 * (y0 - y2) / den;
+        double w = 2 * kPi * kf / N;
+        auto pw = [&](double ww) { std::complex<double> s(0, 0); for (size_t j = 0; j < J; j++) s += v[j] * std::polar(1.0, -ww * (double)j); return std::norm(s); };
+        if (pw(-w) > pw(w)) w = -w;                       // whichever sign convention the FFT has
+        for (size_t j = 0; j < J; j++) { const std::complex<double> r = std::polar(1.0, -w * (double)j); z[j] *= r; v[j] *= r; }
+        if (offOut) *offOut = off + w / kAisSps;   // the burst's frequency, better than the discriminator's (which another burst on top can pull)
+    }
+    // phase reference per boundary: the guide-corrected samples of 32 boundaries around it, itself left out
+    std::vector<std::complex<double>> ref(J);
+    {
+        const int H = 16;
+        std::complex<double> win = 0;
+        size_t lo = 0, hi = 0;
+        for (size_t j = 0; j < J; j++) {
+            const size_t wl = j > (size_t)H ? j - H : 0, wh = std::min(J, j + H + 1);
+            while (hi < wh) win += v[hi++];
+            while (lo < wl) win -= v[lo++];
+            const std::complex<double> r = win - v[j];
+            const double m = std::abs(r);
+            ref[j] = m > 0 ? std::conj(r) / m : std::complex<double>(0, 0);
+        }
+    }
+    // Viterbi over S (mod 4): a level of +1 is S + 1, -1 is S - 1
+    std::vector<std::array<uint8_t, 4>> back(J);
+    double cost[4], nc[4];
+    for (int st = 0; st < 4; st++) cost[st] = (z[0] * ref[0] * std::conj(jpow[st])).real();
+    for (size_t j = 1; j < J; j++) {
+        for (int st = 0; st < 4; st++) nc[st] = -1e300;
+        for (int st = 0; st < 4; st++) for (int up = 0; up < 2; up++) {
+            const int to = (st + (up ? 1 : 3)) & 3;
+            const double c = cost[st] + (z[j] * ref[j] * std::conj(jpow[to])).real();
+            if (c > nc[to]) { nc[to] = c; back[j][to] = (uint8_t)st; }
+        }
+        for (int st = 0; st < 4; st++) cost[st] = nc[st];
+    }
+    int st = 0;
+    for (int i = 1; i < 4; i++) if (cost[i] > cost[st]) st = i;
+    ais::Bits line(K);
+    for (size_t j = J - 1; j > 0; j--) {
+        const int pr = back[j][st];
+        line[j - 1] = (uint8_t)(((st - pr) & 3) == 1);
+        st = pr;
+    }
+    const ais::Bits dec = ais::nrziDecode(line, line.empty() ? 1 : line[0]);
+    out = ais::hdlcFrames(dec);
+    if (levels) *levels = std::move(line);
+    return !out.good.empty();
+}
+
 } // namespace
 
 static AisBurstResult decodeOnce(const cf32* x, size_t n, size_t core0, size_t core1, const AisPhyConfig& cfg) {
@@ -136,6 +231,7 @@ static AisBurstResult decodeOnce(const cf32* x, size_t n, size_t core0, size_t c
         for (size_t i = 0; i < s.m.size(); i++) line[i] = s.m[i] > 0;
         const ais::Bits dec = ais::nrziDecode(line, line.empty() ? 1 : line[0]);
         ais::HdlcResult r = ais::hdlcFrames(dec);
+        ais::Bits guideBits = line;
         if (r.good.empty() && cfg.mlse && s.m.size() > 40) {
             // fit alpha and beta to the hard decisions inside the burst, then search for the best sequence
             std::vector<double> y(s.m.size());
@@ -158,9 +254,20 @@ static AisBurstResult decodeOnce(const cf32* x, size_t n, size_t core0, size_t c
                 const ais::Bits d2 = ais::nrziDecode(ml, ml.empty() ? 1 : ml[0]);
                 ais::HdlcResult r2 = ais::hdlcFrames(d2);
                 if (!r2.good.empty()) { r = std::move(r2); break; }
+                guideBits = ml;
                 if (ml == cur) break;
                 cur = ml;
             }
+        }
+        if (r.good.empty() && cfg.coherent && s.m.size() > 40) {
+            // coherent detection, guided by the levels found so far (the sequence search's when it ran, the hard decisions otherwise)
+            static thread_local Fft fft(1024);
+            static thread_local std::vector<cf32> fbuf;
+            ais::HdlcResult rc;
+            ais::Bits lv;
+            double offC = off;
+            if (coherentTry(x, n, tau, s.first, guideBits, off, rc, fft, fbuf, &lv, &offC)) { r = std::move(rc); off = offC; }
+            else if (lv != guideBits && coherentTry(x, n, tau, s.first, lv, off, rc, fft, fbuf, nullptr, &offC)) { r = std::move(rc); off = offC; }   // again, guided by its own levels
         }
         if (h == 0) res.bad = r.bad;
         if (!r.good.empty()) {

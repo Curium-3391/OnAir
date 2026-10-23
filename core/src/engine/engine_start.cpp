@@ -34,6 +34,7 @@ namespace dect2 {
 bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOptions& file) {
     std::lock_guard<std::recursive_mutex> ctl(engineControlMutex());
     stop();
+    cpuAccounts();   // the receiver's CPU accounts (its number may have changed since the last start)
     noTuneOffset_ = dev.kind == DeviceInfo::Audio;   // a sound card has no radio to tune off the DC spike: the signal is where the IF centre puts it (0 Hz)
     ring_.clear();
     ring_.resetDropped();
