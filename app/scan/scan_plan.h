@@ -23,7 +23,7 @@ struct Row {
     long long lastHit = 0;                  // unix time, 0: never
 };
 
-enum class Scope { All, Group, Range, Starred };
+enum class Scope { All, Group, Range, Starred, Fast };   // Fast: the FFT fast scan (fast_scan_ui.cpp) has its own list; no memory row is stepped through
 struct Params {
     Scope scope = Scope::All;
     std::string group;                      // Scope::Group
@@ -41,6 +41,7 @@ inline bool inScope(const Row& r, const Params& p) {
     case Scope::Group: return r.group == p.group;
     case Scope::Range: return r.mhz >= p.loMhz - 1e-9 && r.mhz <= p.hiMhz + 1e-9;
     case Scope::Starred: return r.star;
+    case Scope::Fast: return false;
     }
     return false;
 }
