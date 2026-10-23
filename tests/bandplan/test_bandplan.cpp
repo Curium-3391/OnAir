@@ -81,7 +81,12 @@ int main() {
       CHECK(h60 && nearBy(h60->startHz, 5351.5e3) && nearBy(h60->endHz, 5366.5e3), "Brazil 60 m is 5351.5-5366.5 kHz");
       const Band* h33 = B(p, "ham", "33 cm"); const Band* h33u = B(p, "ham", "33 cm (upper)");
       CHECK(h33 && h33u && nearBy(h33->endHz, 907.5e6) && nearBy(h33u->startHz, 915e6) && !h33->contains(910e6) && !h33u->contains(910e6), "Brazil 33 cm skips 907.5-915 MHz");
-      CHECK(B(p, "ham", "2200 m") && B(p, "ham", "630 m") && B(p, "ham", "1.25 m"), "Brazil has the 2200 m, 630 m and 1.25 m bands"); }
+      CHECK(B(p, "ham", "2200 m") && B(p, "ham", "630 m") && B(p, "ham", "1.25 m"), "Brazil has the 2200 m, 630 m and 1.25 m bands");
+      // FM numbering of the Anatel PBFM: channel n at 87.9 + (n - 200) x 0.2 MHz, eFM 141-197, RadCom 198-200, FM 201-300
+      const Band* fm = B(p, "fm", "FM broadcast"); const Band* rc = B(p, "fm", "FM community (RadCom)"); const Band* ef = B(p, "fm", "FM extended (eFM)");
+      ch(fm, 201, 88.1e6, "br fm"); ch(fm, 300, 107.9e6, "br fm"); ch(rc, 198, 87.5e6, "br radcom"); ch(rc, 200, 87.9e6, "br radcom"); ch(ef, 141, 76.1e6, "br efm"); ch(ef, 196, 87.1e6, "br efm"); ch(ef, 197, 87.3e6, "br efm");
+      CHECK(fm && rc && ef && fm->count() == 100 && rc->count() == 3 && ef->count() == 57, "Brazil FM has 100 + 3 + 57 channels");
+      CHECK(p->firstBand("fm") == fm, "the first Brazilian FM band is 88-108 MHz (the listen wizard starts there)"); }
     { const Plan* p = P(reg, "au");
       const Band* v = B(p, "tv", "VHF TV");
       Channel c;
