@@ -46,7 +46,11 @@ public:
     void setFrameCallback(std::function<void(const AdsbFrame&)> cb);
     void setThresholds(float pulseOverNoise, float pulseOverGap);   // preamble test, normally 3.0 and 2.0
     void setDetector(float sum, float minPulse, float data, float worthDb);   // test knob: AdsbDemod::setDetector
-    void setCoherent(bool on);                                                  // test knob: AdsbDemod::setCoherent
+    void setCoherent(bool on);
+    // How much extra decoding the weak candidates get: -1 automatic (default: all passes, fewer when feed() takes more than half of the signal's
+    // duration, back when it drops below a quarter), or 2 / 1 / 0 fixed (AdsbDemod::setEffort)
+    void setEffort(int e);
+    int effort() const;                                                  // test knob: AdsbDemod::setCoherent
 
 private:
     struct Impl;

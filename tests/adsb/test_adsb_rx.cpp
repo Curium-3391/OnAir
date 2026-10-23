@@ -37,6 +37,7 @@ static std::atomic<int> fails{0};
 // ADSB_DET=sum,minPulse,data,worthDb: the preamble detector for a comparison run (ADSB_DET=0: the older test)
 static void testDet(AdsbReceiver& rx) {
     if (getenv("ADSB_COH")) rx.setCoherent(atoi(getenv("ADSB_COH")) != 0);
+    if (getenv("ADSB_EFFORT")) rx.setEffort(atoi(getenv("ADSB_EFFORT")));
     if (!getenv("ADSB_DET")) return;
     float a = 4, b = 0, c = 1.8f, w = 5;
     sscanf(getenv("ADSB_DET"), "%f,%f,%f,%f", &a, &b, &c, &w);
@@ -707,6 +708,7 @@ static void testBer(double rate, double snr, int n) {
     std::vector<int> nth(tx.size(), 0), errAt[3];
     for (auto& v : errAt) v.assign(tx.size(), -1);
     uint64_t slices = 0;
+    double tSum = 0, tSum2 = 0; int tN = 0;   // time stamp error of the good frames
     d.setSink([&](AdsbRaw& r, bool) {
         slices++;
         // the nearest sent frame within 1 us
@@ -725,7 +727,7 @@ static void testBer(double rate, double snr, int n) {
         }
         nth[lo]++;
         bestErr[lo] = std::min(bestErr[lo], e);
-        if (e == 0) { got[lo] = 1; return true; }
+        if (e == 0) { got[lo] = 1; const double dt = r.timeSec - tx[lo].t; tSum += dt; tSum2 += dt * dt; tN++; return true; }
         return false;
     });
     const size_t total = (size_t)((n * 1e-3 + 0.01) * rate);
@@ -746,6 +748,7 @@ static void testBer(double rate, double snr, int n) {
     }
     jprintf("%.1f Msps %.1f dB: %zu frames, no preamble %d; first slice errors 0/1/2/3/4+: %d %d %d %d %d; best slice: %d %d %d %d %d; good %d\n", rate / 1e6, snr, tx.size(), nopre,
             h1[0], h1[1], h1[2], h1[3], h1[4], hb[0], hb[1], hb[2], hb[3], hb[4], ok);
+    if (tN > 1) { const double m = tSum / tN; jprintf("  time stamps: mean %+.1f ns, spread %.1f ns rms (MLAT needs about 50 to 100 ns)\n", m * 1e9, std::sqrt(std::max(0.0, tSum2 / tN - m * m)) * 1e9); }
     jprintf("  coarse candidates %llu, preambles %llu, data rejects %llu, slices %llu\n", (unsigned long long)d.candidates(), (unsigned long long)d.preambles(),
             (unsigned long long)d.dataRejects(), (unsigned long long)slices);
     for (int q = 0; q < 3; q++) {
@@ -765,6 +768,7 @@ static void testStress(double rate, double snr, double seconds, int aircraft) {
     const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     size_t alone = 0, aloneGot = 0, over = 0, overGot = 0;
     for (auto& f : r.sent) { if (f.overlapped) { over++; overGot += f.decoded; } else { alone++; aloneGot += f.decoded; } }
+    jprintf("effort %d at the end; ", rx.effort());
     jprintf("%.1f Msps, %.0f dB at 50 NM, %d aircraft, %.0f s: %zu sent, %zu decoded (%.2f %%; alone %zu/%zu, overlapped %zu/%zu), %.1f msg/s, phantoms %zu, aircraft %u, %.1f s wall, cpu %.2f s\n",
             rate / 1e6, snr, aircraft, seconds, r.sent.size(), r.decoded, 100.0 * r.decoded / std::max<size_t>(1, r.sent.size()), aloneGot, alone, overGot, over,
             r.decoded / seconds, r.phantom, (unsigned)r.tel.aircraftCount, wall, r.cpuSec);
