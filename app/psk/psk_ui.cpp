@@ -16,7 +16,7 @@ namespace {
 
 struct State {
     int mode = 0;
-    float thrDb = 8;
+    float thrDb = 5;
     bool wasRunning = false;
     int pushedMode = -1; float pushedThr = -1;
     bool listen = false; int pushedListen = -1; float pushedVol = -1; bool pushedMute = false;   // "Listen": off until switched on
@@ -38,7 +38,7 @@ void load() {
     if (S.loaded) return;
     S.loaded = true;
     S.mode = std::max(0, std::min(dect2::kPskModes - 1, (int)plat::prefs().getI("pskMode", 0)));
-    S.thrDb = (float)plat::prefs().getD("pskThreshold", 8);
+    S.thrDb = (float)plat::prefs().getD("pskThreshold", 5);
     S.listen = plat::prefs().getB("pskListen", false);
 }
 

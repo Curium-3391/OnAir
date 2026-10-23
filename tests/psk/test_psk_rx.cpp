@@ -95,6 +95,10 @@ int main() {
         const PskTelemetry t = run({sig(1400, "CQ CQ DE LY3QRP LY3QRP K\n", 9)}, 12, 0, 0, 1e9, 9);
         expect("weak", t, 1400, "LY3QRP");
     }
+    {   // weaker: 7 dB in 31 Hz (-13 dB in 3 kHz): found with the 5 dB threshold, the start kept by the replay (it was missed below 9 dB)
+        const PskTelemetry t = run({sig(1400, "CQ CQ CQ DE LY3QRP LY3QRP LY3QRP K\n", 7)}, 16, 0, 0, 1e9, 9);
+        expect("weaker", t, 1400, "LY3QRP");
+    }
     {   // fast drift (12 Hz a minute) and a 300 ppm symbol clock
         PskGenSignal s = sig(1800, "DRIFTY DE OH2XX OH2XX TEST TEST\n", 13);
         s.driftHzPerMin = 12; s.clockPpm = 300;
