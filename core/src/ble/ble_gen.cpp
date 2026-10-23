@@ -4,8 +4,10 @@
 #include "dect2/ble/ble_rx.h"
 #include "dect2/dsp/gen_util.h"
 #include "dect2/source/source.h"
+#include <algorithm>
 #include <cmath>
 #include <deque>
+#include <vector>
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -14,6 +16,8 @@ namespace {
 using dect2::math::kPi;
 
 } // namespace
+
+namespace { constexpr int kPulseSpan = 6, kPulseRes = 512; }   // the pulse table: +-3 bits at 512 points per bit
 
 struct BleGenerator::Impl {
     BleGenConfig cfg;
@@ -40,16 +44,32 @@ struct BleGenerator::Impl {
         const size_t ns = (size_t)std::ceil((nb + 2 * pad) / bitsPerSample);
         const double off = cfg.dialOffsetHz + cfg.cfoHz + p.cfoHz;
         const double amp = cfg.amp * p.ampScale;
+        // the Gaussian pulse from a table (10 erf() per sample were most of the time), and a 2 us raised-cosine ramp up and down inside the
+        // plain-carrier padding, so that the burst edges do not splatter (the data bits are untouched)
+        static const std::vector<double> pulse = [] {
+            std::vector<double> t(kPulseSpan * kPulseRes + 2);
+            for (size_t j = 0; j < t.size(); j++) t[j] = genutil::gfskPulse((double)j / kPulseRes - kPulseSpan / 2.0, 0.5);
+            return t;
+        }();
+        auto g = [&](double tau) {   // tau in bits from the middle of the bit, |tau| < kPulseSpan / 2
+            const double x = (tau + kPulseSpan / 2.0) * kPulseRes;
+            const size_t j = (size_t)x;
+            if (j + 1 >= pulse.size()) return 0.0;
+            return pulse[j] + (pulse[j + 1] - pulse[j]) * (x - (double)j);
+        };
+        const double rampBits = 2;
         for (size_t i = 0; i < ns; i++) {
             const double u = i * bitsPerSample - pad;   // bit time from the first bit's start
             double f = 0;
             const int k0 = (int)std::floor(u);
             for (int k = k0 - 2; k <= k0 + 2; k++) {
                 if (k < 0 || k >= nb) continue;
-                f += (bits[(size_t)k] ? 1.0 : -1.0) * genutil::gfskPulse(u - k - 0.5, 0.5);
+                f += (bits[(size_t)k] ? 1.0 : -1.0) * g(u - k - 0.5);
             }
             ph = std::remainder(ph + 2 * kPi * (f * ble::kDevHz + off) / cfg.rate, 2 * kPi);
-            q.push_back(cf32((float)(amp * std::cos(ph)), (float)(amp * std::sin(ph))));
+            const double edge = std::min(u + pad, nb + pad - u) / rampBits;   // bits from the burst's nearer end, in ramp lengths
+            const double a = edge >= 1 ? amp : edge <= 0 ? 0.0 : amp * (0.5 - 0.5 * std::cos(kPi * edge));
+            q.push_back(cf32((float)(a * std::cos(ph)), (float)(a * std::sin(ph))));
         }
         silence(p.gapSec);
         if (++idx >= cfg.pkts.size()) { idx = 0; if (!cfg.loop) done = true; }

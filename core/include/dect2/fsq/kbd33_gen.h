@@ -19,6 +19,7 @@ struct Kbd33GenSignal {
     double centreHz = 1500;      // audio frequency of the middle of the 33 tones, from the dial
     std::string text;
     double snrDb = 10;           // in the band of the 33 tones
+    double amplitude = 0;        // > 0: this tone amplitude instead of the one snrDb gives (the transmitter's clean signal)
     double startSec = 0.5;       // silence before the first text
     double pauseSec = 2.0;       // silence between repeats
     bool repeat = true;

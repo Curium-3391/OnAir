@@ -21,7 +21,8 @@ struct Sender {
     Kbd33GenSignal s;
     kbd33::Spec spec;
     std::vector<int> seq;
-    double amp = 0, T = 0;
+    double amp = 0, T = 0, env = 0;
+    static constexpr double kRamp = 80;   // samples at kFg
     int64_t n = 0, m = -1;
     int tone = 0;
     bool active = false;
@@ -34,7 +35,7 @@ struct Sender {
     explicit Sender(const Kbd33GenSignal& g, double rate, double sigma) : s(g), spec(kbd33::specOf(g.ifkp, g.speed)) {
         T = spec.symSec * (1 + s.clockPpm * 1e-6);
         const double snr = std::pow(10.0, s.snrDb / 10);
-        amp = std::sqrt(snr * 2 * sigma * sigma * spec.bandHz() / rate);
+        amp = s.amplitude > 0 ? s.amplitude : std::sqrt(snr * 2 * sigma * sigma * spec.bandHz() / rate);
         seq = kbd33::toneSequence(g.ifkp, g.text, g.startTone, 2);
         left = (int64_t)std::lround(s.startSec / T);
         if (s.echoMs > 0) { echoLen = (size_t)std::max(1.0, std::round(s.echoMs * 1e-3 * kFg)); echo.assign(echoLen, {0, 0}); }
@@ -57,8 +58,10 @@ struct Sender {
         ph += 2 * kPi * f / kFg;
         if (ph > 1e6) ph = std::fmod(ph, 2 * kPi);
         std::complex<float> out(0, 0);
-        if (active) {
-            double g = amp;
+        // a 5 ms raised-cosine key-up and key-down at the start and the end of the text, instead of a step that splatters
+        env = active ? std::min(1.0, env + 1.0 / kRamp) : std::max(0.0, env - 1.0 / kRamp);
+        if (env > 0) {
+            double g = amp * (0.5 - 0.5 * std::cos(kPi * env));
             if (s.fadeDepth > 0) g *= 1 - s.fadeDepth * (0.5 - 0.5 * std::cos(2 * kPi * s.fadeHz * t));
             out = std::polar((float)g, (float)std::fmod(ph, 2 * kPi));
         }

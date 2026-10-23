@@ -177,7 +177,7 @@ class CubesatSynth : public ModeSynth {
 public:
     CubesatSynth(const SynthConfig& cfg, double rate) : rate_(rate), cyc_(cycleFor(cfg.modeOpt[0])), noise_(11) {
         const double pn = rate / kChanBw / std::pow(10.0, cfg.snrDb / 10.0);
-        sigma_ = cfg.snrDb < -100 ? 0.f : (float)std::sqrt(pn / 2);
+        sigma_ = cfg.snrDb < -100 || cfg.snrDb >= 99 ? 0.f : (float)std::sqrt(pn / 2);   // >= 99: the transmitter's clean signal (TxSession), at 0.4 instead of full scale
         scale_ = sigma_ > 0.15f ? 0.15f / sigma_ : 1.f;
         if (sigma_ == 0.f) scale_ = 0.4f;
         const double w = 2 * kPi * (cfg.cfoHz - cubesatTuning().tuneOffsetHz) / rate;

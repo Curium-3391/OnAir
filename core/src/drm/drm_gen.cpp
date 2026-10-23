@@ -570,6 +570,21 @@ public:
         if (br_ != 192000) up_.configure(br_, 192000.0);
         const double snr = std::pow(10.0, sc.snrDb / 10.0);
         noiseVar_ = sc.snrDb >= 100 ? 0.0 : (br_ / tx_->noiseBandwidthHz()) / snr;
+        if (sc.snrDb >= 100) {   // the transmitter's clean signal (TxSession): a channel filter, so that the OFDM sidelobes (about -38 dB two channels out) stay in the channel
+            constexpr int kN = 191;
+            const double fc = 0.5 * tx_->noiseBandwidthHz() * 1.12 / br_, beta = 7.0, c = (kN - 1) * 0.5;
+            auto i0 = [](double x) { double sum = 1, t = 1; for (int k = 1; k < 30; k++) { t *= (x / (2 * k)) * (x / (2 * k)); sum += t; } return sum; };
+            chTaps_.resize(kN);
+            double sum = 0;
+            for (int k = 0; k < kN; k++) {
+                const double t = k - c, r = t / c;
+                const double h = (t == 0 ? 2 * fc : std::sin(2 * M_PI * fc * t) / (M_PI * t)) * i0(beta * std::sqrt(std::max(0.0, 1 - r * r))) / i0(beta);
+                chTaps_[(size_t)k] = (float)h;
+                sum += h;
+            }
+            for (auto& h : chTaps_) h = (float)(h / sum);
+            chHist_.assign(2 * (size_t)kN, cf32(0, 0));
+        }
         echoAmp_ = sc.echoDb > 0 ? (float)std::pow(10.0, -sc.echoDb / 20.0) : 0.f;
         echoDelay_ = std::max(1, std::min(8000, sc.echoDelay)) * (int)(br_ / 48000);   // echoDelay counts samples at 48 kHz
         echoBuf_.assign((size_t)echoDelay_ + 1, cf32(0, 0));
@@ -628,6 +643,17 @@ private:
             cphase_ += w * (double)s.size();
             cphase_ = std::fmod(cphase_, 2 * M_PI);
         }
+        if (!chTaps_.empty()) {   // the channel filter (clean signal only): a ring of the last taps, kept twice so that one dot product reads it straight
+            const size_t nt = chTaps_.size();
+            for (auto& v : s) {
+                chPos_ = chPos_ == 0 ? nt - 1 : chPos_ - 1;
+                chHist_[chPos_] = v; chHist_[chPos_ + nt] = v;
+                const cf32* x = &chHist_[chPos_];
+                float re = 0, im = 0;
+                for (size_t k = 0; k < nt; k++) { re += chTaps_[k] * x[k].real(); im += chTaps_[k] * x[k].imag(); }
+                v = cf32(re, im);
+            }
+        }
         if (chan_) chan_->process(s.data(), s.size());
         if (echoAmp_ > 0) {
             for (size_t i = 0; i < s.size(); i++) {
@@ -669,6 +695,9 @@ private:
     ExactResampler up_;
     double centre_ = 0, noiseVar_ = 0, step_ = 1, pos_ = 1, phase_ = 0, br_ = 48000;
     double cphase_ = 0;
+    std::vector<float> chTaps_;
+    std::vector<cf32> chHist_;
+    size_t chPos_ = 0;
     float echoAmp_ = 0, scale_ = 0.2f;
     int echoDelay_ = 300;
     std::vector<cf32> echoBuf_;

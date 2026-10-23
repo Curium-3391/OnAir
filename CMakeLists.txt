@@ -1347,6 +1347,11 @@ if(DECT2_BUILD_TESTS)
     add_executable(test_tx_iqfile tests/tx/test_tx_iqfile.cpp)   # transmit into an IQ file: every format written and read back with the project reader (nothing is transmitted)
     target_link_libraries(test_tx_iqfile PRIVATE dect2core)
     add_test(NAME tx_iqfile COMMAND test_tx_iqfile)
+    add_executable(test_tx_quality_a tests/tx/test_tx_quality_a.cpp)   # TX signal quality, modes acars .. iono: level, clipping, DC, ACLR, spurs, fades, block seams; --rt: through the receiver
+    target_link_libraries(test_tx_quality_a PRIVATE dect2core)
+    add_test(NAME tx_quality_a COMMAND test_tx_quality_a)
+    add_test(NAME tx_quality_a_rt COMMAND test_tx_quality_a --rt)
+    set_tests_properties(tx_quality_a tx_quality_a_rt PROPERTIES TIMEOUT 900)
     set_tests_properties(tx_polish PROPERTIES TIMEOUT 300)
     add_executable(test_scan_soapy tests/engine/test_scan_soapy.cpp)   # the channel scan taking the radio over from the receiver
     target_link_libraries(test_scan_soapy PRIVATE dect2core)

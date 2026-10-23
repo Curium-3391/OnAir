@@ -20,10 +20,12 @@ public:
         c.rate = rate;
         c.dialOffsetHz = -ifkpTuning().tuneOffsetHz;
         c.cfoHz = s.cfoHz;
-        c.noiseSigma = 0.05;
+        const bool clean = s.snrDb >= 99;   // the transmitter's clean signal (TxSession): no noise, a fixed level instead of snrDb over the noise
+        c.noiseSigma = clean ? 0 : 0.05;
         c.signals = ifkpTestSignals();
         for (auto& g : c.signals) {
             g.snrDb += s.snrDb;
+            if (clean) g.amplitude = 0.3;
             if (s.modeOpt[0] > 0 && s.modeOpt[0] <= 3) g.speed = s.modeOpt[0] - 1;
         }
         gen_ = std::make_unique<Kbd33Generator>(c);

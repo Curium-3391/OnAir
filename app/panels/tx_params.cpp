@@ -63,7 +63,7 @@ void outputCommon(std::vector<P>& v) {
     add(v, {
         F("out.trimDb", Sec::Output, N_("Output trim"), N_("Gain applied to the whole signal just before the radio. Lower it when the meter shows clipping; the radio's own gain is set above."), 0, -40, 6, "%.1f dB"),
         B("out.swapIq", Sec::Output, N_("Mirror the spectrum"), N_("Swaps I and Q so the signal is turned over: an upper sideband becomes a lower one. For a radio or mixer that inverts."), false),
-        F("out.rampMs", Sec::Timing, N_("Key-up fade-in"), N_("The signal fades in over this time after Start, so the key-up does not click."), 0, 0, 500, "%.0f ms"),
+        F("out.rampMs", Sec::Timing, N_("Key-up fade-in"), N_("The signal fades in over this time after Start, so the key-up does not click."), kTxDefaultRampMs, 0, 500, "%.0f ms"),   // also the fade at Stop and at the end of one pass
     });
 }
 

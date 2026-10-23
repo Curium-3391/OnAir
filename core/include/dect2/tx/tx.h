@@ -183,6 +183,7 @@ bool txModeFinite(const TxModeSpec& m);
 std::string txFtxMessage(const TxRequest& r);
 
 // The output stage of every mode (keys out.trimDb, out.rampMs, out.swapIq of r.opt) on n samples that start at sample number firstSample of the transmission
+constexpr double kTxDefaultRampMs = 2;   // the key-up / key-down fade when out.rampMs is not set
 void txOutputStage(const TxRequest& r, cf32* x, size_t n, uint64_t firstSample, double rateHz);
 
 // The radio's rate limits for the choice of a rate (0 = unknown / no limit)

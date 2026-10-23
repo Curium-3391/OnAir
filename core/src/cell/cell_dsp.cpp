@@ -18,10 +18,15 @@ Resampler::Resampler(double cutoff, int halfLen) : fc_(std::max(0.005, std::min(
         const double w = std::fabs(u) >= 1 ? 0.0 : 0.42 + 0.5 * std::cos(M_PI * u) + 0.08 * std::cos(2 * M_PI * u);   // Blackman
         tab_[(size_t)i] = (float)(2 * fc_ * s * w);
     }
+    const int taps = 2 * H_;
+    bank_.assign((size_t)(kOver + 1) * (size_t)taps, 0.f);
+    for (int q = 0; q <= kOver; q++)
+        for (int j = 0; j < taps; j++) bank_[(size_t)q * (size_t)taps + (size_t)j] = tab_[(size_t)((taps - 1 - j) * kOver + q)];
 }
 
 void Resampler::run(const cf32* x, size_t n, double start, double step, cf32* out, size_t nOut) const {
     const float* tb = tab_.data();
+    const int taps = 2 * H_;
     for (size_t o = 0; o < nOut; o++) {
         const double tau = start + (double)o * step;
         const long c = (long)std::floor(tau);
@@ -29,6 +34,23 @@ void Resampler::run(const cf32* x, size_t n, double start, double step, cf32* ou
         long i0 = c - H_ + 1, i1 = c + H_;
         float re = 0, im = 0;
         if (i1 < 0 || i0 >= (long)n) { out[o] = 0; continue; }
+        if (i0 >= 0 && i1 < (long)n) {   // all taps inside: two contiguous rows of the bank (the fraction is the same for every tap), blended
+            const double qf = fr * kOver;
+            int q = (int)qf;
+            if (q >= kOver) q = kOver - 1;
+            const float f = (float)(qf - q);
+            const float* b0 = &bank_[(size_t)q * (size_t)taps];
+            const float* b1 = b0 + taps;
+            const float* xs = reinterpret_cast<const float*>(x + i0);
+            float r0 = 0, i0s = 0, r1 = 0, i1s = 0;
+            for (int j = 0; j < taps; j++) {
+                const float xr = xs[2 * j], xi = xs[2 * j + 1];
+                r0 += b0[j] * xr; i0s += b0[j] * xi;
+                r1 += b1[j] * xr; i1s += b1[j] * xi;
+            }
+            out[o] = cf32(r0 + f * (r1 - r0), i0s + f * (i1s - i0s));
+            continue;
+        }
         i0 = std::max(i0, 0L); i1 = std::min(i1, (long)n - 1);
         // tap for input i: h(tau - i) = tab[(tau - i + H) * kOver]
         double pos = (tau - (double)i0 + H_) * kOver;

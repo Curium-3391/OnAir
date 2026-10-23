@@ -68,6 +68,7 @@ struct DatawellGenerator::Impl {
     dect2::normal_distribution<double> nd{0.0, 1.0};
     double amp = 0, phase = 0, cphase = 0;
     uint64_t g = 0;
+    bool clean = false;
     double symPos = 0;            // position inside the symbol, in symbols
     std::vector<uint8_t> frame;   // the current frame's bits
     size_t fpos = 0;
@@ -127,7 +128,8 @@ DatawellGenerator::DatawellGenerator(const DatawellGenConfig& cfg) : p_(new Impl
     m.rng.seed(cfg.seed);
     m.lfsr = cfg.seed * 2654435761u + 1;
     const double n0 = 2 * kNoiseC * kNoiseC / cfg.rate;   // complex noise power per Hz
-    m.amp = std::sqrt(std::pow(10.0, cfg.snrDb / 10.0) * n0 * 100.0);
+    m.clean = cfg.snrDb >= 99;   // the transmitter's clean signal (TxSession): no noise, a fixed level instead of snrDb over the noise
+    m.amp = m.clean ? 0.3 : std::sqrt(std::pow(10.0, cfg.snrDb / 10.0) * n0 * 100.0);
     m.curLevel = 0;
 }
 DatawellGenerator::~DatawellGenerator() = default;
@@ -140,7 +142,8 @@ void DatawellGenerator::generate(cf32* out, size_t n) {
     const double step = four ? datawell::kSpacing4Mfsk : datawell::kShift2Fsk;
     const int nl = four ? 4 : 2;
     for (size_t i = 0; i < n; i++) {
-        std::complex<double> z(m.nd(m.rng) * kNoiseC, m.nd(m.rng) * kNoiseC);
+        std::complex<double> z(0, 0);
+        if (!m.clean) { const double re = m.nd(m.rng) * kNoiseC; z = std::complex<double>(re, m.nd(m.rng) * kNoiseC); }
         if (m.g == 0) m.curLevel = m.c.noiseOnly || m.c.carrierOnly ? 0 : m.nextLevel();
         if (!m.c.noiseOnly) {
             double f = m.c.offsetHz;

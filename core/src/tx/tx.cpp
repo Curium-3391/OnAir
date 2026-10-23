@@ -15,6 +15,7 @@
 #include "dect2/dsp/fftutil.h"
 #include "dect2/isdbt/isdbt.h"
 #include "dect2/hfdig/hfdig_freedv.h"
+#include "dect2/hfdig/hfdig_gen.h"
 #include "dect2/isdbt/isdbt_gen.h"
 #include "dect2/m17/m17_codec2.h"
 #include "dect2/kaal/kaal_txgen.h"
@@ -725,6 +726,18 @@ std::unique_ptr<TxGenerator> makeTxGenerator(const TxModeSpec& m, const TxReques
         const double rr = rateHz > 0 ? rateHz : m.nominalRateHz;
         if (m.minRateHz > 0 && rr < m.minRateHz) { char b[160]; snprintf(b, sizeof b, "%s needs at least %.3g Msps; the radio runs %.3g Msps", m.name, m.minRateHz / 1e6, rr / 1e6); err = b; return nullptr; }
         auto ms = makeTxPayloadSynth(m, r, s, rr);
+        if (!ms && m.stdMode == 27 && txPayloadKind(m.id) == TxPayloadKind::Ftx && !txFtxMessage(r).empty()) {
+            err = std::string("the message \"") + txFtxMessage(r) + "\" cannot be sent as " + m.name +
+                  ": a standard callsign is a prefix, one digit and at most three letters (N0ABC, LY2XYZ), a grid has four characters (KO24), free text is at most 13 characters";
+            return nullptr;
+        }
+        if (!ms && m.stdMode == 27) {   // the HF digital family's demo: the mode chosen (its variant), not whatever modeOpt[0] another mode left (FT8 sent RTTY)
+            SynthConfig hs = s;
+            hs.modeOpt[0] = m.variant;
+            if (auto audio = makeHfdigTestAudio(m.variant, hs))   // a band of several stations: at most 0.5, so that their sum stays under the limiter's knee
+                ms = makeHfdigSynthFromAudio(std::move(audio), hs, rr, false, 0.5f);
+            if (!ms) ms = makeModeSynth(m.stdMode, hs, rr);
+        }
         if (!ms) ms = makeModeSynth(m.stdMode, s, rr);
         if (!ms) { char b[200]; snprintf(b, sizeof b, "the %s generator cannot make a signal at %.3f Msps with these options", m.name, rr / 1e6); err = b; return nullptr; }
         g = std::make_unique<SynthGen>(std::move(ms), rr);
@@ -1005,15 +1018,16 @@ bool TxSession::start(std::unique_ptr<TxSink> sink, const TxRequest& r, const Tx
     return true;
 }
 
-// the output stage every mode shares (out.* keys): a trim in dB, a fade-in over the first samples so that the key-up does not click, and an I / Q swap that mirrors the spectrum
+// the output stage every mode shares (out.* keys): a trim in dB, a raised-cosine fade-in over the first samples so that the key-up does not
+// click (kTxDefaultRampMs when the key is not set), and an I / Q swap that mirrors the spectrum
 void txOutputStage(const TxRequest& r, cf32* x, size_t n, uint64_t firstSample, double rateHz) {
     const float trim = (float)std::pow(10.0, r.o("out.trimDb", 0) / 20.0);
-    const uint64_t ramp = (uint64_t)std::max(0.0, r.o("out.rampMs", 0) * 1e-3 * rateHz);
+    const uint64_t ramp = (uint64_t)std::max(0.0, r.o("out.rampMs", kTxDefaultRampMs) * 1e-3 * rateHz);
     const bool swapIq = r.o("out.swapIq", 0) > 0.5;
-    if (trim == 1.f && !ramp && !swapIq) return;
+    if (trim == 1.f && (!ramp || firstSample >= ramp) && !swapIq) return;
     for (size_t i = 0; i < n; i++) {
         float g = trim;
-        if (firstSample + i < ramp) g *= (float)(firstSample + i) / (float)ramp;
+        if (firstSample + i < ramp) g *= 0.5f - 0.5f * (float)std::cos(math::kPi * (double)(firstSample + i) / (double)ramp);
         const cf32 v = x[i] * g;
         x[i] = swapIq ? cf32(v.imag(), v.real()) : v;
     }
@@ -1033,6 +1047,13 @@ void TxSession::generatorLoop() {
             blk.resize(n);
             gen_->generate(blk.data(), n);
             txOutputStage(req_, blk.data(), n, made, rate_);
+            if (!req_.loop) {   // one pass: the same raised-cosine fade at the end, so that the key-down does not click either
+                const uint64_t fade = (uint64_t)(std::max(0.0, req_.o("out.rampMs", kTxDefaultRampMs)) * 1e-3 * rate_);
+                for (size_t i = 0; i < n; i++) {
+                    const uint64_t left = limit - (made + i);   // samples still to come, this one included (>= 1)
+                    if (left <= fade) blk[i] *= 0.5f - 0.5f * (float)std::cos(math::kPi * (double)(left - 1) / (double)fade);
+                }
+            }
             size_t lim = 0;
             txSoftLimit(blk.data(), n, &lim);   // never above full scale, never NaN, at the last step before the radio
             const TxLevel lv = txMeasure(blk.data(), n);
@@ -1089,6 +1110,7 @@ void TxSession::senderLoop() {
         }
         rtCv_.notify_all();
     };
+    cf32 last(0.f, 0.f);   // the last sample the radio was given
     while (!stop_ && ok) {
         applyRetune();
         std::vector<cf32> blk;
@@ -1111,6 +1133,7 @@ void TxSession::senderLoop() {
             std::string e;
             if (!sink_->write(blk.data() + off, m, e)) { fail(e); ok = false; break; }
             if (!underrun) sent_ += m;
+            last = blk[off + m - 1];
             applyRetune();
         }
         if (!underrun && !blk.empty()) {   // give the block back for the generator to refill (no allocation per block)
@@ -1123,6 +1146,12 @@ void TxSession::senderLoop() {
             lastReported = under_;
             lastReport = now;
         }
+    }
+    if (stop_ && ok && rt && std::norm(last) > 0) {   // Stop on a radio: a 2 ms raised-cosine fade from the last sample, not a step (stop() returns after it)
+        std::vector<cf32> tail((size_t)std::max(16.0, std::min(8192.0, rate_ * 0.002)));
+        for (size_t i = 0; i < tail.size(); i++) tail[i] = last * (0.5f + 0.5f * (float)std::cos(math::kPi * (double)(i + 1) / (double)tail.size()));
+        std::string e;
+        sink_->write(tail.data(), tail.size(), e);
     }
     if (!stop_) {   // finished or failed on its own: the transmitter goes off now
         closeSink();
