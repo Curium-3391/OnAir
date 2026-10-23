@@ -59,6 +59,8 @@ public:
     bool getAlmanac(int prn, GpsAlmanac& a) const;
     bool getIonoUtc(GpsIono& i, GpsUtc& u) const;
     // Tests and tools
+    // Every SBAS message with a good CRC: the PRN, the 250 message bits (one per byte, preamble first) and the signal time in seconds. Called from feed().
+    void setSbasCallback(std::function<void(int prn, const uint8_t* bits250, double signalSecs)> cb);
     void setMeasurementCallback(std::function<void(const std::vector<GnssMeasurement>&)> cb);   // once a second, from feed()
     uint64_t workUnitsUsed() const;                      // acquisition FFTs so far
     void cpuBreakdown(double* front, double* track, double* acq) const;   // seconds of CPU spent in the front end, the channels and the search so far

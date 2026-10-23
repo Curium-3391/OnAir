@@ -284,7 +284,7 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
         else ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 2 * gUi));
         if (ImGui::Checkbox(tr("Bias-tee (antenna power)"), &a.tune.biasTee)) { retune = true; saveBiasTee(a); }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Sends DC power up the antenna cable for an active antenna or LNA (e.g. a GNSS patch antenna). Leave it off with a passive antenna, and never with a DC short in the antenna path (some antennas, splitters or filters): it can damage the radio."));
-        if (a.family == 12 && !a.tune.biasTee) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("Most GNSS antennas are active and need this on.")); ImGui::PopTextWrapPos(); }
+        if ((a.family == 12 || a.family == 150) && !a.tune.biasTee) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("Most GNSS antennas are active and need this on.")); ImGui::PopTextWrapPos(); }
         if (vertical) ImGui::PopStyleVar();
     }
     if (vertical) radioSettingsUi(a, true);   // radio_ui.cpp: the selected radio's own settings (frequency correction, notch filters, ...); a one-line bar has its button elsewhere

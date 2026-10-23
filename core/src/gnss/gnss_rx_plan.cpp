@@ -5,7 +5,10 @@ namespace dect2 {
 
 // The GPS L1 C/A channel plan for the current tuning and rate
 void GnssReceiver::Impl::replanGps(double center, unsigned mask) {
-    bool wantGps = (mask & gnssSystemBit(GnssGps)) != 0;
+    // SBAS and QZSS without GPS in the mask (the SBAS mode): the one search that GPS normally has runs over their PRNs, the auxiliary one stays empty
+    const unsigned auxBits = gnssSystemBit(GnssQzss) | gnssSystemBit(GnssSbas);
+    const bool l1Only = !(mask & gnssSystemBit(GnssGps)) && (mask & auxBits);
+    bool wantGps = (mask & (gnssSystemBit(GnssGps) | auxBits)) != 0;
     const double off = kGpsL1Hz - center;
     // the band must fit: the signal's main lobe (+-1.023 MHz) inside half the input rate, and the input must be fast enough
     const bool fits = rate >= 2.0e6 && std::fabs(off) + 1.0e6 <= 0.5 * rate;
@@ -19,7 +22,12 @@ void GnssReceiver::Impl::replanGps(double center, unsigned mask) {
             ac.pfa = 1e-3;
             const int q = (int)std::ceil(dopHalf.load() / 1000.0);
             ac.qMin = -q; ac.qMax = q - 1;
-            for (int p = 1; p <= 32; p++) ac.prns.push_back(p);
+            if (l1Only) {
+                if (mask & gnssSystemBit(GnssSbas)) for (int p = 120; p <= 158; p++) ac.prns.push_back(p);
+                if (mask & gnssSystemBit(GnssQzss)) for (int p = 193; p <= 202; p++) ac.prns.push_back(p);
+            } else {
+                for (int p = 1; p <= 32; p++) ac.prns.push_back(p);
+            }
             ac.replica = [](int prn, cf32* out, int n) {
                 uint8_t c[kGpsCaLen];
                 if (!l1caChips(prn, c)) return false;
@@ -33,8 +41,10 @@ void GnssReceiver::Impl::replanGps(double center, unsigned mask) {
             gpsAcq.init(ac);
             // QZSS and SBAS have a search of their own (runAuxAcq), so the GPS search runs exactly as without them
             ac.prns.clear();
-            if (mask & gnssSystemBit(GnssQzss)) for (int p = 193; p <= 202; p++) ac.prns.push_back(p);
-            if (mask & gnssSystemBit(GnssSbas)) for (int p = 120; p <= 158; p++) ac.prns.push_back(p);
+            if (!l1Only) {
+                if (mask & gnssSystemBit(GnssQzss)) for (int p = 193; p <= 202; p++) ac.prns.push_back(p);
+                if (mask & gnssSystemBit(GnssSbas)) for (int p = 120; p <= 158; p++) ac.prns.push_back(p);
+            }
             auxAcq.init(ac);
             auxCredit = 0;
             stage = 0; stageRounds = 0;
@@ -48,6 +58,7 @@ void GnssReceiver::Impl::replanGps(double center, unsigned mask) {
         }
         gpsActive = true;
         gpsMaskNow = mask;
+        l1Standalone = l1Only;
     } else {
         gpsActive = false;
         dropBand(0);

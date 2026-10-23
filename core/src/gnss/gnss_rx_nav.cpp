@@ -111,6 +111,7 @@ void GnssReceiver::Impl::handleSubframe(GnssTracker& t, const GnssSubframeEvent&
         s.sbasLast = ev.sbasType; s.sbasCount++;
         if (ev.sbasType < 32) s.sbasTypes |= 1u << ev.sbasType;
         sbasTotal++;
+        if (sbasCb) sbasCb(t.prn, ev.bits, signalNow);
         if (fresh) {
             char b[100];
             snprintf(b, sizeof b, "%s SBAS message type %d", satName(t.sys, t.prn).c_str(), ev.sbasType);

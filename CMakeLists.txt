@@ -160,7 +160,7 @@ target_sources(dect2core PRIVATE core/src/sweep/station_health.cpp core/src/sour
 target_sources(dect2core PRIVATE core/src/source/autogain.cpp core/src/source/autogain_radio.cpp core/src/source/autogain_measure.cpp)   # automatic gain for every radio and mode (docs/AUTOGAIN.md)
 target_sources(dect2core PRIVATE core/src/backup/backup.cpp)   # Tools > Backup and restore (docs/BACKUP.md)
 # The modes added after FM (DVB-S/S2, DTMB, analog TV, DMR, DRM, ADS-B): every core/src/<mode>/*.cpp belongs to its mode, so a mode can add files without editing this list
-  set(DECT2_MODES fsq ifkp cquam selfcal dvbs dtmb atv dmr drm adsb gnss dab sonde ais marine acars inmc aero iridium mesh hdr cdr pager packet hfdig airband vdl2 ism vor ils m17 cell cw dstar hfdl nxdn gsmr psk js8 specx wb specan dvbc dpmr orbcomm uplink tetra tetrapol ale mac astro p25 ble iono qo100 wifi general time rid meteor nr cubesat ccsds goes globalstar vdes hrpt zigbee flarm hfbeacon dji nbiot halow codar datawell same multitone loraraw ant dect elektro ndb lbj railway eczas vdl4 uat wisun fpv wmbus tones sarsat mt63 zwave mscatter dgps dme sitor kris kavb kapp kaft eloran mpt1327 fusion ardop goesdcs modeac bletrk ltr edacs kait satbeacon kaws milhf nfc kaal ham prop voice)
+  set(DECT2_MODES fsq ifkp cquam selfcal dvbs dtmb atv dmr drm adsb gnss dab sonde ais marine acars inmc aero iridium mesh hdr cdr pager packet hfdig airband vdl2 ism vor ils m17 cell cw dstar hfdl nxdn gsmr psk js8 specx wb specan dvbc dpmr orbcomm uplink tetra tetrapol ale mac astro p25 ble iono qo100 wifi general time rid meteor nr cubesat ccsds goes globalstar vdes hrpt zigbee flarm hfbeacon dji nbiot halow codar datawell same multitone loraraw ant dect elektro ndb lbj railway eczas vdl4 uat wisun fpv wmbus tones sarsat mt63 zwave mscatter dgps dme sitor kris kavb kapp kaft eloran mpt1327 fusion ardop goesdcs modeac bletrk ltr edacs kait satbeacon kaws milhf nfc kaal ham prop sbas asterix voice)
 target_sources(dect2core PRIVATE core/src/tv/ts_proto_rs.cpp core/src/common/text_charset_rs.cpp core/src/tv/dvb_text.cpp core/src/tv/dvb_text_rs.cpp core/src/tv/teletext_rs.cpp core/src/tv/dvbsub_rs.cpp core/src/tv/epg.cpp core/src/tv/subtitle_export.cpp core/src/tv/recorder.cpp core/src/tv/timeshift.cpp core/src/tv/playback.cpp core/src/tv/dsmcc.cpp core/src/tv/rcs.cpp core/src/tv/si_tables.cpp core/src/tv/ts_data.cpp)   # MPEG-TS parsing layer (C++ or the Rust crate onair_ts) and the TV recorder (guide, schedule, timeshift, playback) (C++ or the Rust crate onair_ts)
 target_sources(dect2core PRIVATE core/src/fec/fec_proto.cpp core/src/fec/fec_proto_rs.cpp)   # Reed-Solomon (DVB-T, ATSC, DAB), DVB-T2 BCH and the LDPC tables (the Rust crate onair_fec), the K = 7 Viterbi decoder (C++)
 target_sources(dect2core PRIVATE core/src/files/files_proto_rs.cpp)   # CSV, SigMF, WAV, TLE, SQLite pages, results container (the Rust crate onair_files)
@@ -1007,6 +1007,14 @@ if(DECT2_BUILD_TESTS)
     target_link_libraries(test_nfc_mode PRIVATE dect2core)
     target_compile_definitions(test_nfc_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
     add_test(NAME nfc_mode COMMAND test_nfc_mode)
+    add_executable(test_sbas_mode tests/app/test_sbas_mode.cpp)   # the SBAS mode: registered tuning, mode row, family count, panel strings
+    target_link_libraries(test_sbas_mode PRIVATE dect2core)
+    target_compile_definitions(test_sbas_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
+    add_test(NAME sbas_mode COMMAND test_sbas_mode)
+    add_executable(test_asterix_mode tests/app/test_asterix_mode.cpp)   # the ASTERIX mode: registered tuning, mode row, family count, panel strings
+    target_link_libraries(test_asterix_mode PRIVATE dect2core)
+    target_compile_definitions(test_asterix_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
+    add_test(NAME asterix_mode COMMAND test_asterix_mode)
     add_executable(test_ltr_edacs_mode tests/app/test_ltr_edacs_mode.cpp)   # LTR and EDACS trunking modes: registered tunings, mode rows, family count and panel strings
     target_link_libraries(test_ltr_edacs_mode PRIVATE dect2core)
     target_compile_definitions(test_ltr_edacs_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
@@ -1805,7 +1813,7 @@ if(DECT2_BUILD_TESTS)
   # the full CI runs them nightly and on release tags.
   foreach(t gain overload channel t2_payload dvbt_rx dab_rx atsc3_synth_options
             atv_impair atv_interf atv_engine drm_impair drm_rx drm_smooth adsb_engine ism_rx
-            protolab_sweep gnss_loops gnss_rates gnss_sweep gnss_rate20 gnss_gap gnss_qzss_sbas gnss_galileo gnss_beidou gnss_glonass iq_modes)
+            protolab_sweep gnss_loops gnss_rates gnss_sweep gnss_rate20 gnss_gap gnss_qzss_sbas gnss_galileo gnss_beidou gnss_glonass iq_modes sbas_engine)
     if(TEST ${t})
       set_tests_properties(${t} PROPERTIES LABELS slow)
     endif()
@@ -1824,7 +1832,7 @@ if(DECT2_BUILD_TESTS)
     endif()
   endforeach()
   # socket/thread timing tests: label "timing"; CI re-runs only these once on failure (ctest --repeat until-pass:2 -L timing)
-  foreach(t voice_inversion atsc3_synth_basic scan_synth dvbs_engine isdbt_rx radio_mode_glue atv_switch tx wifi_engine multitone_engine native_netradio native_sdrpp feeds feed_targets rooms_net discord_rpc remote_api plugin ais_engine marine_engine inmc_engine scan_soapy dvbc_engine qo100_dvbs_second)
+  foreach(t voice_inversion atsc3_synth_basic scan_synth dvbs_engine isdbt_rx radio_mode_glue atv_switch tx wifi_engine multitone_engine native_netradio native_sdrpp feeds feed_targets rooms_net discord_rpc remote_api plugin ais_engine marine_engine inmc_engine scan_soapy dvbc_engine qo100_dvbs_second asterix_engine)
     if(TEST ${t})
       set_property(TEST ${t} APPEND PROPERTY LABELS timing)
     endif()

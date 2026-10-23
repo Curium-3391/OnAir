@@ -1,5 +1,6 @@
 // Simulated sky for the GNSS test signal (see gnss_sim.h).
 #include "dect2/gnss/gnss_sim.h"
+#include "dect2/sbas/sbas_msg.h"
 #include "dect2/dsp/gen_util.h"
 #include "dect2/gnss/gnss_bds.h"
 #include "dect2/gnss/gnss_codes.h"
@@ -306,6 +307,7 @@ struct GnssSim::Impl {
         Rng r((uint64_t)sats[i].prn * 1000003ull + (uint64_t)m);
         uint8_t d[212];
         for (auto& v : d) v = (uint8_t)(r.next() >> 63);
+        if (cfg.sbasContent) sbas::synthData(sats[i].prn, m, type, d);     // plausible content for the types the content decoder reads, random bits for the others
         sbasBuildMessage((int)(m % 3), type, d, out);
     }
     void sbasSymbols(size_t i, int64_t m, uint8_t* out500) const {

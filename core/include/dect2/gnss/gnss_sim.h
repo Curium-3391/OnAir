@@ -33,6 +33,7 @@ struct GnssSimConfig {
     unsigned seed = 1;               // the constellation and its parameters
     unsigned noiseSeed = 0;          // the noise (0 = the same as seed)
     bool galGgto = true;             // Galileo word type 10 carries the GST-GPS offset (else all ones: not available)
+    bool sbasContent = false;        // SBAS messages carry structured content (sbas::synthData: PRN mask, fast corrections, ionospheric grid, ...) instead of random bits
     bool bdsGpsOffset = true;        // BeiDou D1 subframe 5 page 9 carries BDT - GPS (A0GPS, A1GPS; else zero: not broadcast)
 };
 

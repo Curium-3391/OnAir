@@ -66,6 +66,10 @@ void GnssReceiver::setMeasurementCallback(std::function<void(const std::vector<G
     std::lock_guard<std::mutex> lk(p_->procMu);
     p_->measCb = std::move(cb);
 }
+void GnssReceiver::setSbasCallback(std::function<void(int, const uint8_t*, double)> cb) {
+    std::lock_guard<std::mutex> lk(p_->procMu);
+    p_->sbasCb = std::move(cb);
+}
 void GnssReceiver::setCenterMhz(double mhz) { p_->centerMhz = mhz; p_->settingsGen++; }
 void GnssReceiver::setSystems(unsigned mask) { p_->sysMask = mask; p_->settingsGen++; }
 void GnssReceiver::setWeekReference(int w) { p_->weekRef = w; }
