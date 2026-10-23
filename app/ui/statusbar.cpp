@@ -7,6 +7,7 @@
 #include "dect2/hdr/hdr_rx.h"
 #include "dect2/source/hamlib_link.h"
 #include "dect2/source/iq_file.h"
+#include "dect2/net/netradio.h"
 #include <algorithm>
 #include <cctype>
 #include <memory>
@@ -193,6 +194,13 @@ void statusBar(App& a) {
         (a.devices[a.devIdx].board == "rtltcp" || a.devices[a.devIdx].board == "spyserver" || a.devices[a.devIdx].board == "sdrpp")) {
         const uint64_t lost = a.engine.droppedSamples();
         if (lost) ImGui::TextColored(pal::warnAmber(), tr("Network radio: %llu samples lost (underruns)"), (unsigned long long)lost);
+        RtlTcpThroughput tp;
+        if (a.devices[a.devIdx].board == "rtltcp" && rtlTcpThroughput(a.devices[a.devIdx].nativeArgs, tp)) {
+            const bool slow = tp.askedHz > 0 && tp.achievedHz < tp.askedHz * 0.95;
+            ImGui::TextColored(slow ? pal::warnAmber() : pal::okGreen(), tr("rtl_tcp: %.1f Mbit/s, %.2f of %.2f Msps"), tp.mbitPerSec, tp.achievedHz / 1e6, tp.askedHz / 1e6);
+            if (tp.lostBytes) { ImGui::SameLine(); ImGui::TextColored(pal::warnAmber(), tr("%llu bytes lost"), (unsigned long long)tp.lostBytes); }
+            if (slow) { ImGui::SameLine(); ImGui::TextColored(pal::warnAmber(), "%s", tr("less than asked: the network or the server is the limit (8-bit IQ needs 16 Mbit/s per Msps; Wi-Fi often gives 100-300)")); }
+        }
     }
     // flowEnd(): the last group of the status line wraps too
     if (const ModeUi* mu = modeUi(a.family)) {

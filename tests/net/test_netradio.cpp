@@ -31,6 +31,8 @@ struct FakeServer {
     std::thread th;
     std::atomic<bool> run{true}, dropNow{false}, pause{false};   // pause: keep the connection, send nothing (a stalled link)
     std::atomic<int> connections{0};
+    size_t chunkN = 4096;    // bytes per send ...
+    int sleepMs = 2;         // ... and the pause after each
     std::mutex mu;
     std::vector<std::pair<int, uint32_t>> cmds;
     unsigned char hdr[12] = {'R', 'T', 'L', '0', 0, 0, 0, 5, 0, 0, 0, 29};   // the greeting (another radio's server: its own)
@@ -70,7 +72,7 @@ struct FakeServer {
             if (c == kBadSock) continue;
             connections++;
             sockSendAll(c, hdr, sizeof hdr);
-            std::vector<unsigned char> chunk(4096);
+            std::vector<unsigned char> chunk(chunkN);
             for (size_t i = 0; i < chunk.size(); i += 2) { chunk[i] = 200; chunk[i + 1] = 50; }
             std::vector<unsigned char> pend;
             while (run && !dropNow) {
@@ -89,7 +91,7 @@ struct FakeServer {
                     }
                 }
                 if (!pause && !sockSendAll(c, chunk.data(), chunk.size())) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                if (sleepMs) std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
             }
             sockShutdown(c);
             sockClose(c);
@@ -208,6 +210,65 @@ static void testEngineRadioBack() {
     CHECK(rx.sampleLoss().network);
     rx.stop();
     srv.stop();
+}
+
+
+// Sample rates 2, 3.2, 8 and 10 Msps: passed through for an rsp_tcp-style greeting and for a real RTL0 server with "any rate"; held for a plain
+// RTL0 server below 3.2 Msps; the custom rate field; the throughput meter measures what arrives
+static void testRtlTcpRates() {
+    const double rates[] = {2e6, 3.2e6, 8e6, 10e6};
+    for (int kind = 0; kind < 3; kind++) {   // 0: RSP0 greeting, 1: RTL0 + anyrate, 2: RTL0 + Server radio RTL-SDR
+        for (double r : rates) {
+            FakeServer srv;
+            if (kind == 0) { const unsigned char h[12] = {'R', 'S', 'P', '0', 0, 0, 0, 0, 0, 0, 0, 0}; memcpy(srv.hdr, h, 12); }
+            srv.chunkN = 65536; srv.sleepMs = 1;
+            CHECK(srv.start());
+            if (!srv.port) return;
+            NetRadio nr; nr.type = NetRadio::RtlTcp; nr.host = "127.0.0.1"; nr.port = srv.port;
+            auto devs = netRadioDevices({nr});
+            CHECK(devs.size() == 1);
+            if (devs.empty()) { srv.stop(); return; }
+            TuneSettings s;
+            if (kind == 1) s.radio["anyrate"] = "1";
+            if (kind == 2) s.radio["server"] = "rtl";
+            DeviceInfo d = devs[0];
+            applyRadioOptionCaps(d, s);
+            if (kind == 1) CHECK(d.maxRateHz == 40e6 && d.rateRanges.empty());
+            auto src = makeSource(d);
+            CHECK(src != nullptr);
+            if (!src) { srv.stop(); return; }
+            IqRing ring(1u << 22);
+            s.sampleRate = r; s.centerHz = 433.92e6; s.gainDb = 20;
+            std::string err;
+            const bool ok = src->start(s, ring, err);
+            if (kind == 2) {
+                // a real RTL-SDR: 3.2 Msps is the most, and it is held at 2.56
+                CHECK(ok == (r <= 3.2e6));
+                if (ok) CHECK(srv.waitFor(0x02, 2560000));
+            } else {
+                CHECK(ok);
+                CHECK(srv.waitFor(0x02, (uint32_t)r));   // exactly as asked
+            }
+            if (ok && kind == 0 && r == 8e6) {
+                RtlTcpThroughput tp;
+                bool got = false;
+                for (int i = 0; i < 300 && !got; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); got = rtlTcpThroughput(d.nativeArgs, tp); }
+                for (int i = 0; i < 300 && !got; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); got = rtlTcpThroughput(d.nativeArgs, tp); }
+                CHECK(got);
+                if (got) {
+                    CHECK(tp.askedHz == 8e6 && tp.mbitPerSec > 0 && tp.bytes > 0);
+                    CHECK(std::fabs(tp.mbitPerSec - tp.achievedHz * 16.0 / 1e6) < 0.01 * tp.mbitPerSec + 0.01);   // 2 bytes per sample, 8 bits per byte
+                }
+            }
+            if (ok && kind == 1 && r == 2e6) {   // the custom field wins over what the mode asks
+                s.radio["customrate"] = "8";
+                CHECK(src->retune(s, err));
+                CHECK(srv.waitFor(0x02, 8000000));
+            }
+            src->stop();
+            srv.stop();
+        }
+    }
 }
 
 // rtl_tcp servers of other radios: set by hand on a real RTL0 server, and found from an rsp_tcp-style greeting
@@ -1027,6 +1088,7 @@ int main() {
     testRtlTcp();
     testEngineRadioBack();
     testRtlTcpOther();
+    testRtlTcpRates();
     testSpyServer();
     testSpyServerBytes();
     testShare();
