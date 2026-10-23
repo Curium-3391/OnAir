@@ -249,6 +249,7 @@ target_link_libraries(onair-plugin-host PRIVATE dect2_plugin)
 # ONAIR_WEB_SESSION, which makes the transmit headers (dect2/tx/*.h, TxSink in source.h) a compile error there: web listeners can never transmit.
 set(ONAIR_WEB_SOURCES server/web/web_json.cpp server/web/web_proto.cpp server/web/web_dsp.cpp server/web/web_policy.cpp server/web/web_hub.cpp
     server/web/web_server.cpp server/web/web_config.cpp)
+list(APPEND ONAIR_WEB_SOURCES server/web/web_decoders.cpp)   # the receivers as web decoders (also built with ONAIR_WEB_SESSION)
 add_library(onair_web STATIC ${ONAIR_WEB_SOURCES})
 set_source_files_properties(${ONAIR_WEB_SOURCES} PROPERTIES COMPILE_DEFINITIONS ONAIR_WEB_SESSION=1)
 target_include_directories(onair_web PUBLIC server)
@@ -1110,6 +1111,13 @@ if(DECT2_BUILD_TESTS)
     add_test(NAME ${t} COMMAND test_${t})
   endforeach()
   target_compile_definitions(test_web_safety PRIVATE ONAIR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  add_executable(test_web_decoders tests/server/test_web_decoders.cpp server/server_config.cpp)   # the web decoders (server/web/web_decoders.cpp)
+  target_link_libraries(test_web_decoders PRIVATE onair_web)
+  add_test(NAME web_decoders COMMAND test_web_decoders)
+  find_program(ONAIR_NODE node)   # the browser client's pure code (web/onair-web/*.js)
+  if(ONAIR_NODE)
+    add_test(NAME web_client COMMAND ${ONAIR_NODE} ${CMAKE_SOURCE_DIR}/tests/web/run.js)
+  endif()
   if(NOT MSVC)   # the transmit path must be a compile error in web code: this compile has to FAIL
     add_test(NAME web_tx_guard COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fsyntax-only -DONAIR_WEB_SESSION=1 -I${CMAKE_SOURCE_DIR}/core/include
              ${CMAKE_SOURCE_DIR}/tests/server/web_tx_guard.cpp)

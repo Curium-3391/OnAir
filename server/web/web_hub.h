@@ -50,6 +50,7 @@ public:
     virtual void feed(const cf32* /*x*/, size_t /*n*/) {}               // baseband at the factory's rate (rate 0: not called)
     virtual void poll(std::vector<std::string>& eventsJson) = 0;        // new results, each a complete JSON value (at most 64 KB each; bigger ones are not sent)
     virtual std::string policyKind() const { return std::string(); }    // the kind the policy checks now (the host decoder: the host's mode)
+    virtual void snapshot(std::vector<std::string>& /*eventsJson*/) {}  // the current state for a listener who subscribes now (that listener only; same size limit as poll())
 };
 struct DecoderFactory {
     std::string kind, name;

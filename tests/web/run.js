@@ -226,4 +226,88 @@ test("jitter buffer: primes, plays, resamples, underruns, resyncs", () => {
   const o = new Float32Array(4); q.pull(o); assert.deepStrictEqual(Array.from(o), [0, 1, 2, 3]);
 });
 
+// ---------------------------------------------------------------- decoders tab (onair-decoders.js)
+const D = require(path.join(__dirname, "../../web/onair-web/onair-decoders.js"));
+test("decoder events: envelope check", () => {
+  assert.ok(D.validEvent({ v: 1, kind: "adsb", type: "aircraft" }));
+  assert.ok(!D.validEvent({ v: 2, kind: "adsb", type: "aircraft" }) && !D.validEvent(null) && !D.validEvent({ mode: "fm", telemetry: {} }) && !D.validEvent("x"));
+});
+test("decoder default frequencies follow the capture", () => {
+  const cap = { centre_hz: 1090e6, rate_hz: 2.4e6 };
+  assert.strictEqual(D.defaultFreq("adsb", 100e6, cap), 1090e6);
+  assert.strictEqual(D.defaultFreq("adsb", 100e6, { centre_hz: 100e6, rate_hz: 2.4e6 }), 100e6, "out of the capture: the tuned frequency");
+  assert.strictEqual(D.defaultFreq("rds", 93.9e6, cap), 93.9e6, "no preset: the tuned frequency");
+  assert.strictEqual(D.defaultFreq("ais", 5, null), 5);
+});
+test("aircraft table and map marks", () => {
+  const t = D.aircraftTable({ aircraft_count: 3, with_position: 2, msgs_per_s: 41.6, aircraft: [
+    { icao: "4840D6", callsign: "KLM1023", alt_ft: 38000, speed_kt: 450, track_deg: 271, vrate_fpm: -64, lat: 52.3, lon: 4.76, squawk: "7700", msgs: 9, age_s: 3, trail: [[52.2, 4.6], [52.3, 4.76], ["x", 1]] },
+    { icao: "ABCDEF", ground: true, msgs: 2, age_s: 130 },
+    { icao: "111111", alt_ft: 100, lat: 999, lon: 4, age_s: 1 } ] });
+  assert.strictEqual(t.rows.length, 3);
+  assert.deepStrictEqual(t.rows[0].slice(0, 3), ["111111", "", "100"], "newest first");
+  assert.strictEqual(t.rows[2][2], "ground");
+  assert.strictEqual(t.rows[2][8], "2 min");
+  assert.strictEqual(t.marks.length, 1, "a position outside the globe is not drawn");
+  assert.ok(t.marks[0].alert && t.marks[0].trail.length === 2 && t.marks[0].label === "KLM1023");
+  assert.ok(/3 aircraft, 2 with position, 42 msg/.test(t.summary));
+  assert.doesNotThrow(() => D.aircraftTable({}));
+  assert.doesNotThrow(() => D.aircraftTable({ aircraft: "nope" }));
+});
+test("vessel and APRS tables", () => {
+  const v = D.vesselTable({ vessel_count: 1, messages_ok: 5, vessels: [{ mmsi: 244123456, name: "SEA", ship_type_text: "Cargo", sog_kt: 12.34, cog_deg: 90, heading_deg: 91, lat: 51.9, lon: 4.1, age_s: 4 }] });
+  assert.strictEqual(v.rows[0][0], "244123456"); assert.strictEqual(v.rows[0][5], "12.3"); assert.strictEqual(v.marks[0].heading, 91);
+  const a = D.aprsTables({ frames_ok: 4, frames_bad: 1, stations: [{ call: "PA1ABC-9", symbol: "/>", lat: 52, lon: 5, count: 3, comment: "hi" }],
+    frames: [{ from: "PA1ABC-9", to: "APRS", path: "WIDE1-1*", type: "Position", summary: "x" }] });
+  assert.strictEqual(a.rows[0][0], "PA1ABC-9"); assert.strictEqual(a.frames[0][0], "PA1ABC-9>APRS,WIDE1-1*"); assert.strictEqual(a.marks.length, 1);
+});
+test("FT8 decode history: newest first, no duplicates, capped", () => {
+  const mk = (utc, msg) => ({ slot_utc: utc, audio_hz: 1500, snr_db: -10, dt_s: 0.2, rf_hz: 14075500, msg });
+  let list = D.mergeDecodes([], { decodes: [mk(1, "A"), mk(1, "B")] }, 5);
+  assert.deepStrictEqual(list.map((x) => x.msg), ["B", "A"]);
+  list = D.mergeDecodes(list, { decodes: [mk(1, "B"), mk(16, "C")] }, 5);   // a replay for a late listener repeats B
+  assert.deepStrictEqual(list.map((x) => x.msg), ["C", "B", "A"]);
+  for (let i = 0; i < 20; i++) list = D.mergeDecodes(list, { decodes: [mk(100 + i, "M" + i)] }, 5);
+  assert.strictEqual(list.length, 5); assert.strictEqual(list[0].msg, "M19");
+  const rows = D.ftxRows(list);
+  assert.strictEqual(rows[0][3], "14.0755 MHz");
+  assert.strictEqual(D.fmtUtc(0), ""); assert.strictEqual(D.fmtUtc(3661), "01:01:01");
+});
+test("map fit and projection", () => {
+  const b = D.mapFit([{ lat: 52, lon: 4 }, { lat: 53, lon: 6 }]);
+  assert.ok(b.lat0 < 52 && b.lat1 > 53 && b.lon0 < 4 && b.lon1 > 6);
+  const p = D.mapProject(53.1, 4, b, 400, 300), q = D.mapProject(52, 6, b, 400, 300);
+  assert.ok(p.y < q.y, "north is up"); assert.ok(p.x < q.x, "east is right");
+  assert.ok(p.x >= 0 && q.x <= 400 && p.y >= 0 && q.y <= 300, "inside the canvas");
+  // a degree of longitude is shorter than a degree of latitude at 52 N
+  const a = D.mapProject(52, 4, b, 400, 300), c = D.mapProject(52, 5, b, 400, 300), d = D.mapProject(53, 4, b, 400, 300);
+  assert.ok(Math.abs(c.x - a.x) < Math.abs(d.y - a.y) * 0.7);
+  assert.doesNotThrow(() => D.mapFit([]));
+});
+test("picture strips: placement, new picture, end, bad input", () => {
+  const strip = (id, y, rows, extra) => Object.assign({ v: 1, kind: "wefax", type: "image", id, label: "IOC 576", w: 100, h: 200, ch: 1, y, rows, scale: 1, preview: false, final: false, pw: 100, ph: rows, png: "iVBORw0KGgo=" }, extra || {});
+  let r = D.planStrip(null, strip(7, 0, 10));
+  assert.ok(r.reset && r.draw && r.draw.dy === 0 && r.draw.dh === 10 && r.draw.dw === 100 && r.draw.url.startsWith("data:image/png;base64,"));
+  assert.strictEqual(r.state.rows, 10);
+  r = D.planStrip(r.state, strip(7, 10, 10));
+  assert.ok(!r.reset && r.draw.dy === 10 && r.state.rows === 20);
+  r = D.planStrip(r.state, strip(7, 190, 10, { final: true }));
+  assert.ok(r.state.done && r.state.rows === 200);
+  const old = r.state;
+  r = D.planStrip(old, strip(8, 0, 5));
+  assert.ok(r.reset && r.state.id === 8 && !r.state.done, "a new id starts a new picture");
+  r = D.planStrip(old, { v: 1, kind: "wefax", type: "image_end", id: 7, rows: 150 });
+  assert.ok(r.state.done && !r.draw);
+  // a preview covers the rows it describes, scaled up to the strip's size
+  r = D.planStrip(null, strip(9, 0, 120, { preview: true, scale: 3, pw: 34, ph: 40 }));
+  assert.ok(r.draw && r.draw.dw === 100 && r.draw.dh === 120);
+  // refused: out of range, overflow, bad base64, other picture width, wrong type
+  for (const bad of [strip(7, -1, 5), strip(7, 198, 5), strip(7, 0, 0), strip(7, 0, 5, { png: "data:evil" }), strip(7, 0, 5, { png: 5 }), strip(7, 0, 5, { w: 99999 }), strip(7, 0, 5, { pw: 200 }),
+                     strip(7, 0, 5, { png: "A".repeat(130000) }), strip(7, 0, 5, { w: 50, pw: 50 }), { v: 1, kind: "x", type: "table" }]) {
+    const rr = D.planStrip(old, bad);
+    assert.ok(!rr.draw, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.strictEqual(D.planStrip(null, null).state, null);
+});
+
 console.log(passed + " tests passed" + (process.exitCode ? ", some FAILED" : ""));
