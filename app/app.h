@@ -1237,6 +1237,8 @@ void radioMessagesUi(App& a, bool vertical);
 // radio_ui.cpp: the "Radio settings" of the selected radio (only the ones it has): a collapsible section in a side panel (vertical), a
 // button with a popup in a one-line bar. A change reaches a running radio at once (a retune, or a restart for one that takes effect at open)
 void radioSettingsUi(App& a, bool vertical);
+void calibrateFrequencyOpen(App& a);   // radio_ui.cpp: Tools > Calibrate frequency (ppm wizard: FM / ATSC / time carrier / manual, quick check, drift track)
+void calibrateFrequencyDraw(App& a);   // once per frame (draw_ui.cpp)
 // subs_ui.cpp: DVB subtitles and teletext subtitle pages over the picture, the language choice, the teletext page drawing
 void subsUpdate(App& a);                  // every frame: the subtitle services of the playing programme, decoder PIDs, the overlay bitmap
 void subsControls(App& a);                // on/off checkbox and language choice (the TV panel)

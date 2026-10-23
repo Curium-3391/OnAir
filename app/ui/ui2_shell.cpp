@@ -565,6 +565,8 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Antenna rotator..."), nullptr, &a.rotatorOpen);
         ImGui::MenuItem(tr("Voice keys..."), nullptr, &a.voiceKeysOpen);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Your own decryption keys for digital voice (P25, NXDN). Nothing is decrypted without a key you add."));
+        if (ImGui::MenuItem(tr("Calibrate frequency..."))) calibrateFrequencyOpen(a);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Measure this radio's frequency error (ppm) against an FM station, an ATSC pilot, a time-signal carrier, or by typing what you see"));
         ImGui::EndMenu();
     }
 }

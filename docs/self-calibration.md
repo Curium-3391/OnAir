@@ -58,3 +58,18 @@ under `selfcal.hist`, per radio), shown as a graph with the warm-up drift.
 `fromCell()` and `fromGpsCarrier()` turn a cell's carrier offset (CellTelemetry::cfoHz) and a tracked GPS carrier residual into estimates, and
 `combine()` merges them with the others; the dialog itself does not use the cell and GPS decoders yet (it needs their modes running on the same
 capture).
+
+## Tools > Calibrate frequency (ppmcal.h)
+
+The dialog has four methods: an FM station's stereo pilot (the tuned station or one from the 87.5-108 MHz list), an ATSC pilot (US channels 2-36,
+309.44 kHz above the lower edge), a time-signal or AM carrier of known frequency (WWV/WWVH, CHU, BPM, DCF77, MSF, WWVB, JJY, BPC, RBU, or a
+typed one), and manual (type the observed and the expected frequency). A full run integrates until the 95 % interval is under 0.1 ppm
+(1-sigma 0.05). "Quick check" is a short run against the present correction that stores nothing and says whether it still holds;
+"Track drift (10 min)" measures repeatedly and draws the warm-up curve with its ppm-per-minute slope. The result is checked
+(`checkPpm`: over 300 ppm is rejected when the radio's oscillator class is known, a sub-carrier such as the FM pilot gets a warning) and
+"Apply" writes it to this radio's `ppm` setting, which is stored per radio key; every full measurement is also kept in that radio's history.
+
+`ppmcal.h` also holds the pure pieces with tests (tests/selfcal/test_selfcal_ppmcal.cpp): `fitToneByPhase` (coarse lag-1 step, then
+longer and longer block phase fits), `parabolicPeak`, `PpmAverager`, `quickCheck`, `DriftTrack`, and the reference lists. The DVB-T, DAB and GSM
+FCCH lists give the nominal frequencies for a decoder's measured carrier offset (`fromFreqError`); the dialog does not feed them from the
+decoders yet.
