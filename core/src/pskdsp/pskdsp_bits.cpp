@@ -195,13 +195,14 @@ void BitDecoder::configure(Order o, const BitOptions& b) { o_ = o; b_ = b; reset
 
 void BitDecoder::reset() {
     rot_ = b_.rotation; conj_ = b_.conj;
+    rail_ = o_ == Order::Oqpsk ? b_.railShift : 0; haveRail_ = false; lastIm_ = 0;
     resolved_ = b_.sync.empty() || !b_.autoAmbiguity;
     hunt_.clear();
     prevIdx_ = 0; prevBit_ = 0; havePrev_ = false;
     g3_ = 0;
     tail_.clear();
     sinceSync_ = 0; ccsdsPos_ = 0; ccsdsOn_ = false;
-    syncs_ = 0; sinceHit_ = 0;
+    syncs_ = 0; sinceHit_ = 0; period_ = 0; huntRounds_ = 0;
 }
 
 void BitDecoder::emit(cf z, Bits& out, std::vector<float>* soft) {
@@ -263,7 +264,11 @@ void BitDecoder::emit(cf z, Bits& out, std::vector<float>* soft) {
             out.push_back((uint8_t)(v ^ (b_.invert ? 1 : 0)));
             if (soft && b_.diff == Diff::None && b_.scr == Scrambler::None) soft->push_back(b_.invert ? -sb[k] : sb[k]);
         }
-        if (hit) { syncs_++; sinceHit_ = 0; }
+        if (hit) {
+            // the spacing of the sync words: once known, a missing run of them means a slip (re-hunt sooner)
+            if (syncs_ > 0 && sinceHit_ < (1u << 20)) period_ = period_ == 0 ? (double)sinceHit_ : 0.8 * period_ + 0.2 * (double)sinceHit_;
+            syncs_++; sinceHit_ = 0;
+        }
     }
 }
 
@@ -272,32 +277,50 @@ void BitDecoder::flush(Bits& out) {
     pend_.clear();
 }
 
+bool BitDecoder::pre(cf in, cf& out) {
+    if (!rail_) { out = in; return true; }
+    // pair the Q rail of this symbol with the I rail of the next: (Im z[k], Re z[k+1])
+    if (!haveRail_) { lastIm_ = in.imag(); haveRail_ = true; return false; }
+    out = cf(lastIm_, in.real());
+    lastIm_ = in.imag();
+    return true;
+}
+
 void BitDecoder::push(const cf* sym, size_t n, Bits& out, std::vector<float>* soft) {
     const size_t huntN = std::max<size_t>(1024, (b_.sync.size() + 1) * 48 / std::max(1, orderBits(o_)));
     for (size_t i = 0; i < n; i++) {
         if (resolved_) {
-            emit(sym[i], out, soft);
+            cf z;
+            if (pre(sym[i], z)) emit(z, out, soft);
             // lost: no sync word for a long time (a cycle slip) -> hunt again
-            if (!b_.sync.empty() && b_.autoAmbiguity && sinceHit_ > std::max<uint64_t>(8192, 64 * b_.sync.size()) && syncs_ > 0) {
+            const uint64_t lostAfter = period_ > 0 ? std::max<uint64_t>((uint64_t)(3.5 * period_), 4 * b_.sync.size()) : std::max<uint64_t>(2048, 64 * b_.sync.size());
+            if (!b_.sync.empty() && b_.autoAmbiguity && sinceHit_ > lostAfter && syncs_ > 0) {
                 resolved_ = false;
                 hunt_.clear();
+                huntRounds_ = 0;
             }
             continue;
         }
         hunt_.push_back(sym[i]);
         if (hunt_.size() < huntN) continue;
-        int bestR = rot_; bool bestC = conj_;
-        const int bestHits = huntBest(bestR, bestC);
-        if (bestHits > 0) {
+        int bestR = rot_, bestRail = rail_; bool bestC = conj_;
+        const int bestHits = huntBest(bestR, bestC, bestRail);
+        // two sync words agreeing decide; a single one only after a few windows (sync words further apart than the window)
+        if (bestHits >= 2 || (bestHits == 1 && huntRounds_ >= 3)) {
+            huntRounds_ = 0;
             rot_ = bestR; conj_ = bestC; resolved_ = true;
+            if (bestRail != rail_) { rail_ = bestRail; haveRail_ = false; }
             sinceHit_ = 0;
             std::vector<cf> held;
             held.swap(hunt_);
-            for (const cf& z : held) emit(z, out, soft);
+            cf z;
+            for (const cf& h : held) if (pre(h, z)) emit(z, out, soft);
         } else {
             // nothing yet: emit the older half as it is and keep hunting on the rest
+            huntRounds_++;
             const size_t h = hunt_.size() / 2;
-            for (size_t k = 0; k < h; k++) emit(hunt_[k], out, soft);
+            cf z;
+            for (size_t k = 0; k < h; k++) if (pre(hunt_[k], z)) emit(z, out, soft);
             hunt_.erase(hunt_.begin(), hunt_.begin() + (long)h);
         }
     }
@@ -310,26 +333,27 @@ BitResult symbolsToBits(const std::vector<cf>& sym, Order o, const BitOptions& b
     d.push(sym.data(), sym.size(), r.bits, &r.soft);
     d.drain(r.bits, &r.soft);
     d.flush(r.bits);
-    r.rotation = d.rotation(); r.conj = d.conj(); r.ambiguityResolved = d.resolved() && !b.sync.empty();
+    r.rotation = d.rotation(); r.conj = d.conj(); r.railShift = d.railShift(); r.ambiguityResolved = d.resolved() && !b.sync.empty();
     if (!b.sync.empty()) r.syncAt = findSync(r.bits, b.invert ? signallab::invert(b.sync) : b.sync, maxErrFor(b));
     r.syncHits = (int)r.syncAt.size();
     return r;
 }
 
-int BitDecoder::huntBest(int& bestR, bool& bestC) const {
+int BitDecoder::huntBest(int& bestR, bool& bestC, int& bestRail) const {
     const int M = orderPoints(o_);
     int bestHits = 0;
+    for (int rail = 0; rail < (o_ == Order::Oqpsk ? 2 : 1); rail++)
     for (int c = 0; c < 2; c++)
         for (int r = 0; r < M; r++) {
             BitOptions t = b_;
-            t.autoAmbiguity = false; t.rotation = r; t.conj = c != 0; t.invert = false;
+            t.autoAmbiguity = false; t.rotation = r; t.conj = c != 0; t.invert = false; t.railShift = rail;
             if (t.scr == Scrambler::Ccsds) t.scr = Scrambler::None;   // the sync word is not randomised
             BitDecoder d;
             d.configure(o_, t);
             Bits bb;
             d.push(hunt_.data(), hunt_.size(), bb);
             const int hits = (int)findSync(bb, b_.sync, maxErrFor(b_)).size();
-            if (hits > bestHits) { bestHits = hits; bestR = r; bestC = c != 0; }
+            if (hits > bestHits) { bestHits = hits; bestR = r; bestC = c != 0; bestRail = rail; }
         }
     return bestHits;
 }
@@ -337,11 +361,12 @@ int BitDecoder::huntBest(int& bestR, bool& bestC) const {
 void BitDecoder::drain(Bits& out, std::vector<float>* soft) {
     // end of a block: decide on what is held even if it is short
     if (resolved_ || hunt_.empty()) return;
-    int r = rot_; bool c = conj_;
-    if (huntBest(r, c) > 0) { rot_ = r; conj_ = c; resolved_ = true; }
+    int r = rot_, rail = rail_; bool c = conj_;
+    if (huntBest(r, c, rail) > 0) { rot_ = r; conj_ = c; resolved_ = true; if (rail != rail_) { rail_ = rail; haveRail_ = false; } }
     std::vector<cf> held;
     held.swap(hunt_);
-    for (const cf& z : held) emit(z, out, soft);
+    cf z;
+    for (const cf& h : held) if (pre(h, z)) emit(z, out, soft);
 }
 
 } // namespace dect2::pskd

@@ -1,5 +1,5 @@
-// Generic PSK demodulator and analyser (BPSK / QPSK / OQPSK / 8PSK): the pure DSP of the "PSK demodulator" mode (family 240).
-// Everything here works on blocks or streams of complex samples at any rate; no engine, no threads, no I/O except the bit sinks in pskdsp_out.cpp.
+// Generic PSK demodulator and analyser (BPSK / QPSK / OQPSK / 8PSK): the pure DSP of the "PSK demodulator" mode (family 202, issue #282).
+// Everything here works on blocks or streams of complex samples at any rate; no engine, no threads, no I/O.
 //   channel  : find the strongest narrow signal in a span, its carrier and bandwidth (zooming in for narrow signals in wide captures)
 //   analyse  : blind symbol rate (|x|^2 envelope line, x^2 / x^4 side lines, refined by the timing loop), modulation order (power-law lines,
 //              then a trial demodulation per order scored by constellation fit and point use), roll-off, carrier and Doppler, MER / Es/N0 / Eb/N0
@@ -100,6 +100,7 @@ public:
                  std::vector<float>* eye = nullptr);   // eye: the I rail, 16 points per symbol (resampled), for the eye diagram
     DemodStats stats() const;
     const DemodConfig& config() const { return c_; }
+    void addFreq(double radPerSample) { freq_ += radPerSample; }   // the channel ahead was retuned: keep the carrier where it is
 private:
     DemodConfig c_;
     std::vector<float> mf_;
@@ -115,7 +116,6 @@ private:
     bool havePrev_ = false;
     double evmAcc_ = 0, phVar_ = 0;
     uint64_t nIn_ = 0, nSym_ = 0;
-    double eyeT_ = 0;
 };
 
 // decide: nearest M-PSK point (BPSK 0 / 180 degrees, QPSK and OQPSK +-45 / +-135, 8PSK k x 45); idx 0..M-1 counts counter-clockwise
@@ -178,13 +178,14 @@ struct BitOptions {
     int syncMaxErr = -1;         // -1: length / 12
     bool autoAmbiguity = true;   // try every rotation and both spectral senses against the sync word
     int rotation = 0; bool conj = false;   // used when autoAmbiguity is off or there is no sync word
+    int railShift = 0;           // OQPSK: 1 pairs each Q rail with the next I rail (a 90 degree slip of an offset signal); the hunt finds it
     bool invert = false;         // invert the output bits
     size_t ccsdsFrameBits = 0;   // CCSDS randomiser: bits after each sync word it covers (0: up to the next sync word)
 };
 struct BitResult {
     Bits bits;                   // after differential decoding, descrambling, inversion
     std::vector<float> soft;     // soft bits (before differential decoding: only when diff == None)
-    int rotation = 0; bool conj = false; bool ambiguityResolved = false;
+    int rotation = 0; bool conj = false; int railShift = 0; bool ambiguityResolved = false;
     std::vector<size_t> syncAt;  // bit index just after each sync word found
     int syncHits = 0;
 };
@@ -211,20 +212,25 @@ public:
     void flush(Bits& out);                                        // and the bits the CCSDS de-randomiser holds back
     int rotation() const { return rot_; }
     bool conj() const { return conj_; }
+    int railShift() const { return rail_; }
     bool resolved() const { return resolved_; }
     uint64_t syncCount() const { return syncs_; }
 private:
     void emit(cf z, Bits& out, std::vector<float>* soft);
-    int huntBest(int& r, bool& c) const;   // sync hits of the best rotation / sense on hunt_
+    int huntBest(int& r, bool& c, int& rail) const;   // sync hits of the best rotation / sense / OQPSK rail pairing on hunt_
+    bool pre(cf in, cf& out);    // OQPSK rail pairing: false while the first half of a pair is held
     Bits pend_;
     Order o_ = Order::Bpsk; BitOptions b_;
     int rot_ = 0; bool conj_ = false; bool resolved_ = false;
+    int rail_ = 0; float lastIm_ = 0; bool haveRail_ = false;
     std::vector<cf> hunt_;       // symbols held until the sync hunt decides
     int prevIdx_ = 0; uint8_t prevBit_ = 0; bool havePrev_ = false;
     uint32_t g3_ = 0;            // G3RUH descrambler register (past input bits)
     Bits tail_;                  // last bits for the sync search
     size_t sinceSync_ = 0, ccsdsPos_ = 0; bool ccsdsOn_ = false;
     uint64_t syncs_ = 0, sinceHit_ = 0;
+    double period_ = 0;          // bits between sync words (smoothed), 0 until two were seen
+    int huntRounds_ = 0;
 };
 
 // ================================================================ test signals (pskdsp_gen.cpp)
