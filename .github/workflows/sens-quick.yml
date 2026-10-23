@@ -3,6 +3,10 @@
 name: Sensitivity sweep
 
 on:
+  # Pushing the branch sens-baseline-run-030 runs the full sweep of every mode (8 trials a point) and builds the baseline file (artifact sens-merged);
+  # this exists because a workflow can only be dispatched by hand once it is on the default branch.
+  push:
+    branches: ['sens-baseline-run-030']
   workflow_dispatch:
     inputs:
       modes:
@@ -32,7 +36,7 @@ env:
 
 jobs:
   sens:
-    name: sens_sweep (${{ inputs.tier }}, ${{ inputs.modes }})
+    name: sens_sweep (${{ inputs.tier || 'full' }}, ${{ inputs.modes || 'all' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     steps:
@@ -54,15 +58,16 @@ jobs:
           cmake --build build --target sens_sweep -j 4
       - name: Sweep
         run: |
-          args=(--${{ inputs.tier }} --mode '${{ inputs.modes }}' --scenario '${{ inputs.scenarios }}' --out sens-out)
-          if [ '${{ inputs.trials }}' != '0' ]; then args+=(--trials '${{ inputs.trials }}'); fi
+          args=(--${{ inputs.tier || 'full' }} --mode '${{ inputs.modes || '.*' }}' --scenario '${{ inputs.scenarios || '.*' }}' --out sens-out)
+          trials='${{ inputs.trials || '8' }}'
+          if [ "$trials" != '0' ]; then args+=(--trials "$trials"); fi
           ./build/sens_sweep "${args[@]}" | tee sens-out.txt
       - name: Compare with the baseline
         continue-on-error: true
         run: |
           if [ -f tests/sens/baseline/sens-baseline.json ]; then python3 tools/sens/compare.py tests/sens/baseline/sens-baseline.json sens-out/sens-baseline.json | tee -a sens-out.txt; fi
       - name: Merge into the baseline file
-        if: ${{ inputs.update_baseline }}
+        if: ${{ inputs.update_baseline || github.event_name == 'push' }}
         run: |
           mkdir -p sens-merged
           cp tests/sens/baseline/sens-baseline.json sens-merged/ 2>/dev/null || true
