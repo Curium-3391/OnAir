@@ -2,6 +2,8 @@
 #include "dect2/tv/player.h"
 #include "dect2/tv/hw_guard.h"
 #include "dect2/tv/conceal.h"
+#include "dect2/tv/tv_dra.h"
+#include <functional>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -34,7 +36,7 @@ extern "C" {
 namespace dect2 {
 
 // ---- the AVS family and DRA (docs/CODECS.md): OnAir ships no codec of its own, it says what its FFmpeg cannot decode
-const char* const kDraAudioNote = "DRA audio: no decoder available";
+const char* const kDraAudioNote = "DRA audio: install the DRA add-on to hear this service";
 
 int avsProfileId(const uint8_t* p, size_t n) {
     for (size_t i = 0; i + 4 < n; i++)
@@ -151,7 +153,7 @@ void Player::select(int sid) {
         sid_ = sid; hwFallback_ = false;
         filter_.select(sid);
         in_.clear();
-        lossMarks_.clear(); pushed_ = consumed_ = 0; videoPid_ = -1; draAudio_ = false;
+        lossMarks_.clear(); pushed_ = consumed_ = 0; videoPid_ = -1; draAudio_ = false; draTracks_.clear();
         for (int& c : lastCc_) c = -1;
         restart_ = true;
     }
@@ -171,6 +173,8 @@ void Player::push(const uint8_t* pk, size_t n, const TsSnapshot& snap) {
     if (sid_ < 0) return;
     std::lock_guard<std::mutex> lk(mu_);
     for (const TsService& sv : snap.services) if (sv.id == sid_) { bool d = false; for (const TsStream& st : sv.streams) d = d || st.codec == "DRA"; draAudio_ = d;
+        draTracks_.clear();
+        for (const TsStream& st : sv.streams) if (st.codec == "DRA" && !st.scrambled) { AudioTrackInfo t; t.pid = st.pid; t.codec = "DRA"; t.lang = st.lang; t.channels = 2; draTracks_.push_back(t); }
         esPid_ = -1;   // the stream "Save stream" writes: DRA, else MPEG audio
         for (const TsStream& st : sv.streams) if (st.codec == "DRA" && !st.scrambled) { esPid_ = st.pid; esCodec_ = st.codec; break; }
         if (esPid_ < 0) for (const TsStream& st : sv.streams) if ((st.codec == "MPEG audio" || st.codec == "MPEG-1 audio") && !st.scrambled) { esPid_ = st.pid; esCodec_ = st.codec; break; } }
@@ -355,7 +359,11 @@ PlayerStats Player::stats() const {
     PlayerStats s;
     { std::lock_guard<std::mutex> lk(p_->smu); s = p_->st; }
     // FFmpeg has no DRA decoder: a service whose sound is DRA only plays without it (another audio track, if there is one, plays)
-    if (draAudio_ && !s.hasAudio && s.status == "playing") s.audioNote = kDraAudioNote;
+    if (draAudio_ && !s.hasAudio && s.status == "playing") {
+        std::string prob;
+        s.audioNote = draTvNote(cdr::draAvailable(nullptr, &prob), prob);
+        if (s.audioNote.empty()) s.audioNote = "DRA audio: starting the DRA add-on";   // found; it is used when the stream restarts or the track is picked again
+    }
     s.audioBufferMs = audio_.bufferedFrames() * 1000.0 / audio_.sampleRate();
     s.underruns = audio_.underruns();
     { std::lock_guard<std::mutex> l2(p_->vmu); s.videoQueue = (int)p_->vq.size(); }
@@ -469,18 +477,34 @@ void Player::threadMain() {
             if (cp->codec_type == AVMEDIA_TYPE_AUDIO) aIdx.push_back((int)i);
             if (cp->codec_id == AV_CODEC_ID_DVB_SUBTITLE && sIdx < 0) sIdx = (int)i;
         }
+        // DRA sound: FFmpeg has no decoder and lists the stream as data or unknown; its packets still come out of the demuxer with their times.
+        // They are played through the user's DRA add-on (tv_dra.h) as extra audio tracks after the ones FFmpeg can decode.
+        std::vector<char> aDra(aIdx.size(), 0);
+        std::vector<AudioTrackInfo> draInfo;
+        { std::lock_guard<std::mutex> lk(mu_); draInfo = draTracks_; }
+        for (unsigned i = 0; i < fmt->nb_streams; i++) {
+            const AVMediaType mt = fmt->streams[i]->codecpar->codec_type;
+            if (mt == AVMEDIA_TYPE_AUDIO || mt == AVMEDIA_TYPE_VIDEO || mt == AVMEDIA_TYPE_SUBTITLE) continue;
+            for (const AudioTrackInfo& d : draInfo) if (d.pid == fmt->streams[i]->id) { aIdx.push_back((int)i); aDra.push_back(1); break; }
+        }
         subsAvail_ = sIdx >= 0;
         {
             std::lock_guard<std::mutex> lk(I.smu);
             I.tracks.clear();
-            for (int i : aIdx) {
+            for (size_t k = 0; k < aIdx.size(); k++) {
+                const int i = aIdx[k];
                 AVCodecParameters* cp = fmt->streams[i]->codecpar;
                 AudioTrackInfo t;
                 t.pid = fmt->streams[i]->id;
-                t.codec = avcodec_get_name(cp->codec_id);
                 AVDictionaryEntry* l = av_dict_get(fmt->streams[i]->metadata, "language", nullptr, 0);
                 t.lang = l ? l->value : "";
-                t.channels = cp->ch_layout.nb_channels;
+                if (aDra[k]) {
+                    t.codec = "DRA"; t.channels = 2;
+                    if (t.lang.empty()) for (const AudioTrackInfo& d : draInfo) if (d.pid == t.pid) t.lang = d.lang;
+                } else {
+                    t.codec = avcodec_get_name(cp->codec_id);
+                    t.channels = cp->ch_layout.nb_channels;
+                }
                 I.tracks.push_back(t);
             }
         }
@@ -536,10 +560,14 @@ void Player::threadMain() {
         // ---- audio decoder (reopened when the track changes)
         AVCodecContext* actx = nullptr;
         SwrContext* swr = nullptr;
+        TvDraDecoder draDec;
+        bool draOn = false;
         auto openAudio = [&](int track) {
             if (actx) avcodec_free_context(&actx);
             if (swr) swr_free(&swr);
+            draOn = false;
             if (track < 0 || track >= (int)aIdx.size()) return;
+            if (aDra[track]) { draDec.reset(); draOn = draDec.usable(); return; }
             AVStream* s = fmt->streams[aIdx[track]];
             const AVCodec* c = avcodec_find_decoder(s->codecpar->codec_id);
             if (!c) return;
@@ -548,7 +576,7 @@ void Player::threadMain() {
             if (avcodec_open2(actx, c, nullptr) < 0) avcodec_free_context(&actx);
         };
         openAudio(curTrack);
-        if (actx) audio_.start(48000);
+        if (actx || draOn) audio_.start(48000);
         // ---- subtitle decoder
         AVCodecContext* sctx = nullptr;
         if (sIdx >= 0) {
@@ -559,7 +587,7 @@ void Player::threadMain() {
             std::lock_guard<std::mutex> lk(I.smu);
             I.st.status = "playing";
             I.st.hasVideo = vctx != nullptr;
-            I.st.hasAudio = actx != nullptr;
+            I.st.hasAudio = actx != nullptr || draOn;
             I.st.videoNote = avsNote;
             I.st.videoStreamType = avsId == AV_CODEC_ID_CAVS ? 0x42 : avsId == AV_CODEC_ID_AVS2 ? 0xD2 : avsId == AV_CODEC_ID_AVS3 ? 0xD4 : -1;
             I.st.avsProfile = -1;
@@ -570,6 +598,7 @@ void Player::threadMain() {
                 I.st.fps = fr.den ? (double)fr.num / fr.den : 0;
             }
             if (actx) { I.st.audioCodec = avcodec_get_name(actx->codec_id); I.st.audioChannels = actx->ch_layout.nb_channels; }
+            else if (draOn) { I.st.audioCodec = "DRA"; I.st.audioChannels = 2; }
         }
         audio_.setStartThreshold((int)(1.2 * 48000)); // the stream arrives in 242 ms bursts and decoding time varies: keep a jitter buffer
 
@@ -719,7 +748,7 @@ void Player::threadMain() {
             }
             {   // wall-clock fallback when there is no audio
                 std::lock_guard<std::mutex> lk(I.cmu);
-                if (!actx && !I.wallValid) { I.wallValid = true; I.wallPts = vf->pts; I.wallT0 = nowSec() + 0.35; }
+                if (!actx && !draOn && !I.wallValid) { I.wallValid = true; I.wallPts = vf->pts; I.wallT0 = nowSec() + 0.35; }
             }
             const bool keyframe = (f->flags & AV_FRAME_FLAG_KEY) != 0;
             // queue cap from the frame rate and the picture size; over the cap the late pictures go first, then the newest (never the next due)
@@ -789,6 +818,7 @@ void Player::threadMain() {
             trimQ(vf);
         };
 
+        std::function<void(const float*, int, double)> emitAudio;
         auto pushAudio = [&](AVFrame* f) {
             if (!actx) return;
             if (!swr || swrRate != f->sample_rate || swrFmt != (AVSampleFormat)f->format || swrCh != f->ch_layout.nb_channels) {
@@ -806,6 +836,11 @@ void Player::threadMain() {
             int64_t ts = f->best_effort_timestamp != AV_NOPTS_VALUE ? f->best_effort_timestamp : f->pts;
             double pts = ts != AV_NOPTS_VALUE ? ts * av_q2d(fmt->streams[aIdx[curTrack]]->time_base) : I.nextPts;
             if (getenv("DECT2_BADPTS")) { static int cnt = 0; if (++cnt % 150 == 0) pts += 7.3; }   // test: a corrupted audio timestamp now and then
+            emitAudio(abuf.data(), n, pts);
+        };
+        // the part both FFmpeg-decoded and DRA-decoded sound goes through: timeline checks against the clock, gap filling, then the sound device
+        emitAudio = [&](const float* pcmData, int n, double pts) {
+            if (pts < 0) pts = I.nextPts;
             double gapSec = 0;
             {
                 std::lock_guard<std::mutex> lk(I.cmu);
@@ -859,7 +894,7 @@ void Player::threadMain() {
             }
             int done = 0;
             while (done < n && !stop_ && !restart_) {
-                done += audio_.write(abuf.data() + (size_t)done * 2, n - done);
+                done += audio_.write(pcmData + (size_t)done * 2, n - done);
                 if (done < n) std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
         };
@@ -885,6 +920,15 @@ void Player::threadMain() {
                 { std::lock_guard<std::mutex> lk(I.cmu); I.baseValid = false; }
                 std::lock_guard<std::mutex> lk(I.smu);
                 if (actx) { I.st.audioCodec = avcodec_get_name(actx->codec_id); I.st.audioChannels = actx->ch_layout.nb_channels; }
+                else if (draOn) { I.st.audioCodec = "DRA"; I.st.audioChannels = 2; }
+                I.st.hasAudio = actx != nullptr || draOn;
+                if (actx || draOn) audio_.start(48000);
+            }
+            if (!draOn && curTrack < (int)aDra.size() && aDra[curTrack] && draDec.usable()) {   // the add-on was installed while this service played
+                draDec.reset(); draOn = true;
+                audio_.start(48000);
+                std::lock_guard<std::mutex> lk(I.smu);
+                I.st.hasAudio = true; I.st.audioCodec = "DRA"; I.st.audioChannels = 2;
             }
             int r = av_read_frame(fmt, pkt);
             if (getenv("DECT2_PLAYDEBUG")) { static int n = 0; if ((n++ % 100) == 0 || r < 0) fprintf(stderr, "[play] read r=%d idx=%d pts=%lld vq=%zu abuf=%d decoded=%llu\n", r, pkt->stream_index, (long long)pkt->pts, I.vq.size(), audio_.bufferedFrames(), (unsigned long long)I.st.decoded); }
@@ -938,6 +982,12 @@ void Player::threadMain() {
             } else if (actx && curTrack < (int)aIdx.size() && pkt->stream_index == aIdx[curTrack]) {
                 if (avcodec_send_packet(actx, pkt) >= 0)
                     while (avcodec_receive_frame(actx, frame) >= 0) { pushAudio(frame); av_frame_unref(frame); }
+            } else if (draOn && curTrack < (int)aIdx.size() && aDra[curTrack] && pkt->stream_index == aIdx[curTrack]) {
+                const AVStream* ds = fmt->streams[pkt->stream_index];
+                const double dpts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts * av_q2d(ds->time_base) : -1.0;
+                std::vector<DraPcm> pcm;
+                draDec.feed(pkt->data, (size_t)pkt->size, dpts, pcm);
+                for (const DraPcm& c : pcm) emitAudio(c.stereo.data(), (int)(c.stereo.size() / 2), c.pts);
             } else if (sctx && pkt->stream_index == sIdx) {
                 AVSubtitle as; int got = 0;
                 if (avcodec_decode_subtitle2(sctx, &as, &got, pkt) >= 0 && got) {

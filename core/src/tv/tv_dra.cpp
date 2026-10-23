@@ -49,7 +49,7 @@ bool TvDraDecoder::usable() { return explicitApi_ || cdr::draApi(); }
 void TvDraDecoder::reset() {
     drop();
     buf_.clear();
-    nextPts_ = bufPts_ = -1;
+    nextPts_ = pendPts_ = -1; pendOff_ = 0;
     sincePcm_ = 0;
     rsPos_ = 0; haveLast_ = false; lastL_ = lastR_ = 0;
 }
@@ -88,10 +88,9 @@ void TvDraDecoder::emit(const int16_t* s, int ch, int frames, int rate, double p
 int TvDraDecoder::feed(const uint8_t* es, size_t n, double pts, std::vector<DraPcm>& out) {
     if (!es || !n) return 0;
     const size_t before = out.size();
-    // the time of the first frame that starts in this payload: remember where it begins in the buffer
-    const size_t pendOff = buf_.size();
+    // the time of the first frame that starts in this payload: remember where the payload begins in the buffer (kept until a frame uses it)
+    if (pts >= 0) { pendPts_ = pts; pendOff_ = buf_.size(); }
     buf_.insert(buf_.end(), es, es + n);
-    double pendPts = pts;
     size_t at = 0;
     while (at < buf_.size()) {
         if (buf_[at] != 0x7F || (at + 1 < buf_.size() && buf_[at + 1] != 0xFF)) { at++; continue; }      // look for the sync word
@@ -104,9 +103,9 @@ int TvDraDecoder::feed(const uint8_t* es, size_t n, double pts, std::vector<DraP
         }
         // the time of this frame: the PES time when this is the first frame of the payload that carries it (kept smooth against the running time)
         double t = nextPts_;
-        if (pendPts >= 0 && at >= pendOff) {
-            t = (nextPts_ >= 0 && std::fabs(pendPts - nextPts_) < 0.04) ? nextPts_ : pendPts;
-            pendPts = -1;
+        if (pendPts_ >= 0 && at >= pendOff_) {
+            t = (nextPts_ >= 0 && std::fabs(pendPts_ - nextPts_) < 0.04) ? nextPts_ : pendPts_;
+            pendPts_ = -1;
         }
         framesIn++;
         if (!open()) { at += fb; continue; }
@@ -133,9 +132,9 @@ int TvDraDecoder::feed(const uint8_t* es, size_t n, double pts, std::vector<DraP
         }
     }
     // keep only the unfinished frame (from the last sync word that may still complete)
-    if (at >= buf_.size()) buf_.clear();
-    else buf_.erase(buf_.begin(), buf_.begin() + (std::ptrdiff_t)at);
-    if (buf_.size() > kMaxBuf) buf_.clear();
+    if (at >= buf_.size()) { buf_.clear(); pendOff_ = 0; }
+    else { buf_.erase(buf_.begin(), buf_.begin() + (std::ptrdiff_t)at); pendOff_ = pendOff_ > at ? pendOff_ - at : 0; }
+    if (buf_.size() > kMaxBuf) { buf_.clear(); pendPts_ = -1; pendOff_ = 0; }
     return (int)(out.size() - before);
 }
 

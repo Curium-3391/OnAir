@@ -367,7 +367,7 @@ int main() {
         CHECK(avsServiceMessage(0x42, 0x48, true) == "Video: AVS+ (OnAir cannot decode this video) \xE2\x80\x94 audio, subtitles and data still work", "AVS+ message '%s'", avsServiceMessage(0x42, 0x48, true).c_str());
         CHECK(avsServiceMessage(0x42, 0x20, true).empty() && avsServiceMessage(0x42, -1, true).empty(), "JiZhun with a decoder: no message");
         CHECK(!avsServiceMessage(0x42, 0x20, false).empty() && avsServiceMessage(0xD2, 0x20, true).empty() && !avsServiceMessage(0xD2, 0x20, false).empty() && avsServiceMessage(0x1B, -1, false).empty(), "decoder missing / other codecs");
-        CHECK(std::string(kDraAudioNote) == "DRA audio: no decoder available", "DRA note '%s'", kDraAudioNote);
+        CHECK(std::string(kDraAudioNote) == "DRA audio: install the DRA add-on to hear this service", "DRA note '%s'", kDraAudioNote);
         printf("AVS / DRA player notes\n");
     }
     return fails ? 1 : 0;

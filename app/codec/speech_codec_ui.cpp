@@ -10,6 +10,7 @@
 #include "dect2/nxdn/nxdn_ambe.h"
 #include "dect2/p25/p25_imbe.h"
 #include "dect2/hfdig/hfdig_freedv.h"
+#include "dect2/cdr/cdr_dra.h"
 #include <filesystem>
 #include <cstdio>
 #include <chrono>
@@ -223,6 +224,18 @@ void voiceCodecsWindow(App& a) {
             ImGui::PopID();
         }
         ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    {   // the DRA add-on (CDR radio and DTMB TV sound in China): not a speech codec, but the same kind of thing the user installs
+        std::string p, prob;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("DRA / DRA+ (CDR radio and DTMB TV sound, patented, add-on only):");
+        ImGui::SameLine();
+        if (dect2::cdr::draAvailable(&p, &prob)) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "add-on loaded: %s", p.c_str());
+        else if (!prob.empty()) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "add-on found but not usable: %s", prob.c_str());
+        else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: %s", dect2::cdr::draFileNames().empty() ? "libonair_dra" : dect2::cdr::draFileNames().front().c_str());
+        ImGui::SameLine();
+        codecHelpButton(CodecHelp::Dra);
     }
     ImGui::Spacing();
     ImGui::TextDisabled("Codecs folder: %s", folder.c_str());

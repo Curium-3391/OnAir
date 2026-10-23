@@ -52,7 +52,8 @@ private:
     int outRate_;
     std::vector<uint8_t> buf_;       // bytes of an unfinished frame / bytes not yet cut into frames
     double nextPts_ = -1;            // the time the next frame is expected at
-    double bufPts_ = -1;             // the time of the first byte in buf_ (a PES time not yet used)
+    double pendPts_ = -1;            // a PES time not used by a frame yet, and where that PES starts in buf_
+    size_t pendOff_ = 0;
     int sincePcm_ = 0;
     // linear resampler state
     double rsPos_ = 0;
