@@ -423,6 +423,9 @@ struct App {
     bool newUi = true;        // the new interface (ui2.cpp) instead of the classic one (View > Classic interface)
     struct FamGain { int lna = 32, vga = 34; bool amp = false, known = false; } famGain[kNumSlots];   // the radio gains remembered for each mode
     double famFreq[kNumSlots] = {};  // the frequency each of the modes added after FM was last tuned to (0 = never)
+    std::string modeHidden, modeHiddenGroups, modeFavs;   // Mode > Modes shown...: the modes and groups left out of the lists, and the favourites, by name, separated by |
+    bool modeFavsOnly = false;   // list only the favourites (and the active mode)
+    bool modeVisOpen = false;    // the Modes shown window
     std::string modeGroupsOpen;   // the mode list groups left unfolded, by name, separated by |
     int uiVariant = 0;        // layout of the new interface: 0 sidebar (the default), 1 scope, 2 tiles, 3 faceplate, 4-6 scope children, 7 panel
     bool touchUi = false;     // the touch interface (ui/touch.h): big targets, a bottom dock, full-screen picker and sheets; Settings > Touch interface, --touch
@@ -1081,6 +1084,11 @@ void selectMode(App& a, int family, const char* subId = nullptr);
 bool modeSelected(const App& a, const ModeDef& m);    // the row of the current mode
 const char* modeSearchBox();                          // a search box at the top of a mode drop-down (mode_select.cpp); returns the query
 bool modeMatches(const ModeDef& m, const char* query); // the search box: name, subtitle, description and keywords
+// Modes shown (mode_visibility.cpp, rules in mode_visibility.h): what the lists leave out. --mode, --pick, deep links and the remote API ignore it.
+bool modeListed(const App& a, const ModeDef& m, const char* query = nullptr);   // in a list: matches the search, and is not hidden (unless searching or active)
+bool modeHiddenNow(const App& a, const ModeDef& m);                           // hidden by the user (a search still finds it: tag it "hidden")
+bool modeGroupListed(const App& a, int group, const char* query = nullptr);   // at least one mode of the group is listed
+void modeVisibilityWindow(App& a);
 void startReceiver(App& a);     // what the Start button does
 double audioViewOffsetHz(const App& a);   // a sound card in a Real mode with the audio-range view: where the spectrum's centre lies from the dial (else 0)
 void applyAudioSettings(App& a);   // the sound-card options into a.tune.radio (toolbar_source.cpp)

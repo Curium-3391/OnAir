@@ -68,9 +68,10 @@ void standardSwitch(App& a) {
     for (int g = 0; g < kNumGroups; g++) capW[g] = ImGui::CalcTextSize(tr(kGroupNames[g])).x;
     float x = p.x;
     for (int g = 0; g < kNumGroups; g++) {
+        if (!modeGroupListed(a, g)) { grpL[g] = grpR[g] = capX[g] = x; capW[g] = 0; continue; }   // Modes shown: a hidden group takes no room
         capX[g] = x; x += capW[g] + 8 * gUi;
         grpL[g] = x;
-        for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g) { segW[i] = ImGui::CalcTextSize(kModes[i].name).x + 22 * gUi; segX[i] = x; x += segW[i]; }
+        for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g && modeListed(a, kModes[i])) { segW[i] = ImGui::CalcTextSize(kModes[i].name).x + 22 * gUi; segX[i] = x; x += segW[i]; }
         grpR[g] = x;
         x += 18 * gUi;
     }
@@ -82,14 +83,12 @@ void standardSwitch(App& a) {
         if (ImGui::BeginCombo("##mode", cur->name)) {
             const char* q = modeSearchBox();
             for (int g = 0; g < kNumGroups; g++) {
-                bool any = false;
-                for (const auto& m : allModes()) any |= m.group == g && modeMatches(m, q);
-                if (!any) continue;
+                if (!modeGroupListed(a, g, q)) continue;
                 ImGui::Separator();
                 ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kGroupCols[g]), "%s", tr(kGroupNames[g]));
-                for (const auto& m : allModes()) if (m.group == g && modeMatches(m, q)) {
+                for (const auto& m : allModes()) if (m.group == g && modeListed(a, m, q)) {
                     ImGui::PushID(&m);
-                    if (ImGui::Selectable(m.name, modeSelected(a, m))) selectMode(a, m.family, m.subId);
+                    if (ImGui::Selectable(modeHiddenNow(a, m) ? (std::string(m.name) + " (" + tr("hidden") + ")").c_str() : m.name, modeSelected(a, m))) selectMode(a, m.family, m.subId);
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s%s", m.tip, modeCreditsLine(m.name).c_str());
                     ImGui::PopID();
                 }
@@ -104,6 +103,7 @@ void standardSwitch(App& a) {
     gSwitchWidth = total;
     ImGui::AlignTextToFramePadding();
     for (int g = 0; g < kNumGroups; g++) {
+        if (!modeGroupListed(a, g)) continue;
         const ImVec2 ts = ImGui::CalcTextSize(tr(kGroupNames[g]));
         dl->AddText(ImVec2(capX[g], p.y + (h - ts.y) * 0.5f), (kGroupCols[g] & 0x00FFFFFF) | 0xB0000000, tr(kGroupNames[g]));
         dl->AddRectFilled(ImVec2(grpL[g], p.y), ImVec2(grpR[g], p.y + h), IM_COL32(18, 22, 28, 255), 3.f);
@@ -116,6 +116,7 @@ void standardSwitch(App& a) {
     knobX += (segX[selPos] - knobX) * 0.35f; knobW += (segW[selPos] - knobW) * 0.35f;
     dl->AddRectFilled(ImVec2(knobX + 2 * gUi, p.y + 2 * gUi), ImVec2(knobX + knobW - 2 * gUi, p.y + h - 2 * gUi), kModes[selPos].col, 3.f * gUi);
     for (int i = 0; i < kNumModes; i++) {
+        if (!modeListed(a, kModes[i])) continue;
         ImGui::SetCursorScreenPos(ImVec2(segX[i], p.y));
         ImGui::PushID(i);
         if (ImGui::InvisibleButton("##seg", ImVec2(segW[i], h))) selectMode(a, kModes[i].family, kModes[i].subId);

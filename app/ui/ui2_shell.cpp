@@ -112,6 +112,7 @@ void modeList(App& a) {
         int matches = 0, members = 0;
         const ModeDef* cur = nullptr;
         for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g) {
+            if (!modeListed(a, kModes[i], "") && !searching) continue;   // hidden by Modes shown (a search still counts them)
             members++;
             if (modeMatches(kModes[i], q)) matches++;
             if (modeSelected(a, kModes[i])) cur = &kModes[i];
@@ -144,7 +145,7 @@ void modeList(App& a) {
         if (!unfolded) continue;
         for (int i = 0; i < kNumModes; i++) {
             const ModeDef& m = kModes[i];
-            if (m.group != g || !modeMatches(m, q)) continue;
+            if (m.group != g || !modeListed(a, m, q)) continue;
             const float h = ImGui::GetFrameHeight() - 2 * gUi, w = ImGui::GetContentRegionAvail().x;
             ImGui::PushID(i);
             const bool clicked = ImGui::InvisibleButton("##mode", ImVec2(w, h));
@@ -156,8 +157,9 @@ void modeList(App& a) {
             const ImVec2 c(p0.x + 14 * gUi, p0.y + h * 0.5f);   // under the heading's arrow, the name under the heading's name
             dl->AddCircle(c, 5 * gUi, u32(sel ? T.bright : T.dim), 0, 1.f);
             if (sel) dl->AddCircleFilled(c, 2.6f * gUi, u32(T.accent));
-            dl->AddText(ImVec2(p0.x + 28 * gUi, p0.y + (h - ImGui::GetTextLineHeight()) * 0.5f), u32(sel ? T.bright : (running ? T.dim : T.text)), m.name);
-            const char* sub = tr(m.sub);
+            const bool hid = searching && modeHiddenNow(a, m);   // found by the search only: tagged
+            dl->AddText(ImVec2(p0.x + 28 * gUi, p0.y + (h - ImGui::GetTextLineHeight()) * 0.5f), u32(sel ? T.bright : (running || hid ? T.dim : T.text)), hid ? (std::string(m.name) + " (" + tr("hidden") + ")").c_str() : m.name);
+            const char* sub = hid ? "" : tr(m.sub);
             const ImVec2 ss = ImGui::CalcTextSize(sub);
             if (p0.x + 28 * gUi + ImGui::CalcTextSize(m.name).x + 10 * gUi < p0.x + w - ss.x - 6 * gUi)   // no room: the name alone, not both on top of each other
                 dl->AddText(ImVec2(p0.x + w - ss.x - 6 * gUi, p0.y + (h - ss.y) * 0.5f), u32(T.dim), sub);
@@ -518,13 +520,18 @@ float menuBar(App& a) {
         }
         if (ImGui::BeginMenu(tr("Mode"))) {
             int key = 0;
+            bool firstGroup = true;
             for (int g = 0; g < kNumGroups; g++) {
-                if (g) ImGui::Separator();
-                for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g) {
+                if (!modeGroupListed(a, g)) continue;   // Modes shown: a hidden group leaves the menu
+                if (!firstGroup) ImGui::Separator();
+                firstGroup = false;
+                for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g && modeListed(a, kModes[i])) {
                     char k[4]; snprintf(k, sizeof k, "%d", ++key);
                     if (ImGui::MenuItem(kModes[i].name, key <= 9 ? k : nullptr, modeSelected(a, kModes[i]))) selectMode(a, kModes[i].family, kModes[i].subId);   // only 1-9 are keys
                 }
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem(tr("Modes shown..."))) a.modeVisOpen = true;
             ImGui::EndMenu();
         }
         viewMenu(a);
@@ -573,6 +580,7 @@ float menuBar(App& a) {
     voiceKeysWindow(a);
     tx::windowPanel(a);
     reportProblemWindow(a);
+    modeVisibilityWindow(a);
     tx::captionsWindow(a);
     return menuH;
 }
@@ -649,14 +657,12 @@ void modeCombo(App& a, float w) {
     if (ImGui::BeginCombo("##modec", cur->name)) {
         const char* q = modeSearchBox();
         for (int g = 0; g < kNumGroups; g++) {
-            bool any = false;
-            for (int i = 0; i < kNumModes; i++) any |= kModes[i].group == g && modeMatches(kModes[i], q);
-            if (!any) continue;
+            if (!modeGroupListed(a, g, q)) continue;
             ImGui::Separator();
             ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kGroupCols[g]), "%s", tr(kGroupNames[g]));
-            for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g && modeMatches(kModes[i], q)) {
+            for (int i = 0; i < kNumModes; i++) if (kModes[i].group == g && modeListed(a, kModes[i], q)) {
                 ImGui::PushID(i);
-                if (ImGui::Selectable(kModes[i].name, modeSelected(a, kModes[i]))) selectMode(a, kModes[i].family, kModes[i].subId);
+                if (ImGui::Selectable(modeHiddenNow(a, kModes[i]) ? (std::string(kModes[i].name) + " (" + tr("hidden") + ")").c_str() : kModes[i].name, modeSelected(a, kModes[i]))) selectMode(a, kModes[i].family, kModes[i].subId);
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s%s", kModes[i].tip, modeCreditsLine(kModes[i].name).c_str());
                 ImGui::PopID();
             }

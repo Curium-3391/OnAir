@@ -168,14 +168,12 @@ void modePickerSheet(App& a, ImVec2 disp) {
     const float tw = (w - (cols - 1) * sp) / cols, th = target() * 1.6f;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     for (int g = 0; g < kNumGroups; g++) {
-        bool any = false;
-        for (const auto& m : allModes()) any |= m.group == g && modeMatches(m, q);
-        if (!any) continue;
+        if (!modeGroupListed(a, g, q)) continue;
         ImGui::Spacing();
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kGroupCols[g]), "%s", tr(kGroupNames[g]));
         int i = 0;
         for (const auto& m : allModes()) {
-            if (m.group != g || !modeMatches(m, q)) continue;
+            if (m.group != g || !modeListed(a, m, q)) continue;
             if (i++ % cols) ImGui::SameLine();
             ImGui::PushID(&m);
             const ImVec2 p = ImGui::GetCursorScreenPos();
