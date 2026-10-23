@@ -242,7 +242,7 @@ private:
         std::fill(std::begin(hr_), std::end(hr_), 0.0);
         std::fill(std::begin(hi_), std::end(hi_), 0.0);
         hp_ = 0; ph_ = 0; cnt_ = 0; acc_ = 0; accN_ = 0; envMax_ = 0; pr_ = 1; pi_ = 0; fs_ = 0;
-        peak_ = 1e-9; pTot_ = pFilt_ = 0; warm_ = 0; count_ = 0; start_ = 2; col_.clear();
+        peak_ = 1e-9; pTot_ = pFilt_ = 0; warm_ = 0; count_ = 0; start_ = 2; col_.clear(); pend_.clear();
         for (double& v : prof_) v = 0;
         locked = false; snrDb = 0;
     }
@@ -266,7 +266,18 @@ private:
         col_.push_back((uint8_t)std::lround(ink * 255));
         if ((count_ % 14) == (uint64_t)start_) {   // the pixel just stored was the last of a column
             if (col_.size() == 14) {
-                if (locked) for (int r = 0; r < 14; r++) hell.push_back(col_[col_.size() - 1 - r]);   // top row first: the last pixel sent is the top
+                // top row first: the last pixel sent is the top. Before the lock the columns wait (the lock takes up to 3 averaging times, longer than a
+                // short HellX5 / X9 burst): when it comes, the columns of that wait are drawn too, so a burst is not cut at its start
+                uint8_t c14[14];
+                for (int r = 0; r < 14; r++) c14[r] = col_[col_.size() - 1 - r];
+                if (locked) {
+                    if (!pend_.empty()) { hell.insert(hell.end(), pend_.begin(), pend_.end()); pend_.clear(); }
+                    hell.insert(hell.end(), c14, c14 + 14);
+                } else {
+                    pend_.insert(pend_.end(), c14, c14 + 14);
+                    const size_t keep = 14 * (size_t)(p_.colRate * 3.2 / (alpha_ * kFs) + 2);
+                    if (pend_.size() > keep) pend_.erase(pend_.begin(), pend_.begin() + (long)(pend_.size() - keep));
+                }
             }
             col_.clear();
         }
@@ -297,6 +308,7 @@ private:
     int hp_ = 0, accN_ = 0, start_ = 2, blankStart_ = 12;
     uint64_t count_ = 0;
     std::vector<uint8_t> col_;
+    std::vector<uint8_t> pend_;   // columns before the lock (the last 3.2 averaging times)
 };
 
 } // namespace

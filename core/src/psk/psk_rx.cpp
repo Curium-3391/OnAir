@@ -330,7 +330,7 @@ struct PskReceiver::Impl {
             if (PskReporter::get().want())
                 for (const std::string& k : now)
                     if (std::find(c.calls.begin(), c.calls.end(), k) == c.calls.end() && pskr::sendsInText(flat, k))
-                        PskReporter::get().spot(mode == 0 ? "PSK31" : mode == 1 ? "PSK63" : "PSK", c.f + spotShift.load(), (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errVar)))), k);
+                        PskReporter::get().spot(mode == 0 ? "PSK31" : mode == 1 ? "PSK63" : mode == 4 ? "PSK125" : mode == 5 ? "PSK250" : "PSK", c.f + spotShift.load(), (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errVar)))), k);
             c.calls = now;
         }
     }
@@ -356,7 +356,7 @@ struct PskReceiver::Impl {
         }
         // AFC: the remaining phase step per symbol is the frequency error
         const double ferr = err * baud() / (2 * kPi);
-        const double gain = c.dcd ? 0.04 : 0.1;
+        const double gain = (c.dcd ? 0.04 : 0.1) * std::min(1.0, 62.5 / baud());   // the faster modes: the same loop bandwidth in Hz as PSK63 (the decimator delay is a large part of their symbol)
         if ((!c.manual || c.dcd) && c.q > 0.2f) {
             double nf = c.f + gain * ferr;
             if (std::fabs(nf - c.f0) > 2 * baud()) nf = c.f0;   // pulled away: start over where it was found

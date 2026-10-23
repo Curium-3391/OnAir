@@ -113,6 +113,17 @@ int main() {
         const PskTelemetry t2 = run({sig(1600, "QPSK63 DE YL2XYZ YL2XYZ PSE K\n", 16, 3)}, 8, 3);
         expect("qpsk63", t2, 1600, "DE YL2XYZ YL2XYZ");
     }
+    {   // the faster ones: BPSK125, BPSK250 (two at once, 1 kHz apart) and QPSK125
+        const PskTelemetry t = run({sig(1000, "PSK125 DE LY2ABC LY2ABC PSE K\n", 14, 4), sig(2200, "CQ DE OH1XYZ OH1XYZ K\n", 14, 4)}, 6, 4);
+        expect("psk125 1000", t, 1000, "DE LY2ABC LY2ABC");
+        expect("psk125 2200", t, 2200, "CQ DE OH1XYZ");
+        const PskTelemetry t2 = run({sig(1200, "PSK250 DE SP3XYZ SP3XYZ PSE K PSK250 TEST\n", 14, 5), sig(2600, "CQ DE DL9ABC DL9ABC K\n", 14, 5)}, 5, 5);
+        expect("psk250 1200", t2, 1200, "DE SP3XYZ SP3XYZ");
+        expect("psk250 2600", t2, 2600, "CQ DE DL9ABC");
+        const PskTelemetry t3 = run({sig(1500, "QPSK125 DE ES5QQ ES5QQ PSE K\n", 16, 6)}, 6, 6);
+        expect("qpsk125", t3, 1500, "DE ES5QQ ES5QQ");
+        CHECK(t3.mode == 6 && std::string(pskModeName(6)) == "QPSK125" && pskBaud(5) == 250, "mode table");
+    }
     {   // the focus: a picked frequency becomes the signal of the big view
         const PskTelemetry t = run({sig(800, "AAA DE SM5ABC\n", 14), sig(2500, "BBB DE LA1XYZ LA1XYZ\n", 14)}, 9, 0, 0, 2504);
         const PskSignal* f = pskFocus(t);
