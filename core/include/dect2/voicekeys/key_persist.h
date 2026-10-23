@@ -32,7 +32,9 @@ extern const char* const kMasterAccount;
 
 // ---- master key from the OS keychain ----
 // Fetch the 32-byte master key from the keychain, creating and storing a fresh random one the first time. False when no provider is set.
-bool keychainMasterKey(std::vector<uint8_t>& out32);
+// createIfMissing == false (loading an existing file): a failed read NEVER makes a new key. With true, a new key is made only when the read failed
+// and the caller knows there is no key file that still needs the old one (saveToFile checks the file it is about to replace).
+bool keychainMasterKey(std::vector<uint8_t>& out32, bool createIfMissing = true);
 
 // ---- serialize / encrypt ----
 // Serialize the given keys to the plaintext blob (name, protocol, algorithm, raw key, associations, enabled). Not encrypted.
