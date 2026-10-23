@@ -378,6 +378,15 @@ static void syncSpectrumEngine(App& a) {
 
 void ingestSpectrum(App& a) {
     syncSpectrumEngine(a);
+    if (a.specDemo && !a.engine.running()) {   // --specdemo: the synthetic test spectrum (spec_look.h), 30 frames a second, no radio needed
+        static double nextT = 0;
+        const double t = glfwGetTime();
+        if (t < nextT) return;
+        nextT = t + 1.0 / 30;
+        const double fsMhz = a.tune.sampleRate > 0 ? a.tune.sampleRate / 1e6 : 10.0;
+        slook::demoSpectrum(a.spec.dbfs, 8192, radioCenterMhz(a), fsMhz, t, (uint32_t)(a.lastSeq + 1));
+        a.spec.seq = a.lastSeq + 1;
+    } else
     if (!a.engine.latestSpectrum(a.spec, a.lastSeq)) return;   // straight into the kept frame: no copy that allocates, 30 times a second
     const SpectrumFrame& f = a.spec;
     const uint64_t prevSeq = a.lastSeq;

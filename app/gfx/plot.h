@@ -61,6 +61,25 @@ struct Style {
 };
 Style& GetStyle();
 
+// A look for the next plot only (the spectrum looks, spec_look.h): a gradient background, its own grid, grid lines drawn over the items
+// too (the waterfall's picture would cover them), a dark strip under the plot with big frequency labels and minor ticks, and the frequency
+// ticks from slook::freqTicks (absolute or offsets from ref). Plots that share an axis and are given the same look get the same ticks.
+struct Look {
+    bool on = false;
+    ImVec4 bgTop = ImVec4(0, 0, 0, 1), bgBottom = ImVec4(0, 0, 0, 1);
+    ImVec4 grid = ImVec4(1, 1, 1, 0.15f);
+    bool gridH = true;
+    ImVec4 overV = ImVec4(0, 0, 0, 0), overH = ImVec4(0, 0, 0, 0);   // grid lines over the items (alpha 0: none)
+    bool strip = false;                   // the x labels on a strip under the plot
+    ImVec4 stripBg = ImVec4(0, 0, 0, 1), label = ImVec4(1, 1, 1, 1);
+    ImFont* font = nullptr;               // the label font (null: the current one)
+    float fontSize = 0;                   // 0: the current size
+    int labelMode = 0;                    // slook::LabelMode
+    double ref = 0;                       // the tuned frequency, for offset labels
+};
+void SetNextPlotLook(const Look& l);
+float LookStripHeight(const Look& l);     // the strip's height for these fonts
+
 bool BeginPlot(const char* id, ImVec2 size = ImVec2(-1, 0), int flags = 0);
 void EndPlot();
 
@@ -89,6 +108,7 @@ void PlotImage(const char* label, ImTextureID tex, Point bmin, Point bmax, ImVec
 void PlotHeatmap(const char* label, const float* values, int rows, int cols, double scaleMin, double scaleMax, const char* fmt, Point bmin, Point bmax);
 void PlotText(const char* text, double x, double y, ImVec2 pixelOffset = ImVec2(0, 0));
 void PlotVBand(const char* label, double x0, double x1, const Spec& s = Spec());   // x0..x1 over the whole height (Spec::FillColor), at least a pixel wide
+void PlotVBandGradient(double x0, double x1, ImVec4 top, ImVec4 bottom);           // the same with a vertical gradient
 
 // A colour map is a list of colours that are blended into each other.
 int AddColormap(const char* name, const ImVec4* colors, int n);

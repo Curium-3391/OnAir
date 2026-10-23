@@ -4,6 +4,7 @@
 // the rows go in groups of k (a power of two), the highest of each, so a group is at least a pixel tall: the picture is then only ever
 // magnified, and a group keeps its look while it slides. Pure (no ImGui, no GPU): tested in tests/app/test_plot_util.cpp.
 #pragma once
+#include "spec_look.h"
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -18,8 +19,13 @@ struct WfView {
     int stride = 0, rowsAlloc = 0;
     long long newest = -1, lastR = -1;               // the newest group built, and the newest row it had
     int lutGen = -1;
+    // The look of the view (the spectrum look sets it): Smooth makes a zoomed-in view a pixel a column with the levels interpolated between
+    // the history columns (the map then colours the in-between level: no stair steps, and no muddy blend of two colours as the GPU's
+    // linear filter gives); LowPass is the 2D noise reduction ([1 2 1] down and across). 0: as it always was.
+    enum Mode { Smooth = 1, LowPass = 2 };
+    int mode = 0, builtMode = 0;
     std::vector<uint32_t> px;   // rowsAlloc rows of stride colours; group g in row rowOf(g) (newer groups above, wrapping, as the history)
-    std::vector<uint8_t> acc;
+    std::vector<uint8_t> acc, lp;
 
     // The rows a group needs so that rowsShown rows over heightPx pixels are never squeezed (a power of two, at most H).
     static int groupRows(double rowsShown, double heightPx, int H) {
@@ -40,11 +46,11 @@ struct WfView {
         nc0 = std::max(0, std::min(W, nc0)); nc1 = std::max(nc0, std::min(W, nc1));
         nk = std::max(1, std::min(H, nk));
         if (nc1 <= nc0 || ncols < 1 || R < 0) return false;
-        ncols = std::min(ncols, nc1 - nc0);
+        if (!(mode & Smooth)) ncols = std::min(ncols, nc1 - nc0);
         const long long gN = R / nk;
-        const bool same = nc0 == c0 && nc1 == c1 && ncols == cols && nk == k && gen == lutGen && newest >= 0;
+        const bool same = nc0 == c0 && nc1 == c1 && ncols == cols && nk == k && gen == lutGen && newest >= 0 && mode == builtMode;
         if (!same || gN - newest >= ring) {
-            c0 = nc0; c1 = nc1; cols = ncols; k = nk; ring = ringFor(k, H); lutGen = gen;
+            c0 = nc0; c1 = nc1; cols = ncols; k = nk; ring = ringFor(k, H); lutGen = gen; builtMode = mode;
             stride = cols + (cols < W ? 1 : 0); rowsAlloc = ring + (ring < H ? 1 : 0);
             px.assign((size_t)rowsAlloc * stride, 0xFF000000u);
             for (long long g = std::max(0LL, gN - ring + 1); g <= gN; g++) build(lv, W, H, wr, R, have, lut, g);
@@ -52,7 +58,8 @@ struct WfView {
             return true;
         }
         if (R == lastR) return false;
-        for (long long g = newest; g <= gN; g++) {
+        // the low-pass reads the newer neighbour row too: the group before the newest one changes when the next group starts
+        for (long long g = (mode & LowPass) && newest > 0 && gN - (newest - 1) < ring ? newest - 1 : newest; g <= gN; g++) {
             build(lv, W, H, wr, R, have, lut, g); dirty.push_back(rowOf(g));
             if (rowOf(g) == 0 && rowsAlloc > ring) dirty.push_back(ring);
         }
@@ -65,20 +72,35 @@ private:
         const int span = c1 - c0;
         acc.assign((size_t)span, 0);
         bool any = false;
+        auto rowPtr = [&](long long r) -> const uint8_t* { return r < 0 || r > R || R - r >= have ? nullptr : lv + (size_t)((wr + (R - r)) % H) * W + c0; };
         for (long long r = g * k; r < (g + 1) * k; r++) {
-            if (r > R || R - r >= have) continue;
-            const uint8_t* s = lv + (size_t)((wr + (R - r)) % H) * W + c0;
+            const uint8_t* s = rowPtr(r);
+            if (!s) continue;
+            if (mode & LowPass) {   // the row with its neighbours, down and across
+                lp.resize((size_t)span);
+                slook::lowpassRow(rowPtr(r + 1), s, rowPtr(r - 1), span, lp.data());
+                s = lp.data();
+            }
             for (int c = 0; c < span; c++) acc[c] = std::max(acc[c], s[c]);
             any = true;
         }
         uint32_t* o = px.data() + (size_t)rowOf(g) * stride;
         if (!any) std::fill(o, o + stride, 0xFF000000u);   // no rows yet: black, as the history starts
         else {
-            for (int x = 0; x < cols; x++) {
-                const int a = (int)((long long)span * x / cols), b = std::max(a + 1, (int)((long long)span * (x + 1) / cols));
-                uint8_t m = acc[a];
-                for (int c = a + 1; c < b; c++) m = std::max(m, acc[c]);
-                o[x] = lut[m];
+            if ((mode & Smooth) && cols > span) {   // zoomed in: each pixel the level between the two columns it falls between
+                for (int x = 0; x < cols; x++) {
+                    const double f = ((double)x + 0.5) * span / cols - 0.5;
+                    const int i = std::max(0, std::min(span - 1, (int)std::floor(f)));
+                    const int j = std::min(span - 1, i + 1);
+                    o[x] = lut[slook::lerpLevel(acc[i], acc[j], (float)(f - i))];
+                }
+            } else {
+                for (int x = 0; x < cols; x++) {
+                    const int a = (int)((long long)span * x / cols), b = std::max(a + 1, (int)((long long)span * (x + 1) / cols));
+                    uint8_t m = acc[a];
+                    for (int c = a + 1; c < b; c++) m = std::max(m, acc[c]);
+                    o[x] = lut[m];
+                }
             }
             if (stride > cols) o[cols] = o[cols - 1];
         }

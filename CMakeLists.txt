@@ -617,6 +617,8 @@ if(DECT2_BUILD_APP)
   add_executable(test_wf3d tests/app/test_wf3d.cpp)   # the 3D waterfall: projection, decimation, mesh, pick, a software-rasterised picture and the CPU time
   target_link_libraries(test_wf3d PRIVATE imgui)
   add_test(NAME wf3d COMMAND test_wf3d)
+  add_executable(test_spec_look tests/app/test_spec_look.cpp)
+  add_test(NAME spec_look COMMAND test_spec_look)
   add_executable(test_typography tests/app/test_typography.cpp app/ui/typography.cpp)
   target_include_directories(test_typography PRIVATE app/ui)
   target_link_libraries(test_typography PRIVATE imgui dect2core)
