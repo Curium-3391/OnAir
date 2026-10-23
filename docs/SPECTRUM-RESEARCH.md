@@ -45,3 +45,14 @@ NOT changed / still open (each needs a radio to verify, so left alone): `Engine:
 
 ## Honest gaps
 Waterfall noise floor in the demo is almost black (SDR++'s reference shows textured navy): it depends on the level range, which is percentile-based here; a real recording should be tried. No pixel-exact match to the reference; no live-radio check.
+
+## spectrum-match-030 (2026-10-23): measured against the references
+References (owner's screenshots, scratchpad refs/spectrum-ref-43/44.png) analysed numerically (scripts in scratchpad/spectrum-match/tools):
+- ref44's waterfall pixels lie within 1 RGB step (median; p90 19) of SDR++'s 15-stop Classic map: palette "Navy heat". ref43's ramp extracted by brightness: "Blue green" ((0,2,92) .. (0,14,180) .. (8,96,188) .. (2,154,102)).
+- Noise floor: ref44 (0,0,41), blue std 11.5 (mostly over time); ref43 (1,5,124), std 12; texture correlated over ~4 px across and ~3 px down.
+- Spectrum: black, grid (35,35,35), trace (140,226,237), fill = trace colour at alpha 0.2, VFO block white alpha 0.2, passband 0.35; ref43: navy (18,50,92) to grey (46,47,52), warm band alpha ~0.16, red centre ~0.4.
+What was wrong (harness numbers on real recordings): 16 FFT blocks per frame flattened the floor to +-1.4 dB (featureless rows); the waterfall range was fixed at -100..-32 dB, so the floor sat in mid blue or in black depending on gain; 8192 history columns over 4 MHz = 488 Hz per column (20 px blobs zoomed in); the classic trace drew a min..max bar per pixel column (the owner's white comb at a big FFT).
+Changed: 2 blocks a frame; FFT auto 8k..64k (~125 Hz bins); history as fine as the FFT; a 0.15 s power average down the rows; auto range on by default, the floor of the VIEW (median of its lowest 20 %, followed over 2 s) at the palette's place (Navy heat 3 dB over its bottom, 80 dB span; Blue green 8 / 48); the spectrum's dB range follows the same floor; the trace averaged in power with a time constant growing with the bins per pixel; levels per Hz. One look, no presets named after other programs.
+Harness tools/spec_render: the app's analyser, Waterfall, WfView and plt drawing rasterised in software. Pipeline CPU (harness, one core): 20 Msps synthetic band 4.4 % -> 1.6 %; 10 Msps real UHF recording 2.6 % -> 1.7 %.
+Matched: real 31 m AM station vs ref44: floor (0,0,45) vs (0,0,41), along-row std 4.4 vs 4.9, vertical correlation 0.91/0.75 vs 0.96/0.88; real 31 m band in Blue green vs ref43: floor (0,5,122) vs (1,5,124), std 10.8 vs 12.0.
+Still different: the references' own fading (ref44's column std 10 is the signal), ref43's navy gradient behind the spectrum (OnAir keeps the black look the owner approved), the video blur of ref43.

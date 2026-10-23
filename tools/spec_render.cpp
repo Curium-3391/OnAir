@@ -338,7 +338,7 @@ int main(int argc, char** argv) {
     const size_t perFrame = (size_t)std::lround(fs / 30.0);
     std::vector<cf> buf;
     dect2::SpectrumFrame f;
-    std::vector<float> smooth, view, pw;
+    std::vector<float> smooth, sview, pw;
     double tPipe = 0, tSrc = 0;
     const bool isGen = !gen.empty();
     for (int fr = 0; fr < frames; fr++) {
@@ -354,14 +354,14 @@ int main(int argc, char** argv) {
         // as ingestSpectrum: per Hz, the trace averaged in power with the time constant the bins per pixel ask for (--old: per bin, dB average)
         const size_t nb = f.dbfs.size();
         const float off = old ? 0.f : spipe::perHzOffset(fs, nb);
-        view.resize(nb);
-        for (size_t i = 0; i < nb; i++) view[i] = f.dbfs[i] - off;
-        if (smooth.size() != nb) { smooth = view; pw.clear(); }
+        sview.resize(nb);
+        for (size_t i = 0; i < nb; i++) sview[i] = f.dbfs[i] - off;
+        if (smooth.size() != nb) { smooth = sview; pw.clear(); }
         const double bpp = std::max(1.0, (double)nb * (vhi - vlo) / (fs / 1e6) / std::max(1, W));
-        if (old) spipe::emaStep(smooth.data(), view.data(), nb, 1.f / 30, 0.08f);
-        else spipe::powerEma(pw, view.data(), smooth.data(), nb, spipe::alphaFor(1.f / 30, spipe::traceTau(0.08f, bpp)));
+        if (old) spipe::emaStep(smooth.data(), sview.data(), nb, 1.f / 30, 0.08f);
+        else spipe::powerEma(pw, sview.data(), smooth.data(), nb, spipe::alphaFor(1.f / 30, spipe::traceTau(0.08f, bpp)));
         wf.setCols(specaxis::historyCols(old ? 0 : -1, nb, Waterfall::kMaxCols));
-        wf.offer(view, t);
+        wf.offer(sview, t);
         wf.stamp(t);
         if (wf.autoTrack && t - wf.trackT > 0.25) { wf.fitRange(smooth, wf.trackT == 0, 0.25f); wf.trackT = t; }
         tPipe += cpuSec() - s1; tSrc += s1 - s0;

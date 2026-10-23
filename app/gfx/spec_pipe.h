@@ -98,10 +98,10 @@ inline float fastDb10(float p) {
 }
 
 // The trace's time constant grows with the bins each pixel column covers: the column shows the highest of them (no carrier is lost), and
-// the highest of many noisy bins is a rough comb unless each bin is averaged longer. sqrt: 4x the bins, 2x the averaging; at most 8x.
+// the highest of many noisy bins is a rough comb unless each bin is averaged longer. sqrt: 4x the bins, 2x the averaging; 1.6x to 8x.
 inline float traceTau(float baseTau, double binsPerPixel) {
     if (baseTau <= 0.001f) return baseTau;
-    return baseTau * (float)std::min(8.0, std::max(1.0, std::sqrt(std::max(1.0, binsPerPixel) / 2.0)));
+    return baseTau * (float)std::min(8.0, std::max(1.6, 1.5 * std::sqrt(std::max(1.0, binsPerPixel) / 2.0)));
 }
 
 // The average in the POWER domain (a dB average reads noise ~2.5 dB low and lets the deep nulls of single bins through): pw keeps the
