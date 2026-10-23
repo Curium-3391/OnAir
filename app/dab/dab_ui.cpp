@@ -94,7 +94,8 @@ void dabStatus(App& a) {
         ro("Detection", d.coherent ? "coherent" : "differential (fast fading)");
         const double tot = (double)(d.fibOk + d.fibBad);
         snprintf(b, sizeof b, "%.1f%%", tot > 0 ? 100.0 * (double)d.fibOk / tot : 0.0); ro("FIC ok", b);
-        if (d.audio.sub >= 0) {   // the audio's health: what share of the audio frames had to be concealed (docs/DAB-AUDIT.md)
+        if (d.scrambled) ro("Audio", "scrambled (conditional access): cannot be played", ImVec4(0.95f, 0.45f, 0.35f, 1));
+        else if (d.audio.sub >= 0) {   // the audio's health: what share of the audio frames had to be concealed (docs/DAB-AUDIT.md)
             const DabAudioStats& au = d.audio;
             const double units = au.dabPlus ? (double)(au.auOk + au.auBad) : (double)au.frames;
             const double pc = units > 0 ? 100.0 * (double)au.concealedFrames / units : 0.0;

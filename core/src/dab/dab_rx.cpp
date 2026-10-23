@@ -172,6 +172,7 @@ struct DabReceiver::Impl {
     SubDec mainDec, spiDecI;
     // selected sub-channel
     int selReq = -1, sel = -1;
+    bool selCa = false;       // the selected audio component is scrambled (conditional access): not played, the panel says so
     DabSubchannel selSub;
     DabAudio audio;
     std::function<void(int, const uint8_t*, int)> tap;
@@ -482,7 +483,7 @@ struct DabReceiver::Impl {
         }
         // A channel that changes fast (Doppler of some 40 Hz and more, a car on a motorway in Band III) makes the decided symbols, and with them
         // the estimate, unreliable: that frame goes back to plain differential detection, which follows the channel without decisions.
-        coherent = dH < 0.05 * pH;
+        coherent = std::isfinite(sum) && std::isfinite(dH) && dH < 0.05 * pH;
         if (!coherent) return false;
         const double mean = sum / ((double)L.size()) + 1e-12;
         if (good) llrRef = llrRef > 0 ? 0.8 * llrRef + 0.2 * mean : mean;
@@ -818,6 +819,21 @@ struct DabReceiver::Impl {
                 }
                 sv.comps = comps;
             }
+            // conditional access (not in dab_proto): the service's CAId and every component's CA flag, walked the same way
+            {
+                const bool pd = (d[0] >> 5) & 1;
+                size_t p = 1;
+                while (p + (pd ? 5 : 3) <= n) {
+                    const uint32_t sid = pd ? ((uint32_t)d[p] << 24 | (uint32_t)d[p + 1] << 16 | (uint32_t)d[p + 2] << 8 | d[p + 3]) : ((uint32_t)d[p] << 8 | d[p + 1]);
+                    p += pd ? 4 : 2;
+                    const int caId = (d[p] >> 4) & 7, nc = d[p] & 15;
+                    p++;
+                    auto it = ens.services.find(sid);
+                    if (it != ens.services.end()) it->second.caId = caId;
+                    for (int k = 0; k < nc && p + 2 <= n; k++, p += 2)
+                        if (it != ens.services.end() && k < (int)it->second.comps.size()) it->second.comps[(size_t)k].ca = d[p + 1] & 1;
+                }
+            }
         } else if (ext == 13) {   // user applications (TS 101 756 table 16): which sub-channel carries DMB video
             for (const dabp::Fig013App& a : dabp::fig0UserApps(d, n)) {
                 if (a.type == 0x44a) {   // Journaline: its user application data (version, extended header length, point of entry)
@@ -927,8 +943,9 @@ struct DabReceiver::Impl {
         if (it == ens.subs.end()) return;   // wait until the ensemble tells us about it
         selSub = it->second;
         bool plus = true, isDmb = false;
+        selCa = false;
         for (const auto& kv : ens.services) {
-            for (const auto& c : kv.second.comps) if (c.tmid == 0 && c.subId == selReq) plus = c.ascty == 63;
+            for (const auto& c : kv.second.comps) if (c.tmid == 0 && c.subId == selReq) { plus = c.ascty == 63; selCa = c.ca; }
             const DabComponent* d = kv.second.dmb();
             if (d && d->subId == selReq) isDmb = true;
         }
@@ -997,6 +1014,10 @@ struct DabReceiver::Impl {
             }
         }
         if (sel < 0) return;
+        {
+            std::lock_guard<std::mutex> lk(mu);
+            for (const auto& kv : ens.services) for (const auto& c : kv.second.comps) if (c.tmid == 0 && c.subId == sel) selCa = c.ca;
+        }
         if (selSub.size <= 0 || selSub.start + selSub.size > kCifCu) return;
         if (gapCifs > 20) audio.flushSync();   // the superframe phase is lost with them
         erasedCifs += (uint64_t)std::min(gapCifs, 20);
@@ -1004,7 +1025,7 @@ struct DabReceiver::Impl {
             if (tap) tap(sel, bytes, n);
             if (selPktAddr >= 0) demux.feed(bytes, (size_t)n, [this](const uint8_t* g, size_t m) { jl.feedDataGroup(g, m); });
             else if (selDmb) dmb.push(bytes, n);
-            else audio.push(bytes, n, erased);
+            else if (!selCa) audio.push(bytes, n, erased);   // scrambled audio decoded would only be noise
         });
     }
 
@@ -1032,6 +1053,7 @@ struct DabReceiver::Impl {
         t.tiiFrames = tii.framesSeen();
         t.sroPpm = sro * 1e6;
         t.coherent = coherent;
+        t.scrambled = sel >= 0 && selCa;
         t.quietMs = state == 2 ? 0.0 : 1000.0 * (double)quietSamples / kRate;
         t.syncLosses = syncLosses; t.relocks = relocks; t.erasedCifs = erasedCifs; t.impulses = impulses;
         t.seq = ++telSeq;
@@ -1081,6 +1103,8 @@ void DabReceiver::feed(const cf32* x, size_t n) {
     Impl& I = *p_;
     // a channel away from the middle of the sample band (beyond the +-80 kHz of the search) is moved there first
     I.cin.assign(x, x + n);
+    // samples that are not numbers (a broken driver or file) are zeroed first: one would spread through the filters, the FFTs and the channel estimate
+    for (cf32& v : I.cin) if (!std::isfinite(v.real()) || !std::isfinite(v.imag())) { v = cf32(0, 0); I.impulses++; }
     I.cc.process(I.cin.data(), n, I.state == 2 && I.fibOk > 0);
     if (I.cc.takeChanged()) { I.buf.clear(); I.base = 0; I.state = 0; I.searchNext = 0; I.searchFails = 0; I.quietOn = false; I.quietSamples = 0; I.quietPub = 0; I.rs.reset(); }
     x = I.cin.data();

@@ -182,3 +182,31 @@ frames go differential).
 Limits: synthetic signals only, not verified on a real radio. No competitor (welle.io, Qt-DAB, AbracaDABra, DABlin) publishes a threshold or a lock
 time to compare with; these are the first such figures we know of. Packet mode FEC (FIG 0/14 FEC scheme 1, EN 300 401 5.3.5) is shown in the
 analyser but not applied: it was written without the standard at hand and its layout could not be checked.
+
+# DAB (MP2) services: garbled audio report from 0.2.9 (dec-dab-030)
+
+Report: a user recording of a DAB (not DAB+) service on 11B, "only with UEP services": no dropouts but about 70 hard sample steps per second,
+a DC offset of -0.06, nothing above about 10 kHz. UEP is only used by MP2 (DAB) services.
+
+New test `tests/dab/test_dab_uep.cpp` (ctest `dab_uep`, label slow, 20 s): MP2 services through the generator and the whole receiver for every
+one of the 64 UEP profiles (32 to 384 kbit/s, levels 1 to 5, mono where Layer II allows only mono), EEP A and B levels, mono and stereo, 48 kHz
+and 24 kHz; every logical frame decoded must be the transmitter's to the bit, and the audio the tone (no DC, no step larger than the tone's own,
+not more audio than the frames carry). All 64 UEP profiles and the EEP cases pass: depuncturing, time de-interleaving, Viterbi and energy
+dispersal of UEP are right (the profile table was also compared again, row by row, with the standard's table 8 as we know it; the generator
+shares those tables, so the round trip alone could not have caught a wrong row).
+
+What was wrong: **MP2 at 24 kHz** (MPEG-2 half sampling rate, allowed by EN 300 401 for DAB audio and used for low-rate speech and community
+services, typically the low-bit-rate UEP ones). Such a frame is 48 ms long and spans two logical frames; every 24 ms logical frame went to the
+decoder as if it were a whole frame. The first half decoded with the rest of the frame missing (garbage in the upper part of every frame), the
+second half failed and was concealed by repeating the last 40 ms: 1.5 times as much audio as sent, garbled, with clicks at every splice and a
+band limit of 12 kHz, which matches the report. Now the MP2 frames are cut out of the byte stream by their headers (a damaged header: the bytes
+are skipped and every logical frame's worth of them concealed), so the decoder always gets whole frames; at 48 kHz nothing changes (one frame
+per logical frame, the same bytes as before). The generator makes 24 kHz MP2 and mono MP2 for the test.
+
+Also: **scrambled services** (conditional access, FIG 0/2 CAId and the component's CA flag) were played as noise. The flags are now read
+(`DabService::caId`, `DabComponent::ca`); a scrambled station is not played and the panel says "Audio: scrambled (conditional access): cannot be
+played" (`DabTelemetry::scrambled`). Samples that are not numbers (NaN, infinity) are now zeroed on input (the channel estimate would spread
+them; `dab_realworld` failed on x86-64 Linux for that).
+
+Not verified with the user's signal: the recording is the decoded audio, not IQ, so whether that service is 24 kHz MP2 is inferred from the
+symptoms (nothing above 12 kHz, garbling without dropouts). An IQ recording of the ensemble would confirm it.
