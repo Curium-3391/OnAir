@@ -11,6 +11,7 @@ on:
       - '!v*-beta*'
     branches:
       - 'release-*'
+      - '!release-*-pipeline-*'   # work branches on the release tooling must not publish a beta
   workflow_dispatch:
 
 # A newer push on the same branch cancels the beta build still running, so an older beta is not published after it.
