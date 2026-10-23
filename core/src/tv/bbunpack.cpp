@@ -6,15 +6,25 @@
 
 namespace dect2 {
 
-static uint8_t crc8Byte(const uint8_t* p, int n) {
-    unsigned crc = 0;
-    for (int i = 0; i < n; i++) {
-        for (int b = 7; b >= 0; b--) {
-            unsigned fb = ((crc >> 7) & 1) ^ ((p[i] >> b) & 1);
-            crc = (crc << 1) & 0xff;
-            if (fb) crc ^= 0xD5;
+// CRC-8 (polynomial 0xD5, MSB first, initial 0) of the user packets, a byte at a time from a table: for an 8-bit CRC, shifting a byte in bit by
+// bit is the same as XORing it into the register and shifting eight times, so the entry for crc ^ byte is the bit-serial result (the bit loop
+// with its branch cost several microseconds per packet: a noticeable part of a T2 or S2 receiver's output).
+namespace {
+struct Crc8Table {
+    uint8_t t[256];
+    Crc8Table() {
+        for (unsigned v = 0; v < 256; v++) {
+            unsigned c = v;
+            for (int b = 0; b < 8; b++) c = (c & 0x80) ? (((c << 1) & 0xff) ^ 0xD5) : ((c << 1) & 0xff);
+            t[v] = (uint8_t)c;
         }
     }
+};
+const Crc8Table kCrc8;
+}
+static uint8_t crc8Byte(const uint8_t* p, int n) {
+    unsigned crc = 0;
+    for (int i = 0; i < n; i++) crc = kCrc8.t[crc ^ p[i]];
     return (uint8_t)crc;
 }
 
@@ -61,11 +71,11 @@ void BbUnpacker::push(const std::vector<uint8_t>& bits, const BbHeader& h) {
     if (h.npd) stride += 1;                      // deleted-null-packet counter
     if (h.issyi && !h.hem) stride += 2;          // ISSY after every user packet (normal mode)
     const int sd = h.syncd == 0xFFFF ? -1 : h.syncd / 8;
-    auto finish = [&](const std::vector<uint8_t>& pk) {
+    auto finish = [&](const uint8_t* pk) {   // (a pointer into the data field: no copy of every packet into a vector of its own)
         int o = h.hem ? 0 : 1;
         if (!h.hem && haveCrc_ && pk[0] != lastCrc_) st_.crcErrors++;
-        emit(pk.data() + o);
-        lastCrc_ = crc8Byte(pk.data() + o, 187);
+        emit(pk + o);
+        lastCrc_ = crc8Byte(pk + o, 187);
         haveCrc_ = true;
         if (h.npd) for (int k = 0; k < pk[stride - 1]; k++) { uint8_t nul[187] = {0x1F, 0xFF, 0x10}; memset(nul + 3, 0xFF, 184); emit(nul); st_.nullInserted++; }
     };
@@ -73,7 +83,7 @@ void BbUnpacker::push(const std::vector<uint8_t>& bits, const BbHeader& h) {
     const int head = sd < 0 ? len : std::min(sd, len);
     if (havePartial_ && !gap_) {
         partial_.insert(partial_.end(), data.begin(), data.begin() + head);
-        if ((int)partial_.size() == stride) { finish(partial_); partial_.clear(); havePartial_ = false; }
+        if ((int)partial_.size() == stride) { finish(partial_.data()); partial_.clear(); havePartial_ = false; }
         else if ((int)partial_.size() < stride && sd < 0) { gap_ = false; return; } // still incomplete: wait for the next frame
         else { st_.resyncs++; partial_.clear(); havePartial_ = false; }
     } else {
@@ -85,8 +95,7 @@ void BbUnpacker::push(const std::vector<uint8_t>& bits, const BbHeader& h) {
     if (sd < 0) return;
     pos = sd;
     while (pos + stride <= len) {
-        std::vector<uint8_t> pk(data.begin() + pos, data.begin() + pos + stride);
-        finish(pk);
+        finish(data.data() + pos);
         pos += stride;
     }
     if (pos < len) { partial_.assign(data.begin() + pos, data.end()); havePartial_ = true; }
