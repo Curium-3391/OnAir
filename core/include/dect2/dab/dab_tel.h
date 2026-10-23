@@ -177,6 +177,7 @@ struct DabTelemetry {
     int tiiFrames = 0;                  // null symbols analysed since the lock
     // the robustness of the reception (docs/DAB-AUDIT.md)
     double sroPpm = 0;                  // sample clock error measured (ppm; the tuner's crystal is off by about as much)
+    double quietMs = 0;                 // input searched without any null symbol in it, since the tuning or the last null seen (the scan moves on when it grows)
     bool coherent = false;              // the last frame was demodulated with the channel estimate (false: plain differential, a fast-changing channel)
     uint64_t syncLosses = 0;            // frames where the sync was lost (a fade longer than 1.15 s, lost samples)
     uint64_t relocks = 0;               // of them found again by the quick search, the decoding kept going

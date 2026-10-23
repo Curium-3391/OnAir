@@ -90,6 +90,8 @@ void dabStatus(App& a) {
         // the sample clock error the receiver follows: the radio's crystal is off by about as much (a ppm correction for the device)
         if (std::fabs(d.sroPpm) >= 0.5) { snprintf(b, sizeof b, "%+.1f ppm", d.sroPpm); ro("Clock", b); }
         snprintf(b, sizeof b, "%.1f dB", d.snrDb); ro("SNR", b);
+        // coherent: demodulated with the channel estimate (about 1 dB more sensitive); differential: the channel changes too fast for it
+        ro("Detection", d.coherent ? "coherent" : "differential (fast fading)");
         const double tot = (double)(d.fibOk + d.fibBad);
         snprintf(b, sizeof b, "%.1f%%", tot > 0 ? 100.0 * (double)d.fibOk / tot : 0.0); ro("FIC ok", b);
         if (d.audio.sub >= 0) {   // the audio's health: what share of the audio frames had to be concealed (docs/DAB-AUDIT.md)
@@ -831,7 +833,7 @@ void dabEnsembleTab(App& a) {
 void dabScanTab(App& a) {
     App::DabScan& s = a.dabScan;
     const bool run = a.engine.running();
-    { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Tunes through the 38 Band III channels (5A to 13F) and lists the ensembles with their stations. About a minute."); ImGui::PopTextWrapPos(); }
+    { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Tunes through the 38 Band III channels (5A to 13F) and lists the ensembles with their stations. Channels without DAB are left after 0.7 s, so it takes 30 s to a minute."); ImGui::PopTextWrapPos(); }
     ImGui::Spacing();
     if (!s.running) {
         ImGui::BeginDisabled(!run);
@@ -905,6 +907,9 @@ void dabScanStep(App& a) {
     if (locked && labelled && now - s.lockT > 0.6 && (d.tiiFrames >= 40 || now - s.lockT > 5.0)) done = true;
     else if (locked && now - s.lockT > 7.0) done = true;
     else if (!locked && now - s.t0 > 2.2) done = true;
+    // nothing like DAB (no null symbol in 0.7 s of input: noise, another service) moves on at once; the bound on elapsed time keeps a value
+    // left from the channel before out
+    else if (!locked && now - s.t0 > 0.5 && d.quietMs > 700 && d.quietMs < (now - s.t0) * 1000 + 100) done = true;
     if (!done) return;
     App::DabScan::Res r;
     r.name = kDabCh[s.idx].name; r.mhz = kDabCh[s.idx].mhz; r.found = locked && ens.valid;

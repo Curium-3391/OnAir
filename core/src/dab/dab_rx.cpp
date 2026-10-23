@@ -131,7 +131,7 @@ struct DabReceiver::Impl {
     struct SubDec {
         std::vector<std::vector<int8_t>> hist = std::vector<std::vector<int8_t>>(16);
         uint64_t count = 0;
-        int early = 16;           // CIFs in before the first logical frame is decoded (12 for DAB+ audio: Reed-Solomon and CRCs catch a failed one)
+        int early = 16;           // CIFs in before the first logical frame is decoded (10 for DAB+ audio: Reed-Solomon and the CRCs catch a failed one)
         std::vector<int8_t> mother, one;
         std::vector<uint8_t> dec, bytes;
         void reset() { hist.assign(16, {}); count = 0; }
@@ -144,9 +144,9 @@ struct DabReceiver::Impl {
             if (src) h.assign(src, src + bits);
             else h.assign((size_t)bits, 0);
             count++;
-            // The first logical frames are decoded before all of their 16 CIFs are in: the ones from before the start are erased (a quarter of
-            // them at 12 CIFs, which the code still copes with at a fair SNR; a frame that fails is caught by the CRCs). That starts the audio a frame
-            // (96 ms) sooner after a lock or a service switch.
+            // The first logical frames are decoded before all of their 16 CIFs are in: the ones from before the start are erased (6 of 16 at
+            // 10 CIFs, which the code still copes with at a fair SNR; a frame that fails is caught by Reed-Solomon and the CRCs). That starts the
+            // audio about 140 ms sooner after a lock or a service switch.
             if (count < (uint64_t)early) return true;
             static const int kMap[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
             mother.resize((size_t)(4 * (info + 6))); one.resize((size_t)bits); dec.resize((size_t)info); bytes.resize((size_t)info / 8);
@@ -160,7 +160,7 @@ struct DabReceiver::Impl {
                 one[(size_t)i] = v;
                 zeros += v == 0;
             }
-            if (count < 16 && zeros * 4 > bits) return true;   // more than a quarter missing at the start: not worth trying
+            if (count < 16 && zeros * 8 > bits * 3) return true;   // more than 3/8 missing at the start: not worth trying
             if (sub.eep ? !eepDepuncture(one.data(), sub.size, sub.option, sub.level, mother.data()) : !uepDepuncture(one.data(), sub.uepIndex, mother.data())) return false;
             viterbiDecode(mother.data(), info, dec.data());
             descramble(dec.data(), info);
@@ -301,6 +301,8 @@ struct DabReceiver::Impl {
     // ------------------------------------------------------------ search
     uint64_t searchNext = 0;   // no phase reference search before the samples have reached this absolute index
     int searchFails = 0;       // searches that found a null but no phase reference, since the last lock
+    bool quietOn = false;
+    uint64_t quietStart = 0, quietSamples = 0, quietPub = 0;   // the stretch of input searched without a null symbol in it
 
     bool searchSync() {
         const size_t need = (size_t)kFrame + kTnull + 4096 + kTs;
@@ -323,7 +325,15 @@ struct DabReceiver::Impl {
         double mean = 0; size_t cnt = 0;
         for (size_t b = 0; b < (size_t)kFrame / 64; b++) { mean += pw[b]; cnt++; }
         mean /= (double)cnt * 64.0;
-        if (mean <= 1e-12 || best / (double)win > 0.6 * mean) { trim(base + buf.size() - (size_t)kFrame); return false; }   // no null: not a DAB frame (yet)
+        if (mean <= 1e-12 || best / (double)win > 0.6 * mean) {   // no null: not a DAB frame (yet)
+            const uint64_t end = base + buf.size();
+            if (!quietOn) { quietOn = true; quietStart = base; }
+            quietSamples = end - quietStart;
+            if (quietSamples >= quietPub + (uint64_t)kFrame) { quietPub = quietSamples; publish(); }   // for the scan: it moves on when nothing like DAB is there
+            trim(end - (size_t)kFrame);
+            return false;
+        }
+        quietOn = false; quietSamples = 0; quietPub = 0;
         // the PRS useful part starts about 1832 samples after the centre of the quietest window; search around it
         const long nominal = (long)bestPos + win / 2 + 1832;
         float bestPk = 0; long bestP = 0; int bestShift = 0, bestIdx = 0;
@@ -927,7 +937,7 @@ struct DabReceiver::Impl {
         mainDec.reset();
         dmb.reset();
         demux.setAddress(selPktAddr);
-        mainDec.early = !isDmb && selPktAddr < 0 && plus && !baselineMode() ? 12 : 16;   // MP2 has no check on its audio bits: it waits for all 16
+        mainDec.early = !isDmb && selPktAddr < 0 && plus && !baselineMode() ? 10 : 16;   // MP2 has no check on its audio bits: it waits for all 16
         if (isDmb || selPktAddr >= 0) audio.select(-1, false, 0);
         else audio.select(sel, plus, selSub.bitrate);
     }
@@ -1022,13 +1032,14 @@ struct DabReceiver::Impl {
         t.tiiFrames = tii.framesSeen();
         t.sroPpm = sro * 1e6;
         t.coherent = coherent;
+        t.quietMs = state == 2 ? 0.0 : 1000.0 * (double)quietSamples / kRate;
         t.syncLosses = syncLosses; t.relocks = relocks; t.erasedCifs = erasedCifs; t.impulses = impulses;
         t.seq = ++telSeq;
         tel = std::move(t);
     }
 
     void reset() {
-        buf.clear(); base = 0; state = 0; mirror = false; cfo = 0; searchNext = 0; searchFails = 0; cc.reset(); missed = 0; framesDone = 0; rs.reset(); tii.reset();
+        buf.clear(); base = 0; state = 0; mirror = false; cfo = 0; searchNext = 0; searchFails = 0; quietOn = false; quietSamples = 0; quietPub = 0; cc.reset(); missed = 0; framesDone = 0; rs.reset(); tii.reset();
         magRef = 0; powRef = 0; sro = 0; quick = false; quickTries = 0; haveLast = false; lastCif = -1; frameCif = -1; gapCifs = 0; impPow = 0;
         syncLosses = 0; relocks = 0; erasedCifs = 0; impulses = 0;
         std::lock_guard<std::mutex> lk(mu);
@@ -1071,7 +1082,7 @@ void DabReceiver::feed(const cf32* x, size_t n) {
     // a channel away from the middle of the sample band (beyond the +-80 kHz of the search) is moved there first
     I.cin.assign(x, x + n);
     I.cc.process(I.cin.data(), n, I.state == 2 && I.fibOk > 0);
-    if (I.cc.takeChanged()) { I.buf.clear(); I.base = 0; I.state = 0; I.searchNext = 0; I.searchFails = 0; I.rs.reset(); }
+    if (I.cc.takeChanged()) { I.buf.clear(); I.base = 0; I.state = 0; I.searchNext = 0; I.searchFails = 0; I.quietOn = false; I.quietSamples = 0; I.quietPub = 0; I.rs.reset(); }
     x = I.cin.data();
     const size_t from = I.buf.size();
     if (I.resample) { I.rsOut.clear(); I.rs.process(x, n, I.rsOut); I.buf.insert(I.buf.end(), I.rsOut.begin(), I.rsOut.end()); }
