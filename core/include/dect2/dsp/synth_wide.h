@@ -14,8 +14,8 @@
 // COHERENCE: the stitched stream is amplitude/frequency/time aligned and phase-continuous across the seams as far as the measurement holds, but the
 // radios' oscillators are free-running: the phase relation between slices wanders (phase noise, residual ppm). The per-hop tracking removes most of
 // it when the overlap holds a signal both radios hear (a broadcast multiplex does; empty noise does not). Suits: spectrum/waterfall, FM/AM/NFM,
-// narrow digital voice, scanning, anything inside one slice or tolerating a slowly varying seam. Wide OFDM across seams (DVB-T) works in simulation
-// with phase tracking up to 16-QAM with free-running dongles and up to 64-QAM with a shared clock (docs/SYNTH-WIDEBAND.md has the measured numbers).
+// narrow digital voice, scanning, anything inside one slice or tolerating a slowly varying seam. Wide OFDM across seams (DVB-T) is NOT measured: it is expected to be limited by the
+// free-running radios' phase (see docs/SYNTH-WIDEBAND.md for what has actually been measured; do not read it as a promise).
 // Not for: direction finding/beamforming (needs a true shared clock and calibration: KrakenSDR), GNSS.
 #pragma once
 #include "dect2/common/ring.h"
