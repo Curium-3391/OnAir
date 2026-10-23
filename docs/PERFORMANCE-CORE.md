@@ -60,12 +60,14 @@ Portable kernels (Linux arm64, a Raspberry Pi's code path; measured on the Mac w
 | `rs_dvbt` | 0.0927 | 0.0578 | **-38 %** |
 | `rs_wide` | 0.1621 | 0.0794 | **-51 %** |
 
-x86 (Windows, Linux PCs): the FFT's bit reversal and the AVX2 stage passes are the same algorithm; they could only be checked for bits here
-(Rosetta runs the AVX2 code), not timed. The baseline (SSE2) copy uses the plain-C++ passes.
+x86 (Windows, Linux PCs): everyone gets the new bit reversal (pure data movement). The multi-stage passes: the SSE2 baseline copy (no fused
+multiply-add, so any compiler gives the loop's bits) and clang's AVX2 copy. GCC's AVX2 copy (Windows MinGW, Linux GCC) keeps the one-stage
+loop for the stages: its contraction of that loop is not the one the explicit AVX2 passes use (the x86 CI showed a mismatch with the
+second product fused), and it is not worth guessing. Not timed here (only Rosetta).
 
-GCC (gcc-16, arm64) and clang give the same bits as their own old loops (each compiler contracts `a*b - c*d` differently; the NEON and AVX2
-passes follow the compiler that builds them), checked by `tests/dsp/test_fft_bits.cpp` with clang arm64, GCC arm64, clang x86-64 baseline
-and AVX2 (forced on under Rosetta), and DECT2_NO_SIMD.
+GCC (gcc-16, arm64) and clang give the same bits as their own old loops (each compiler contracts `a*b - c*d` differently; the NEON passes
+follow the compiler that builds them), checked by `tests/dsp/test_fft_bits.cpp` with clang arm64, GCC arm64, clang x86-64 baseline and AVX2
+(forced on under Rosetta, `DECT2_TEST_FORCE_AVX2`), DECT2_NO_SIMD with both, and GCC x86 AVX2 on the Linux CI.
 
 ## What changed
 

@@ -227,17 +227,12 @@ DECT2_SIMD_BODY void forwardBody(float* __restrict re, float* __restrict im, int
 }
 
 #if defined(DECT2_X86_DISPATCH)
-// AVX2: eight j at a time, from half-length 8 on (the stages 2 and 4 stay the one-stage loop). The butterfly with the contraction the
-// compiler gives the one-stage loop in its AVX2 copy: clang fuses the first product of each sum, GCC the second (tests/dsp/test_fft_bits.cpp
-// compares against that loop compiled the same way; checked on the x86 CI).
+// AVX2 (clang builds): eight j at a time, from half-length 8 on (the stages 2 and 4 stay the one-stage loop). The butterfly with the
+// contraction clang gives the one-stage loop in its AVX2 copy (the first product of each sum fused; tests/dsp/test_fft_bits.cpp compares
+// against that loop compiled the same way, run under Rosetta with AVX2 forced on).
 DECT2_AVX2_TARGET static inline void bfly8(__m256& ar, __m256& ai, __m256& br, __m256& bi, __m256 wr, __m256 wi) {
-#if defined(__clang__)
     const __m256 tr = _mm256_fmsub_ps(wr, br, _mm256_mul_ps(wi, bi));
     const __m256 ti = _mm256_fmadd_ps(wr, bi, _mm256_mul_ps(wi, br));
-#else
-    const __m256 tr = _mm256_fnmadd_ps(wi, bi, _mm256_mul_ps(wr, br));
-    const __m256 ti = _mm256_fmadd_ps(wi, br, _mm256_mul_ps(wr, bi));
-#endif
     br = _mm256_sub_ps(ar, tr); bi = _mm256_sub_ps(ai, ti);
     ar = _mm256_add_ps(ar, tr); ai = _mm256_add_ps(ai, ti);
 }
@@ -260,6 +255,12 @@ DECT2_AVX2_TARGET static void stagesPassAvx2(float* __restrict re, float* __rest
         }
 }
 DECT2_AVX2_TARGET static void forwardAvx2(float* __restrict re, float* __restrict im, int log2n) {
+#if !defined(__clang__)
+    // GCC: its AVX2 copy of the one-stage loop rounds differently from the explicit passes (seen on the x86 CI with the second product
+    // fused, the form GCC uses on arm64), so GCC builds keep that loop for every stage here (the faster bit reversal still applies)
+    forwardBody(re, im, log2n, 1 << 30);
+    return;
+#endif
     forwardBody(re, im, log2n, 8);
     const Plan& pl = planFor(log2n);
     const int n = pl.n;
@@ -277,6 +278,12 @@ void forward(float* __restrict re, float* __restrict im, int log2n) {
 #if defined(DECT2_X86_DISPATCH)
     if (cpuHasAvx2()) { forwardAvx2(re, im, log2n); return; }
 #endif
+#if !DECT2_FFT_NEON && !defined(__clang__) && (defined(__FMA__) || defined(__ARM_FEATURE_FMA))
+    // GCC with fused multiply-add in the baseline (an AVX2 build, or a non-NEON FMA target): its contraction of the one-stage loop is not
+    // reproduced by the plain passes (seen with GCC on arm64), so the loop stays for every stage
+    forwardBody(re, im, log2n, 1 << 30);
+    return;
+#endif
     forwardBody(re, im, log2n, 4);
     const Plan& pl = planFor(log2n);
     const int n = pl.n;
@@ -284,7 +291,7 @@ void forward(float* __restrict re, float* __restrict im, int log2n) {
 #if DECT2_FFT_NEON
     fftStagesNeon(re, im, n, pl.wr.data(), pl.wi.data());
 #else
-    // the baseline x86 copy and other targets: no fused multiply-add here, so the passes give the loop's bits with any compiler
+    // the baseline x86 copy and other targets: no fused multiply-add (or clang, checked), so the passes give the loop's bits
     const float* wr = pl.wr.data();
     const float* wi = pl.wi.data();
     for (int h = 4; h < n;) {
