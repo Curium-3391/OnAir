@@ -570,7 +570,7 @@ std::unique_ptr<ModeSynth> makeModeSynth(int stdMode, const SynthConfig& cfg, do
     case 144: return makeModeAcSynth(cfg, sampleRate);
     case 145: return makeBletrkSynth(cfg, sampleRate);
     case 146: return makeSatbeaconSynth(cfg, sampleRate);
-    case 148: return nfc::makeNfcSynth(cfg, sampleRate);   // NFC / RFID (engine standard 148)
+    case 150: return nfc::makeNfcSynth(cfg, sampleRate);   // NFC / RFID (engine standard 150)
     case 58: return makeRidSynth(cfg, sampleRate);
     case 61: return makeMeteorSynth(cfg, sampleRate);
     case 59: return makeNrSynth(cfg, sampleRate);
@@ -688,7 +688,7 @@ std::string modeSummary(const RxTelemetry& t) {
     case 144: return bletrkSummary(t.bletrk);
     case 146: return milhfSummary(t.milhf);
     case 145: return sbSummary(t.satbeacon);
-    case 147: return nfcSummary(t.nfc);   // NFC / RFID 13.56 MHz (active standard 147)
+    case 149: return nfcSummary(t.nfc);   // NFC / RFID 13.56 MHz (active standard 149)
     case 57: return ridSummary(t.rid);
     case 60: return meteorSummary(t.meteor);
     case 58: return nrSummary(t.nr);

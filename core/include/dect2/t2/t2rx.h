@@ -257,7 +257,7 @@ struct RxTelemetry {
     RailwayTelemetry klw, tdcs; // active standards 147 and 148
     LbjTelemetry lbj;           // valid when standard == 82 (LBJ, engine standard 83)
     ElLoranTelemetry eloran;    // valid when standard == 127 (eLoran / Loran-C, family 126)
-    NfcTelemetry nfc;           // valid when standard == 147 (NFC / RFID 13.56 MHz, family 146, engine standard 148)
+    NfcTelemetry nfc;           // valid when standard == 149 (NFC / RFID 13.56 MHz, family 148, engine standard 150)
     MptTelemetry mpt1327;       // valid when standard == 128 (MPT1327 trunking, family 127)
     FusionTelemetry fusion;     // valid when standard == 129 (Yaesu Fusion, family 128, stdMode 130)
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)

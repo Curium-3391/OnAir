@@ -8,7 +8,7 @@
 
 namespace {
 
-bool live(const App& a) { return a.rx.standard == 147; }   // engine standard 148, active standard 147 (family 146)
+bool live(const App& a) { return a.rx.standard == 149; }   // engine standard 150, active standard 149 (family 148)
 
 const char* protoName(int p) { return p == 0 ? "14443-A" : p == 1 ? "14443-B" : "15693"; }
 

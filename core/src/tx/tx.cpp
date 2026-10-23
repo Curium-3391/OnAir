@@ -135,7 +135,7 @@ std::vector<TxModeSpec> makeTxTable() {
         mk("modeac", "Mode A/C", 144, "makeModeAcSynth", kOpt, kUnv),
         mk("bletracker", "BLE tracker detector", 145, "makeBletrkSynth", kOpt, kUnv),
         mk("satbeacon", "TV sat beacon decoder", 146, "makeSatbeaconSynth", kOpt, kUnv),
-        mk("nfc", "NFC / RFID reader (13.56 MHz)", 148, "makeNfcReaderTxGenerator, 100% ASK Miller reader frames on a continuous carrier", "none (REQA, anticollision, SELECT, READ, GET_VERSION; 13.553-13.567 MHz ISM band only)", kUnv, 0, 4e6, false, 2.4e6),
+        mk("nfc", "NFC / RFID reader (13.56 MHz)", 150, "makeNfcReaderTxGenerator, 100% ASK Miller reader frames on a continuous carrier", "none (REQA, anticollision, SELECT, READ, GET_VERSION; 13.553-13.567 MHz ISM band only)", kUnv, 0, 4e6, false, 2.4e6),
         mk("vorils", "VOR / ILS", 32, "makeVorSynth", kOpt, kUnv),
         mk("m17", "M17", 33, "makeM17Synth", kOpt, kUnv),
         mk("dstar", "D-STAR", 35, "makeDstarSynth", kOpt, kUnv),
@@ -627,7 +627,7 @@ std::unique_ptr<TxGenerator> makeTxGenerator(const TxModeSpec& m, const TxReques
     if (m.stdMode == 124) return makeKaalTxGenerator(r, rateHz > 0 ? rateHz : m.nominalRateHz, err);   // KAAL: its own transmitter chain at the radio's rate
     if (m.stdMode == 135) return makeKawsTxGenerator(r, rateHz > 0 ? rateHz : m.nominalRateHz, err);   // KAWS: HF chat / beacon bursts as upper-sideband IQ at the radio's rate
     if (m.stdMode == 133) return makeKaitTxGenerator(r, rateHz > 0 ? rateHz : m.nominalRateHz, err);   // KAIT: a picture burst at the radio's rate
-    if (m.stdMode == 148) return makeNfcReaderTxGenerator(r, rateHz > 0 ? rateHz : m.nominalRateHz, err);   // NFC active reader: 100% ASK Miller on a continuous 13.56 MHz carrier (Phase 2, gated)
+    if (m.stdMode == 150) return makeNfcReaderTxGenerator(r, rateHz > 0 ? rateHz : m.nominalRateHz, err);   // NFC active reader: 100% ASK Miller on a continuous 13.56 MHz carrier (Phase 2, gated)
     const SynthConfig s = cleanSynth(r.synth, m.stdMode);
     std::unique_ptr<TxGenerator> g;
     double native = 0;

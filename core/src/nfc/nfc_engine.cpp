@@ -219,7 +219,7 @@ void NfcReceiver::setLogCallback(std::function<void(const std::string&)> cb) {
 
 ModeTuning nfcTuning() {
     ModeTuning t;
-    t.stdMode = 148;                 // family 146 + 2
+    t.stdMode = 150;                 // family 148 + 2
     t.id = "nfc";
     t.name = "NFC / RFID 13.56 MHz";
     t.minMhz = 13.553;               // the 13.56 MHz ISM band
