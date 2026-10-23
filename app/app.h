@@ -28,6 +28,7 @@
 #include "dect2/source/rig_setup.h"
 #include "platform/airplay.h"
 #include "dect2/common/timecompat.h"
+#include "dect2/common/time_fmt.h"
 #include "dect2/common/platform.h"
 #include "dect2/engine/scanner.h"
 #include "dect2/tv/mux_change.h"

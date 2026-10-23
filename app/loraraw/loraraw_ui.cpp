@@ -2,6 +2,7 @@
 // the decoder list, the receiver details, the frequency presets (EU868, US915, 433 MHz) and the settings: spreading factor, bandwidth, header mode, coding
 // rate, CRC, length, sync word. Spreading factor and bandwidth can be left on Auto (every combination is searched).
 // Receive only: nothing is ever sent, nothing is decrypted or interpreted; the payload is shown as the bytes it is.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/loraraw/loraraw_rx.h"
 #include "dect2/loraraw/loraraw_tel.h"
@@ -71,16 +72,7 @@ bool live(const App& a) { return a.rx.standard == 72; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -154,7 +146,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("SF"); ImGui::TableSetupColumn("BW"); ImGui::TableSetupColumn("CR"); ImGui::TableSetupColumn("Len");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("SF"); ImGui::TableSetupColumn("BW"); ImGui::TableSetupColumn("CR"); ImGui::TableSetupColumn("Len");
     ImGui::TableSetupColumn("CRC"); ImGui::TableSetupColumn("SNR dB"); ImGui::TableSetupColumn("Level"); ImGui::TableSetupColumn("Offset kHz");
     ImGui::TableSetupColumn("Payload hex"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();

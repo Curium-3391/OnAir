@@ -88,6 +88,24 @@ void typographyChoice(bool menu) {
     }
 }
 
+// View > Time display: every time shown or exported (message lists, logs, status bars) in UTC or local time. Saved data stays UTC.
+void timeDisplayChoice(bool menu) {
+    const bool local = dect2::timefmt::zone() == dect2::timefmt::Zone::Local;
+    ImGui::TextDisabled("%s", tr("Time display"));
+    auto pick = [&](const char* name, bool isLocal) {
+        const bool hit = menu ? ImGui::MenuItem(tr(name), nullptr, local == isLocal) : ImGui::RadioButton(tr(name), local == isLocal);
+        if (hit && local != isLocal) {
+            dect2::timefmt::setZone(isLocal ? dect2::timefmt::Zone::Local : dect2::timefmt::Zone::Utc);
+            plat::prefs().setB("timeLocal", isLocal);
+        }
+    };
+    pick(N_("UTC"), false);
+    pick(N_("Local (this computer)"), true);
+    bool lab = dect2::timefmt::label();
+    const bool hit = menu ? ImGui::MenuItem(tr("Show (UTC) / (local) after times"), nullptr, lab) : ImGui::Checkbox(tr("Show (UTC) / (local) after times"), &lab);
+    if (hit) { if (menu) lab = !lab; dect2::timefmt::setLabel(lab); plat::prefs().setB("timeLabel", lab); }
+}
+
 // View > Theme: Dark (the palettes), Light (every colour's lightness turned over, main.cpp), High contrast (below)
 void themeChoice(App& a, bool menu) {
     static const char* names[3] = {N_("Dark"), N_("Light (dark on white)"), N_("High contrast (black, white, yellow)")};

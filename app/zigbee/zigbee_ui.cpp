@@ -3,6 +3,7 @@
 // with a packets-per-second plot, the channel picker (11 - 26) and the channel scan.
 // Receive only: nothing is ever sent, joined or answered; encrypted payloads are not decrypted (the network key is not obtainable here), only frames
 // sent in the clear are shown in full.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/zigbee/zigbee_proto.h"
 #include "dect2/zigbee/zigbee_rx.h"
@@ -42,16 +43,7 @@ bool live(const App& a) { return a.rx.standard == 66; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -220,7 +212,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Source > destination");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Source > destination");
     ImGui::TableSetupColumn("Len"); ImGui::TableSetupColumn("FCS"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;

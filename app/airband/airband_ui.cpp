@@ -386,7 +386,7 @@ void activityView(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copy the log to the clipboard, one transmission per line.");
     if (!ImGui::BeginTable("##airlog", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Channel"); ImGui::TableSetupColumn("Name");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Channel"); ImGui::TableSetupColumn("Name");
     ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("C/N"); ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& e : log) {

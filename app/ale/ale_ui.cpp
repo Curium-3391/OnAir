@@ -1,6 +1,7 @@
 // HF ALE screens: the common ALE channels (HFN / amateur, upper sideband dial), the nets known, Listen, then three views: the event
 // log (UTC, frequency, from, to, call type, AMD text and commands, BER, SNR), the stations heard (address, last heard, count), and
 // every word decoded (type, characters, vote and Golay errors).
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/ale/ale_proto.h"
 #include "dect2/ale/ale_rx.h"
@@ -36,14 +37,7 @@ void load() {
 }
 
 void utcText(double t, char* out, size_t n) {
-    const time_t tt = (time_t)std::floor(t);
-    struct tm g {};
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    strftime(out, n, "%H:%M:%S", &g);
+    snprintf(out, n, "%s", dect2::timefmt::clock((int64_t)std::floor(t)).c_str());
 }
 
 std::vector<std::string> netList() {

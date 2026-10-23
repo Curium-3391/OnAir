@@ -158,7 +158,7 @@ std::string clockText(double t) {
     if (t <= 0) return "-";
     const time_t tt = (time_t)t;
     char b[40];
-    strftime(b, sizeof b, "%H:%M:%S", localtime(&tt));
+    snprintf(b, sizeof b, "%s", dect2::timefmt::clock((int64_t)tt).c_str());
     return b;
 }
 

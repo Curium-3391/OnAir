@@ -423,7 +423,7 @@ void waterfall(App& a, float h) {
     if (ImGui::IsItemHovered() && !S.rows.empty()) {
         const int row = (int)((ImGui::GetIO().MousePos.y - p0.y) / std::max(1.f, h) * S.rows.size());
         const Row& rw = S.rows[S.rows.size() - 1 - (size_t)std::clamp(row, 0, (int)S.rows.size() - 1)];
-        char t[32]; std::strftime(t, sizeof t, "%H:%M:%S", std::localtime(&rw.when));
+        char t[32]; snprintf(t, sizeof t, "%s", dect2::timefmt::clock((int64_t)rw.when).c_str());
         ImGui::SetTooltip("%s\npeak %+.1f km/s, %.2f%%, SNR %.1f", t, rw.peakKms, 100 * rw.peakRatio, rw.snr);
     }
 }
@@ -483,7 +483,7 @@ void list(App& a) {
     ImGui::TextDisabled("time      peak km/s   excess   SNR");
     for (size_t i = S.rows.size(); i-- > 0;) {
         const Row& r = S.rows[i];
-        char t[32]; std::strftime(t, sizeof t, "%H:%M:%S", std::localtime(&r.when));
+        char t[32]; snprintf(t, sizeof t, "%s", dect2::timefmt::clock((int64_t)r.when).c_str());
         ImGui::Text("%s  %+7.1f  %6.2f%%  %5.1f", t, r.peakKms, 100 * r.peakRatio, r.snr);
     }
 }

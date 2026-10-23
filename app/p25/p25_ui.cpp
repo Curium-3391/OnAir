@@ -1,6 +1,7 @@
 // P25 Phase 1 screens: the current call (unit ID, talkgroup, emergency, encryption, voice), the call log (calls, voice grants, data
 // packets), the trunking system (site, adjacent sites, channel identifiers), the talkgroups with their activity, the decoded control
 // messages, and a "?" about the mbelib library the voice needs (docs/CODECS.md). Receive only; encrypted calls are only reported.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "voice/voice_monitor_ui.h"
 #include "dect2/codec/codec_registry.h"
@@ -69,16 +70,7 @@ bool live(const App& a) { return a.rx.standard == 51; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string dstOf(const dect2::P25Call& c) { return (c.group ? "TG " : "") + dect2::p25Id(c.dst); }
@@ -134,7 +126,7 @@ void nowView(App& a) {
         else { ImGui::TextUnformatted(cryptoOf(n).c_str()); ImGui::SameLine(); voiceKeysStatus(a, n.decrypt); }   // the key status and the way to the Keys window
     }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
-    kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
+    kvRow(a, "started", "%s%s", clock(n.wallTime).c_str(), dect2::timefmt::sfx());
     kvRow(a, "voice", "%s", n.encrypted ? (n.decrypt.compare(0, 9, "decrypted") == 0 ? "playing (decrypted with your key)" : "-") : n.voice ? "playing (IMBE through mbelib)" : t.imbe ? "-" : "no mbelib: frames counted only");
 }
 
@@ -153,7 +145,7 @@ void callsView(App& a) {
     }
     if (!ImGui::BeginTable("##p25log", 7 + (wideActive(a) ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
+    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
     ImGui::TableSetupColumn("Channel"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn("Length");
     ImGui::TableHeadersRow();
     auto row = [&](const dect2::P25Call& e, bool on) {
@@ -191,7 +183,7 @@ void trunkingView(App& a) {
         kvRow(a, "NAC", "%03X", s.nac < 0 ? 0 : s.nac);
         kvRow(a, "control channel", "%s  %s", dect2::p25::channelText(s.channel).c_str(), mhz(s.freqHz).c_str());
         kvRow(a, "service class", "0x%02X", s.ssc);
-        kvRow(a, "heard", "%s UTC", clock(s.wallTime).c_str());
+        kvRow(a, "heard", "%s%s", clock(s.wallTime).c_str(), dect2::timefmt::sfx());
     }
     ImGui::Spacing();
     ImGui::TextDisabled("Adjacent sites");
@@ -400,7 +392,7 @@ void followView(App& a) {
     if (ImGui::Button("Export log CSV")) { const std::string p = saveFileDialog("call_log.csv"); if (!p.empty()) { std::ofstream f(std::filesystem::u8path(p), std::ios::binary); f << T.ctl.log.exportCsv(&T.ctl.tgs); } }
     if (ImGui::BeginTable("##tlog", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, std::max(120.f * gUi, ImGui::GetContentRegionAvail().y)))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Talkgroup"); ImGui::TableSetupColumn("Unit"); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("Channel");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Talkgroup"); ImGui::TableSetupColumn("Unit"); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("Channel");
         ImGui::TableSetupColumn("Encrypted"); ImGui::TableSetupColumn("Notes", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         const auto& rs = T.ctl.log.records();

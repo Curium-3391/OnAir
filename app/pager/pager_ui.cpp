@@ -1,6 +1,8 @@
 // Pagers screens: lamps for the signal, the sync and the two protocols; the message list with a filter; the statistics per speed.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "pager_filter.h"
+#include "../ui/msglog_ui.h"
 #include "dect2/pager/pager_rx.h"
 #include "dect2/pager/pager_tel.h"
 #include "platform/platform.h"
@@ -96,16 +98,7 @@ std::string lower(std::string s) { for (auto& c : s) c = (char)std::tolower((uns
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string oneLine(const std::string& s) {
@@ -163,6 +156,7 @@ void messageView(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show only pages whose address or text contains this.");
     flowNext(12 * gUi);
     ImGui::Checkbox("POCSAG", &S.pocsag);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("POCSAG is the ITU-R M.584 / CCIR Radiopaging Code No. 1 (RPC1): the same signal, so CCIR paging on the pager bands is decoded here at 512, 1200 and 2400 baud. The CCIR 5-tone selective calls are in the Tones mode."));
     flowNext(10 * gUi);
     ImGui::Checkbox("FLEX", &S.flex);
     flowNext(12 * gUi);
@@ -220,10 +214,26 @@ void messageView(App& a) {
         }
         ImGui::SetClipboardText(txt.c_str());
     }
+    {   // Save... / Auto-save to file: the pages that match the filter, oldest first
+        std::vector<dect2::msglog::Row> rows;
+        for (const auto& raw : all) {
+            const dect2::PagerMessage m = resolved(raw);
+            if (!shows(m)) continue;
+            dect2::msglog::Row r;
+            r.epoch = m.wallTime;
+            r.mode = dect2::pagerSpeedName(m.speed);
+            r.freqHz = (m.carrierId > 0 ? radioCenterMhz(a) + m.carrierHz / 1e6 : a.freqMhz) * 1e6;
+            r.address = std::to_string(m.address);
+            r.text = m.type == dect2::kPagerTone ? std::string("(tone only)") : m.text;
+            rows.push_back(std::move(r));
+        }
+        std::stable_sort(rows.begin(), rows.end(), [](const dect2::msglog::Row& x, const dect2::msglog::Row& y) { return x.epoch < y.epoch; });
+        msglog_ui::bar("pager", "pager", rows);
+    }
     if (ImGui::BeginTable("##pgmsg", 6 + (wide ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         if (wide) ImGui::TableSetupColumn("Frequency MHz");
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Protocol"); ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Fn");
+        ImGui::TableSetupColumn(dect2::timefmt::zone() == dect2::timefmt::Zone::Local ? "Time (local)" : "Time UTC"); ImGui::TableSetupColumn("Protocol"); ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Fn");
         ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         size_t shown = 0, matching = 0, hiddenTones = 0;

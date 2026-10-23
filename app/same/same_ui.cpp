@@ -2,6 +2,7 @@
 // locations with the partial-county direction, purge and issue time, call sign, how many of the three repeats agreed), the 1050 Hz attention
 // tone, a map of the states and provinces named (an approximation: a marker at the centre of the state, nothing more precise) and the raw
 // messages. County names come only from a table the user loads (docs/same.md). Receive only: the text of an alert is a public broadcast.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/same/same_proto.h"
@@ -55,16 +56,7 @@ void loadCounties(bool announce) {
 }
 
 std::string clockText(int64_t wall) {
-    char b[32];
-    const time_t t = (time_t)wall;
-    struct tm g {};
-#ifdef _WIN32
-    gmtime_s(&g, &t);
-#else
-    gmtime_r(&t, &g);
-#endif
-    strftime(b, sizeof b, "%H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::clock((int64_t)wall);
 }
 
 std::string dateClock(int64_t wall) {
@@ -435,7 +427,7 @@ void receiver(App& a) {
     if (!S.countyTried) { S.countyTried = true; if (S.countyPath[0]) loadCounties(false); }
     ImGui::Spacing();
     ImGui::TextDisabled("Attention tones");
-    for (size_t i = 0; i < t.tones.size() && i < 8; i++) ImGui::Text("%s UTC, %.1f s, %.0f dB", clockText(t.tones[i].wall).c_str(), t.tones[i].durSec, t.tones[i].levelDb);
+    for (size_t i = 0; i < t.tones.size() && i < 8; i++) ImGui::Text("%s%s, %.1f s, %.0f dB", clockText(t.tones[i].wall).c_str(), dect2::timefmt::sfx(), t.tones[i].durSec, t.tones[i].levelDb);
     if (t.tones.empty()) ImGui::TextDisabled("none heard (the NOAA alert tone is 1050 Hz for 8 - 10 s after the header)");
 }
 

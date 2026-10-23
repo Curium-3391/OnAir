@@ -1,5 +1,6 @@
 // COSPAS-SARSAT 406 MHz screens: the beacon messages that were decoded (15 hex ID, type, country, protocol, identification, position, 121.5 MHz homing flag,
 // the two BCH checks), a map of the ones that carry a position, and the raw bits. Receive only: a real beacon means somebody may be in danger.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../adsb/adsb_map.h"
 #include "dect2/sarsat/sarsat_rx.h"
@@ -43,16 +44,7 @@ const char* kHelp = N_(
     "centre of your country; do not rely on this program for safety.");
 
 std::string clockText(int64_t wall) {
-    char b[32];
-    const time_t t = (time_t)wall;
-    struct tm g {};
-#ifdef _WIN32
-    localtime_s(&g, &t);
-#else
-    localtime_r(&t, &g);
-#endif
-    strftime(b, sizeof b, "%H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::clock((int64_t)wall);
 }
 
 std::string posText(const sarsat::Beacon& b) {

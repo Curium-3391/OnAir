@@ -2,6 +2,7 @@
 // spectrum, the 50 CTCSS tones as bars, a history of everything heard (CTCSS, DCS, DTMF, five-tone calls, SELCAL, two-tone pages) and the gate
 // that opens the sound only for a chosen tone or code. Input is an FM channel from a radio or, from a sound-card source, audio.
 #include "app.h"
+#include "../ui/msglog_ui.h"
 #include "dect2/tones/tones_proto.h"
 #include "dect2/tones/tones_rx.h"
 #include "dect2/tones/tones_tel.h"
@@ -132,6 +133,16 @@ void historyView(App& a) {
     }
     ImGui::SameLine();
     if (ImGui::Button(tr("Clear"))) a.engine.tones().clearResults();
+    {   // Save... / Auto-save to file (oldest first)
+        std::vector<dect2::msglog::Row> rows;
+        for (const auto& e : t.events) {
+            dect2::msglog::Row r;
+            r.epoch = e.wall; r.mode = kindText(e.kind); r.freqHz = a.freqMhz * 1e6; r.text = e.text + (e.detail.empty() ? "" : "  " + e.detail);
+            rows.push_back(std::move(r));
+        }
+        std::stable_sort(rows.begin(), rows.end(), [](const dect2::msglog::Row& x, const dect2::msglog::Row& y) { return x.epoch < y.epoch; });
+        msglog_ui::bar("tones", "tones", rows);
+    }
     ImGui::SameLine();
     ImGui::TextDisabled("CTCSS %d, DCS %d, DTMF %d, %s %d, SELCAL %d, %s %d", t.counts[dect2::TkCtcss], t.counts[dect2::TkDcs], t.counts[dect2::TkDtmf], tr("5-tone"), t.counts[dect2::TkSeq],
                         t.counts[dect2::TkSelcal], tr("2-tone"), t.counts[dect2::TkTwoTone]);
@@ -139,7 +150,7 @@ void historyView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(tr("Computer UTC")); ImGui::TableSetupColumn(tr("Type")); ImGui::TableSetupColumn(tr("Heard"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(tr(dect2::timefmt::headComputer())); ImGui::TableSetupColumn(tr("Type")); ImGui::TableSetupColumn(tr("Heard"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn(tr("Length")); ImGui::TableSetupColumn(tr("Details"));
     ImGui::TableHeadersRow();
     for (const auto& e : t.events) {

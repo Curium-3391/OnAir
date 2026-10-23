@@ -152,7 +152,7 @@ void sensorView(App& a) {
         for (int p = 0; p < 32; p++) if (d->pagesSeen >> p & 1) { if (!pages.empty()) pages += ", "; pages += std::to_string(p); }
         if (!pages.empty()) kv("pages seen", "%s", pages.c_str());
     }
-    kv("first heard", "%s UTC", clockText(d->firstWall).c_str());
+    kv("first heard", "%s%s", clockText(d->firstWall).c_str(), dect2::timefmt::sfx());
 }
 
 void framesView(App& a) {

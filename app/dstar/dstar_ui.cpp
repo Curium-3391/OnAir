@@ -79,7 +79,7 @@ void nowView(App& a) {
         if (n.flag[0] & 0x08) { ImGui::TextDisabled("note"); kvColumn(130 * gUi); ImGui::TextColored(pal::warnAmber(), "emergency flag set"); }
     }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
-    kvRow(a, "started", "%s UTC", clockText(n.wallTime).c_str());
+    kvRow(a, "started", "%s%s", clockText(n.wallTime).c_str(), dect2::timefmt::sfx());
     kvRow(a, "voice", "%s", n.voice ? "playing (AMBE through mbelib)" : t.ambe ? "-" : "no mbelib: frames counted only");
     if (!n.text.empty()) kvRow(a, "message", "%s%s", n.text.c_str(), n.textBlocks == 15 ? "" : " (part)");
     if (n.hasPos) kvRow(a, "position", "%.5f, %.5f", n.lat, n.lon);
@@ -102,7 +102,7 @@ void callsView(App& a) {
     }
     if (!ImGui::BeginTable("##dstarlog", 8 + (wideActive(a) ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MY"); ImGui::TableSetupColumn("UR"); ImGui::TableSetupColumn("RPT1");
+    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MY"); ImGui::TableSetupColumn("UR"); ImGui::TableSetupColumn("RPT1");
     ImGui::TableSetupColumn("RPT2"); ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("BER");
     ImGui::TableHeadersRow();
     auto row = [&](const dect2::DstarCall& e, bool on) {
@@ -134,7 +134,7 @@ void messageView(App& a) {
     const auto& m = a.rx.dstar.messages;
     if (!ImGui::BeginTable("##dstarmsg", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MY"); ImGui::TableSetupColumn("UR"); ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MY"); ImGui::TableSetupColumn("UR"); ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& e : m) {
         ImGui::TableNextRow();

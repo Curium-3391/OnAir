@@ -120,7 +120,7 @@ void basesView(App& a) {
         kv("slots used", "%s%s", slots.c_str(), __builtin_popcount(b->slotsMask) > 2 ? " (several: a call or data link is up)" : "");
     }
     if (b->qtSeen) kv("system information", "%s", dect::hex40(b->qtLast).c_str());
-    kv("first heard", "%s UTC", clockText(b->firstWall).c_str());
+    kv("first heard", "%s%s", clockText(b->firstWall).c_str(), dect2::timefmt::sfx());
     kv("last heard", "%s", ago(t.timeSec, b->lastSec).c_str());
 }
 

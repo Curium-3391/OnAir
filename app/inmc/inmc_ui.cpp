@@ -123,7 +123,7 @@ void messageView(App& a) {
     const float listH = std::max(120.f * gUi, H * 0.5f);
     if (ImGui::BeginTable("##inmmsg", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Priority"); ImGui::TableSetupColumn("Service"); ImGui::TableSetupColumn("Ch");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Priority"); ImGui::TableSetupColumn("Service"); ImGui::TableSetupColumn("Ch");
         ImGui::TableSetupColumn("No."); ImGui::TableSetupColumn("Pkts"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         int shown = 0;

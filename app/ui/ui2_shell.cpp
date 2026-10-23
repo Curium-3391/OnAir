@@ -270,6 +270,7 @@ void sidebar(App& a) {
         themeChoice(a, false);
         accentMenu();
         typographyChoice(false);
+        timeDisplayChoice(false);
         int pct = (int)std::lround(a.uiTextScale * 100);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::SliderInt("##sidetxt", &pct, 80, 200, tr("Text size %d%%"))) a.uiTextScale = std::max(0.8f, std::min(2.f, pct / 100.f));
@@ -501,6 +502,7 @@ static void viewMenu(App& a) {
         themeChoice(a, true);
         accentMenu();
         typographyChoice(true);
+        timeDisplayChoice(true);
         if (ImGui::BeginMenu(tr("Language"))) { languageMenuItems(a); ImGui::EndMenu(); }
         ImGui::Separator();
         if (ImGui::MenuItem(tr("Performance overlay"), nullptr, &a.perfOverlay)) savePrefs(a);

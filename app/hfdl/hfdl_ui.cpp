@@ -1,6 +1,7 @@
 // HFDL screens: the message log with a filter and a detail pane (ACARS text), a map of the ground stations and the aircraft positions,
 // the aircraft, the ground stations with their status, the channel list with its activity, and the range plot (furthest position report
 // per bearing from the receiver). Band presets in the tuner.
+#include "dect2/common/time_fmt.h"
 #include "../adsb/adsb_map.h"
 #include "app.h"
 #include "map/pos_predict.h"
@@ -61,16 +62,7 @@ std::string hex6(uint32_t a) { char b[8]; snprintf(b, sizeof b, "%06X", a & 0xFF
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string ago(double now, double then) {
@@ -205,7 +197,7 @@ void filterRow() {
 void detailPane(const App& a, const dect2::HfdlMessage* m) {
     if (!m) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Click a message to see every layer of it."); ImGui::PopTextWrapPos(); return; }
     auto kv = [&](const char* k, const char* fmt, auto... v) { ImGui::TextDisabled("%s", k); kvColumn(100 * gUi); ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::Text(fmt, v...); ImGui::PopTextWrapPos(); ImGui::PopFont(); };
-    kv("time", "%s UTC  %.3f MHz  %d bit/s (%d slot%s)  %.0f dBFS  SNR %.0f dB  %+.0f Hz", clock(m->wallTime).c_str(), m->freqHz / 1e6, m->bps, m->slots, m->slots == 1 ? "" : "s", m->levelDb, m->snrDb, m->cfoHz);
+    kv("time", "%s%s  %.3f MHz  %d bit/s (%d slot%s)  %.0f dBFS  SNR %.0f dB  %+.0f Hz", clock(m->wallTime).c_str(), dect2::timefmt::sfx(), m->freqHz / 1e6, m->bps, m->slots, m->slots == 1 ? "" : "s", m->levelDb, m->snrDb, m->cfoHz);
     kv("station", "%s, %s", gsLabel(m->gsId).c_str(), m->uplink ? "uplink (ground to air)" : "downlink (air to ground)");
     if (m->icao || m->acId >= 0) kv("aircraft", "%s%s", m->icao ? hex6(m->icao).c_str() : "-", m->acId >= 0 ? (", id " + std::to_string(m->acId)).c_str() : "");
     ImGui::Spacing();
@@ -229,7 +221,7 @@ void messageView(App& a) {
     const dect2::HfdlMessage* sel = nullptr;
     if (ImGui::BeginTable("##hfmsg", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("kHz"); ImGui::TableSetupColumn("bit/s"); ImGui::TableSetupColumn("GS");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("kHz"); ImGui::TableSetupColumn("bit/s"); ImGui::TableSetupColumn("GS");
         ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         int shown = 0;

@@ -1,6 +1,7 @@
 // ARDOP screens: the band presets (the digital part of each band, upper sideband), Listen, then three views: the frames heard (UTC, frame
 // type, session, calls, locator, level, details: ACK quality, the leader length of a connect acknowledge, the bytes of a data frame), the
 // stations named in connect requests, IDs and pings, and the text of the data frames that passed their CRC. Monitor only.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "gfx/gfx.h"
 #include "i18n/i18n.h"
@@ -35,14 +36,7 @@ void load() {
 const ImVec4 kCallCol(1.0f, 0.82f, 0.36f, 1);
 
 void utcText(double t, char* out, size_t n) {
-    const time_t tt = (time_t)std::floor(t);
-    struct tm g {};
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    strftime(out, n, "%H:%M:%S", &g);
+    snprintf(out, n, "%s", dect2::timefmt::clock((int64_t)std::floor(t)).c_str());
 }
 
 ImVec4 frameColour(const std::string& kind) {

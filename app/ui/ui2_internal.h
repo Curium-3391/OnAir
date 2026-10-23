@@ -32,6 +32,7 @@ namespace ui2 {
 void accentMenu();
 void themeChoice(App& a, bool menu);
 void typographyChoice(bool menu);
+void timeDisplayChoice(bool menu);
 
 // ui2_widgets.cpp
 void autoRange(App& a);

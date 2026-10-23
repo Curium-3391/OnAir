@@ -2,6 +2,7 @@
 // routing cost, frame types, channels, schedule, EAPOL), the link list (unicast frames and the levels the acks report), the live frame log and the
 // hop chart (every frame by time and frequency, coloured by sender), and the band plan picker (every region of the Wi-SUN band table).
 // Receive only: nothing is ever sent, joined or answered; PAN configurations and data are encrypted (keys from an EAP-TLS exchange) and stay so.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/wisun/wisun_proto.h"
 #include "dect2/wisun/wisun_rx.h"
@@ -69,16 +70,7 @@ bool live(const App& a) { return a.rx.standard == 85; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -331,7 +323,7 @@ void framesView(App& a) {
                            ImVec2(0, ImGui::GetContentRegionAvail().y)))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("kbit/s"); ImGui::TableSetupColumn("Type");
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("MHz"); ImGui::TableSetupColumn("Ch"); ImGui::TableSetupColumn("kbit/s"); ImGui::TableSetupColumn("Type");
     ImGui::TableSetupColumn("Source > destination"); ImGui::TableSetupColumn("Level"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;

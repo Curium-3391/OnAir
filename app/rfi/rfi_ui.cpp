@@ -221,7 +221,7 @@ void pump() {
     }
 }
 
-std::string hhmmss(double t) { return dect2::utcClockText((int64_t)t); }
+std::string hhmmss(double t) { return dect2::timefmt::clock((int64_t)t); }
 
 void controls(App& a) {
     const bool run = S.running.load();

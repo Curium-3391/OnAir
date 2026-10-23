@@ -1,6 +1,7 @@
 // JS8Call screens: the dial-frequency presets, the submodes looked for (normal, fast, turbo), the waterfall of the audio passband with
 // the newest frames marked, then four views: every frame decoded (UTC, submode, SNR, DT, Hz, text), the messages put together from
 // their frames (directed messages, free text, relays), the stations heard (call, grid, SNR, last heard), and their grids on a map.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../map/contact_lines.h"
 #include "gfx/gfx.h"
@@ -47,14 +48,7 @@ void load() {
 }
 
 void utcText(double t, char* out, size_t n) {
-    const time_t tt = (time_t)std::floor(t);
-    struct tm g {};
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    strftime(out, n, "%H:%M:%S", &g);
+    snprintf(out, n, "%s", dect2::timefmt::clock((int64_t)std::floor(t)).c_str());
 }
 
 const char* subLetter(int m) { return m == 0 ? "N" : m == 1 ? "F" : "T"; }

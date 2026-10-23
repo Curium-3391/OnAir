@@ -1,5 +1,6 @@
 // NXDN screens: the current call (unit id, talkgroup, call type, encryption, voice), the call log (voice, status and short data), the
 // decoded control messages, the site information, and a "?" about the mbelib library the voice needs (docs/CODECS.md).
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "voice/voice_monitor_ui.h"
 #include "dect2/codec/codec_registry.h"
@@ -28,16 +29,7 @@ bool live(const App& a) { return a.rx.standard == 39; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string dstOf(const dect2::NxdnCall& c) { return (c.callType == 1 ? "TG " : "") + dect2::nxdnId(c.dst); }
@@ -76,7 +68,7 @@ void nowView(App& a) {
         else { ImGui::Text("cipher %d, key %d:", n.cipher, n.keyId); ImGui::SameLine(); voiceKeysStatus(a, n.decrypt); }   // the key status and the way to the Keys window
     }
     kvRow(a, "duration", "%.1f s, %u voice frames", n.durSec, n.voiceFrames);
-    kvRow(a, "started", "%s UTC", clock(n.wallTime).c_str());
+    kvRow(a, "started", "%s%s", clock(n.wallTime).c_str(), dect2::timefmt::sfx());
     kvRow(a, "voice", "%s", n.voice ? "playing (AMBE+2 through mbelib)" : t.ambe ? "-" : "no mbelib: frames counted only");
     kvRow(a, "bit errors", "%.2f %% (control channels)", n.berPct);
 }
@@ -96,7 +88,7 @@ void callsView(App& a) {
     }
     if (!ImGui::BeginTable("##nxdnlog", 8 + (wideActive(a) ? 1 : 0), ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
+    if (wideActive(a)) ImGui::TableSetupColumn("Carrier"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Kind"); ImGui::TableSetupColumn("From"); ImGui::TableSetupColumn("To");
     ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("RAN"); ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch); ImGui::TableSetupColumn("Length");
     ImGui::TableHeadersRow();
     auto row = [&](const dect2::NxdnCall& e, bool on) {
@@ -140,7 +132,7 @@ void siteView(App& a) {
     kvRow(a, "RAN", "%d", s.ran);
     kvRow(a, "service", "0x%04X", s.service);
     kvRow(a, "channel", "0x%04X", s.channel);
-    kvRow(a, "heard", "%s UTC", clock(s.wallTime).c_str());
+    kvRow(a, "heard", "%s%s", clock(s.wallTime).c_str(), dect2::timefmt::sfx());
 }
 
 // ---------------------------------------------------------------- hooks

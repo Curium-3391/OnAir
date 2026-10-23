@@ -1,6 +1,7 @@
 // The Watchlists window (View > Watchlists): lists of aircraft, ships, APRS call signs, frequencies and words, and how to be told when one is heard
 // (desktop notification, sound, ntfy, Telegram bot, webhook), with a rate limit and quiet hours. The matching is in core/src/watchlist; this file is
 // the window, the saved file and the sink that shows the alerts and sends the web requests. Tokens are written to the file only, never to a log.
+#include "dect2/common/time_fmt.h"
 #include "dect2/common/thread_name.h"
 #include "../app.h"
 #include "../panels/automation_internal.h"
@@ -187,16 +188,7 @@ const char* kindHint(wl::Kind k) {
 }
 
 std::string when(double t) {
-    time_t s = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    localtime_s(&g, &s);
-#else
-    localtime_r(&s, &g);
-#endif
-    char b[40];
-    strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::show((int64_t)t, dect2::timefmt::Style::DateClock);
 }
 
 bool minuteField(const char* label, const char* idBase, int& minutes) {

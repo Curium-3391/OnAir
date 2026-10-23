@@ -1,6 +1,7 @@
 // Datawell Waverider buoy HF link screens: the FSK carrier (spectrum, width, tone shift, symbol clock); for the 2FSK HXV format (DWR-MkIII, DWR-G, WR-SG)
 // the decoded displacements, sea state words (wave height and period, temperatures, position) and the directional spectrum, from the Datawell Waverider
 // Reference Manual; for the 4FSK HVA format only measurements (its over-the-air coding is not public). Receive only.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "dect2/datawell/datawell_rx.h"
 #include "dect2/datawell/datawell_tel.h"
@@ -32,16 +33,7 @@ bool live(const App& a) { return a.rx.standard == 75; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -148,7 +140,7 @@ void framesView(App& a) {
     }
     if (!ImGui::BeginTable("##dwfr", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("CRC attempt"); ImGui::TableSetupColumn("Frame (hex)", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("CRC attempt"); ImGui::TableSetupColumn("Frame (hex)", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const auto& f : t.frames) {
         ImGui::TableNextRow();

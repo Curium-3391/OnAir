@@ -1,5 +1,6 @@
 // Marine screens: the NAVTEX messages grouped by station with the text panel, the DSC calls (distress in red, the position on a small
 // map), the weather fax picture (zoom, pan, slant, save as PNG) and a tuning aid (the audio spectrum with the tones each service expects).
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../ui/typography.h"
 #include "panels/gallery.h"
@@ -121,17 +122,7 @@ void loadState() {
 }
 
 std::string utcText(int64_t t) {
-    if (t <= 0) return "-";
-    time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    strftime(b, sizeof b, "%H:%M:%S", &g);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 std::string navKey(const NavtexMessage& m) { return m.header + "|" + std::to_string(m.rxTime) + "|" + std::to_string((long long)(m.rxSec * 10)); }
@@ -215,9 +206,9 @@ void navtexView(App& a) {
         ImGui::TextColored(pal::heading(), "%s", sel->header.c_str());
         ImGui::SameLine(); ImGui::TextDisabled("%s", sel->subjectName.c_str());
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("station %c, number %s, %u characters, %u unreadable (%.1f %%)%s, heard %d x, last at %s UTC",
+        ImGui::TextWrapped("station %c, number %s, %u characters, %u unreadable (%.1f %%)%s, heard %d x, last at %s%s",
                             sel->station, sel->number >= 0 ? std::to_string(sel->number).c_str() : "?", sel->chars, sel->errors,
-                            100.f * sel->cer, sel->complete ? "" : ", no NNNN", sel->repeats, utcText(sel->rxTime).c_str());
+                            100.f * sel->cer, sel->complete ? "" : ", no NNNN", sel->repeats, utcText(sel->rxTime).c_str(), dect2::timefmt::sfx());
         ImGui::PopStyleColor();
         if (ImGui::SmallButton("copy text")) ImGui::SetClipboardText(("ZCZC " + sel->header + "\n" + sel->text + "\nNNNN").c_str());
         if (sel->textCut) { ImGui::SameLine(); ImGui::TextDisabled("older message: only the start is kept"); }
@@ -398,7 +389,7 @@ void dscDetail(App& a, const DscCall* c, ImVec2 size) {
         for (size_t i = 0; i < c->symbols.size(); i++) { char q[8]; if (c->symbols[i] < 0) snprintf(q, sizeof q, "%s---", i ? " " : ""); else snprintf(q, sizeof q, "%s%03d", i ? " " : "", c->symbols[i]); sy += q; }
         kv(tr("symbols"), sy);
     }
-    kv("heard", utcText(c->rxTime) + " UTC");
+    kv("heard", utcText(c->rxTime) + dect2::timefmt::sfx());
     if (!c->hasPos) return;
     ImGui::Spacing();
     const float mh = std::max(80.f * gUi, ImGui::GetContentRegionAvail().y - 4 * gUi);

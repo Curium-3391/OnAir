@@ -1,6 +1,7 @@
 // Multitone paging screens: the transmissions heard (carrier, deviation, tones and spectral lines of the audio), the FSK data found in them
 // (baud rate, bit stream, 32-bit words against the POCSAG BCH check) and the steady tones heard so far.
 // Receive only. Multitone's own format is not public, so this is a detector: everything is labelled unverified and no message text is shown.
+#include "dect2/common/time_fmt.h"
 #include "app.h"
 #include "../ui/typography.h"
 #include "dect2/multitone/multitone_rx.h"
@@ -25,16 +26,7 @@ bool live(const App& a) { return a.rx.standard == 76; }   // the engine reports 
 
 std::string clock(int64_t t) {
     if (t <= 0) return "-";
-    const time_t tt = (time_t)t;
-    struct tm g;
-#ifdef _WIN32
-    gmtime_s(&g, &tt);
-#else
-    gmtime_r(&tt, &g);
-#endif
-    char b[16];
-    snprintf(b, sizeof b, "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
-    return b;
+    return dect2::timefmt::clock(t);
 }
 
 void kvRow(const App& a, const char* k, const char* fmt, ...) {
@@ -92,7 +84,7 @@ void txView(App& a) {
     const float tableH = std::max(120.f * gUi, ImGui::GetContentRegionAvail().y * 0.55f);
     if (ImGui::BeginTable("##mttx", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX, ImVec2(0, tableH))) {
         ImGui::TableSetupScrollFreeze(1, 1);
-        ImGui::TableSetupColumn("#"); ImGui::TableSetupColumn("Time UTC"); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("SNR"); ImGui::TableSetupColumn("Deviation");
+        ImGui::TableSetupColumn("#"); ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Length"); ImGui::TableSetupColumn("SNR"); ImGui::TableSetupColumn("Deviation");
         ImGui::TableSetupColumn("Kind (unverified)"); ImGui::TableSetupColumn("Tones", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         for (const auto& x : t.tx) {
@@ -137,7 +129,7 @@ void dataView(App& a) {
     ImGui::PopTextWrapPos();
     if (ImGui::Button("Copy")) {
         std::string txt;
-        for (const auto& b : t.bursts) { char c[300]; snprintf(c, sizeof c, "%s UTC\t%.1f baud\t%d bits\t%d valid of %d\t%s\n", clock(b.wall).c_str(), b.baud, b.nBits, b.validWords, b.totalWords, b.bitsHex.c_str()); txt += c; }
+        for (const auto& b : t.bursts) { char c[300]; snprintf(c, sizeof c, "%s%s\t%.1f baud\t%d bits\t%d valid of %d\t%s\n", clock(b.wall).c_str(), dect2::timefmt::sfx(), b.baud, b.nBits, b.validWords, b.totalWords, b.bitsHex.c_str()); txt += c; }
         ImGui::SetClipboardText(txt.c_str());
     }
     if (t.bursts.empty()) { ImGui::TextDisabled("no FSK data heard yet"); return; }
@@ -145,7 +137,7 @@ void dataView(App& a) {
     for (const auto& b : t.bursts) {
         ImGui::PushID((int)b.id);
         char head[160];
-        snprintf(head, sizeof head, "%s UTC  %.1f baud  %d bits  %d valid of %d words%s", clock(b.wall).c_str(), b.baud, b.nBits, b.validWords, b.totalWords, b.syncFound ? "  POCSAG sync" : "");
+        snprintf(head, sizeof head, "%s%s  %.1f baud  %d bits  %d valid of %d words%s", clock(b.wall).c_str(), dect2::timefmt::sfx(), b.baud, b.nBits, b.validWords, b.totalWords, b.syncFound ? "  POCSAG sync" : "");
         if (typo::collapsingHeader(head)) burstDetail(a, b);
         ImGui::PopID();
     }
