@@ -64,16 +64,16 @@ DECT2_SIMD_BODY void refForwardBody(float* __restrict re, float* __restrict im, 
 
 DECT2_AVX2_DISPATCH(void, refForward, (float* __restrict re, float* __restrict im, int log2n), (re, im, log2n))
 
-// the portable desamp's sum for one output (8 partial sums, fused like the compiler fuses `acc[l] += f * x`)
-DECT2_SIMD_BODY float refDotBody(const float* x, int stride, const float* f, int p) {
+// the portable desamp's sum for one output, its loop verbatim (8 partial sums, fused like the compiler fuses `acc[l] += f * x`)
+DECT2_SIMD_BODY float refDotBody(const float* x, const float* f, int p) {
     float acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     int k = 0;
-    for (; k + 8 <= p; k += 8) for (int l = 0; l < 8; l++) acc[l] += f[k + l] * x[(size_t)(k + l) * stride];
+    for (; k + 8 <= p; k += 8) for (int l = 0; l < 8; l++) acc[l] += f[k + l] * x[k + l];
     float s = ((acc[0] + acc[4]) + (acc[1] + acc[5])) + ((acc[2] + acc[6]) + (acc[3] + acc[7]));
-    for (; k < p; k++) s += f[k] * x[(size_t)k * stride];
+    for (; k < p; k++) s += f[k] * x[k];
     return s;
 }
-DECT2_AVX2_DISPATCH(float, refDot, (const float* x, int stride, const float* f, int p), (x, stride, f, p))
+DECT2_AVX2_DISPATCH(float, refDot, (const float* x, const float* f, int p), (x, f, p))
 
 int failures = 0;
 void check(bool ok, const char* what) {
@@ -131,7 +131,7 @@ int main() {
         for (auto& v : f) v = nd(rng);
         float c[3];
         desamp(x.data(), 3, f.data(), c, 3, 64);
-        check(c[2] == refDot(x.data() + 6, 1, f.data(), 64), "desamp: the 8 partial sums of the portable loop");
+        check(c[2] == refDot(x.data() + 6, f.data(), 64), "desamp: the 8 partial sums of the portable loop");
     }
     if (failures) return 1;
     std::printf("fft and resampler kernels: same bits as the plain loops\n");
