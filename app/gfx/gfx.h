@@ -34,6 +34,8 @@ struct Backend {
     virtual ~Backend() {}
     virtual Image* createImage(int w, int h, uint32_t fill) = 0;
     virtual Video* createVideo(int w, int h) = 0;
+    // The widest (and tallest) picture the GPU takes in pixels: an Image asked larger is kept at this size and shrunk on update (#284).
+    virtual int maxImageSize() const { return 16384; }
     virtual void newFrame(int fbW, int fbH, const float clear[4]) = 0;   // before ImGui::NewFrame(); sizes in pixels
     // render the draw data and present; if shotPath is set the finished frame is written there as a PNG
     virtual void endFrame(ImDrawData* dd, const char* shotPath) = 0;
@@ -48,6 +50,11 @@ struct Backend {
     virtual void shutdown() = 0;
 };
 
+// Context levels, best first (OpenGL: 3.2 core, 3.1, 3.0; Metal: one). The caller tries each until the window opens (#283).
+int levelCount();
+int level();
+void setLevel(int l);                     // before windowHints(); the pop-out window then uses the same level as the main one
+const char* levelName();
 void windowHints();                       // before glfwCreateWindow
 Backend* create(GLFWwindow* window);      // after the window exists; also initialises the ImGui renderer back end
 

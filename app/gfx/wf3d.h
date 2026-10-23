@@ -76,26 +76,55 @@ inline Camera preset(int p) {
 struct Proj {
     V3 eye, right, up, fwd;
     float f = 1, aspect = 1, vx = 0, vy = 0, vw = 1, vh = 1, nearZ = 0.02f;
+    float ox = 0, oy = 0;   // the framing's shift (normalised screen units, Fit)
 };
+// The framing (fitScale): a lens scale and a shift that put the surface's box in the middle of the viewport
+struct Fit { float lens = 1, ox = 0, oy = 0; };
 // the viewport (vx, vy, vw, vh) in pixels
-inline Proj makeProj(const Camera& c, float vx, float vy, float vw, float vh) {
+inline Proj makeProj(const Camera& c, float vx, float vy, float vw, float vh, Fit fit = Fit()) {
     Proj p;
     p.eye = c.eye();
     p.fwd = norm(v3(c.tx, c.ty, c.tz) - p.eye);
     p.right = norm(cross(p.fwd, v3(0, 1, 0)));
     if (dot(p.right, p.right) < 1e-6f) p.right = v3(std::cos(c.yaw), 0, -std::sin(c.yaw));   // looking straight down
     p.up = cross(p.right, p.fwd);
-    p.f = 1.f / std::tan(c.fov / 2);
+    p.f = fit.lens / std::tan(c.fov / 2);
+    p.ox = fit.ox; p.oy = fit.oy;
     p.vx = vx; p.vy = vy; p.vw = std::max(1.f, vw); p.vh = std::max(1.f, vh);
     p.aspect = p.vw / p.vh;
     return p;
 }
+// Framing: the lens scale and shift that make the surface's box (1 wide, depth deep, hs high) fill `fill` of the viewport in its
+// tighter direction, centred, as seen from the camera's angle at the preset distance with the target in the middle. Applied on top of
+// the camera, so a wide, short plot is not mostly empty, while the camera's own distance still zooms and a pan still moves the picture.
+inline Fit fitScale(const Camera& c, float vw, float vh, float hs, float depth, float fill = 0.9f) {
+    Camera k = c; k.dist = Camera().dist; k.tx = 0; k.tz = 0; k.ty = Camera().ty;
+    const V3 eye = k.eye(), fwd = norm(v3(k.tx, k.ty, k.tz) - eye);
+    V3 right = norm(cross(fwd, v3(0, 1, 0)));
+    if (dot(right, right) < 1e-6f) right = v3(std::cos(k.yaw), 0, -std::sin(k.yaw));
+    const V3 up = cross(right, fwd);
+    const float f = 1.f / std::tan(k.fov / 2), aspect = std::max(1.f, vw) / std::max(1.f, vh);
+    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+    for (int i = 0; i < 8; i++) {
+        const V3 w = v3(i & 1 ? 0.5f : -0.5f, i & 2 ? hs : 0.f, i & 4 ? depth / 2 : -depth / 2) - eye;
+        const float z = std::max(0.05f, dot(w, fwd));
+        const float nx = dot(w, right) * f / (aspect * z), ny = dot(w, up) * f / z;
+        x0 = std::min(x0, nx); x1 = std::max(x1, nx); y0 = std::min(y0, ny); y1 = std::max(y1, ny);
+    }
+    Fit r;
+    const float h = std::max(x1 - x0, y1 - y0) / 2;
+    if (!(h > 0)) return r;
+    r.lens = std::min(4.f, std::max(0.25f, fill / h));
+    r.ox = r.lens * (x0 + x1) / 2; r.oy = r.lens * (y0 + y1) / 2;
+    return r;
+}
+
 // false when the point is behind (or too close to) the camera
 inline bool project(const Proj& p, V3 w, float& sx, float& sy, float& depth) {
     const V3 d = w - p.eye;
     const float z = dot(d, p.fwd);
     if (z < p.nearZ) return false;
-    const float nx = dot(d, p.right) * p.f / (p.aspect * z), ny = dot(d, p.up) * p.f / z;
+    const float nx = dot(d, p.right) * p.f / (p.aspect * z) - p.ox, ny = dot(d, p.up) * p.f / z - p.oy;
     sx = p.vx + (nx * 0.5f + 0.5f) * p.vw;
     sy = p.vy + (0.5f - ny * 0.5f) * p.vh;
     depth = z;
@@ -103,7 +132,7 @@ inline bool project(const Proj& p, V3 w, float& sx, float& sy, float& depth) {
 }
 // the ray through a screen point (the inverse of project)
 inline void screenRay(const Proj& p, float sx, float sy, V3& o, V3& dir) {
-    const float nx = ((sx - p.vx) / p.vw - 0.5f) * 2, ny = (0.5f - (sy - p.vy) / p.vh) * 2;
+    const float nx = ((sx - p.vx) / p.vw - 0.5f) * 2 + p.ox, ny = (0.5f - (sy - p.vy) / p.vh) * 2 + p.oy;
     o = p.eye;
     dir = norm(p.fwd + p.right * (nx * p.aspect / p.f) + p.up * (ny / p.f));
 }

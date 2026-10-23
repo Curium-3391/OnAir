@@ -170,7 +170,7 @@ target_sources(dect2core PRIVATE core/src/sweep/station_health.cpp core/src/sour
 target_sources(dect2core PRIVATE core/src/source/autogain.cpp core/src/source/autogain_radio.cpp core/src/source/autogain_measure.cpp)   # automatic gain for every radio and mode (docs/AUTOGAIN.md)
 target_sources(dect2core PRIVATE core/src/backup/backup.cpp)   # Tools > Backup and restore (docs/BACKUP.md)
 # The modes added after FM (DVB-S/S2, DTMB, analog TV, DMR, DRM, ADS-B): every core/src/<mode>/*.cpp belongs to its mode, so a mode can add files without editing this list
-  set(DECT2_MODES fsq ifkp cquam selfcal dvbs dtmb atv dmr drm adsb gnss dab sonde ais marine acars inmc aero iridium mesh hdr cdr pager packet hfdig airband vdl2 ism vor ils m17 cell cw dstar hfdl nxdn gsmr psk js8 specx wb specan dvbc dpmr orbcomm uplink tetra tetrapol ale mac astro p25 ble iono qo100 wifi general time rid meteor nr cubesat ccsds goes globalstar vdes hrpt zigbee flarm hfbeacon dji nbiot halow codar datawell same multitone loraraw ant dect elektro ndb lbj railway horus eczas vdl4 uat wisun fpv wmbus tones sarsat mt63 zwave mscatter dgps dme sitor kris kavb kapp kaft eloran mpt1327 fusion ardop goesdcs modeac bletrk ltr edacs p25p2 kait satbeacon kaws milhf nfc kaal ham prop antd lorawan lorasat isdbs marinevhf argos sigfox sbas asterix voice)
+  set(DECT2_MODES autodet fsq ifkp cquam selfcal dvbs dtmb atv dmr drm adsb gnss dab sonde ais marine acars inmc aero iridium mesh hdr cdr pager packet hfdig airband vdl2 ism vor ils m17 cell cw dstar hfdl nxdn gsmr psk js8 specx wb specan dvbc dpmr orbcomm uplink tetra tetrapol ale mac astro p25 ble iono qo100 wifi general time rid meteor nr cubesat ccsds goes globalstar vdes hrpt zigbee flarm hfbeacon dji nbiot halow codar datawell same multitone loraraw ant dect elektro ndb lbj railway horus eczas vdl4 uat wisun fpv wmbus tones sarsat mt63 zwave mscatter dgps dme sitor kris kavb kapp kaft eloran mpt1327 fusion ardop goesdcs modeac bletrk ltr edacs p25p2 kait satbeacon kaws milhf nfc kaal ham prop antd lorawan lorasat isdbs marinevhf argos sigfox sbas asterix voice)
 target_sources(dect2core PRIVATE core/src/tv/ts_proto_rs.cpp core/src/common/text_charset_rs.cpp core/src/tv/dvb_text.cpp core/src/tv/dvb_text_rs.cpp core/src/tv/teletext_rs.cpp core/src/tv/dvbsub_rs.cpp core/src/tv/epg.cpp core/src/tv/subtitle_export.cpp core/src/tv/recorder.cpp core/src/tv/timeshift.cpp core/src/tv/playback.cpp core/src/tv/dsmcc.cpp core/src/tv/mheg.cpp core/src/tv/rcs.cpp core/src/tv/si_tables.cpp core/src/tv/ts_data.cpp core/src/tv/hd_pair.cpp) # MPEG-TS parsing layer (C++ or the Rust crate onair_ts) and the TV recorder (guide, schedule, timeshift, playback) (C++ or the Rust crate onair_ts)
 target_sources(dect2core PRIVATE core/src/fec/fec_proto.cpp core/src/fec/fec_proto_rs.cpp)   # Reed-Solomon (DVB-T, ATSC, DAB), DVB-T2 BCH and the LDPC tables (the Rust crate onair_fec), the K = 7 Viterbi decoder (C++)
 target_sources(dect2core PRIVATE core/src/files/files_proto_rs.cpp)   # CSV, SigMF, WAV, TLE, SQLite pages, results container (the Rust crate onair_files)
@@ -531,7 +531,7 @@ if(DECT2_BUILD_APP)
   set(IMGUI_SOURCES
     third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_glfw.cpp)
-  set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/presets_app.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/mode_visibility.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/tv_hd.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/scan/scan_view_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_lists_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/panels/enhance_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/ui/learn.cpp app/ui/autogain_firstrun.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/modebuilder_ui.cpp app/panels/signallab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/audio_control_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp app/panels/backup_ui.cpp app/panels/scheduler_ui.cpp app/panels/recmgr_ui.cpp app/ui/dock_tree.cpp app/ui/ui2_dock.cpp app/panels/swarm_ui.cpp)
+  set(APP_SOURCES app/main.cpp app/main_window.cpp app/main_start.cpp app/ui/draw_ui.cpp app/ui/touch.cpp app/ui/touch_sheets.cpp app/ui/touch_shell.cpp app/ui/main_tabs.cpp app/ui/light_theme.cpp app/state/app_state.cpp app/state/presets_app.cpp app/state/prefs.cpp app/ui/widgets.cpp app/ui/toolbar.cpp app/ui/toolbar_source.cpp app/ui/toolbar_rig.cpp app/ui/statusbar.cpp app/ui/mode_table.cpp app/ui/mode_select.cpp app/ui/mode_visibility.cpp app/ui/ui_common.cpp app/panels/radio_ui.cpp app/gfx/plots.cpp app/panels/analysis_tabs.cpp app/panels/tv.cpp app/panels/tv_hd.cpp app/panels/subs_ui.cpp app/scan/scan_outputs.cpp app/panels/antenna.cpp app/fm/fm_ui.cpp app/ui/ui2.cpp app/ui/ui2_theme.cpp app/ui/ui2_widgets.cpp app/ui/ui2_shell.cpp app/ui/command_palette.cpp app/ui/ui2_faces.cpp app/panels/modeui.cpp app/atsc3/atsc3_ui.cpp app/isdbt/isdbt_ui.cpp app/panels/update_ui.cpp app/scan/scan_db_ui.cpp app/panels/diag_ui.cpp app/ui/wizard.cpp app/gfx/plot.cpp app/gfx/gfx_png.cpp app/ui/popout.cpp app/panels/codec_help.cpp app/platform/discord_rpc.cpp app/panels/passes_ui.cpp app/panels/satnogs_ui.cpp app/df/df_ui.cpp app/panels/feeds_ui.cpp app/scan/scanner_ui.cpp app/scan/scan_view_ui.cpp app/memory/memory_options.cpp app/memory/memory_ui.cpp app/memory/memory_lists_ui.cpp app/memory/memory_edit.cpp app/memory/memory_selftest.cpp app/map/map_ui.cpp app/map/map_send.cpp app/panels/rotator_ui.cpp app/panels/results_ui.cpp app/state/rx_prefs.cpp app/state/receivers.cpp app/panels/fixit.cpp app/panels/gallery_ui.cpp app/panels/enhance_ui.cpp app/state/results_export.cpp app/state/results_export_ui.cpp app/panels/credits_ui.cpp app/bandplan/bandplan_ui.cpp app/sweep/sweep_ui.cpp app/freqdb/freqdb_ui.cpp app/ui/tour.cpp app/ui/learn.cpp app/ui/autogain_firstrun.cpp app/clips/clips_core.cpp app/clips/clips_gen.cpp app/clips/clips_ui.cpp app/transcribe/transcribe_app.cpp app/panels/automation_ui.cpp app/panels/automation_sink.cpp app/panels/protolab_ui.cpp app/panels/modebuilder_ui.cpp app/panels/signallab_ui.cpp app/panels/msgdb_ui.cpp app/platform/spawn.cpp app/plugin/plugin_app.cpp app/panels/tvrec_ui.cpp app/panels/timemachine_ui.cpp app/panels/audio_cleanup_ui.cpp app/panels/audio_control_ui.cpp app/panels/voice_inversion_ui.cpp app/radar/passive_ui.cpp app/rfi/rfi_ui.cpp app/watchlist/watchlist_ui.cpp app/df/rfcam_ui.cpp app/rooms/rooms_send.cpp app/rooms/rooms_net.cpp app/panels/report_problem.cpp app/ui/listen_wizard.cpp app/ui/typography.cpp app/ui/meter_ui.cpp app/platform/proc_cpu.cpp app/state/workspace.cpp app/state/layout.cpp app/state/workspace_ui.cpp app/panels/recording_library_ui.cpp app/panels/backup_ui.cpp app/panels/scheduler_ui.cpp app/panels/recmgr_ui.cpp app/ui/dock_tree.cpp app/ui/ui2_dock.cpp app/panels/swarm_ui.cpp)
   list(APPEND APP_SOURCES app/ui/synth_group_ui.cpp)
   list(APPEND APP_SOURCES app/scan/fast_scan_ui.cpp)
   list(APPEND APP_SOURCES app/map/contact_lines.cpp)   # contact lines on the QSO-mode maps
@@ -622,6 +622,10 @@ if(DECT2_BUILD_APP)
   list(APPEND APP_SOURCES app/platform/power.cpp app/ui/perf_overlay.cpp)   # battery, occlusion, App Nap; View > Performance overlay
   add_executable(test_frame_pace tests/app/test_frame_pace.cpp)   # the redraw policy of the frame loop (app/ui/frame_pace.h)
   add_test(NAME frame_pace COMMAND test_frame_pace)
+  add_executable(test_gl_level tests/app/test_gl_level.cpp)   # OpenGL 3.2 -> 3.1 -> 3.0 fallback table (#283)
+  add_test(NAME gl_level COMMAND test_gl_level)
+  add_executable(test_tex_shrink tests/app/test_tex_shrink.cpp)   # pictures over the GPU's texture limit (4096 on a Raspberry Pi, #284)
+  add_test(NAME tex_shrink COMMAND test_tex_shrink)
   if(NOT WIN32)   # thread CPU clocks (POSIX)
     add_executable(bench_ui_power tests/bench/bench_ui_power.cpp app/i18n/i18n.cpp)   # docs/PERFORMANCE.md: frame pacing, ring wake-ups, tr(), RF camera
     target_include_directories(bench_ui_power PRIVATE app ${CMAKE_BINARY_DIR}/generated)
@@ -643,6 +647,8 @@ if(DECT2_BUILD_APP)
   add_test(NAME rxbar COMMAND test_rxbar)
   add_executable(test_status_strip tests/app/test_status_strip.cpp)   # the receiver status strip: frequency split, CPU level, cell collapse (app/ui/status_strip.h)
   add_test(NAME status_strip COMMAND test_status_strip)
+  add_executable(test_meter_logic tests/app/test_meter_logic.cpp)   # sparkline ring, too-slow hysteresis, signal verdict, one-click fix ladder (app/ui/meter_logic.h)
+  add_test(NAME meter_logic COMMAND test_meter_logic)
   add_executable(test_plot_util tests/app/test_plot_util.cpp)
   add_test(NAME plot_util COMMAND test_plot_util)
   add_executable(test_tune_drag tests/app/test_tune_drag.cpp)
@@ -769,6 +775,12 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_channelizer_mix tests/dsp/test_channelizer_mix.cpp)   # carrier channeliser mixer and resampler blocks (docs/PERFORMANCE-DSP.md)
   target_link_libraries(test_channelizer_mix PRIVATE dect2core)
   add_test(NAME channelizer_mix COMMAND test_channelizer_mix)
+  # the portable FFT and the resampler's NEON path against the plain loops (docs/PERFORMANCE-CORE.md): built from the sources with the
+  # portable kernels, so it checks what Windows and Linux run on any machine
+  add_executable(test_fft_bits tests/dsp/test_fft_bits.cpp core/src/dsp/dsp_compat.cpp core/src/dsp/resampler.cpp)
+  target_include_directories(test_fft_bits PRIVATE core/include)
+  target_compile_definitions(test_fft_bits PRIVATE DECT2_PORTABLE)
+  add_test(NAME fft_bits COMMAND test_fft_bits)
   add_executable(test_viterbi_simd tests/fec/test_viterbi_simd.cpp)   # the vector K = 7 Viterbi against a scalar copy of the trellis
   target_link_libraries(test_viterbi_simd PRIVATE dect2core)
   add_test(NAME viterbi_simd COMMAND test_viterbi_simd)
@@ -1053,7 +1065,7 @@ if(DECT2_BUILD_TESTS)
   target_include_directories(test_map_ask PRIVATE app/map)
   add_test(NAME map_ask COMMAND test_map_ask)
   add_executable(test_rooms_net tests/app/test_rooms_net.cpp app/rooms/rooms_net.cpp)
-  target_include_directories(test_rooms_net PRIVATE app)
+  target_include_directories(test_rooms_net PRIVATE app core/include)
   add_test(NAME rooms_net COMMAND test_rooms_net)
   add_executable(test_discord_rpc tests/app/test_discord_rpc.cpp app/platform/discord_rpc.cpp)
   target_include_directories(test_discord_rpc PRIVATE app core/include)
@@ -2035,6 +2047,12 @@ if(DECT2_BUILD_TESTS)
     set_tests_properties(mesh_presets_meshcore PROPERTIES ENVIRONMENT "ONAIR_TEST_DATA=${ONAIR_ROOT}/tests/data")
   endif()
 
+  # automatic standard detection (docs/AUTODETECT.md): every TV standard's generator at three SNRs takes a minute or two (slow tier);
+  # one case per standard at two SNRs runs with the quick tier
+  if(TEST autodet_tv)
+    set_tests_properties(autodet_tv PROPERTIES LABELS slow TIMEOUT 1200)
+    add_test(NAME autodet_tv_quick COMMAND test_autodet_tv --quick)
+  endif()
   # Long-running tests (30 s and more): the quick CI on every push skips them (ctest -LE slow),
   # the full CI runs them nightly and on release tags.
   foreach(t gain overload channel t2_payload dvbt_rx dab_rx atsc3_synth_options

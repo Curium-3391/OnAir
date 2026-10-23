@@ -115,3 +115,8 @@ themselves (`setThreadPriority`: user-interactive / user-initiated / utility). T
   active; the same `waitData()` can replace them one at a time.
 * Tables without a clipper: about 130 screens; most lists are capped by their decoder (tens to a few hundred rows). The message
   database was the largest uncapped page.
+
+## Dev flags for screenshots
+
+* `--no-first-run` (or `DECT2_SKIP_FIRSTRUN=1`): no first-start question (public map consent); the tour and setup wizard only start with no arguments, so with `--hidden --mute --shot` nothing covers the UI. Use it for all screenshot work, together with a renamed copy of the binary for isolated settings.
+* `DECT2_FAKE_CPU=<percent>`: the status strip takes this as the process CPU (100 = one core), to see the CPU colours and the "Too slow" warning with its Fix button (needs a running receiver and about 4 s).

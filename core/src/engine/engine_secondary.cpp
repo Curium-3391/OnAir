@@ -241,6 +241,7 @@ void Engine::pushSecondary(const cf32* x, size_t n) {
 void Engine::secondaryLoop(int a) {
     setThreadName(a >= 0 && a < 10 ? ("onair-rx" + std::to_string(a + 1)).c_str() : "onair-rx");   // one analysis thread per secondary receiver
     setThreadPriority(ThreadPriority::Background);   // below the first mode's sample path
+    cpu::bindThread(cpuSec_.load());
     CaptureShifter mix;
     ExactResampler rs;   // the capture's rate down to the second mode's own
     double rsIn = 0, rsOut = 0;
@@ -255,6 +256,7 @@ void Engine::secondaryLoop(int a) {
             if (secStop_) break;
             if (!secQ_.empty()) { b.swap(secQ_.front()); secQ_.pop_front(); secQN_ -= b.size(); }
         }
+        cpu::tick();
         if (!b.empty()) {
             secQCv_.notify_all();   // room for the next block
             std::lock_guard<std::mutex> fl(secFeedMu_);

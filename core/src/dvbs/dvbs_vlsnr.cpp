@@ -207,7 +207,10 @@ const LdpcCode& ldpcOf(int mode) {
     return *c;
 }
 
-float alphaOf(const VlMode& m) { return (float)m.kldpc / (float)m.nldpc < 0.25f ? 0.90f : 0.88f; }
+// The factor of the decoder with the two-minimum correction (LdpcCode::decodeFast with boxCorr). Measured on an ideal channel 0.3 and 0.1 dB below
+// the Es/N0 of table 20: 0.95 for every mode but BPSK 4/15 short (0.92); BPSK 1/5 SF2 0.3 dB below the table then decodes 40 frames of 40, where
+// plain min-sum (0.88 / 0.90) lost 32 of them.
+float alphaOf(const VlMode& m) { return std::strcmp(m.frame, "short") == 0 && m.kldpc * 15 == m.nldpc * 4 ? 0.92f : 0.95f; }
 
 bool punctured(const VlMode& m, int parityIndex) { return parityIndex % m.period == 0 && parityIndex / m.period < m.xp; }
 } // namespace
@@ -258,7 +261,7 @@ int vlDecode(const float* llr, int mode, int maxIter, std::vector<uint8_t>& bb, 
     }
     std::vector<uint8_t> hard;
     int it = 0;
-    const bool ok = ldpcOf(mode).decodeFast(in, maxIter, hard, &it, alphaOf(m));
+    const bool ok = ldpcOf(mode).decodeFast(in, maxIter, hard, &it, alphaOf(m), true);
     if (iters) *iters = it;
     if (!ok) return -1;
     std::vector<uint8_t> w(hard.begin() + m.xs, hard.begin() + m.kldpc);

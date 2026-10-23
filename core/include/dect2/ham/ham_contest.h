@@ -11,15 +11,15 @@ namespace dect2::ham {
 
 enum class ContestField { Rst, Serial, CqZone, ItuZone, State, StateOrSerial, Name, Class, Section, Time, Power, Grid };
 // State: a US state or Canadian province (optional in CQ WW RTTY, where only W / VE stations send it); StateOrSerial: that, or a serial from DX
-struct ContestDef {
+struct KeyerContestDef {
     const char* id;               // "cqww-rtty"
     const char* name;             // "CQ WW RTTY"
     const char* cabrillo;         // Cabrillo CONTEST: tag
     std::vector<ContestField> fields;   // the exchange in the order sent
     bool cwCut;                   // CW: 599 as 5NN, zeros as T in numbers
 };
-const std::vector<ContestDef>& contestDefs();
-const ContestDef* contestById(const std::string& id);
+const std::vector<KeyerContestDef>& keyerContestDefs();
+const KeyerContestDef* contestById(const std::string& id);
 const char* contestFieldName(ContestField f);     // "RST", "Serial", ...
 
 // Cut numbers (CW): 0 -> T, 9 -> N (and with `all`, 1 -> A, 5 -> E). The reverse reads T O -> 0, N -> 9, A -> 1, E -> 5 in a number.
@@ -37,15 +37,15 @@ struct ContestExchange {          // one side of the exchange, field by field (a
 };
 
 // Our exchange for the next QSO: "599 14 14" style text (each field twice when `twice`, as RTTY operators send it).
-std::string contestExchangeText(const ContestDef& d, const ContestStation& s, int serial, const std::string& utcHHMM, bool twice);
+std::string contestExchangeText(const KeyerContestDef& d, const ContestStation& s, int serial, const std::string& utcHHMM, bool twice);
 // The macros of a contest (CQ, exchange, TU, again?): {CALL} {EXCH} {MYCALL} filled from s and the exchange text.
 struct ContestMacro { const char* name; std::string text; };
-std::vector<ContestMacro> contestMacros(const ContestDef& d, const ContestStation& s, const std::string& call, const std::string& exch);
+std::vector<ContestMacro> contestMacros(const KeyerContestDef& d, const ContestStation& s, const std::string& call, const std::string& exch);
 
 // The received exchange, read from decoded text that follows the other station's call: the fields in order, each validated (RST 1..5 1..9 1..9,
 // zones 1..40 / 1..90, a state / province / section from the lists, a number); repeated copies agree or the first good one wins. False when a
 // required field is missing.
-bool contestParseExchange(const ContestDef& d, const std::string& text, ContestExchange& out, std::string* why = nullptr);
+bool contestParseExchange(const KeyerContestDef& d, const std::string& text, ContestExchange& out, std::string* why = nullptr);
 
 // ---- the log of a contest ----
 struct ContestQso {
@@ -55,7 +55,7 @@ struct ContestQso {
 };
 class ContestLog {
 public:
-    explicit ContestLog(const ContestDef& d) : d_(d) {}
+    explicit ContestLog(const KeyerContestDef& d) : d_(d) {}
     int nextSerial() const { return (int)q_.size() + 1; }
     bool dupe(const std::string& call, const std::string& band, const std::string& mode) const;   // worked before on this band and mode
     void add(const ContestQso& q) { q_.push_back(q); }
@@ -64,7 +64,7 @@ public:
     std::string cabrilloLine(const ContestQso& q, const std::string& myCall) const;
     std::string cabrillo(const ContestStation& s) const;   // the whole file: header, every QSO line, END-OF-LOG:
 private:
-    const ContestDef& d_;
+    const KeyerContestDef& d_;
     std::vector<ContestQso> q_;
 };
 bool isUsState(const std::string& s);     // the 50 states + DC
