@@ -628,13 +628,16 @@ void generalChannelBand(const App& a, bool fill) {
     double lo, hi;
     edges(lo, hi);
     const double f = listenHz(a) / 1e6, x0 = f + lo / 1e6, x1 = f + hi / 1e6;
-    if (fill) { plt::Spec band; band.FillColor = pal::accent(pal::dev() ? 0.14f : 0.16f); plt::PlotVBand("band", x0, x1, band); }
-    const double e[2] = {x0, x1};
-    plt::Spec es; es.LineColor = pal::accent(fill ? 0.55f : 0.70f); es.LineWeight = S.drag >= 0 ? 2.f : 1.f;
-    plt::PlotInfLines("bandedges", e, 2, es);
-    const double c[1] = {f};
-    plt::Spec cs; cs.LineColor = ImVec4(0.95f, 0.35f, 0.30f, 0.85f); cs.LineWeight = 1.2f;
-    plt::PlotInfLines("channel", c, 1, cs);
+    if (specLookActive(a)) specLookBand(a, x0, x1, f, fill, S.drag >= 0);   // the spectrum look's passband (the counter below still drawn)
+    else {
+        if (fill) { plt::Spec band; band.FillColor = pal::accent(pal::dev() ? 0.14f : 0.16f); plt::PlotVBand("band", x0, x1, band); }
+        const double e[2] = {x0, x1};
+        plt::Spec es; es.LineColor = pal::accent(fill ? 0.55f : 0.70f); es.LineWeight = S.drag >= 0 ? 2.f : 1.f;
+        plt::PlotInfLines("bandedges", e, 2, es);
+        const double c[1] = {f};
+        plt::Spec cs; cs.LineColor = ImVec4(0.95f, 0.35f, 0.30f, 0.85f); cs.LineWeight = 1.2f;
+        plt::PlotInfLines("channel", c, 1, cs);
+    }
     if (fill && S.nExtra > 0) {   // the counter at the top right of the spectrum
         char b[40]; snprintf(b, sizeof b, "%d decoders", S.nExtra + 1);
         const ImVec2 pp = plt::GetPlotPos(), ps = plt::GetPlotSize(), ts = ImGui::CalcTextSize(b);

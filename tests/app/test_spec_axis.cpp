@@ -111,6 +111,31 @@ int main() {
     check(std::string(cmap::name(cmap::Custom)) == "Custom" && std::string(cmap::name(99)) == "Classic", "names");
     check(cmap::colourBlindSafe(cmap::Cividis) && !cmap::colourBlindSafe(cmap::Turbo), "colour-blind tags");
     check(cmap::traceRgb(0, false)[0] > 0.9f && cmap::traceRgb(0, true)[0] < 0.3f && cmap::traceRgb(99, false) == cmap::traceRgb(0, false), "trace presets");
+    // Click-to-tune (Discord, 80 m view): a tone's waterfall column must stay under the spectrum's peak after the centre moves, with and
+    // without a tune offset, for a click inside the band and for a jump of a whole band.
+    for (double off : {0.0, 0.0125}) {
+        const double fs2 = 10.0, c2 = 3.66 + off, tone = 3.455;
+        const int cols = 8192;
+        auto colOf = [&](double cen, double f) { return (int)std::lround((f - imageLo(cen, fs2, cols)) / fs2 * cols - 0.5); };
+        std::vector<uint8_t> row(cols, 0);
+        row[colOf(c2, tone)] = 200;
+        for (double newC : {3.66 + off, 3.84, 3.45 + off, 3.46, 3.9 + 2 * off}) {
+            std::vector<uint8_t> r = row;
+            const int s = retuneShift(c2, newC, fs2, cols);
+            shiftRow(r.data(), cols, s, 0);
+            const double histC = c2 - (double)s * fs2 / cols;   // what the moved row stands for (Waterfall::follow)
+            int at = -1; for (int i = 0; i < cols; i++) if (r[i]) at = i;
+            if (at >= 0) {
+                check(near(binCentre(histC, fs2, cols, at), tone, fs2 / cols * 1.01), "tone stays under its frequency after a retune");
+                check(std::abs(at - colOf(newC, tone)) <= 1, "tone column == spectrum bin column of the new axis");
+            }
+            const double fx = mhzToPx(tone, 100, 900, newC - 0.2, newC + 0.2);
+            check(near(pxToMhz(fx, 100, 900, newC - 0.2, newC + 0.2), tone, 1e-9), "px/mhz round trip");
+        }
+        std::vector<uint8_t> r = row; shiftRow(r.data(), cols, retuneShift(c2, c2 + 50, fs2, cols), 0);
+        bool any = false; for (auto v : r) any |= v != 0;
+        check(!any, "a jump of a whole band clears the row");
+    }
     if (fails) { printf("%d failed\n", fails); return 1; }
     printf("spec_axis: all passed\n");
     return 0;
