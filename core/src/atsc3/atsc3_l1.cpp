@@ -2,6 +2,7 @@
 #include "dect2/atsc3/atsc3_bb.h"
 #include "atsc3_constellations.h"
 #include "atsc3_ldpc.h"
+#include "dect2/dsp/ldpc.h"
 #include "dect2/t2/t2fec.h"
 #include <algorithm>
 #include <cmath>
@@ -182,7 +183,9 @@ bool decodeBlock(const Prot& p, const cf32* cells, float noiseVar, int ksig, std
     }
     for (int i = 0; i < p.nparity; i++) llr[p.kldpc + i] = x[i];
     std::vector<uint8_t> hard;
-    if (!ldpc16200(p.rate15).decode(llr, 60, hard, iters)) return false;
+    // the two-minimum correction (dect2/dsp/minsum_corr.h), as for the data: Type B on the quasi-cyclic decoder
+    if (const dect2::LdpcCode* qc = qcCode(16200, p.rate15)) { int it = 0; const bool ok = qc->decodeFast(llr, 50, hard, &it, qcAlpha(16200, p.rate15), true); if (iters) *iters = it; if (!ok) return false; }
+    else if (!ldpc16200(p.rate15).decode(llr, 60, hard, iters, typeAAlpha(16200, p.rate15), true)) return false;
     std::vector<uint8_t> bits(z.nouter);
     for (int i = 0; i < z.nouter; i++) bits[i] = hard[pos[i]];
     static const BchCode bch(true, 12);

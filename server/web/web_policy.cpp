@@ -52,7 +52,7 @@ const std::set<std::string>& webSafeKinds() {
 }
 const std::set<std::string>& voiceKinds() {
     static const std::set<std::string> s = {"dmr", "p25", "nxdn", "tetra", "dpmr", "dstar", "d-star", "ysf", "fusion", "yaesu", "m17", "dmr_wide",
-                                            "p25_wide", "nxdn_wide", "edacs", "tetrapol", "mpt1327", "ltr", "trunk", "trunking"};
+                                            "p25_wide", "nxdn_wide", "edacs", "tetrapol", "mpt1327", "ltr", "trunk", "trunking", "p25p2", "marinevhf"};
     return s;
 }
 const std::set<std::string>& pagerKinds() {
@@ -70,6 +70,8 @@ const std::set<std::string>& restrictedKnownKinds() {
     "meshtastic", "mfsk", "milhf", "modeac", "mscatter", "msk144", "mt63", "multitone", "navtex", "nbiot", "ndb", "nr", "olivia",
     "orbcomm", "pager", "psk", "q65", "qo100", "rid", "rtty", "same", "sarsat", "satbeacon", "sonde", "t", "t2", "tdcs", "thor", "time",
     "tones", "uplink", "vdes", "vdl4", "vor", "vorils", "wifi", "wisun", "wmbus", "zigbee", "zwave",
+    // 3.0 modes: blocked until the owner approves them for web listeners
+    "argos", "asterix", "horus", "isdbs", "lorasat", "lorawanwide", "nfc", "sbas", "sigfox",
     };
     return s;
 }
