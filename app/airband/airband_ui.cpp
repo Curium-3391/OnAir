@@ -33,6 +33,7 @@ struct State {
     char addName[24] = "", addLabel[32] = "";
     std::string addErr;
     int editing = -1;
+    bool editFocus = false;              // the rename field takes the keyboard on its first frame
     char editLabel[32] = "";
     bool wasRunning = false;
     float pushedVol = -1; bool pushedMute = false;
@@ -143,13 +144,14 @@ void addRow(App& a) {
                 dect2::AirbandChannel c; c.freqHz = f; c.is833 = n833; c.label = S.addLabel;
                 S.chans.push_back(c);
                 std::sort(S.chans.begin(), S.chans.end(), [](const auto& x, const auto& y) { return x.freqHz < y.freqHz; });
+                S.editing = -1;   // the rows moved: a rename in progress would land on another channel
                 S.addName[0] = S.addLabel[0] = 0; S.addErr.clear();
                 save();
             }
         }
     }
     flowNext(12 * gUi);
-    if (ImGui::Button("Test channels")) { S.chans = dect2::airbandChannelsFor(dect2::airbandTestLayout(), a.freqMhz * 1e6); save(); }
+    if (ImGui::Button("Test channels")) { S.chans = dect2::airbandChannelsFor(dect2::airbandTestLayout(), a.freqMhz * 1e6); S.editing = -1; save(); }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The channels of the built-in test signal around the frequency tuned now.");
     flowEnd();
     if (!S.addErr.empty()) ImGui::TextColored(pal::warnAmber(), "%s", S.addErr.c_str());
@@ -247,11 +249,19 @@ void channelView(App& a) {
         ImGui::SameLine(); ImGui::TextDisabled("%s", c.is833 ? "8.33" : "25");
         ImGui::TableNextColumn();
         if (S.editing == (int)i) {
+            // the field takes the keys at once; Enter or a click elsewhere keeps the name, Escape drops it, right-click removes the
+            // channel. Before, the field stayed open after a click elsewhere and the row could then not be removed or edited (#148).
             ImGui::SetNextItemWidth(100 * gUi);
-            if (ImGui::InputText("##ed", S.editLabel, sizeof S.editLabel, ImGuiInputTextFlags_EnterReturnsTrue)) { c.label = S.editLabel; S.editing = -1; save(); }
+            if (S.editFocus) { ImGui::SetKeyboardFocusHere(); S.editFocus = false; }
+            ImGui::InputText("##ed", S.editLabel, sizeof S.editLabel);
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) remove = (int)i;
+            else if (ImGui::IsItemDeactivated()) {
+                if (!ImGui::IsKeyPressed(ImGuiKey_Escape)) { c.label = S.editLabel; save(); }
+                S.editing = -1;
+            } else if (!ImGui::IsItemActive() && !ImGui::IsItemHovered() && ImGui::IsMouseClicked(0)) S.editing = -1;
         } else {
             ImGui::TextUnformatted(c.label.empty() ? "-" : c.label.c_str());
-            if (ImGui::IsItemClicked()) { S.editing = (int)i; snprintf(S.editLabel, sizeof S.editLabel, "%s", c.label.c_str()); }
+            if (ImGui::IsItemClicked()) { S.editing = (int)i; S.editFocus = true; snprintf(S.editLabel, sizeof S.editLabel, "%s", c.label.c_str()); }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to rename; right-click to remove the channel.");
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) remove = (int)i;
         }
