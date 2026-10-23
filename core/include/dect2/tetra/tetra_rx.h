@@ -110,6 +110,7 @@ struct CarrierDecode {
     int voiceGaps = 0;                           // frames of the followed timeslot given to the sink as silence (no clear burst, or lost between captures)
     std::vector<MacBlock> macs;
     int tsUsage[4] = {-1, -1, -1, -1};
+    uint32_t slotTg[4] = {0, 0, 0, 0}, slotIssi[4] = {0, 0, 0, 0};   // IDs of a slot with clear voice, from its call set-up; 0 unknown, always 0 for encrypted/unknown calls (local only)
     SlotState slot[4] = {SlotState::Idle, SlotState::Idle, SlotState::Idle, SlotState::Idle};   // what each timeslot held in this capture (tetra_slots.h)
 };
 // knownMcc etc.: the identity of a cell already heard on this carrier, used when this capture has no synchronisation burst (-1: none)

@@ -234,7 +234,7 @@ void slotPanel(App& a) {
         if (a.tetraSlotId == 0) { ImGui::SameLine(); ImGui::TextDisabled("enter the id"); }
     }
     if (a.tetraSlotMode >= 2)
-        ImGui::TextDisabled("Talkgroup and ISSI are not read from the signalling yet (only the call identifier is), so these stay silent until they are.");
+        ImGui::TextDisabled("Talkgroup and ISSI come from the set-up of calls that are not encrypted; encrypted calls show none. They stay on this computer.");
     if (!live(a)) return;
     // the strongest recently heard cell with a main carrier shows its four slots
     const dect2::TetraCell* best = nullptr;

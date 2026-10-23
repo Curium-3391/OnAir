@@ -37,9 +37,13 @@ void CallTracker::onEvent(const CallEvent& e, double now) {
         if (s.valid && s.callId == e.callId) {
             // encrypted is sticky within a call; clear needs a PDU that says so; "not stated" (D-CONNECT without the element) changes nothing
             if (e.enc == 1) s.enc = 1; else if (e.enc == 0 && s.enc == -1) s.enc = 0;
+            if (s.enc == 1) { s.gssi = s.issi = -1; }
+            else if (e.enc == 0) { if (e.gssi >= 0) s.gssi = e.gssi; if (e.issi >= 0) s.issi = e.issi; }
             s.t = now;
         } else {
             s.valid = true; s.callId = e.callId; s.enc = e.enc; s.t = now;
+            s.gssi = s.issi = -1;
+            if (e.enc == 0) { s.gssi = e.gssi; s.issi = e.issi; }
         }
     }
 }
@@ -52,6 +56,15 @@ CallEncryption CallTracker::slotState(int tn, double now) const {
     c.known = true;
     c.encMode = s.enc == 1 ? 1 : 0;
     return c;
+}
+
+void CallTracker::slotIds(int tn, double now, uint32_t& tg, uint32_t& issi) const {
+    tg = issi = 0;
+    if (tn < 1 || tn > 4) return;
+    const Entry& s = slot_[tn - 1];
+    if (!s.valid || s.enc != 0 || now - s.t > kTtlSec || now < s.t) return;
+    if (s.gssi > 0) tg = (uint32_t)s.gssi;
+    if (s.issi > 0) issi = (uint32_t)s.issi;
 }
 
 bool VoiceStreamPicker::offer(long key, double sec, int& tn) const {

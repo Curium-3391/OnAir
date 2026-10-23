@@ -73,7 +73,8 @@ std::string networkTimeText(uint64_t time48);
 // basic service information are read, nothing else of the call. kind: 1 D-SETUP, 2 D-CONNECT, 3 D-DISCONNECT or D-RELEASE.
 // enc: 0 the PDU says clear, 1 it says encrypted, -1 not stated. slots: the "timeslot assigned" bit map (bit 3 = timeslot 1) and carrier: the
 // carrier number of the channel allocation in the same MAC-RESOURCE, both -1 when it holds no channel allocation.
-struct CallEvent { int kind = 0, callId = 0, enc = -1, slots = -1, carrier = -1; };
+// gssi / issi: group address and (calling) subscriber, -1 unknown; only ever set for a call whose encryption flag is clear. Kept local: shown and used to pick a slot, never logged or exported.
+struct CallEvent { int kind = 0, callId = 0, enc = -1, slots = -1, carrier = -1, gssi = -1, issi = -1; };
 
 // Everything one decoded signalling block (SCH/HD, SCH/F) of the downlink holds
 struct MacBlock {

@@ -96,6 +96,7 @@ void parseMacBlock(const Bits& b, MacBlock& out) {
     for (int i = 0; i < k.n_call && i < 4; i++) {
         CallEvent e;
         e.kind = k.call[i].kind; e.callId = k.call[i].call_id; e.enc = k.call[i].enc; e.slots = k.call[i].slots; e.carrier = k.call[i].carrier;
+        if (e.enc == 0) { e.gssi = k.call[i].gssi; e.issi = k.call[i].issi; }   // IDs only of a call that said clear (defence in depth: the parser already drops them)
         out.calls.push_back(e);
     }
     for (uint32_t i = 0; i < k.n_nwrk && i < nw.size(); i++) {

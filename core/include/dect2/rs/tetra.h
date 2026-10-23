@@ -34,6 +34,7 @@ typedef struct {   // a D-NWRK-BROADCAST; neighbours are nbr[nbr_first .. nbr_fi
 typedef struct {   // call set-up facts of one clear CMCE PDU: kind 1 D-SETUP, 2 D-CONNECT, 3 D-DISCONNECT / D-RELEASE; enc 0 clear, 1 encrypted, -1 not stated;
                    // slots = "timeslot assigned" bit map (MSB = timeslot 1) and carrier = carrier number of the channel allocation of the same PDU, -1 when none
     int32_t kind, call_id, enc, slots, carrier;
+    int32_t gssi, issi;   // group / subscriber address, -1 unknown; set only for a call whose encryption flag is clear
 } OnairTetraCallInfo;
 
 typedef struct {   // what one signalling block held
@@ -44,7 +45,7 @@ typedef struct {   // what one signalling block held
     OnairTetraSysinfo si;
 } OnairTetraMacBlock;
 
-// ABI version of this module (3).
+// ABI version of this module (4).
 uint32_t onair_tetra_version(void);
 // Sizes of the records above in this order: Sync, Sysinfo, Neighbour, Nwrk, MacBlock (out: 5 size_t).
 void onair_tetra_struct_sizes(size_t* out);

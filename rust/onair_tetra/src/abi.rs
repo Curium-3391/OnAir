@@ -119,6 +119,9 @@ pub struct CallInfo {
     pub enc: i32,
     pub slots: i32,
     pub carrier: i32,
+    /// Group address (GSSI) and subscriber (ISSI), -1 unknown. Only ever set when `enc` is 0 (end-to-end encryption flag clear): kept local, never logged or sent.
+    pub gssi: i32,
+    pub issi: i32,
 }
 
 /// Call events kept per block.

@@ -1,5 +1,6 @@
 // TETRA traffic-slot selection: the pure choice of which timeslot the voice path follows (tetra_slots.h).
 #include "dect2/tetra/tetra_slots.h"
+#include "dect2/tetra/tetra_voice.h"
 #include <cstring>
 using namespace dect2::tetra;
 #include "../common/test_util.h"
@@ -47,5 +48,30 @@ int main() {
     CHECK(k.state == SlotState::Encrypted, "encrypted recorded");
     CHECK(std::strcmp(slotStateText(SlotState::Encrypted), "encrypted, muted") == 0, "encrypted label says muted");
     CHECK(std::strcmp(slotStateText(SlotState::Voice), "voice") == 0, "voice label");
+    // IDs from the call set-up: an unencrypted call yields them, an encrypted one never does, and the selector then matches (or not)
+    {
+        CallTracker t; t.setMainCarrier(1234);
+        CallEvent clear; clear.kind = 1; clear.callId = 5; clear.enc = 0; clear.slots = 0b0010; clear.carrier = 1234; clear.gssi = 4001; clear.issi = 2345678;
+        CallEvent enc;   enc.kind = 1;   enc.callId = 6;   enc.enc = 1;   enc.slots = 0b0100; enc.carrier = 1234;   enc.gssi = 4002; enc.issi = 999;   // even if a parser leaked IDs
+        t.onEvent(clear, 100); t.onEvent(enc, 100);
+        uint32_t tg = 1, is = 1;
+        t.slotIds(3, 101, tg, is);
+        CHECK(tg == 4001 && is == 2345678, "unencrypted call: GSSI and ISSI kept");
+        t.slotIds(2, 101, tg, is);
+        CHECK(tg == 0 && is == 0, "encrypted call: no IDs");
+        t.slotIds(3, 200, tg, is);
+        CHECK(tg == 0 && is == 0, "expired set-up: no IDs");
+        CallEvent late = clear; late.slots = 0b0100; late.callId = 6; late.enc = 0;   // a later 'clear' PDU cannot un-encrypt a call
+        t.onEvent(late, 102);
+        t.slotIds(2, 103, tg, is);
+        CHECK(tg == 0 && is == 0, "encrypted is sticky: still no IDs");
+        SlotInfo si[4];
+        t.slotIds(3, 101, si[2].talkgroup, si[2].issi); si[2].state = SlotState::Voice; si[2].lastHeardSec = 100;
+        SlotSelect a2; a2.mode = SlotMode::Talkgroup; a2.id = 4001;
+        SlotSelect b2; b2.mode = SlotMode::Issi; b2.id = 2345678;
+        CHECK(pickSlot(a2, si, 101) == 3 && pickSlot(b2, si, 101) == 3, "selector matches the talkgroup and the ISSI of the unencrypted call");
+        SlotInfo none[4]; none[1].state = SlotState::Encrypted; none[1].lastHeardSec = 100;
+        CHECK(pickSlot(a2, none, 101) == kFollowNothing && pickSlot(b2, none, 101) == kFollowNothing, "encrypted call: nothing to match");
+    }
     return testSummary("tetra slots");
 }

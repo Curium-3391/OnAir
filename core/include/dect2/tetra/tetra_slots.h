@@ -8,8 +8,8 @@ namespace dect2::tetra {
 
 enum class SlotState : uint8_t { Idle = 0, Control, Voice, Encrypted };
 
-// What is known of one downlink timeslot. talkgroup / issi are 0 when the parser did not supply them (the call set-up parser keeps only
-// the call identifier today, so they stay 0 until it does); lastHeardSec < 0: never heard.
+// What is known of one downlink timeslot. talkgroup (GSSI) / issi are 0 when unknown; they come from the set-up PDU of a call that is not
+// encrypted and are never set for an encrypted call. Local only (call table, slot display, this selector). lastHeardSec < 0: never heard.
 struct SlotInfo {
     SlotState state = SlotState::Idle;
     uint32_t talkgroup = 0, issi = 0;
