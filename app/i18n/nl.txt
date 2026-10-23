@@ -1160,7 +1160,6 @@ Region	Regio
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	De kanaalbreedte van de lijst hieronder: S1G-kanalen van deze breedte in de regio. Wat de ontvanger leest, stelt Ontvangst in.
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	S1G-kanalen van de regio en breedte: midden = startfrequentie + 0,5 MHz x kanaalnummer, met de werkklasse van het plan
 Receive	Ontvangst
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	Welke kanaalbreedtes de ontvanger leest. Auto 1 - 4 MHz laat de radio op 4 Msps draaien. Auto, alle breedtes heeft 20 Msps nodig (HackRF, LimeSDR ...) en leest 1 - 16 MHz.\nEén breedte stelt de daarvoor nodige radiosnelheid in (2, 4, 5, 10 of 20 Msps) en negeert de andere breedtes.
 scan	scan
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	Loop de kanalen van de lijst af en luister naar elk gedurende de verblijftijd (een radio die één kanaal opneemt mist ondertussen wat op de\nanderen wordt verzonden). Uit: één kanaal.
 Frames	Frames

@@ -1160,7 +1160,6 @@ Region	地域
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	下のリストのチャネル幅: この地域のこの幅の S1G チャネル。受信が読む幅は「受信」で設定します。
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	地域と幅の S1G チャネル: 中心 = 開始周波数 + 0.5 MHz × チャネル番号、プランの動作クラス付き
 Receive	受信
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	受信機が読むチャネル幅。自動 1 - 4 MHz は無線機を 4 Msps で動かします。自動(全幅)は 20 Msps(HackRF、LimeSDR など)が必要で 1 - 16 MHz を読みます。\n幅を 1 つ選ぶとその幅に必要な無線レート(2、4、5、10、20 Msps)に設定し、他の幅は無視します。
 scan	スキャン
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	リストのチャネルを滞在時間ずつ順に聴きます(1 チャネルしか取り込めない無線機は、その間に他のチャネルで送られるものを逃します)。\nオフ: 1 チャネル。
 Frames	フレーム

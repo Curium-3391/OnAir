@@ -1160,7 +1160,6 @@ Region	Regionas
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	Žemiau esančio sąrašo kanalo plotis: šio pločio S1G kanalai regione. Ką skaito imtuvas, nustato Priėmimas.
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	Regiono ir pločio S1G kanalai: centras = pradžios dažnis + 0,5 MHz x kanalo numeris, su plano darbine klase
 Receive	Priėmimas
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	Kuriuos kanalų plotius skaito imtuvas. Auto 1 - 4 MHz paleidžia radiją 4 Msps greičiu. Auto, visi pločiai reikia 20 Msps (HackRF, LimeSDR ...) ir skaito 1 - 16 MHz.\nVienas plotis nustato jam reikalingą radijo spartą (2, 4, 5, 10 ar 20 Msps) ir nepaiso kitų.
 scan	skenuoti
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	Eiti per sąrašo kanalus, klausant kiekvieno nustatytą laiką (radijas, imantis vieną kanalą, tuo metu praleidžia tai, kas siunčiama\nkituose). Išjungta: vienas kanalas.
 Frames	Kadrai

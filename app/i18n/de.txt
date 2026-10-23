@@ -1160,7 +1160,6 @@ Region	Region
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	Die Kanalbreite der Liste unten: S1G-Kanäle dieser Breite in der Region. Was der Empfänger liest, stellt Empfang ein.
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	S1G-Kanäle der Region und Breite: Mitte = Startfrequenz + 0,5 MHz x Kanalnummer, mit der Betriebsklasse des Plans
 Receive	Empfang
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	Welche Kanalbreiten der Empfänger liest. Auto 1 - 4 MHz lässt das Funkgerät mit 4 Msps laufen. Auto, alle Breiten braucht 20 Msps (HackRF, LimeSDR ...) und liest 1 - 16 MHz.\nEine Breite stellt die dafür nötige Funkrate ein (2, 4, 5, 10 oder 20 Msps) und ignoriert die anderen Breiten.
 scan	Suchlauf
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	Die Kanäle der Liste nacheinander abhören, jeden für die Verweilzeit (ein Funkgerät, das nur einen Kanal aufnimmt, verpasst\nin der Zwischenzeit, was auf den anderen gesendet wird). Aus: ein Kanal.
 Frames	Frames

@@ -1160,7 +1160,6 @@ Region	地区
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	下方列表的信道宽度:该地区此宽度的 S1G 信道。接收机读取什么由“接收”决定。
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	该地区和宽度的 S1G 信道:中心 = 起始频率 + 0.5 MHz × 信道号,并给出规划的工作类别
 Receive	接收
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	接收机读取哪些信道宽度。自动 1 - 4 MHz 让无线电以 4 Msps 运行。自动,所有带宽需要 20 Msps(HackRF、LimeSDR 等)并读取 1 - 16 MHz。\n选择一个宽度会设置该宽度所需的无线电速率(2、4、5、10 或 20 Msps),并忽略其他宽度。
 scan	扫描
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	依次监听列表中的信道,每个停留设定的时间(只能接收一个信道的无线电,期间会错过其他信道上发送的内容)。\n关闭:单信道。
 Frames	帧

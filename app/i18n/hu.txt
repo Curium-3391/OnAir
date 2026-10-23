@@ -1146,7 +1146,6 @@ Region	Régió
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	Az alábbi lista csatornaszélessége: az ilyen szélességű S1G csatornák a régióban. Amit a vevő olvas, azt a Vétel állítja.
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	A régió és a szélesség S1G csatornái: közép = kezdőfrekvencia + 0,5 MHz x csatornaszám, a terv működési osztályával
 Receive	Vétel
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	Mely csatornaszélességeket olvassa a vevő. Az Auto 1 - 4 MHz 4 Msps-en futtatja a rádiót. Az Auto, minden szélesség 20 Msps-t kér (HackRF, LimeSDR ...) és 1 - 16 MHz-et olvas.\nEgy szélesség beállítja a hozzá kellő rádiósebességet (2, 4, 5, 10 vagy 20 Msps) és figyelmen kívül hagyja a többit.
 scan	pásztázás
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	Végigmegy a lista csatornáin, mindegyiket a tartózkodási ideig hallgatva (az egy csatornát vevő rádió közben lemarad arról, ami a többin megy\n). Kikapcsolva: egy csatorna.
 Frames	Keretek

@@ -1143,7 +1143,6 @@ Region	Регион
 The channel width of the list below: S1G channels of this width in the region. What the receiver reads is set by Receive.	Ширина канала списка ниже: каналы S1G этой ширины в регионе. Что читает приёмник, задаёт Приём.
 S1G channels of the region and width: centre = start frequency + 0.5 MHz x channel number, with the operating class of the plan	Каналы S1G региона и ширины: центр = начальная частота + 0,5 МГц x номер канала, с рабочим классом плана
 Receive	Приём
-Which channel widths the receiver reads. Auto 1 - 4 MHz runs the radio at 4 Msps. Auto, all widths needs 20 Msps (a HackRF, a LimeSDR ...) and reads 1 - 16 MHz.\nOne width sets the radio rate that width needs (2, 4, 5, 10 or 20 Msps) and ignores the other widths.	Какие ширины каналов читает приёмник. Авто 1 - 4 МГц запускает радио на 4 Msps. Авто, все ширины требует 20 Msps (HackRF, LimeSDR ...) и читает 1 - 16 МГц.\nОдна ширина задаёт нужную ей скорость радио (2, 4, 5, 10 или 20 Msps) и игнорирует остальные.
 scan	скан
 Step through the channels of the list, listening to each for the dwell time (a radio that takes in a single channel misses what is\nsent on the others meanwhile). Off: single channel.	Перебирает каналы списка, слушая каждый время задержки (радио, берущее один канал, тем временем пропускает то, что передают\nна остальных). Выкл.: один канал.
 Frames	Кадры
