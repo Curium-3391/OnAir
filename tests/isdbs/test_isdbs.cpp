@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -288,6 +289,11 @@ static void sweep() {
 
 int main(int argc, char** argv) {
     if (argc > 1 && !strcmp(argv[1], "sweep")) { sweep(); return 0; }
+    if (argc > 4 && !strcmp(argv[1], "one")) {   // one case: test_isdbs one <mod 1..7> <Es/N0 dB> <carrier Hz>
+        RunResult r = run(single(atoi(argv[2]), atof(argv[3]), atof(argv[4]), 0), 200, -1);
+        countGood(r.byTs[0x40], 0x40, modName(atoi(argv[2])));
+        return 0;
+    }
     testNumbers();
     testTmcc();
     testWords();
@@ -348,7 +354,8 @@ int main(int argc, char** argv) {
             RunResult r = run(single(c.mod, c.snr, c.cfo, 0), 200, -1, 0, true);
             size_t bad = 0, gaps = 0;
             const size_t good = countGood(r.byTs[0x40], 0x40, c.what, &bad, &gaps);
-            CHECK(good > 300 && bad == 0 && std::fabs(r.tel.cfoHz - c.cfo) < 3e3, "%s: %zu good %zu bad, carrier %.0f Hz", c.what, good, bad, r.tel.cfoHz);
+            CHECK(good > 300 && bad == 0 && gaps == 0 && r.tel.rsFailed == 0 && std::fabs(r.tel.cfoHz - c.cfo) < 3e3, "%s: %zu good %zu bad %zu gaps, %llu RS failures, carrier %.0f Hz", c.what, good, bad, gaps,
+                  (unsigned long long)r.tel.rsFailed, r.tel.cfoHz);
         }
     }
 

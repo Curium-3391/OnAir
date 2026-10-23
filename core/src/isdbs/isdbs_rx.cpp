@@ -11,11 +11,6 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
-#ifdef ISDBS_DEBUG
-#define DBG(x) x
-#else
-#define DBG(x)
-#endif
 
 namespace dect2 {
 
@@ -175,6 +170,7 @@ struct IsdbsReceiver::Impl {
 
     void resetAll() {
         front.reset();
+        front.timer().setLoop(0.01, 0.707);    // wide while searching
         sy.clear(); head = 0; skipSyms = 0; failures = 0; locked = false; cfo = 0; misses = 0; snrLin = 0;
         collecting = false; nextFrame = 0;
         for (auto& h : hist) h = Tmcc();
@@ -284,6 +280,7 @@ struct IsdbsReceiver::Impl {
         }
         failures = 0;
         locked = true; cfo = bestF; misses = 0;
+        front.timer().setLoop(0.002, 0.707);   // the frames carry the timing now: a narrow loop slips less at low Es/N0 (a slip costs a super-frame)
         head += (size_t)best.pos;
         collecting = false; nextFrame = 0;
         say("ISDB-S frame sync found, carrier " + std::to_string((long)(cfo * kSymbolRate + offsetHz)) + " Hz from the centre");
@@ -314,12 +311,13 @@ struct IsdbsReceiver::Impl {
                 if (d == 0) m0 = m;
                 if (m > bestM) { bestM = m; shift = d; }
             }
-            if (bestM < m0 + 0.1) { shift = 0; bestM = m0; } DBG(if (shift) fprintf(stderr, "shift %d m0 %.2f best %.2f\n", shift, m0, bestM);)
+            if (bestM < m0 + 0.1) { shift = 0; bestM = m0; }
             if (bestM < 0.15) {
                 head += (size_t)kFrameSyms;
                 collecting = false;
                 if (++misses >= 3) {
                     locked = false; cfg.valid = false;
+                    front.timer().setLoop(0.01, 0.707);
                     { std::lock_guard<std::mutex> l(mu); tel.syncLosses++; }
                     say("ISDB-S frame sync lost");
                     publish(1);
@@ -388,7 +386,7 @@ struct IsdbsReceiver::Impl {
         bool first = false;
         decodeHeader(F.data(), t64, first);
         { std::lock_guard<std::mutex> l(mu); tel.frames++; }
-        if (first) { collecting = true; nextFrame = 0; } DBG(if (first != (nextFrame == 8 || !collecting)) fprintf(stderr, "first %d next %d coll %d\n", (int)first, nextFrame, (int)collecting);)
+        if (first) { collecting = true; nextFrame = 0; }
         if (collecting) {
             const int fi = nextFrame;
             sfData[fi] = F;
@@ -527,7 +525,7 @@ struct IsdbsReceiver::Impl {
                     interleavePos(f, j, F, k);
                     blk[j + 1] = inter[F][(size_t)s * kSlotBytes + (size_t)k] ^ prbsByte(f, s, j + 1);
                 }
-                const int r = fecp::rs204Decode(blk); DBG(if (r < 0) fprintf(stderr, "rsfail f %d s %d\n", f, s);)
+                const int r = fecp::rs204Decode(blk);
                 packets++;
                 if (r < 0) rsFailed++; else if (r == 0) rsClean++; else rsCorrected++;
                 blk[0] = 0x47;
