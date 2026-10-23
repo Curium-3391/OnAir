@@ -1,0 +1,13 @@
+OnAir name and logo
+
+Copyright (C) 2026 Kristijonas Adomaitis. All rights reserved.
+
+The OnAir name and logo (the files listed under this identifier in REUSE.toml) are not covered by the GNU General Public
+License that applies to the source code of OnAir. No licence to copy, modify, distribute or use them is granted by this
+repository, except what is needed to redistribute unmodified OnAir packages and to refer to the project by name.
+Anything else needs the written permission of the owner.
+
+The logo was designed by Cipta Karsa Studio as work for hire; all rights are assigned to Kristijonas Adomaitis
+(assets/branding/README.md, THIRD_PARTY.md).
+
+This text restates the notice already in README.md ("License") and assets/branding/README.md; it is not a standard licence.

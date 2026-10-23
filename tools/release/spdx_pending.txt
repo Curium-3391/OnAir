@@ -1,0 +1,2 @@
+# ids whose text is not in LICENSES/ yet (needs a download from spdx.org, owner OK)
+CC0-1.0
