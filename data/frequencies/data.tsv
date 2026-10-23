@@ -191,9 +191,10 @@
 @source Project Horus wikis (horusbinary, horusdemodlib) and sigidwiki Horus Binary 4FSK v2; amateur balloon payloads use the 70 cm / 434 MHz LIPD-ISM band, each flight announces its own frequency
 434.660|Horus Binary, Project Horus usual frequency (app default)|3|100 Bd 4FSK, ~1 kHz wide; listen in USB|horus|AU|
 434.650|Horus Binary (wiki example frequency)|3|horusdemodlib RX guide example|horus||
+434.200|Horus Binary (Australia, sigidwiki example)|3||horus|AU|
 437.600|Horus Binary (Poland, sigidwiki example)|3|437.6 MHz region: check the flight announcement|horus|EU|
 431.050|Horus Binary (USA, California, sigidwiki example)|3||horus|US|
-434.200|Horus balloon band, low end of the usual 434.2 - 434.9 MHz span (also the Australian sigidwiki example)|700|Several balloons: centre on 434.55 MHz at about 1 Msps and every payload in the span is found|horus||
+434.550|Horus balloon band, centre of the usual 434.2 - 434.9 MHz span|700|Several balloons: centre here at about 1 Msps and every payload in the span is found|horus||
 @mode astro
 @category astronomy
 @region GLOBAL

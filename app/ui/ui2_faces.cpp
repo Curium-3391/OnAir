@@ -241,7 +241,7 @@ void bodyDock(App& a, float bodyH, ImVec2 disp) {
     if (ImGui::BeginTabBar("##docktabs", ImGuiTabBarFlags_DrawSelectedOverline)) {
         if (!a.atsc3Mode && typo::beginTabItem(trw("Analysis"))) { constellationsTab(a); ImGui::EndTabItem(); }
         if (typo::beginTabItem(listTitle(a, false))) { tgRect(a, TgRight); rightPanel(a); ImGui::EndTabItem(); }
-        if (typo::beginTabItem(trw("Receiver"))) { statusBar(a); ImGui::Spacing(); receiverGlance(a, ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y); ImGui::EndTabItem(); }
+        if (typo::beginTabItem(trw("Receiver"))) { signalRow(a); ImGui::Spacing(); statusBar(a); ImGui::Spacing(); receiverGlance(a, ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y); ImGui::EndTabItem(); }
         if (typo::beginTabItem(trw("Log"))) { logConsole(a, 0); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }

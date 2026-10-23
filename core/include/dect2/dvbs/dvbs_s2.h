@@ -63,9 +63,11 @@ inline bool s2ModcodIsS2x(int modcod) { return modcod >= 64 && modcod < 128; }
 // ---- codes. The LDPC tables are the DVB-S2 ones (they differ from DVB-T2 for normal 2/3 and short 3/5). The BCH code is shared with DVB-T2.
 const LdpcCode& s2Ldpc(int rate, bool shortFrame);
 const BchCode& s2Bch(int rate, bool shortFrame);
-// Normalisation factor of the min-sum decoder for this code rate. The T2 default (0.78) fails on the low rates (1/4 to 2/5), which is why it
-// is chosen per rate: measured with tests/dvbs/test_dvbs_s2fec.cpp-style sweeps, within about 0.3 dB of the Es/N0 of table 13.
-float s2LdpcAlpha(int rate);
+// Normalisation factor of the min-sum decoder for a MODCOD (modulation, rate index, frame size; for an S2X rate the modulation and frame size
+// follow from the rate), for the decoder with the two-minimum correction (LdpcCode::decodeFast with boxCorr): measured per MODCOD near the
+// Es/N0 of tables 13 and 20 on an ideal channel with the max-log demapper (see the comment at the table). The CPU (float and 8-bit) and the GPU
+// decoders all take it.
+float s2LdpcAlpha(int mod, int rate, bool shortFrame);
 // BBFRAME (kbch bits, already scrambled) -> FECFRAME (nldpc bits, before the bit interleaver)
 void s2EncodeFec(const std::vector<uint8_t>& bb, int rate, bool shortFrame, std::vector<uint8_t>& fec);
 // Hard bits of an LDPC codeword (nldpc) -> BCH decoded BBFRAME (kbch bits). Returns the number of corrected bits, or -1.

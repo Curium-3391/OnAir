@@ -186,6 +186,7 @@ static void statusNotes(App& a, bool run, AdcStatus adc) {
 }
 
 void statusBar(App& a) {
+    autodetStatus(a);   // "TV (auto)" / "Digital voice (auto)": what it found or is doing
     {   // live transcripts are on: always visible
         std::string t;
         if (tx::indicator(t)) { ImGui::TextColored(pal::badRed(), "\xE2\x97\x8F"); ImGui::SameLine(0, 4 * gUi); ImGui::TextColored(pal::warnAmber(), "%s", t.c_str()); }

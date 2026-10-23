@@ -45,6 +45,8 @@ public:
     // Tests and tools: every good message, called from feed() (not under the receiver's lock)
     void setFrameCallback(std::function<void(const AdsbFrame&)> cb);
     void setThresholds(float pulseOverNoise, float pulseOverGap);   // preamble test, normally 3.0 and 2.0
+    void setDetector(float sum, float minPulse, float data, float worthDb);   // test knob: AdsbDemod::setDetector
+    void setCoherent(bool on);                                                  // test knob: AdsbDemod::setCoherent
 
 private:
     struct Impl;
