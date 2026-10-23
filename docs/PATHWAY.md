@@ -362,3 +362,10 @@ HD checkbox next to the channel picker (greyed out until an HD counterpart exist
 
 2026-10-22 (mode-drmplus-030): audit only, no code. DRM30 modes A-D and DRM+ (mode E, 100 kHz, 4/16-QAM, SDC 4-QAM, generator, tests/drm/test_drm_modee.cpp) are already in core/src/drm and auto-detected inside the one DRM entry. HD Radio FM (MP1/MP3) and AM (MA1 hybrid, MA3 all-digital: P1, P3, PIDS, L2, AAS, HDC via user-installed FAAD2 plug-in) are already in core/src/hdr with generator and tests/hdr/test_hdr_am.cpp. Per the one-entry-per-protocol rule they stay as DRM and HD Radio families; no new mode numbers used. Nothing added; still unverified without real signals: DRM+ unequal error protection, HD AM on-air.
 
+
+## 2026-10-23 perf2-hf-030 (parked)
+- Added tools/bench/bench_hf.cpp + bench_hf.sh (FT8/FT4/FT2/WSPR/JT65/JT9/Q65/JT4... N synthetic stations; prints CPU, cost, decode count, digest).
+- Build: `CORE_BUILD=/tmp/hambuild tools/bench/bench_hf.sh` (guarded); binary already built at /tmp/onair-bench-hf/bench_hf (hfdig sources of this tree linked ahead of the old lib).
+- No baselines recorded yet: run `bench_hf ft8 100 2`, `ft8 20 2`, ft4, wspr, jt65, jt9, q65 and note cost + digest before changing anything.
+- Next: profile FT8 with `sample`, look at candidate sync search, LDPC bp (hfdig_ftx_tables.cpp ldpcDecode), per-candidate allocations, threads.
+- Output must stay identical (digest, decode counts); then Monitor bands, PSK/JS8/CW/HFDL/ALE/SSTV benches.
