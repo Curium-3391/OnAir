@@ -5,7 +5,7 @@
 
 struct onair_ts64 { long long tv_sec; long tv_nsec; };
 
-__attribute__((weak)) int clock_gettime64(int clk, struct onair_ts64* t) {
+int clock_gettime64(int clk, struct onair_ts64* t) {
     if (!t) return -1;
     if (clk == 1) {   /* CLOCK_MONOTONIC */
         LARGE_INTEGER f, c;
@@ -24,7 +24,7 @@ __attribute__((weak)) int clock_gettime64(int clk, struct onair_ts64* t) {
     return 0;
 }
 
-__attribute__((weak)) int nanosleep64(const struct onair_ts64* a, struct onair_ts64* b) {
+int nanosleep64(const struct onair_ts64* a, struct onair_ts64* b) {
     if (b) { b->tv_sec = 0; b->tv_nsec = 0; }
     if (!a) return -1;
     unsigned long long ms = (unsigned long long)a->tv_sec * 1000ULL + ((unsigned long long)a->tv_nsec + 999999ULL) / 1000000ULL;
