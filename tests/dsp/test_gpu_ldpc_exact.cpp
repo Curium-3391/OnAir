@@ -126,7 +126,7 @@ int main() {
     dect2::normal_distribution<float> nd(0.f, 1.f);
     struct Case { bool shortF; int rate; double snrDb; };
     // around each rate's threshold (some blocks decode, some need many iterations, some fail) and one clean point
-    const Case cases[] = {{true, 0, 1.2}, {true, 2, 3.2}, {true, 4, 5.0}, {false, 1, 2.8}, {false, 3, 4.6}, {false, 5, 9.0}};
+    const Case cases[] = {{true, 0, 0.9}, {true, 2, 2.7}, {true, 4, 4.4}, {true, 5, 20.0}, {false, 1, 2.3}, {false, 3, 4.1}, {false, 5, 9.0}};
     for (const Case& cs : cases) {
         PlpFec f; f.shortFrame = cs.shortF; f.rate = cs.rate; f.mod = 2; f.rotation = false;
         const LdpcCode& c = ldpcFor(f);
