@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace spipe {
@@ -74,6 +75,53 @@ inline void levelsRow(const float* d, size_t n, int C, float minDb, float maxDb,
 inline void emaStep(float* sm, const float* in, size_t n, float dt, float tau) {
     const float alpha = tau <= 0.001f ? 1.f : 1.f - std::exp(-dt / tau);
     for (size_t i = 0; i < n; i++) sm[i] += alpha * (in[i] - sm[i]);
+}
+
+// 10^(db/10) and 10*log10(p) as branch-free float maths the compiler vectorises (about 0.01 dB): the power-domain average runs over every
+// bin of every frame (64k bins, 30 frames a second), where the library calls cost more than the FFT
+inline float fastPow10db(float db) {
+    float x = db * 0.33219281f;                      // log2(10) / 10
+    x = std::fmax(-126.f, std::fmin(126.f, x));
+    const float fl = std::floor(x), f = x - fl;
+    const float p = 1.f + f * (0.69314718f + f * (0.24022650f + f * (0.05550411f + f * (0.00961813f + f * 0.00133336f))));
+    int32_t e = ((int32_t)fl + 127) << 23; float s; std::memcpy(&s, &e, 4);
+    return s * p;
+}
+inline float fastDb10(float p) {
+    p = std::fmax(p, 1e-30f);
+    int32_t u; std::memcpy(&u, &p, 4);
+    const float e = (float)(((u >> 23) & 0xFF) - 127);
+    u = (u & 0x007FFFFF) | 0x3F800000; float m; std::memcpy(&m, &u, 4);   // m in [1, 2)
+    const float z = (m - 1.f) / (m + 1.f), z2 = z * z;
+    const float l2 = 2.88539008f * z * (1.f + z2 * (1.f / 3 + z2 * (1.f / 5 + z2 * (1.f / 7))));
+    return 3.01029996f * (e + l2);
+}
+
+// The trace's time constant grows with the bins each pixel column covers: the column shows the highest of them (no carrier is lost), and
+// the highest of many noisy bins is a rough comb unless each bin is averaged longer. sqrt: 4x the bins, 2x the averaging; at most 8x.
+inline float traceTau(float baseTau, double binsPerPixel) {
+    if (baseTau <= 0.001f) return baseTau;
+    return baseTau * (float)std::min(8.0, std::max(1.0, std::sqrt(std::max(1.0, binsPerPixel) / 2.0)));
+}
+
+// The average in the POWER domain (a dB average reads noise ~2.5 dB low and lets the deep nulls of single bins through): pw keeps the
+// average power per bin, out gets it in dB. alpha = 1 - exp(-dt / tau).
+inline void powerEma(std::vector<float>& pw, const float* inDb, float* outDb, size_t n, float alpha) {
+    if (pw.size() != n) { pw.resize(n); for (size_t i = 0; i < n; i++) pw[i] = fastPow10db(inDb[i]); alpha = 1.f; }
+    float* p = pw.data();
+    for (size_t i = 0; i < n; i++) { p[i] += alpha * (fastPow10db(inDb[i]) - p[i]); outDb[i] = fastDb10(p[i]); }
+}
+inline float alphaFor(float dt, float tau) { return tau <= 0.001f ? 1.f : 1.f - std::exp(-dt / tau); }
+
+// dB per bin to dB per Hz: what a bin of fs / n Hz holds less 10*log10(fs / n), so the noise floor stays where it is when the FFT size changes
+inline float perHzOffset(double fsHz, size_t n) { return fsHz > 0 && n > 0 ? (float)(10.0 * std::log10(fsHz / (double)n)) : 0.f; }
+
+// Roughness of a trace: the mean absolute difference between neighbouring values (dB); the test keeps the noise floor's under 1.5 dB
+inline double roughness(const float* v, size_t n) {
+    if (n < 2) return 0;
+    double s = 0;
+    for (size_t i = 1; i < n; i++) s += std::fabs((double)v[i] - v[i - 1]);
+    return s / (double)(n - 1);
 }
 
 } // namespace spipe

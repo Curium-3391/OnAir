@@ -398,6 +398,8 @@ struct App {
     int tab = 0;
     SpectrumFrame spec;
     std::vector<float> smooth, peak;
+    std::vector<float> smoothPow, specView;   // the trace averaged in power; the frame as the plots show it (dB per Hz with specPerHz)
+    bool specPerHz = true;              // levels in dB per Hz: the noise floor stays where it is when the FFT size changes (else per bin)
     uint64_t lastSeq = 0;
     Waterfall wf;
     float yMin = -110, yMax = -30;

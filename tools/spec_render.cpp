@@ -178,6 +178,7 @@ struct GenSource : Source {
     GenSource(const std::string& k, size_t fft) : kind(k), N(fft) {
         log2n = (int)std::lround(std::log2((double)N));
         if (kind == "wide") { fs = 20e6; fc = 522.0; }
+        else if (kind == "adsb") { fs = 4e6; fc = 1090.0; }
         else if (kind == "hf") { fs = 192e3; fc = 17.77; }
         else { fs = 48e3; fc = 7.1; }
         re.resize(N); im.resize(N); psd.resize(N);
@@ -189,6 +190,8 @@ struct GenSource : Source {
             cw.push_back({ 4.07e6, 0, -64});
             cw.push_back({ 3.33e6, -900, -70});
             cw.push_back({-3.95e6, 0, -60, 0, 0, 0, 0, 0, 0.35, 2.3});   // a bursty carrier
+        } else if (kind == "adsb") {
+            cw.push_back({-1.62e6, 0, -70}); cw.push_back({0.4e6, 0, -78}); cw.push_back({1.38e6, 0, -66});
         } else if (kind == "hf") {
             cw.push_back({-26.3e3, 0, -62}); cw.push_back({ 31.2e3, 0, -60}); cw.push_back({-15.6e3, 3, -78}); cw.push_back({ 62.0e3, 0, -80});
             cw.push_back({ 0.0e3, 0, -66, 0, 2, 0, 0, 3});   // an AM carrier at the centre (its sidebands are noise-like voice below)
@@ -231,6 +234,8 @@ struct GenSource : Source {
                 for (int i = 0; i < 6; i++) if (std::fmod(t + i * 0.41, 2.9) < 0.25) blk(-6.4e6 + i * 0.21e6, 25e3, -82, 6);   // short NFM bursts
                 const double ssb = voice(t, 1.0);
                 if (f > 1.402e6 && f < 1.4048e6) p += std::pow(10.0, (-95 + 22 * ssb) / 10.0);
+            } else if (kind == "adsb") {   // Mode S replies: short wideband bursts around 1090 MHz in some frames
+                if (std::fmod(t * 7.3, 1.0) < 0.12) blk(0.0, 1.2e6, -92, 4);
             } else if (kind == "hf") {
                 // AM broadcast at the centre: 2 x 4.5 kHz sidebands of voice/music; SSB voices; weak data signals
                 const double am = voice(t, 0.3);
@@ -289,8 +294,8 @@ static double cpuSec() { return (double)clock() / CLOCKS_PER_SEC; }
 int main(int argc, char** argv) {
     std::string in, fmt = "cs8", gen, out = "spec.png";
     double fs = 0, fc = 0, seconds = 30, vlo = NAN, vhi = NAN, vfo = NAN, vbw = 0;
-    int look = 1, W = 1400, Hh = 800, blocks = (int)dect2::SpectrumAnalyzer::kDefaultBlocks, fft = 0;
-    bool old = false, bench = false;
+    int look = 1, mapArg = -1, W = 1400, Hh = 800, blocks = (int)dect2::SpectrumAnalyzer::kDefaultBlocks, fft = 0;
+    bool old = false, bench = false, rough = false;
     float below = NAN, span = NAN, dbLo = NAN, dbHi = NAN, rowTau = NAN;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -298,7 +303,7 @@ int main(int argc, char** argv) {
         if (a == "--in") in = nx(); else if (a == "--fmt") fmt = nx(); else if (a == "--gen") gen = nx();
         else if (a == "--fs") fs = atof(nx()); else if (a == "--fc") fc = atof(nx()); else if (a == "--seconds") seconds = atof(nx());
         else if (a == "--view") { vlo = atof(nx()); vhi = atof(nx()); } else if (a == "--vfo") { vfo = atof(nx()); vbw = atof(nx()); }
-        else if (a == "--look") look = atoi(nx()); else if (a == "--w") W = atoi(nx()); else if (a == "--h") Hh = atoi(nx());
+        else if (a == "--look") look = atoi(nx()); else if (a == "--map") mapArg = atoi(nx()); else if (a == "--rough") rough = true; else if (a == "--w") W = atoi(nx()); else if (a == "--h") Hh = atoi(nx());
         else if (a == "--blocks") blocks = atoi(nx()); else if (a == "--fft") fft = atoi(nx()); else if (a == "--old") old = true;
         else if (a == "--bench") bench = true; else if (a == "--out") out = nx();
         else if (a == "--below") below = (float)atof(nx()); else if (a == "--rowtau") rowTau = (float)atof(nx()); else if (a == "--span") span = (float)atof(nx());
@@ -308,7 +313,7 @@ int main(int argc, char** argv) {
     if (old) blocks = 16;
     Source* src = nullptr;
     size_t N = fft > 0 ? (size_t)fft : 0;
-    if (!gen.empty()) { const double gfs = gen == "wide" ? 20e6 : gen == "hf" ? 192e3 : 48e3; if (!N) N = old ? (gen == "wide" ? 32768 : 8192) : dect2::SpectrumAnalyzer::autoSize(gfs); src = new GenSource(gen, N); }
+    if (!gen.empty()) { const double gfs = gen == "wide" ? 20e6 : gen == "adsb" ? 4e6 : gen == "hf" ? 192e3 : 48e3; if (!N) N = old ? (gen == "wide" ? 32768 : 8192) : dect2::SpectrumAnalyzer::autoSize(gfs); src = new GenSource(gen, N); }
     else { if (in.empty() || fs <= 0) { fprintf(stderr, "--in and --fs, or --gen\n"); return 2; } src = new FileSource(in.c_str(), fmt, fs, fc); }
     fs = src->rate(); fc = src->centreMhz();
     if (!N) N = old ? (fs / 8192 > 250 ? (fs / 16384 > 250 ? 32768 : 16384) : 8192) : dect2::SpectrumAnalyzer::autoSize(fs);   // --old: the auto size before 3.0
@@ -319,10 +324,12 @@ int main(int argc, char** argv) {
     dect2::SpectrumAnalyzer an(N);
     an.setBlocksPerFrame((size_t)blocks);
     Waterfall wf;
-    const slook::LookSet& L = slook::lookSet(look);
-    wf.map = L.classic ? cmap::Classic : L.wfMap;
+    const slook::LookSet& L = slook::lookSet(0);   // OnAir's one look; --look 2 / --map pick the palette
+    const int mapSel = mapArg >= 0 ? mapArg : look == 2 ? cmap::BlueGreen : cmap::NavyHeat;
+    wf.map = mapSel;
+    float pb = 0, ps = 0; slook::floorPlace(mapSel, pb, ps);
     if (old) { wf.autoTrack = false; wf.minDb = -100; wf.maxDb = -32; }
-    else { wf.autoTrack = true; wf.autoBelow = std::isfinite(below) ? below : L.wfBelow; wf.autoSpan = std::isfinite(span) ? span : L.wfSpan; }
+    else { wf.autoTrack = true; wf.autoBelow = std::isfinite(below) ? below : pb; wf.autoSpan = std::isfinite(span) ? span : ps; }
     wf.palette();
     wf.viewU0 = (vlo - (fc - fs / 2e6)) / (fs / 1e6); wf.viewU1 = (vhi - (fc - fs / 2e6)) / (fs / 1e6);
     if (std::isfinite(rowTau)) wf.rowTau = rowTau;
@@ -331,7 +338,7 @@ int main(int argc, char** argv) {
     const size_t perFrame = (size_t)std::lround(fs / 30.0);
     std::vector<cf> buf;
     dect2::SpectrumFrame f;
-    std::vector<float> smooth;
+    std::vector<float> smooth, view, pw;
     double tPipe = 0, tSrc = 0;
     const bool isGen = !gen.empty();
     for (int fr = 0; fr < frames; fr++) {
@@ -344,13 +351,29 @@ int main(int argc, char** argv) {
         const double s1 = cpuSec();
         an.feed(reinterpret_cast<const dect2::cf32*>(buf.data()), n);
         if (!an.takeFrame(f)) continue;
-        if (smooth.size() != f.dbfs.size()) smooth = f.dbfs;
-        spipe::emaStep(smooth.data(), f.dbfs.data(), smooth.size(), 1.f / 30, 0.08f);
-        wf.setCols(specaxis::historyCols(old ? 0 : -1, f.dbfs.size(), Waterfall::kMaxCols));
-        wf.offer(f.dbfs, t);
+        // as ingestSpectrum: per Hz, the trace averaged in power with the time constant the bins per pixel ask for (--old: per bin, dB average)
+        const size_t nb = f.dbfs.size();
+        const float off = old ? 0.f : spipe::perHzOffset(fs, nb);
+        view.resize(nb);
+        for (size_t i = 0; i < nb; i++) view[i] = f.dbfs[i] - off;
+        if (smooth.size() != nb) { smooth = view; pw.clear(); }
+        const double bpp = std::max(1.0, (double)nb * (vhi - vlo) / (fs / 1e6) / std::max(1, W));
+        if (old) spipe::emaStep(smooth.data(), view.data(), nb, 1.f / 30, 0.08f);
+        else spipe::powerEma(pw, view.data(), smooth.data(), nb, spipe::alphaFor(1.f / 30, spipe::traceTau(0.08f, bpp)));
+        wf.setCols(specaxis::historyCols(old ? 0 : -1, nb, Waterfall::kMaxCols));
+        wf.offer(view, t);
         wf.stamp(t);
         if (wf.autoTrack && t - wf.trackT > 0.25) { wf.fitRange(smooth, wf.trackT == 0, 0.25f); wf.trackT = t; }
         tPipe += cpuSec() - s1; tSrc += s1 - s0;
+    }
+    if (rough && !smooth.empty()) {   // the trace at W pixel columns: its roughness (mean |neighbour difference|) and its floor, by numbers
+        std::vector<float> col;
+        const double dx = fs / 1e6 / (double)smooth.size(), x0 = fc - fs / 2e6;
+        slook::decimate(smooth.data(), smooth.size(), x0, dx, vlo, vhi, W, L.interp, false, col);
+        std::vector<float> c2(col), scr; const float fl = spipe::noiseFloor(c2.data(), c2.size(), scr);
+        std::vector<float> quiet; for (float v : col) if (v < fl + 6) quiet.push_back(v);   // the noise floor's columns only
+        printf("rough: fft %zu bins/px %.1f trace roughness %.2f dB (floor columns %.2f dB) floor %.1f dB%s\n", N, (double)smooth.size() * (vhi - vlo) / (fs / 1e6) / W,
+               spipe::roughness(col.data(), col.size()), spipe::roughness(quiet.data(), quiet.size()), fl, old ? "/bin" : "/Hz");
     }
     if (bench) printf("bench: %s pipeline %.3f s CPU for %.1f s of signal (%.1f %% of one core), source %.2f s\n", old ? "old" : "new", tPipe, seconds, 100 * tPipe / seconds, tSrc);
 

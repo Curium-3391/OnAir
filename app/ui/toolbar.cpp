@@ -6,6 +6,7 @@
 #include "../state/presets_app.h"
 #include "../state/tune_worker.h"
 #include "../state/freq_model.h"
+#include "../state/listen_freq.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/engine/click_tune.h"
 #include "dect2/source/antenna_ports.h"

@@ -196,7 +196,6 @@ float freqDigitsImpl(App& a, double& mhzRef, double lo, double hi, const std::fu
     return endX;
 }
 
-void tuneListen(App& a, double mhz);   // toolbar.cpp: the VFO inside the captured band, the radio only past its edge
 
 // The big readout: the frequency being LISTENED to (SDR++), or the radio centre (right click: the choice, kept). Beside it a small line
 // names the other one, and the hardware frequency when a converter moves it (freq_model.h), so the three are never confused (user report:

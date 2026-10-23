@@ -13,8 +13,8 @@ namespace cmap {
 enum Map { Classic, Viridis, Inferno, Grey, Turbo, Cividis, Magma, SdrClassic, Ice, Fire, NightRed, HighContrast, Custom, SdrppSmooth, OxideBlue, NavyHeat, BlueGreen, NumMaps };
 
 inline const char* name(int m) {
-    static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis", "Magma", "SDR++ classic", "Ice", "Fire", "Night (red)", "High contrast", "Custom",
-                                           "SDR++ smooth", "Oxide blue", "Navy heat", "Blue green"};
+    static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis", "Magma", "Deep heat", "Ice", "Fire", "Night (red)", "High contrast", "Custom",
+                                           "Smooth heat", "Deep blue", "Navy heat", "Blue green"};
     return n[m < 0 || m >= NumMaps ? 0 : m];
 }
 // reads the same with the common colour blindnesses (perceptually even, one hue ramp or lightness only)

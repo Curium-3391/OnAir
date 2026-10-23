@@ -778,13 +778,15 @@ void specLookSet(App& a, int look, bool save) {
     if (save) { if (a.wfPerMode) setWaterfallMap(a, a.wf.map); else savePrefs(a); }
 }
 
+// The waterfall palette (OnAir has one look; the palette is the choice that matters): each palette also puts the noise floor where it reads
+// best (slook::floorPlace).
 void specLookCombo(App& a, float width) {
     ImGui::SetNextItemWidth(width);
-    if (ImGui::BeginCombo("##speclook", tr(curLook(a).name))) {
-        for (int i = 0; i < slook::NumLooks; i++) if (ImGui::Selectable(tr(slook::lookSet(i).name), a.specLook == i)) specLookSet(a, i);
+    if (ImGui::BeginCombo("##specpalette", tr(Waterfall::mapName(a.wf.effMap())))) {
+        for (int i = 0; i < Waterfall::NumMaps; i++) if (ImGui::Selectable(tr(Waterfall::mapName(i)), a.wf.effMap() == i)) setWaterfallMap(a, i);
         ImGui::EndCombo();
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How the spectrum and the waterfall look: OnAir (the default), SDR++ look (black, cyan trace with fill, kHz offsets) or SDRoxide look (navy gradient, thin light-blue trace, warm passband). A look sets the trace colour, thickness, fill and colour map; change them afterwards as you like."));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The waterfall's colours. Navy heat (the default) and Blue green keep the noise floor dark with its texture; the auto range puts the floor where each palette reads best."));
 }
 
 // a strip of a map's colours
@@ -956,7 +958,7 @@ void specDisplayPopup(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
     ImGui::Separator();
     bool save = false;
-    ImGui::TextDisabled("%s", tr("Look"));
+    ImGui::TextDisabled("%s", tr("Palette"));
     specLookCombo(a, 170 * gUi);
     if (lookOn(a)) {
         const char* lm[] = {tr("As the look has them"), tr("Frequencies"), tr("Offsets from the tuned frequency")};
@@ -1108,6 +1110,8 @@ void specDisplayPopup(App& a) {
     if (ImGui::RadioButton("dBFS", !a.specDbm)) { a.specDbm = false; save = true; }
     ImGui::SameLine(0, 8 * gUi);
     if (ImGui::RadioButton("dBm", a.specDbm)) { a.specDbm = true; save = true; }
+    if (ImGui::Checkbox(tr("Per Hz (the noise floor stays put when the FFT size changes)"), &a.specPerHz)) { a.smooth.clear(); save = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Levels as power per hertz: a bigger FFT splits the noise into narrower bins, which per bin reads lower; per Hz the floor stays where it is. Off: per FFT bin, as before."));
     if (a.specDbm) {
         float off = dbmOffset(a);
         ImGui::SetNextItemWidth(110 * gUi);
@@ -1152,39 +1156,47 @@ void drawBandPlanStrip(ImDrawList* dl, float x0, float x1, float y, float h, dou
 
 // Two icon toggles by the spectrum controls (SDR++ style, shared by all modes): normal tuning (a click moves the marker inside the captured
 // band, the radio centre stays) and centre tuning (a click puts the clicked frequency in the middle by retuning the radio).
+// Drawn as one two-part switch with the height and top of the other header buttons (SmallButton: the font size tall, at plotMin.y + 4),
+// crisp vector icons on whole pixels with one stroke width, the chosen half filled in the accent colour with a light border.
 static float tuneStyleButtons(App& a, ImVec2 plotMin, ImVec2 plotSize, float rightUsed) {
-    const float s = 18 * gUi, m = 4 * gUi, w = 2 * s + 2 * m;
-    const float x = plotMin.x + plotSize.x - rightUsed - w - m;
-    if (x < plotMin.x + 40 * gUi || plotSize.y < s + 2 * m) return 0;
+    const float h = std::round(ImGui::GetFontSize()), seg = std::round(h * 1.55f), m = 4 * gUi, w = 2 * seg;
+    const float x = std::round(plotMin.x + plotSize.x - rightUsed - w - m), y = std::round(plotMin.y + m);
+    if (x < plotMin.x + 40 * gUi || plotSize.y < h + 2 * m) return 0;
     const ImVec2 keep = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    for (int i = 0; i < 2; i++) {   // 0: left/right arrows (normal), 1: target (centre)
+    const float rr = std::round(3 * gUi), t = std::max(1.f, std::round(1.25f * gUi));
+    ImVec4 frame = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg); frame.w = 0.85f;
+    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), ImGui::ColorConvertFloat4ToU32(frame), rr);
+    for (int i = 0; i < 2; i++) {   // 0: "click moves the tuned signal" (two-way arrow), 1: "click centres the spectrum" (target)
         const bool on = (i == 1) == a.centreTuning;
-        const ImVec2 p0(x + i * (s + m), plotMin.y + m), p1(p0.x + s, p0.y + s);
+        const ImVec2 p0(x + i * seg, y), p1(p0.x + seg, y + h);
         ImGui::SetCursorScreenPos(p0);
         char id[16]; snprintf(id, sizeof id, "##tunestyle%d", i);
-        const bool click = ImGui::InvisibleButton(id, ImVec2(s, s));
+        const bool click = ImGui::InvisibleButton(id, ImVec2(seg, h));
         const bool hov = ImGui::IsItemHovered();
-        ImVec4 bg = on ? pal::accent(0.55f) : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg); if (!on) bg.w = 0.85f;
-        if (hov) bg.w = std::min(1.f, bg.w + 0.15f);
-        dl->AddRectFilled(p0, p1, ImGui::ColorConvertFloat4ToU32(bg), 3 * gUi);
-        const ImU32 fg = ImGui::GetColorU32(ImGuiCol_Text);
-        const ImVec2 c((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
-        const float r = s * 0.30f, t = std::max(1.f, 1.2f * gUi);
-        if (i == 1) {
-            dl->AddCircle(c, r, fg, 0, t);
-            dl->AddLine(ImVec2(c.x - r * 1.3f, c.y), ImVec2(c.x + r * 1.3f, c.y), fg, t);
-            dl->AddLine(ImVec2(c.x, c.y - r * 1.3f), ImVec2(c.x, c.y + r * 1.3f), fg, t);
-        } else {
-            const float h = r * 0.55f;
-            dl->AddLine(ImVec2(c.x - r * 1.2f, c.y), ImVec2(c.x + r * 1.2f, c.y), fg, t);
-            dl->AddTriangleFilled(ImVec2(c.x - r * 1.35f, c.y), ImVec2(c.x - r * 0.6f, c.y - h), ImVec2(c.x - r * 0.6f, c.y + h), fg);
-            dl->AddTriangleFilled(ImVec2(c.x + r * 1.35f, c.y), ImVec2(c.x + r * 0.6f, c.y - h), ImVec2(c.x + r * 0.6f, c.y + h), fg);
+        if (on) dl->AddRectFilled(p0, p1, ImGui::ColorConvertFloat4ToU32(pal::accent(hov ? 0.75f : 0.62f)), rr, i == 0 ? ImDrawFlags_RoundCornersLeft : ImDrawFlags_RoundCornersRight);
+        else if (hov) dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 26), rr, i == 0 ? ImDrawFlags_RoundCornersLeft : ImDrawFlags_RoundCornersRight);
+        const ImU32 fg = on ? IM_COL32(255, 255, 255, 255) : ImGui::GetColorU32(ImGuiCol_Text, 0.80f);
+        const float cx = std::floor((p0.x + p1.x) * 0.5f) + 0.5f, cy = std::floor((p0.y + p1.y) * 0.5f) + 0.5f;   // pixel centres: crisp 1 px strokes
+        const float r = std::floor(h * 0.30f);
+        if (i == 1) {   // target: a ring, four ticks outside it, a dot in the middle (all inside the button: no clipping)
+            dl->AddCircle(ImVec2(cx, cy), r, fg, 24, t);
+            const float g0 = r + 1, g1 = std::min(r + std::max(2.f, std::floor(h * 0.16f)), h * 0.5f - 1);
+            dl->AddLine(ImVec2(cx - g1, cy), ImVec2(cx - g0, cy), fg, t); dl->AddLine(ImVec2(cx + g0, cy), ImVec2(cx + g1, cy), fg, t);
+            dl->AddLine(ImVec2(cx, cy - g1), ImVec2(cx, cy - g0), fg, t); dl->AddLine(ImVec2(cx, cy + g0), ImVec2(cx, cy + g1), fg, t);
+            dl->AddCircleFilled(ImVec2(cx, cy), std::max(1.f, t), fg, 12);
+        } else {        // a two-way arrow: one shaft, two open chevron heads, the same stroke
+            const float L = std::floor(seg * 0.32f), k = std::floor(h * 0.22f);
+            dl->AddLine(ImVec2(cx - L, cy), ImVec2(cx + L, cy), fg, t);
+            const ImVec2 lh[3] = {ImVec2(cx - L + k, cy - k), ImVec2(cx - L, cy), ImVec2(cx - L + k, cy + k)};
+            const ImVec2 rh[3] = {ImVec2(cx + L - k, cy - k), ImVec2(cx + L, cy), ImVec2(cx + L - k, cy + k)};
+            dl->AddPolyline(lh, 3, fg, 0, t); dl->AddPolyline(rh, 3, fg, 0, t);
         }
         if (click && (i == 1) != a.centreTuning) { a.centreTuning = i == 1; savePrefs(a); }
-        if (hov) ImGui::SetTooltip("%s", i == 1 ? tr("Centre tuning: a click retunes the radio so the clicked frequency is in the middle of the spectrum")
-                                                : tr("Normal tuning (default): a click moves the tuned frequency inside the captured band and keeps the radio centre; outside the band the radio retunes"));
+        if (hov) ImGui::SetTooltip("%s", i == 1 ? tr("Click centres the spectrum: a click retunes the radio so the clicked signal is in the middle")
+                                                : tr("Click moves the tuned signal: a click inside the band moves the tuning marker and the radio stays (the default)"));
     }
+    dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), IM_COL32(255, 255, 255, 40), rr, 0, 1.f);
     restoreCursor(keep);
     return w + m;
 }
@@ -1257,10 +1269,14 @@ static void specLookTip(const App& a, double mhz, double db, bool dbm, ImVec2 po
     dl->AddText(font, fs, ImVec2(p0.x + pad, p0.y + pad), ImGui::ColorConvertFloat4ToU32(v4(L.tipText)), lb);
 }
 
+static double gBinsPerPx = 1;   // FFT bins per pixel column of the spectrum as last drawn
+double specBinsPerPixel() { return gBinsPerPx; }
+
 static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
     const bool dbm = a.specDbm;
     const float dbmOff = dbm ? dbmOffset(a) : 0.f;
-    const char* const kYLabel = dbm ? tr("power (dBm)") : tr("power (dBFS/bin)");
+    const char* const kYLabel = dbm ? (a.specPerHz ? tr("power (dBm/Hz)") : tr("power (dBm/bin)")) : (a.specPerHz ? tr("power (dBFS/Hz)") : tr("power (dBFS/bin)"));
+    const char* const kUnit = dbm ? (a.specPerHz ? "dBm/Hz" : "dBm") : (a.specPerHz ? "dBFS/Hz" : "dBFS");   // the readouts name the unit too
     ImVec2 plotMin, plotSize;
     bool drawn = false, openCtx = false;
     double visLo = 0, visHi = 0;
@@ -1309,6 +1325,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
             // a look draws one point per pixel column (framebuffer pixels on a high-DPI screen): the highest bin of the column, so no peak
             // is lost, interpolated between bins when zoomed in, and mildly smoothed; OnAir keeps its min/max envelope
             const int lookPx = std::max(1, std::min(4096, (int)(plotSize.x * std::max(1.f, std::min(2.f, ImGui::GetIO().DisplayFramebufferScale.x)))));
+            gBinsPerPx = std::max(1.0, (double)nb * ((vis.X.Max - vis.X.Min) / std::max(1e-9, fsMhz)) / lookPx);   // for the trace average (ingestSpectrum)
             const int passes = a.specSmoothTrace >= 0 ? a.specSmoothTrace : L.smoothPasses;
             auto traceLine = [&](const std::vector<float>& y, bool useMin, int smooth) {
                 if (!look) { plt::envelope(y, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey); return; }
@@ -1377,7 +1394,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
                     const double mx = ex[best], my = ey[best];
                     plt::Spec ms; ms.Marker = plt::Marker_Circle; ms.MarkerSize = 3.f; ms.MarkerFillColor = ms.MarkerLineColor = ms.LineColor = pal::accent();
                     plt::PlotScatter("##pk", &mx, &my, 1, ms);
-                    char lb[48]; snprintf(lb, sizeof lb, dbm ? "%.4f  %.1f dBm" : "%.4f  %.1f dBFS", mx, my + dbmOff);
+                    char lb[48]; snprintf(lb, sizeof lb, "%.4f  %.1f %s", mx, my + dbmOff, kUnit);
                     plt::PlotText(lb, mx, my, ImVec2(0, -11 * gUi));
                 }
             }
@@ -1398,7 +1415,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
                     const double mx = mp.x, my = lv;
                     plt::Spec ms; ms.Marker = plt::Marker_Circle; ms.MarkerSize = 3.5f; ms.MarkerFillColor = ms.MarkerLineColor = ms.LineColor = ImVec4(1, 1, 1, 0.9f);
                     plt::PlotScatter("##rd", &mx, &my, 1, ms);
-                    char lb[64]; snprintf(lb, sizeof lb, dbm ? "%s  %.1f dBm" : "%s  %.1f dBFS", plt::formatFreqUnit(mx).c_str(), lv + dbmOff);
+                    char lb[64]; snprintf(lb, sizeof lb, "%s  %.1f %s", plt::formatFreqUnit(mx).c_str(), lv + dbmOff, kUnit);
                     const float tw = ImGui::CalcTextSize(lb).x;
                     const bool right = ImGui::GetMousePos().x + tw + 24 * gUi > plotMin.x + plotSize.x;   // beside the point, left of it near the right edge
                     plt::PlotText(lb, mx, my, ImVec2(right ? -tw * 0.5f - 8 * gUi : tw * 0.5f + 8 * gUi, 14 * gUi));
@@ -1454,17 +1471,29 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
 }
 
 // A small colour scale at the right edge of the waterfall: the colour map from the strongest level (top) to the weakest, with the dB limits.
+// It sits under the "Waterfall" button with its own margin (the button: cornerPopup at plotMin.y + 4 + dropY, a font size tall), so the two
+// never overlap at any size or interface scale. It is also the range control: drag it up or down to move the colours, the wheel over it to
+// widen or narrow them, a double click puts the automatic range back (wfScaleBarInput, after the plot).
+static struct { ImVec2 p0, p1; bool shown = false; } gScale;
+static float wfButtonBottom(ImVec2 plotMin) { return plotMin.y + 4 * gUi + (ImGui::GetTextLineHeight() + 6 * gUi) + ImGui::GetFontSize(); }
 static void wfScaleBar(const App& a, ImVec2 plotMin, ImVec2 plotSize) {
     const float u = gUi;
-    if (plotSize.y < 170 * u || plotSize.x < 200 * u) return;
+    gScale.shown = false;
+    const float fs = ImGui::GetFontSize() * 0.8f, top = wfButtonBottom(plotMin) + 8 * u;   // the box starts a margin under the button
+    const float y0 = top + fs + 4 * u;                                                        // the bar under the "dB" / top label row
+    const float bh = std::min(plotSize.y - (y0 - plotMin.y) - fs - 14 * u, 110 * u);
+    if (bh < 40 * u || plotSize.x < 200 * u) return;
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float bw = 7 * u, bh = std::min(plotSize.y - 2 * ImGui::GetTextLineHeight() - 50 * u, 110 * u), fs = ImGui::GetFontSize() * 0.8f;
+    const float bw = 7 * u;
     const float off = a.specDbm ? dbmOffset(a) : 0.f;
     char hi[16], lo[16];
     snprintf(hi, sizeof hi, "%.0f", a.wf.maxDb + off); snprintf(lo, sizeof lo, "%.0f", a.wf.minDb + off);
     const float tw = std::max(ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, hi).x, ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, lo).x);
-    const float x1 = plotMin.x + plotSize.x - 6 * u, x0 = x1 - bw, y0 = plotMin.y + 2 * ImGui::GetTextLineHeight() + 22 * u, y1 = y0 + bh;
-    dl->AddRectFilled(ImVec2(x0 - tw - 8 * u, y0 - fs - 4 * u), ImVec2(x1 + 3 * u, y1 + fs + 4 * u), IM_COL32(5, 6, 8, 150), 3 * u);
+    const float x1 = plotMin.x + plotSize.x - 6 * u, x0 = x1 - bw, y1 = y0 + bh;
+    gScale.p0 = ImVec2(x0 - tw - 8 * u, top); gScale.p1 = ImVec2(x1 + 3 * u, y1 + fs + 4 * u); gScale.shown = true;
+    const bool hov = ImGui::IsMouseHoveringRect(gScale.p0, gScale.p1, false);
+    dl->AddRectFilled(gScale.p0, gScale.p1, hov ? IM_COL32(20, 22, 26, 200) : IM_COL32(5, 6, 8, 150), 3 * u);
+    if (hov) dl->AddRect(gScale.p0, gScale.p1, IM_COL32(200, 205, 210, 90), 3 * u);
     const int seg = 24;
     for (int i = 0; i < seg; i++) {
         const float f0 = 1.f - (float)i / seg, f1 = 1.f - (float)(i + 1) / seg;
@@ -1477,6 +1506,30 @@ static void wfScaleBar(const App& a, ImVec2 plotMin, ImVec2 plotSize) {
     dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, hi).x, y0 - fs * 0.5f), tc, hi);
     dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, lo).x, y1 - fs * 0.5f), tc, lo);
     dl->AddText(font, fs, ImVec2(x0 - tw - 4 * u, y0 - fs - 2 * u), tc, a.specDbm ? "dBm" : "dB");
+}
+
+// The colour scale as the waterfall's range control (drawn by wfScaleBar inside the plot; the mouse is taken here, after EndPlot, so the
+// plot's own drag does not get it): drag = move the range, wheel = widen / narrow it, double click = automatic again.
+static void wfScaleBarInput(App& a) {
+    if (!gScale.shown) return;
+    const ImVec2 keep = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(gScale.p0);
+    ImGui::InvisibleButton("##wfscale", ImVec2(gScale.p1.x - gScale.p0.x, gScale.p1.y - gScale.p0.y));
+    const float span = std::max(10.f, a.wf.maxDb - a.wf.minDb), h = std::max(20.f, gScale.p1.y - gScale.p0.y);
+    if (ImGui::IsItemActive() && ImGui::GetIO().MouseDelta.y != 0) {
+        const float d = ImGui::GetIO().MouseDelta.y / h * span;   // drag down: the colours move down (weaker signals get brighter)
+        a.wf.autoTrack = false; a.wf.minDb += d; a.wf.maxDb += d;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+        const float wh = ImGui::GetIO().MouseWheel;
+        if (wh != 0) { a.wf.autoTrack = false; const float c = (a.wf.minDb + a.wf.maxDb) / 2, ns = std::max(10.f, std::min(150.f, span * (wh > 0 ? 0.9f : 1.1f))); a.wf.minDb = c - ns / 2; a.wf.maxDb = c + ns / 2; ImGui::GetIO().MouseWheel = 0; }
+        if (ImGui::IsMouseDoubleClicked(0)) { a.wf.autoTrack = true; a.wf.fitRange(a.smooth, true); }
+        ImGui::SetTooltip("%s", a.wf.autoTrack ? tr("Waterfall colour range (automatic, on the noise floor). Drag to move it, scroll to widen or narrow it.")
+                                               : tr("Waterfall colour range. Drag to move it, scroll to widen or narrow it, double click for automatic."));
+    }
+    if (ImGui::IsItemDeactivated()) savePrefs(a);
+    restoreCursor(keep);
 }
 
 static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
@@ -1569,6 +1622,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
         identifyPlotInput(a, 1);
         plt::EndPlot();
     }
+    if (drawn) wfScaleBarInput(a); else gScale.shown = false;
     if (drawn) cornerPopup(a, a.wf.paused ? "Paused###wfbtn" : "Waterfall###wfbtn", "##wfpop", plotMin, plotSize, 0, 40 * gUi, ImGui::GetTextLineHeight() + 6 * gUi, a.wf.paused,
                            tr("Waterfall: colour map, intensity range, speed and pause (then drag or use the wheel to look back)"), wfDisplayPopup);
 }
