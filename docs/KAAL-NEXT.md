@@ -247,6 +247,9 @@ With four channels in use, FDMA costs 2.3 dB more PAPR than v4 TDMA.
 
 ## 7. Tests
 
-All KAAL tests, built on their own against this branch's KAAL sources, pass: phy, golden, tx_golden, tx_v3, rx_loopback, roundtrip,
-tx_beacon, tx_mix, codec3, sweepid, file, lock_time, engine, live_fuzz, v4, v4_live and v4_impair (see the PATHWAY entry). No golden digest
-was changed. test_kaal_mode (source text checks) still finds its strings.
+What is actually verified, and what is not (corrected 2026-10-23; an earlier version of this section said all KAAL tests pass, which is not supported):
+
+- Passed at some point on this branch: phy, golden, tx_golden, tx_v3, rx_loopback, roundtrip, tx_beacon, tx_mix, codec3, sweepid. No golden digest was changed. test_kaal_mode (source text checks) still finds its strings.
+- v4, v4_live and v4_impair passed BEFORE the later equaliser and lock-time edits; they have not been re-run since.
+- NOT run since the v3 decoder change: test_kaal_file, lock_time, engine, live_fuzz. Their status on this branch is unknown.
+- FAILING: the data-throughput check measures 512 bytes/s where about 2,500 bytes/s is expected (section 6.5 table). The throughput numbers in 6.5 therefore do not match what the check currently measures; cause not found.
