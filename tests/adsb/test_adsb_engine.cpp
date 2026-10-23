@@ -1,6 +1,7 @@
 // ADS-B through the engine, as the interface and dect2cli use it: the synthetic source plays the test airspace (8 bit samples),
 // the engine must lock, decode, keep every sample, and report through latestRx(). The source plays faster than a radio (the receiver is what is
 // tested, not real time) and the run is counted in seconds of signal.
+#include <cstdlib>
 #include "dect2/adsb/adsb_gen.h"
 #include "dect2/engine/engine.h"
 #include "dect2/engine/engine_testkit.h"
@@ -39,6 +40,7 @@ static void run(double rate, double secs, bool checkRef) {
     CHECK(e.activeStandard() == 12, "active standard %d", e.activeStandard());
     CHECK(e.sampleRate() > rate * 0.99 && e.sampleRate() < rate * 1.01, "engine sample rate %.0f", e.sampleRate());
     if (checkRef) e.adsb().setReference(25.25, 55.36);
+    if (getenv("ADSB_OLDER")) { e.adsb().setDetector(0, 0, 0, 0); e.adsb().setCoherent(false); }   // comparison run: the demodulator of before 3.0
     RxTelemetry rx;
     uint64_t seq = 0, last = 0;
     bool grew = true, locked = false, seqOk = true;

@@ -16,7 +16,11 @@
 namespace dect2 {
 // true on a processor (and operating system) that runs AVX2 and FMA; computed once
 inline bool cpuHasAvx2() {
+#if defined(DECT2_TEST_FORCE_AVX2)   // tests under an emulator that runs AVX2 but does not report it (Rosetta 2)
+    static const bool v = true;
+#else
     static const bool v = [] { __builtin_cpu_init(); return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"); }();
+#endif
     return v;
 }
 } // namespace dect2

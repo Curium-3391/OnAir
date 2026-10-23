@@ -7,13 +7,19 @@
 //   1. power per sample, with the DC offset of the radio removed
 //   2. power per 0.25 microsecond bin (the working grid of the search), and the noise floor from the quiet blocks
 //   3. a score for the preamble (pulses at 0, 1, 3.5 and 4.5 us, quiet in between and for the 3 us before the data) at every bin
+//      (since 3.0: the four pulses together against the quiet windows, then a check that the first 56 bits look like data, instead of a
+//      threshold for every pulse: about 1 dB more sensitive, and fewer false candidates)
 //   4. for each score peak: timing refined in steps of 0.05 us, then 112 bits sliced by comparing the energy of the first and the second
 //      half of every microsecond, handed to the checks (CRC, address); a frame that passes is skipped over
+//   5. a frame that fails is sliced again coherently (sliceCoherent: carrier offset from the pulses, complex integrals of the half bits along a
+//      phase reference, about 1.5 dB) and with sequence estimation against the smearing of the radio's filter, then with the older retries
 #pragma once
 #include "adsb_track.h"
 #include "dect2/common/ring.h"
+#include "dect2/dsp/fftutil.h"
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <functional>
 #include <vector>
 
@@ -38,12 +44,17 @@ public:
     uint64_t preambles() const { return preambles_; }       // ... and again after the timing was refined: frames that were sliced
     // test knobs
     void setThresholds(float pulseOverNoise, float pulseOverGap) { kPulse_ = pulseOverNoise; kGap_ = pulseOverGap; }
+    // the preamble detector (see tryFrame): sum <= 0 is the older test (every pulse above pulseThreshold(), no data check)
+    void setDetector(float sum, float minPulse, float data, float worthDb) { kSum_ = sum; kMinP_ = minPulse; kData_ = data; kWorthDb_ = worthDb; }
+    void setCoherent(int mode) { coherent_ = mode != 0; coherentFirst_ = mode == 2; }   // test knob: 0 off, 1 on (default), 2 only the coherent slices
+    uint64_t dataRejects() const { return dataRejects_; }   // preambles that the contrast of the first 56 bits showed to be noise
 
 private:
     void pushSamples(const cf32* x, size_t m);
     void makeBins();
     void scanCandidates();
     bool tryFrame(int64_t bin);
+    bool sliceCoherent(AdsbRaw& r, double x, double w, const AdsbRaw& guide, AdsbRaw* isi = nullptr);
     void compact();
     void updateNoise(float bin);
     void endBlock();
@@ -61,10 +72,22 @@ private:
     std::vector<float> tmpR_, tmpI_, yR_, yI_;       // the upsampler's work arrays: real and imaginary parts apart
     Sink sink_;
     float kPulse_ = 3.0f, kGap_ = 2.0f;
+    // Preamble detector. A pulse window must exceed the noise by kMinP_ standard deviations of a noise window, the mean of the four pulses must exceed the
+    // mean of the quiet windows by kSum_ standard deviations of that difference, and the first 56 bits must show a mean contrast between their two halves
+    // of kData_ standard deviations of a noise window (noise alone gives about 1.13). Retries with other timings and windows for frames above kWorthDb_ (the
+    // SNR of the preamble in the bandwidth of a 0.5 us window, i.e. in 2 MHz, whatever the sample rate).
+    float kSum_ = 4.0f, kMinP_ = 0.0f, kData_ = 1.8f, kWorthDb_ = 5.0f;
+    uint64_t dataRejects_ = 0;
+    bool coherent_ = true, coherentFirst_ = false;
 
     uint64_t samples_ = 0;                          // samples fed since the start (the clock)
     uint64_t smpBase_ = 0;                          // global index of pw_[0]
     std::vector<float> pw_;                         // power per sample
+    std::vector<cf32> zs_;                          // the samples themselves (DC removed), same indexing: for the coherent slicer
+    std::vector<cf32> ly_;                          // sliceCoherent's work arrays: the samples of one frame turned back by the carrier offset,
+    std::vector<std::complex<double>> lc_;          // and their running integral
+    Fft fft_{2048};                                 // the fine carrier offset search of sliceCoherent
+    std::vector<cf32> fftBuf_;
     std::vector<double> cum_;                       // cum_[i] = sum of pw_[0 .. i-1]
     float dcRe_ = 0, dcIm_ = 0; bool dcInit_ = false;
 
