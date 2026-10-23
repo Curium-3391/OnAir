@@ -111,10 +111,10 @@ struct Host : RemoteApiHost {
             char b[256];
             std::string o = std::string("{\"running\":") + (run ? "true" : "false") + ",\"receiver\":" + std::to_string(a.rxId) + ",\"deviceIndex\":" + std::to_string(a.devIdx) +
                             ",\"device\":\"" + jsonEscape(d.name) + "\",\"deviceKind\":\"" + kindName(d.kind) + "\",\"family\":" + std::to_string(a.family) + ",\"mode\":\"" + jsonEscape(mode) + "\"";
-            snprintf(b, sizeof b, ",\"frequencyHz\":%.0f,\"sampleRateHz\":%.0f,\"gainDb\":%s,\"agc\":%s,\"gainMinDb\":%s,\"gainMaxDb\":%s}", a.freqMhz * 1e6,
+            snprintf(b, sizeof b, ",\"frequencyHz\":%.0f,\"sampleRateHz\":%.0f,\"gainDb\":%s,\"agc\":%s,\"gainMinDb\":%s,\"gainMaxDb\":%s", a.freqMhz * 1e6,
                      run ? a.engine.radioRate() : a.tune.sampleRate, jsonNum(gain).c_str(), a.agcOn ? "true" : "false",
                      jsonNum(d.isGeneric() ? d.gainMinDb : 0).c_str(), jsonNum(d.isGeneric() ? d.gainMaxDb : (d.kind == DeviceInfo::HackRF ? 116 : 0)).c_str());
-            return o + b;
+            return o + b + ",\"autogain\":" + autogainStatusJson(a) + "}";   // read-only: the mode, meters, advice, recent changes (docs/AUTOGAIN.md)
         });
     }
     std::string devicesJson() override {

@@ -6,6 +6,7 @@
 #include "dect2/dsp/bandwidth.h"
 #include "dect2/dvbt/dvbt.h"
 #include "dect2/engine/mode_tuning.h"
+#include "dect2/source/autogain.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -284,6 +285,20 @@ void Scanner::run() {
             results_.push_back(r);
             prog_.index = (int)i + 1;
             continue;
+        }
+
+        // ---- the gain for this channel: a quick "Optimise once" (faster settle, shorter measurements; the amp stays as it is)
+        if (cfg_.autoGain && !cfg_.testTune) {
+            setPhase("optimising the gain", (int)i, f);
+            ag::AgSettings as;
+            as.loopSpeed = 3; as.settleSec = 0.6; as.measureSec = 0.5;
+            const int stdm = cfg_.atsc ? 3 : cfg_.isdbt ? 6 : cfg_.atsc3 ? 5 : cfg_.dtmb ? 9 : 0;
+            const ag::AgRunResult gr = ag::autogainRun(e, tune, dev_, stdm, ag::AgMode::Once, as, cfg_.autoGainSec, &cancel_);
+            r.gainDb = gr.plan.totalDb;
+            char fb[32];
+            snprintf(fb, sizeof fb, "%.1f", f);
+            e.log(std::string("scan: ") + fb + " MHz, gain " + gr.text);
+            if (cancel_) break;
         }
 
         // ---- try to lock DVB-T2

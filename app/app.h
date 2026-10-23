@@ -954,6 +954,17 @@ GainModel agcModel(const App& a);              // the selected radio's gain stag
 int agcMaxTotal(App& a);                       // the highest overall gain the AGC / the optimiser may use on this radio (without the amp unless allowed)
 GainSetting stagesFor(App& a, int totalDb);    // an overall gain as the radio's stages, the amp as the user set it (it joins only above its range when allowed)
 bool gainOptStatus(App& a);                    // the progress / result line; true when it drew something
+// autogain_ui.cpp: auto gain for every radio and mode (docs/AUTOGAIN.md). Auto is a.agcOn; Optimise once / Safe start run once with Undo.
+bool autogainStep(App& a);                     // every frame (gainControl): true when it changed a.tune (the caller retunes)
+void autogainMeterOnly(App& a);                // every frame while it is off: the meters keep running
+void autogainControl(App& a, bool vertical, bool running);   // the "Auto gain" control (Off / Auto / Optimise once / Safe start), gear popup, Stop / Undo
+void autogainMeters(App& a);                   // the meter strip: ADC headroom bar + clip lamp, noise floor, warnings with advice
+bool autogainStatus(App& a);                   // the progress / result line of a one-shot; true when it drew something
+// The integration API (first-run wizard, automations): how 1 = Auto, 2 = Optimise once, 3 = Safe start. False when no radio is running.
+bool autogainRun(App& a, int how);
+bool autogainBusy(const App& a);               // a one-shot is running
+std::string autogainResult(const App& a);      // the last one-shot's result text
+std::string autogainStatusJson(App& a);        // read-only state for the Web server / remote API (dect2::ag::autogainJson)
 void remoteApiLoadPrefs(App& a);    // remote_api_app.cpp: the remote-control API (HTTP + WebSocket), off by default: its settings, started when on
 void remoteApiSavePrefs(const App& a);
 void remoteApiTick(App& a);          // every frame: runs the commands the API queued for the main thread, publishes the telemetry

@@ -1,5 +1,8 @@
 # Auto gain (AGC)
 
+> The app now uses the unified auto gain of [AUTOGAIN.md](AUTOGAIN.md) (Off / Auto / Optimise once / Safe start). SmartAgc below stays in
+> core and is still tested; the amp permission switch (`agcamp.<radio>`) is shared.
+
 The AGC keeps a radio's front end at the best operating point for the active mode. It lives in `core/include/dect2/source/agc.h` and
 `core/src/source/agc.cpp`; the app glue (gear button, per-radio amp switch, applying the decisions) is `app/panels/agc_ui.cpp`.
 The old `AutoGain` class in `gain.h` is no longer used by the app (the tests keep it).

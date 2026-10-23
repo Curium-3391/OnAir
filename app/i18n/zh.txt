@@ -388,10 +388,6 @@ Amp	放大器
 LNA	LNA
 VGA	VGA
 AGC	自动增益
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	让前端保持在该模式的最佳工作点:合适的 ADC 电平、高于 ADC 自身的噪声、把邻近强信号挡在外面。它调整 LNA 和 VGA(只有在你用齿轮按钮允许时才会动放大器),解码器锁定期间保持不动。\n碰一下增益控件就会将其关闭。
-Auto-tune	自动调节
-Stop tune	停止调节
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	增益助手:用约 40 秒尝试 LNA/VGA 组合,保留信噪比最好且不削波的一组。\n需要接收机能锁定的信号。放大器保持你设置的状态。
 gain helper %d/%d ...	增益助手 %d/%d ...
 ADC OVERLOAD - %s	ADC 过载 - %s
 AGC is lowering the gain	自动增益正在降低增益

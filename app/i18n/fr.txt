@@ -388,10 +388,6 @@ Amp	Ampli
 LNA	LNA
 VGA	VGA
 AGC	CAG
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	Garde l'entrée au meilleur point de fonctionnement pour le mode : un bon niveau du CAN, le bruit au-dessus de celui du CAN, les voisins forts tenus à l'écart. Il règle le LNA et le VGA (l'ampli seulement si vous l'autorisez avec la roue crantée) et reste immobile tant qu'un décodeur est verrouillé.\nToucher une commande de gain le désactive.
-Auto-tune	Réglage auto
-Stop tune	Arrêter le réglage
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Assistant de gain : essaie des combinaisons LNA/VGA pendant environ 40 s et garde celle qui a le meilleur SNR sans saturer.\nIl faut un signal sur lequel le récepteur peut se verrouiller. L'ampli reste comme vous l'avez réglé.
 gain helper %d/%d ...	assistant de gain %d/%d ...
 ADC OVERLOAD - %s	SURCHARGE ADC - %s
 AGC is lowering the gain	la CAG baisse le gain

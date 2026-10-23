@@ -388,10 +388,6 @@ Amp	Stiprintuvas
 LNA	LNA
 VGA	VGA
 AGC	AGC
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	Laiko įėjimo dalį geriausiame darbo taške šiam režimui: tinkamas ADC lygis, triukšmas virš paties ADC triukšmo, stiprūs kaimynai atmesti. Keičia LNA ir VGA (stiprintuvą tik jei leidžiate krumpliaračiu) ir nesikeičia, kol dekoderis užsifiksavęs.\nPaliietus stiprinimo valdiklį, jis išsijungia.
-Auto-tune	Auto derinimas
-Stop tune	Stabdyti derinimą
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Stiprinimo pagalbininkas: apie 40 s bando LNA/VGA derinius ir palieka tą, kurio SNR geriausias ir kuris neperkrauna.\nReikia signalo, prie kurio imtuvas gali užsifiksuoti. Stiprintuvas lieka toks, kokį nustatėte.
 gain helper %d/%d ...	stiprinimo pagalbininkas %d/%d ...
 ADC OVERLOAD - %s	ADC PERKROVA - %s
 AGC is lowering the gain	AGC mažina stiprinimą

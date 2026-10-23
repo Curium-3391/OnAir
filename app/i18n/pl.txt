@@ -381,10 +381,6 @@ Amp	Wzm.
 LNA	LNA
 VGA	VGA
 AGC	AGC
-Keeps the front end at the best operating point for the mode: a healthy ADC level, the noise above the ADC's own, strong neighbours kept out. It moves the LNA and VGA (the amp only if you allow it with the gear button) and holds still while a decoder is locked.\nTouching a gain control turns it off.	Utrzymuje tor wejściowy w najlepszym punkcie pracy dla danego trybu: dobry poziom przetwornika, szum powyżej własnego szumu przetwornika, silni sąsiedzi odcięci. Zmienia LNA i VGA (wzmacniacz tylko, jeśli pozwolisz kołem zębatym) i nie rusza wzmocnienia, dopóki dekoder jest zsynchronizowany.\nDotknięcie regulatora wzmocnienia wyłącza ją.
-Auto-tune	Autodopasowanie
-Stop tune	Zatrzymaj dopasowanie
-Gain helper: tries LNA/VGA combinations for about 40 s and keeps the one with the best SNR that does not clip.\nNeeds a signal the receiver can lock to. The amp stays as you set it.	Pomocnik wzmocnienia: przez około 40 s próbuje kombinacji LNA/VGA i zostawia tę z najlepszym SNR bez przesterowania.\nPotrzebuje sygnału, z którym odbiornik może się zsynchronizować. Wzmacniacz zostaje tak, jak go ustawisz.
 gain helper %d/%d ...	pomocnik wzmocnienia %d/%d ...
 ADC OVERLOAD - %s	PRZECIĄŻENIE ADC - %s
 AGC is lowering the gain	AGC obniża wzmocnienie
