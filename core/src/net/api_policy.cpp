@@ -315,7 +315,7 @@ std::string rigctlHandle(const std::string& lineIn, RigctlRadio& radio, bool& qu
         sess.authed = true;
         return rprt(0);
     }
-    if (cmd.size() == 1 && sess.required && !sess.authed && (c0 == 'F' || c0 == 'M' || c0 == 'S' || c0 == 'T' || c0 == 'V')) return rprt(-1);   // a change needs the token first
+    if (cmd.size() == 1 && sess.required && !sess.authed && (c0 == 'F' || c0 == 'M' || c0 == 'V' || ((c0 == 'S' || c0 == 'T') && !(w.size() >= 2 && w[1] == "0")))) return rprt(-1);   // a change needs the token first
     if (cmd.size() == 1) {
         switch (c0) {
         case 'q': case 'Q': quit = true; return std::string();

@@ -176,14 +176,14 @@ static void testRigctl() {
     q = false;
 
     // with a token: reads are open, changes need "\auth <token>" on the connection
-    RigctlSession s; s.required = true; s.token = "0123456789abcdef";
-    auto hs = [&](const std::string& l) { return rigctlHandle(l, r, q, s); };
+    RigctlSession sess1; sess1.required = true; sess1.token = "0123456789abcdef";
+    auto hs = [&](const std::string& l) { return rigctlHandle(l, r, q, sess1); };
     const double hz0 = r.hz;
     const std::string mode0 = r.mode;
     CHECK(hs("f") != "RPRT -1\n" && hs("m") == mode0 + "\n" + std::to_string(r.pb) + "\n", "reads stay open");
     CHECK(hs("F 100000000") == "RPRT -1\n" && r.hz == hz0, "F refused before auth");
     CHECK(hs("M USB 2400") == "RPRT -1\n" && r.mode == mode0, "M refused before auth");
-    CHECK(hs("S 0 VFOA") == "RPRT -1\n" && hs("T 0") == "RPRT -1\n", "S and T refused before auth");
+    CHECK(hs("S 1 VFOB") == "RPRT -1\n" && hs("T 1") == "RPRT -1\n" && hs("T 0") == "RPRT 0\n", "S 1 and T 1 refused before auth, the no-op T 0 is fine");
     CHECK(hs("\\auth wrong") == "RPRT -1\n" && hs("F 100000000") == "RPRT -1\n" && r.hz == hz0, "a wrong token does not open it");
     CHECK(hs("\\auth 0123456789abcdef") == "RPRT 0\n" && hs("F 100000000") == "RPRT 0\n" && r.hz == 100000000, "the token opens changes");
     // three wrong tokens hang up
@@ -364,7 +364,7 @@ static void testRigctlServer() {
     CHECK(srv.configure(RigctlConfig()) && srv.port() == 0, "off");
 
     // a token set: changes need \auth first; an HTTP request (a web page POSTing to the port) is dropped and runs nothing
-    RigctlConfig ct; ct.on = true; ct.port = 0; ct.token = "0123456789abcdef";
+    RigctlConfig ct; ct.on = true; ct.port = 0; ct.allowLan = true; ct.token = "0123456789abcdef";
     CHECK(srv.configure(ct), "rigctl with a token listens");
     r.hz = 145500000;
     sock_t s3 = tcpConnect("127.0.0.1", srv.port(), 1000, err);
