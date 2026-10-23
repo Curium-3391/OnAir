@@ -1,5 +1,6 @@
 // Small OS abstractions used by the core: thread priority.
 #pragma once
+#include <initializer_list>
 
 #if defined(__APPLE__)
 #include <pthread.h>
