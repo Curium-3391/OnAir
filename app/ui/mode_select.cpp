@@ -2,6 +2,7 @@
 // mode drop-downs and the segmented mode selector of the top bar. The table itself is in mode_table.cpp.
 // Search matches the name, the sub line, the blurb and the extra search words of a kModes row.
 #include "../app.h"
+#include "../state/presets_app.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/source/antenna_ports.h"
 #include "dect2/hdr/hdr_rx.h"
@@ -25,6 +26,7 @@ void selectMode(App& a, int fam, const char* subId) {
     if (wasRunning && a.engine.recordingStats().active) { a.engine.log("stop the recording before switching mode"); return; }   // stopping the radio would end it
     if (wasRunning) a.engine.stop();
     setMode(a, fam, sub);
+    presetsapp::applyModeDefault(a);   // the mode's default preset, when the user set one
     savePrefs(a);
     if (wasRunning) {
         a.engine.log("switching receiver mode");
