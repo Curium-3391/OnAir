@@ -639,10 +639,49 @@ static void testThreads() {
     CHECK(reports.load() > 10, "reports %d", reports.load());
 }
 
+// Measurement only (not part of the default run): percent decoded against SNR for the rates the radios use, with the phantom count.
+// test_adsb_rx sweep [frames]
+static void testSweep(int n) {
+    const double rates[] = {2e6, 2.4e6, 4e6, 6e6, 8e6, 10e6};
+    const double snrs[] = {8, 10, 11, 12, 13, 14, 16, 18, 20, 24};
+    struct Cell { double pct; size_t ph; double pre; };
+    std::vector<Cell> cells(sizeof rates / sizeof rates[0] * (sizeof snrs / sizeof snrs[0]));
+    testjobs::Jobs jobs;
+    for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++)
+        for (size_t j = 0; j < sizeof snrs / sizeof snrs[0]; j++) jobs.add([&, i, j] {
+            AdsbSimConfig c; c.rate = rates[i]; c.quantise = false;
+            if (getenv("ADSB_FIX")) c.fixBits = atoi(getenv("ADSB_FIX"));
+            c.custom = spaced(n, snrs[j], 2); c.snrDb = 30; c.seconds = n * 1e-3 + 0.01;
+            AdsbReceiver rx;
+            rx.setLogCallback([](const std::string&) {});
+            if (getenv("ADSB_KP")) rx.setThresholds((float)atof(getenv("ADSB_KP")), getenv("ADSB_KG") ? (float)atof(getenv("ADSB_KG")) : 2.0f);
+            AdsbSimResult r = adsbSimulate(c, rx);
+            cells[i * (sizeof snrs / sizeof snrs[0]) + j] = {100.0 * r.decoded / r.sent.size(), r.phantom, 100.0 * (double)r.tel.preambles / r.sent.size()};
+        });
+    jobs.run();
+    jprintf("SNR dB");
+    for (double r : rates) jprintf(" | %4.1f Msps", r / 1e6);
+    jprintf("\n");
+    size_t ph = 0;
+    for (size_t j = 0; j < sizeof snrs / sizeof snrs[0]; j++) {
+        jprintf("%6.0f", snrs[j]);
+        for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++) {
+            const Cell& c = cells[i * (sizeof snrs / sizeof snrs[0]) + j];
+            jprintf(" | %5.1f (%3.0f)", c.pct, c.pre);
+            ph += c.ph;
+        }
+        jprintf("\n");
+    }
+    jprintf("phantoms in all cells: %zu (in brackets: preambles passed per 100 frames sent)\n", ph);
+}
+
 int main(int argc, char** argv) {
     if (argc > 1) {   // one part only (the thread sanitiser run): test_adsb_rx threads
         const std::string a = argv[1];
-        if (a == "threads") testThreads();
+        if (a == "sweep") testSweep(argc > 2 ? atoi(argv[2]) : 600);
+        else if (a == "noise") testNoiseOnly();
+        else if (a == "sens") testSensitivity();
+        else if (a == "threads") testThreads();
         else if (a == "chunks") testChunks();
         else if (a == "airspace") testAirspace();
         else { jprintf("unknown part '%s'\n", a.c_str()); return 2; }
