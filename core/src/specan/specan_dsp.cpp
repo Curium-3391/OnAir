@@ -163,7 +163,7 @@ const SaBand* saAllocations(int& count) {
         {430.0, 440.0, "70 cm", "amateur"},
         {433.05, 434.79, "ISM 433", "short-range devices"},
         {446.0, 446.2, "PMR446", "licence-free radios"},
-        {470.0, 694.0, "DVB-T", "digital terrestrial TV (UHF)"},
+        {470.0, 694.0, "UHF TV", "digital terrestrial TV: DVB-T/T2, DTMB, ISDB-T or ATSC, by country"},   // not "DVB-T": DTMB users read it as the wrong standard (#178)
         {694.0, 790.0, "LTE 700", "mobile (band 28 / n28)"},
         {791.0, 862.0, "LTE 800", "mobile (band 20)"},
         {863.0, 870.0, "SRD 868", "short-range devices, LoRa"},
