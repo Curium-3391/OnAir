@@ -360,6 +360,7 @@ struct App {
     ImVec2 tgMin[8], tgMax[8];   // screen rectangles of the parts of the window the tour points at
     VideoTex video;
     float volume = 1.f;
+    int tetraSlotMode = 0, tetraSlotNum = 1, tetraSlotId = 0;   // TETRA 'Listen to': 0 auto, 1 slot (tetraSlotNum 1..4), 2 talkgroup, 3 ISSI (tetraSlotId); saved
     bool muted = false, subsOn = true;
     int playReq = -1;
     int dabStation = -1;      // --station: DAB sub-channel to play on start (testing)
