@@ -74,6 +74,16 @@ void Engine::ingest(cf32* x, size_t n) {
     ShareServer::get().offer(x, n);   // "Share my radio": the same samples to the rtl_tcp clients (nothing while sharing is off)
     dropNonFinite(x, n);
     cleanSamples(iqFix_, offMix_, offsetDc_.load(), x, n, activeStd_.load());
+    if (nbOn_.load(std::memory_order_relaxed)) {   // the noise blanker: clicks out before the spectrum and the decoders see them
+        const double r = srcRate_ > 0 ? srcRate_ : rate_.load();   // the samples here are still at the radio's rate
+        nbWas_ = true;
+        if (nbDirty_.exchange(false) || r != nbRate_) { nb_.set(nbThr_.load(), nbWidthUs_.load() * 1e-6, r); nbRate_ = r; }
+        nb_.process(x, n);
+        if (nb_.seen() - nbSeen0_ >= (uint64_t)std::max(1.0, r)) {   // about once a second
+            nbPct_ = (float)(100.0 * (double)(nb_.blanked() - nbBlank0_) / (double)(nb_.seen() - nbSeen0_));
+            nbSeen0_ = nb_.seen(); nbBlank0_ = nb_.blanked();
+        }
+    } else if (nbWas_) { nbWas_ = false; nbPct_ = 0.f; nb_.reset(); }   // switched off: the next start learns the level again
     const auto a0 = std::chrono::steady_clock::now();
     lastSamples_ = a0;   // the radio is alive, whether or not the resampler gives a sample out of this block
     if (offResample_) { offBuf_.clear(); offRs_.process(x, n, offBuf_); x = offBuf_.data(); n = offBuf_.size(); }

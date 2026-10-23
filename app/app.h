@@ -63,26 +63,33 @@
 #include <unistd.h>
 #include "gfx/colormap.h"
 #include "gfx/wf_view.h"
+#include "gfx/spec_axis.h"
 
 using namespace dect2;
 
 // ------------------------------------------------------------------ waterfall texture
 
 struct Waterfall {
-    static constexpr int W = 8192, H = 512;
-    enum Map { Classic = cmap::Classic, Viridis = cmap::Viridis, Inferno = cmap::Inferno, Grey = cmap::Grey, Turbo = cmap::Turbo, Cividis = cmap::Cividis, NumMaps = cmap::NumMaps };   // Cividis: made to read the same with red-green colour blindness
-    static const char* mapName(int m) {
-        static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis"};
-        return n[m < 0 || m >= NumMaps ? 0 : m];
-    }
-    gfx::Image* img = nullptr;
+    static constexpr int W = 8192, H = 512;   // W: the standard history width (and the view texture's); cols may be finer (#243)
+    static constexpr int kMaxCols = 65536;    // the cap of the finer history: 32 MB of levels
+    enum Map { Classic = cmap::Classic, Viridis = cmap::Viridis, Inferno = cmap::Inferno, Grey = cmap::Grey, Turbo = cmap::Turbo, Cividis = cmap::Cividis,   // Cividis: made to read the same with red-green colour blindness
+               Magma = cmap::Magma, SdrClassic = cmap::SdrClassic, Ice = cmap::Ice, Fire = cmap::Fire, NightRed = cmap::NightRed, HighContrast = cmap::HighContrast,
+               Custom = cmap::Custom, NumMaps = cmap::NumMaps };
+    static const char* mapName(int m) { return cmap::name(m); }
+    gfx::Image* img = nullptr;       // the history as a texture at the standard width (other waterfalls draw it; not written for a finer history)
     uint32_t lut[256] = {};
-    int builtMap = -1, lutGen = 0;   // lutGen: counts the colour table rebuilds
-    std::vector<uint8_t> lv;         // the history as levels (0..255, the index into lut), W x H like the texture: the view is made from it
+    int builtMap = -1, lutGen = 0;   // lutGen: counts the colour table rebuilds (and the history moves: the view is made again)
+    int cols = W;                    // the history width: W, or finer (detail)
+    int detail = 0;                  // the wanted width (0: W); the history is never wider than the FFT gives (specaxis::historyCols)
+    std::vector<uint8_t> lv;         // the history as levels (0..255, the index into lut), cols x H: the view is made from it
     long long rows = 0;              // rows written since the start; the newest is number rows - 1, at writeRow
-    gfx::Image* viewImg = nullptr;   // the history at the size it is shown (the main waterfall; made on first use)
+    gfx::Image* viewImg = nullptr;   // the history at the size it is shown (the main waterfall; made on first use, W x H)
     plt::WfView view;
     float gamma = 1.f, builtGamma = 1.f;   // contrast: the level ^ gamma picks the colour (below 1 lifts weak signals)
+    float brightness = 0.f, contrast = 1.f, builtBright = 0.f, builtContrast = 1.f;   // the level shifted and stretched before the gamma
+    int builtCustom = 0;             // the custom gradient's version the table was made with
+    static int& customGen() { static int g = 0; return g; }   // bumped when the custom gradient changes
+    double histC = NAN, histFs = 0;  // the band the rows were taken from (MHz): a retune moves them along (follow)
     std::vector<uint32_t> row;      // scratch for the row being written (kept: no allocation per frame)
     std::vector<float> acc, floorScratch;   // the highest level per bin since the last row; the samples of the noise floor estimate
     bool accEmpty = true;
@@ -118,19 +125,50 @@ struct Waterfall {
     int effMap() const { return map >= 0 && map < NumMaps ? map : pal::wfMode() == 2 ? Turbo : pal::wfMode() == 1 ? Grey : Classic; }
     static int& curMap() { static int m = 0; return m; }   // the map in use, for the other waterfalls (modes with their own picture) that colour with jet()
     static uint32_t jet(float v) { return color(curMap(), v); }
-    void palette() { builtMap = effMap(); curMap() = builtMap; for (int i = 0; i < 256; i++) lut[i] = color(builtMap, cmap::applyGamma(i / 255.0f, gamma)); builtGamma = gamma; lutGen++; }   // after the map or the interface palette changed
+    bool paletteStale() const {
+        return effMap() != builtMap || gamma != builtGamma || brightness != builtBright || contrast != builtContrast || (builtMap == Custom && builtCustom != customGen());
+    }
+    void palette() {   // after the map, the level controls or the interface palette changed
+        builtMap = effMap(); curMap() = builtMap;
+        for (int i = 0; i < 256; i++) lut[i] = color(builtMap, cmap::levelTransform(i / 255.0f, brightness, contrast, gamma));
+        builtGamma = gamma; builtBright = brightness; builtContrast = contrast; builtCustom = customGen(); lutGen++;
+    }
     void init(gfx::Backend* gfx) {
         img = gfx->createImage(W, H, 0xFF000000u);
         row.assign(W, 0);
-        lv.assign((size_t)W * H, 0);
+        lv.assign((size_t)cols * H, 0);
         palette();
     }
     static uint32_t color(int map, float v) { return cmap::color(map, v); }
+    // a new history width: the rows start again (black)
+    void setCols(int c) {
+        c = std::max(W, std::min(kMaxCols, c));
+        if (c == cols && lv.size() == (size_t)c * H) return;
+        cols = c;
+        lv.assign((size_t)cols * H, 0);
+        filled = 0; accEmpty = true; lutGen++;
+    }
+    // The radio moved from the band the rows were taken from: move them along so each signal stays under its frequency (#270); a new
+    // sample rate starts them again. The view is made again (lutGen).
+    void follow(double centreMhz, double fsMhz) {
+        if (!(fsMhz > 0) || !std::isfinite(centreMhz)) return;
+        if (histFs != fsMhz || !std::isfinite(histC)) {
+            if (histFs > 0 && histFs != fsMhz && filled > 0) { std::fill(lv.begin(), lv.end(), 0); filled = 0; lutGen++; }
+            histC = centreMhz; histFs = fsMhz; return;
+        }
+        const int s = specaxis::retuneShift(histC, centreMhz, fsMhz, cols);
+        if (s == 0) return;
+        if (s >= cols || s <= -cols) { histC = centreMhz; std::fill(lv.begin(), lv.end(), 0); filled = 0; lutGen++; return; }
+        histC -= (double)s * fsMhz / cols;   // what the moved rows now stand for (a part of a column stays as the remainder)
+        for (int r = 0; r < H; r++) specaxis::shiftRow(lv.data() + (size_t)r * cols, cols, s, 0);
+        lutGen++;
+    }
 
-    // One spectrum frame arrives: it becomes a row of the texture, now or (rows at a set pace) when the next row is due. True when a row was written.
-    bool offer(const std::vector<float>& dbfs, double now) {
+    // One spectrum frame arrives: it becomes a row of the history, now or (rows at a set pace) when the next row is due. True when a row was written.
+    // extra: frames the screen missed (it drew slower than they came, #246): the row is repeated for them, so the time scale stays true.
+    bool offer(const std::vector<float>& dbfs, double now, int extra = 0) {
         if (paused || dbfs.empty()) return false;
-        if (effMap() != builtMap || gamma != builtGamma) palette();
+        if (paletteStale()) palette();
         const float* d = dbfs.data();
         if (slow()) {   // the highest level of every bin since the last row, so a short burst is not missed
             if (acc.size() != dbfs.size() || accEmpty) { acc = dbfs; accEmpty = false; }
@@ -140,40 +178,42 @@ struct Waterfall {
             nextRowT = now - nextRowT > dt ? now + dt : nextRowT + dt;
             accEmpty = true;
             d = acc.data();
+            extra = 0;
         }
-        writeFrom(d, dbfs.size());
+        for (int i = 0; i <= extra; i++) writeFrom(d, dbfs.size());
         return true;
     }
-    // the bins of the frame onto the 4096 columns (the highest of those that share a column), the levels onto the colour table: one row uploaded
+    // the bins of the frame onto the history columns (the highest of those that share a column), the levels onto the colour table
     void writeFrom(const float* d, size_t n) {
+        if (lv.size() != (size_t)cols * H) lv.assign((size_t)cols * H, 0);
         const float inv = 255.f / std::max(1.f, maxDb - minDb);
-        uint32_t* r = row.data();
         writeRow = (writeRow + H - 1) % H;
-        uint8_t* l = lv.data() + (size_t)writeRow * W;
-        if (n >= (size_t)W && n % W == 0) {   // the usual 8k..64k FFT: the same number of bins in every column, so no division and a fixed-length max (vectorised)
-            const size_t k = n / W;
-            for (int x = 0; x < W; x++) {
+        uint8_t* l = lv.data() + (size_t)writeRow * cols;
+        const int C = cols;
+        if (n >= (size_t)C && n % C == 0) {   // the usual 8k..256k FFT: the same number of bins in every column, so no division and a fixed-length max (vectorised)
+            const size_t k = n / C;
+            for (int x = 0; x < C; x++) {
                 const float* c = d + (size_t)x * k;
                 float m = c[0];
                 for (size_t j = 1; j < k; j++) m = std::max(m, c[j]);
                 const float v = (m - minDb) * inv;
                 l[x] = (uint8_t)(v <= 0.f ? 0 : v >= 255.f ? 255 : (int)v);
-                r[x] = lut[l[x]];
             }
+        } else {
+            for (int x = 0; x < C; x++) {
+                const size_t a = (size_t)x * n / C, b = std::max(a + 1, (size_t)(x + 1) * n / C);
+                float m = d[a];
+                for (size_t k = a + 1; k < b; k++) m = std::max(m, d[k]);
+                const float v = (m - minDb) * inv;
+                l[x] = (uint8_t)(v <= 0.f ? 0 : v >= 255.f ? 255 : (int)v);
+            }
+        }
+        if (img && C == W) {   // the standard-width texture (the other waterfalls draw it)
+            if (row.size() != (size_t)W) row.assign(W, 0);
+            uint32_t* r = row.data();
+            for (int x = 0; x < W; x++) r[x] = lut[l[x]];
             img->update(0, writeRow, W, 1, r);
-            filled = std::min(H, filled + 1);
-            rows++;
-            return;
         }
-        for (int x = 0; x < W; x++) {
-            const size_t a = (size_t)x * n / W, b = std::max(a + 1, (size_t)(x + 1) * n / W);
-            float m = d[a];
-            for (size_t k = a + 1; k < b; k++) m = std::max(m, d[k]);
-            const float v = (m - minDb) * inv;
-            l[x] = (uint8_t)(v <= 0.f ? 0 : v >= 255.f ? 255 : (int)v);
-            r[x] = lut[l[x]];
-        }
-        img->update(0, writeRow, W, 1, r);
         filled = std::min(H, filled + 1);
         rows++;
     }
@@ -492,7 +532,18 @@ struct App {
     float holdDecay = 4.5f;             // dB a second the max-hold line falls (0: it stays until it is reset)
     float specAvgSec = 0.08f;           // time constant of the averaged trace in seconds (0: the raw frames)
     bool specLabels = true; int specLabelMask = 63;   // names drawn on the spectrum and the waterfall (gfx/autolabel.cpp); the mask: which sources (band plan, frequency database, FM, DAB, DVB, memories)
-    int specFft = 0;           // spectrum FFT size: 0 = automatic from the sample rate (8192..65536 bins), else 4096..65536
+    int specFft = 0;           // spectrum FFT size: 0 = automatic from the sample rate (8192..32768 bins), else 4096..262144 (#243)
+    int traceColor = 0;        // the trace colour (cmap::kTracePresets; 0: soft white, dark grey on a light theme)
+    int holdColor = -1;        // the max-hold line: -1 the usual grey, else a trace preset
+    bool minHold = false;      // a min-hold line too (the floor under the signals; it rises back at the hold decay)
+    bool showLive = false;     // with averaging on: the live (unaveraged) line faintly under the average
+    std::vector<float> minPk;  // the min-hold line
+    bool nbOn = false;         // the impulse noise blanker (#264): off by default
+    float nbThr = 8.f, nbWidthUs = 20.f;   // its threshold (times the mean level) and blank width
+    bool wfPerMode = false;    // each mode remembers its own waterfall colour map (saved as wfMapMode<family>)
+    int wfMapFamily = -1;      // the mode the map was last loaded for
+    std::string wfCustom;      // the custom gradient's stops (cmap::Gradient text)
+    std::string specMarkers;   // the frequency markers on the spectrum and the waterfall (specaxis::parseMarkers text)
     float specLine = 1.2f;     // thickness of the spectrum trace
     bool specFill = true, specGrid = true, specPeaks = false, specReadout = true, specDbm = false;   // fill under the line, grid, peak markers, level at the cursor, dBm instead of dBFS
     double specLastT = 0;               // when the last spectrum frame came in

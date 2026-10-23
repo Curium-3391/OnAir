@@ -68,13 +68,16 @@ static void paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double& fr
     const double t = glfwGetTime();
     const bool shown = glfwGetWindowAttrib(window, GLFW_VISIBLE) && !glfwGetWindowAttrib(window, GLFW_ICONIFIED);
     const bool focused = glfwGetWindowAttrib(window, GLFW_FOCUSED) != 0;
-    double interval = 0;
-    if (!o.shotPath) {
-        if (!shown && !popOutShown() && !gNoOsWindows) interval = app.reduceCpuHidden ? 0.1 : 0.25;                                                  // the pop-out window keeps playing
-        else if (t - lastInputT < 1.0 || app.engine.player().selected() >= 0) interval = 1.0 / 60;      // typing, dragging, video
-        else if (anyRunning()) interval = focused ? 1.0 / 30 : 1.0 / 15;                          // spectrum and waterfall
-        else interval = focused ? 0.1 : 0.25;                                                          // nothing is moving
-    }
+    specaxis::Pace p;   // the rule is in gfx/spec_axis.h (tested): a shown window with a live waterfall keeps 30 frames a second, focused or not (#246)
+    p.shot = o.shotPath != nullptr;
+    p.shown = shown || popOutShown() || gNoOsWindows;                                               // the pop-out window keeps playing
+    p.reduceCpuHidden = app.reduceCpuHidden;
+    p.recentInput = t - lastInputT < 1.0;                                                           // typing, dragging
+    p.video = app.engine.player().selected() >= 0;
+    p.running = anyRunning();                                                                       // spectrum and waterfall
+    p.focused = focused;
+    p.liveWaterfall = p.running && !app.wf.paused;
+    const double interval = specaxis::frameInterval(p);
     if (interval > 0 && frameNext > t) {
         glfwWaitEventsTimeout(frameNext - t);
         if (glfwGetTime() < frameNext - 0.002) lastInputT = glfwGetTime();                               // woken early: an event
