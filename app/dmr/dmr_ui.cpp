@@ -1,5 +1,6 @@
 // DMR screens: the two time slots and the call log, the symbol plots, the receiver counters and the options of the test signal.
 #include "app.h"
+#include "dmr_map.h"
 #include "dect2/dmr/dmr_ambe.h"
 #include "../codec/speech_codec_ui.h"
 #include "dect2/codec/codec_registry.h"
@@ -13,6 +14,7 @@ namespace {
 struct State {
     bool wasRunning = false;
     int listenSlot = 0;              // 0 first heard, 1, 2
+    int view = 0;                    // 0 calls, 1 map, 2 table
     uint64_t lastSeq = 0;
     std::deque<float> snr, ber;      // a point per report (about four a second)
 };
@@ -231,7 +233,7 @@ void messageTable(App& a, float h) {
     ImGui::EndTable();
 }
 
-void tab(App& a) {
+void callsView(App& a) {
     const DmrTelemetry& t = a.rx.dmr;
     const bool on = live(a);
     const float W = ImGui::GetContentRegionAvail().x;
@@ -277,6 +279,13 @@ void tab(App& a) {
     callTable(a, std::max(60.f * gUi, rest - msgH - 2 * lh - 8 * gUi));
     { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Text messages (%zu)", on ? t.messages.size() : (size_t)0); ImGui::PopTextWrapPos(); }
     messageTable(a, std::max(40.f * gUi, ImGui::GetContentRegionAvail().y));
+}
+
+void tab(App& a) {
+    subNav("dmrv", S.view, {"Calls", "Map", "Table"});
+    if (S.view == 1) { dmrMap(a); return; }
+    if (S.view == 2) { dmrTable(a); return; }
+    callsView(a);
 }
 
 // ---------------------------------------------------------------- the list on the right

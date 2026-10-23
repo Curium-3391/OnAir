@@ -1,6 +1,7 @@
 // DEFLATE (RFC 1951) and gzip (RFC 1952) decompression, without any library: the low level signaling tables of ATSC 3.0 are gzip compressed.
 #pragma once
 #include <cstdint>
+#include <cstddef>
 #include <vector>
 
 namespace dect2 {

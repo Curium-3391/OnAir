@@ -1,11 +1,13 @@
 // DMR link layer of the receiver, see dmr_link.h.
 #include "dmr_link.h"
 #include "dect2/dmr/dmr_dsp.h"
+#include "dect2/dmr/dmr_lrrp.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 namespace dect2 {
 namespace dmr {
@@ -850,6 +852,23 @@ void Link::finishMessage(Track& t) {
         if (printable) msg.text = std::string((const char*)data.data(), data.size());
         break;
     }
+    }
+    if (crcOk) {
+        DmrLocation loc;
+        if (parseDmrLrrp(data.data(), data.size(), loc)) {
+            loc.sec = now; loc.slot = slotOf(t); loc.src = m.hdr.src; loc.dst = m.hdr.dst;
+            loc.unixSec = (double)std::time(nullptr);
+            if (tel_.locations.size() >= 512) tel_.locations.erase(tel_.locations.begin());
+            tel_.locations.push_back(loc);
+            if (loc.hasFix) {
+                msg.format = "LRRP GPS";
+                snprintf(fb, sizeof fb, "%.5f, %.5f", loc.lat, loc.lon);
+                msg.text = fb;
+            } else {
+                msg.format = "LRRP status";
+                msg.text = loc.resultCode == 16 ? "no fix" : "status";
+            }
+        }
     }
     addMessage(msg);
     DmrCall e;
