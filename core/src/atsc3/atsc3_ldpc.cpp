@@ -1,5 +1,7 @@
 #include "atsc3_ldpc.h"
 #include "dect2/dsp/simd.h"
+#include "dect2/dsp/minsum_corr.h"
+#include "dect2/dsp/ldpc.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -103,11 +105,10 @@ void Ldpc::buildGraph() {
     for (int c = 0; c < m_; c++) std::copy(chk[c].begin(), chk[c].end(), chkVar_.begin() + chkStart_[c]);
 }
 
-bool Ldpc::decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters) const {
+bool Ldpc::decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters, float alpha, bool boxCorr) const {
     const int E = (int)chkVar_.size();
     std::vector<float> msgC2V(E, 0.f), total(llr.begin(), llr.end());
     hard.assign(n_, 0);
-    const float alpha = 0.8f;
     for (int it = 1; it <= maxIter; it++) {
         // check node update (min-sum over the variable-to-check messages total - old check message)
         for (int c = 0; c < m_; c++) {
@@ -120,10 +121,11 @@ bool Ldpc::decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_
                 if (a < min1) { min2 = min1; min1 = a; minIdx = j; }
                 else if (a < min2) min2 = a;
             }
+            const float c1 = boxCorr ? boxMin1(min1, min2) : min1;
             for (int j = s; j < e; j++) {
                 float v = total[chkVar_[j]] - msgC2V[j];
                 int sg = neg ^ (v < 0 ? 1 : 0);
-                float mag = alpha * (j == minIdx ? min2 : min1);
+                float mag = alpha * (j == minIdx ? min2 : c1);
                 float nm = sg ? -mag : mag;
                 total[chkVar_[j]] += nm - msgC2V[j];
                 msgC2V[j] = nm;
@@ -239,6 +241,36 @@ const Ldpc& ldpcCode(int n, int rate15) {
 }
 
 const Ldpc& ldpc16200(int rate15) { return ldpcCode(16200, rate15); }
+
+const dect2::LdpcCode* qcCode(int n, int rate15) {
+    static std::mutex mu;
+    static std::map<int, std::unique_ptr<dect2::LdpcCode>> cache;
+    const Ldpc& a = ldpcCode(n, rate15);
+    if (!a.ok() || a.typeA()) return nullptr;
+    std::lock_guard<std::mutex> lk(mu);
+    auto& p = cache[n * 100 + rate15];
+    if (!p) {
+        const int* lens; int nrows;
+        const int* tab = n == 16200 ? ldpcTable16200(rate15, &lens, &nrows) : ldpcTable64800(rate15, &lens, &nrows);
+        std::vector<std::vector<int>> rows;
+        int pos = 0;
+        for (int r = 0; r < nrows; r++) { rows.emplace_back(tab + pos, tab + pos + lens[r]); pos += lens[r]; }
+        p.reset(new dect2::LdpcCode(a.k(), n, rows));
+    }
+    return p.get();
+}
+
+// Measured on an ideal channel (BPSK per dimension, the noisy words the same for every factor), 0.76 .. 0.88 tried: 0.80 to 0.84 is best for every
+// Type B code (16200 rate 8/15 at 1.4 dB: 2 failed words of 40 at 0.80 and 0.84, 25 at 0.76, 9 at 0.88; the receiver's old 8-bit offset
+// min-sum with the float fallback: 37).
+float qcAlpha(int n, int rate15) {
+    (void)n; (void)rate15;
+    return 0.82f;
+}
+
+// Type A codes on the general decoder with the correction: 0.80 (64800 rates 2/15..7/15 and 16200 3/15..5/15), 0.92 for 16200 rate 2/15. The
+// plain normalised min-sum at 0.8 needed 0.2 to 0.4 dB more (64800 rate 3/15 at -4.26 dB: 20 failed words of 20 against 1 of 20).
+float typeAAlpha(int n, int rate15) { return n == 16200 && rate15 == 2 ? 0.92f : 0.80f; }
 
 } // namespace atsc3
 } // namespace dect2

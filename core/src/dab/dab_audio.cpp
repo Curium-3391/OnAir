@@ -117,6 +117,8 @@ struct DabAudio::Impl {
 
     // DAB+ superframe assembly
     std::deque<std::vector<uint8_t>> frames;
+    std::vector<uint8_t> mp2buf;   // DAB: the byte stream the MP2 frames are cut out of
+    size_t mp2junk = 0;            // bytes dropped since the last concealment
     bool synced = false;
     int since = 0, consecBad = 0;
     bool dabPlus = false;
@@ -522,7 +524,7 @@ void DabAudio::select(int sub, bool dabPlus, int bitrate) {
     Impl& I = *p_;
     I.recStop();
     I.closeDecoder();
-    I.frames.clear();
+    I.frames.clear(); I.mp2buf.clear(); I.mp2junk = 0;
     I.synced = false; I.since = 0; I.consecBad = 0;
     I.dabPlus = dabPlus; I.bitrate = bitrate;
     I.st = DabAudioStats();
@@ -551,14 +553,38 @@ void DabAudio::push(const uint8_t* frame, int n, bool erased) {
         std::lock_guard<std::mutex> lk(I.mu);
         I.st.frames++;
         // a frame lost on the way (erased by the receiver) or one that does not decode is concealed: 1152 samples at 48 kHz
-        if (erased) { if (I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); } return; }
-        if (I.rec.active && I.rec.fmt == DabRecFormat::Encoded) I.recMp2(frame, n);
-        if (const int fl = Impl::mp2FrameLen(frame, n)) { I.pad.mp2Frame(frame, fl); if (I.rec.active) I.recLabel(); }   // the PAD at the end of the audio frame
-        I.hold = I.play.quiet() && ++I.goodRun < 2;
-        if (!I.play.quiet()) I.goodRun++;
-        const int got = I.decodePacket(frame, n);
-        I.hold = false;
-        if (got <= 0 && I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); }
+        if (erased) { I.mp2buf.clear(); I.mp2junk = 0; if (I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); } return; }
+        // At 48 kHz an MP2 frame is exactly one logical frame; at 24 kHz (MPEG-2 half sampling rate, EN 300 401 7.1) it is 48 ms and spans two.
+        // The frames are cut out of the byte stream by their headers, so the decoder always gets whole ones.
+        I.mp2buf.insert(I.mp2buf.end(), frame, frame + n);
+        for (;;) {
+            size_t s = 0;
+            while (s + 1 < I.mp2buf.size() && !(I.mp2buf[s] == 0xFF && (I.mp2buf[s + 1] & 0xE0) == 0xE0)) s++;
+            if (s) {   // bytes that are not a frame (a damaged header): every logical frame's worth of them is concealed
+                I.mp2buf.erase(I.mp2buf.begin(), I.mp2buf.begin() + (long)s);
+                I.mp2junk += s;
+                for (; I.mp2junk >= (size_t)n; I.mp2junk -= (size_t)n) if (I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152); }
+            }
+            double secs = 0.024;
+            const uint8_t* f = I.mp2buf.data();
+            const int have = (int)I.mp2buf.size();
+            int fl = have >= 4 ? Impl::mp2FrameLen(f, have, &secs) : 0;
+            if (!fl) {
+                if (have >= 4 && Impl::mp2FrameLen(f, 1 << 20) == 0) { I.mp2buf.erase(I.mp2buf.begin()); I.mp2junk++; continue; }   // not a valid header
+                if (have > 4 * n + 8) I.mp2buf.clear();   // nothing that adds up: start again with the next frame
+                break;
+            }
+            const int units = std::max(1, (int)std::lround(secs / 0.024));   // logical frames of audio in it
+            if (I.rec.active && I.rec.fmt == DabRecFormat::Encoded) I.recMp2(f, fl);
+            I.pad.mp2Frame(f, fl);   // the PAD at the end of the audio frame
+            if (I.rec.active) I.recLabel();
+            I.hold = I.play.quiet() && ++I.goodRun < 2;
+            if (!I.play.quiet()) I.goodRun++;
+            const int got = I.decodePacket(f, fl);
+            I.hold = false;
+            if (got <= 0 && I.st.pcmFrames) { I.st.concealedFrames++; I.audioLost(1152 * units); }
+            I.mp2buf.erase(I.mp2buf.begin(), I.mp2buf.begin() + fl);
+        }
         return;
     }
     std::deque<std::vector<uint8_t>> window;

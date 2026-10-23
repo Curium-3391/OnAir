@@ -5,6 +5,9 @@
 #include <cmath>
 #include <numeric>
 #include <vector>
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+#include <arm_neon.h>
+#endif
 
 namespace dect2 {
 
@@ -69,6 +72,23 @@ bool RationalResampler::configure(double inRate, double outRate, double* relErro
         }
         for (int t = 0; t < T_; t++) taps_[p][t] = (float)(h[t] / sum);
     }
+    // the interleaved path: NEON with the portable desamp (Accelerate's sums in an order that depends on the length: macOS keeps its
+    // vDSP_desamp, which is about as fast), a whole number of 8-tap blocks, a stride of at least 2
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD) && !(defined(__APPLE__) && !defined(DECT2_PORTABLE))
+    interOk_ = T_ % 8 == 0 && M_ >= 2;
+#else
+    interOk_ = false;
+#endif
+    inter_ = interOk_ && allowInter_;
+    if (interOk_) {
+        tapsD_.assign((size_t)L_ * T_, 0.f);
+        startOf_.assign(L_, 0);
+        for (int p = 0; p < L_; p++) {
+            const int ph = nOfPhase_[p];
+            startOf_[ph] = base_[p];
+            std::copy(taps_[p].begin(), taps_[p].end(), tapsD_.begin() + (long)ph * T_);
+        }
+    }
     reset();
     return true;
 }
@@ -76,11 +96,78 @@ bool RationalResampler::configure(double inRate, double outRate, double* relErro
 void RationalResampler::reset() {
     re_.assign(H_ - 1, 0.f);
     im_.assign(H_ - 1, 0.f);
+    buf_.assign(H_ - 1, cf32(0, 0));
     head_ = 0;
 }
 
 void RationalResampler::process(const cf32* in, size_t n, std::vector<cf32>& out) {
     if (passthrough()) { out.insert(out.end(), in, in + n); return; }
+    if (inter_) processInterleaved(in, n, out);
+    else processSplit(in, n, out);
+}
+
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+namespace {
+// N outputs at once (their sums are independent chains: one alone waits on the latency of each multiply-add). x: the first input sample
+// of each (interleaved I Q), h: its T taps. vld2 splits 4 samples into I and Q, so the taps are used as they are. The partial sums and the
+// final additions are those of the portable desamp() (dsp_compat.cpp): 8 partial sums per output (tap k into sum k mod 8, fused
+// multiply-adds), added as ((s0 + s4) + (s1 + s5)) + ((s2 + s6) + (s3 + s7)).
+template <int N>
+inline void dotN(const float* const* x, const float* const* h, int T, cf32* o) {
+    float32x4_t r0[N], r1[N], i0[N], i1[N];
+    for (int j = 0; j < N; j++) r0[j] = r1[j] = i0[j] = i1[j] = vdupq_n_f32(0.f);
+    for (int t = 0; t < T; t += 8)
+        for (int j = 0; j < N; j++) {
+            const float32x4x2_t a = vld2q_f32(x[j] + 2 * t), b = vld2q_f32(x[j] + 2 * t + 8);
+            const float32x4_t h0 = vld1q_f32(h[j] + t), h1 = vld1q_f32(h[j] + t + 4);
+            r0[j] = vfmaq_f32(r0[j], h0, a.val[0]); i0[j] = vfmaq_f32(i0[j], h0, a.val[1]);
+            r1[j] = vfmaq_f32(r1[j], h1, b.val[0]); i1[j] = vfmaq_f32(i1[j], h1, b.val[1]);
+        }
+    for (int j = 0; j < N; j++) {
+        // (s0+s4, s1+s5, s2+s6, s3+s7) for I and Q, then pairwise twice: (s0+s4)+(s1+s5), (s2+s6)+(s3+s7), and their sum
+        const float32x4_t p = vpaddq_f32(vaddq_f32(r0[j], r1[j]), vaddq_f32(i0[j], i1[j]));   // I01 I23 Q01 Q23
+        const float32x4_t q = vpaddq_f32(p, p);                                               // I Q I Q
+        vst1_f32(reinterpret_cast<float*>(o + j), vget_low_f32(q));
+    }
+}
+} // namespace
+#endif
+
+void RationalResampler::processInterleaved(const cf32* in, size_t n, std::vector<cf32>& out) {
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+    if (head_ > 0 && head_ >= buf_.size() - head_) {
+        buf_.erase(buf_.begin(), buf_.begin() + (long)head_);
+        head_ = 0;
+    }
+    buf_.insert(buf_.end(), in, in + n);
+    const long long avail = (long long)(buf_.size() - head_);
+    const long long P = (avail - (T_ + M_ + 2)) / M_;
+    if (P <= 0) return;
+    const size_t o0 = out.size(), total = (size_t)P * L_;
+    out.resize(o0 + total);
+    cf32* o = out.data() + o0;
+    const float* x0 = reinterpret_cast<const float*>(buf_.data() + head_);
+    const float* hd = tapsD_.data();
+    size_t j = 0;
+    int ph = 0; long long base = 0;   // output j = k L + ph starts at input k M + startOf_[ph]
+    const float* xs[4]; const float* hs[4];
+    auto next = [&](int q) {
+        xs[q] = x0 + 2 * (base + startOf_[ph]);
+        hs[q] = hd + (size_t)ph * T_;
+        if (++ph == L_) { ph = 0; base += M_; }
+    };
+    for (; j + 4 <= total; j += 4) {
+        next(0); next(1); next(2); next(3);
+        dotN<4>(xs, hs, T_, o + j);
+    }
+    for (; j < total; j++) { next(0); dotN<1>(xs, hs, T_, o + j); }
+    head_ += (size_t)P * M_;
+#else
+    processSplit(in, n, out);
+#endif
+}
+
+void RationalResampler::processSplit(const cf32* in, size_t n, std::vector<cf32>& out) {
     // the consumed part in front is dropped only once it is larger than what is still pending (one move per few blocks, not one per block)
     if (head_ > 0 && head_ >= re_.size() - head_) {
         re_.erase(re_.begin(), re_.begin() + (long)head_);
@@ -99,19 +186,24 @@ void RationalResampler::process(const cf32* in, size_t n, std::vector<cf32>& out
     // periods: each consumes M input samples and yields L outputs; the last needed index is base+kM + T - 1
     long long P = (avail - (T_ + M_ + 2)) / M_;
     if (P <= 0) return;
-    if (tr_.size() < (size_t)P) { tr_.resize((size_t)P); ti_.resize((size_t)P); }
-    const size_t o0 = out.size();
-    out.resize(o0 + (size_t)P * L_);
-    cf32* o = out.data() + o0;
+    // every phase's outputs first (row ph = output phase ph, the same desamp calls as before), then one interleaving pass that writes
+    // the output in order: writing each phase straight into the output touched every cache line of it once per phase (32 passes over
+    // 480 KB for 10 -> 9.14 Msps)
+    const size_t PP = (size_t)P;
+    if (tr_.size() < PP * L_) { tr_.resize(PP * L_); ti_.resize(PP * L_); }
     for (int p = 0; p < L_; p++) {
         const float* hp = taps_[p].data();
-        const float* sr = re_.data() + head_ + base_[p];
-        const float* si = im_.data() + head_ + base_[p];
-        desamp(sr, M_, hp, tr_.data(), (int)P, T_);
-        desamp(si, M_, hp, ti_.data(), (int)P, T_);
-        const int ph = nOfPhase_[p];
-        for (long long k = 0; k < P; k++) o[(size_t)k * L_ + ph] = cf32(tr_[k], ti_[k]);
+        const size_t row = (size_t)nOfPhase_[p] * PP;
+        desamp(re_.data() + head_ + base_[p], M_, hp, tr_.data() + row, (int)P, T_);
+        desamp(im_.data() + head_ + base_[p], M_, hp, ti_.data() + row, (int)P, T_);
     }
+    const size_t o0 = out.size();
+    out.resize(o0 + PP * L_);
+    cf32* o = out.data() + o0;
+    const float* tr = tr_.data();
+    const float* ti = ti_.data();
+    for (size_t k = 0; k < PP; k++)
+        for (int ph = 0; ph < L_; ph++) o[k * L_ + ph] = cf32(tr[(size_t)ph * PP + k], ti[(size_t)ph * PP + k]);
     // consumed input, keeping H-1 history
     head_ += (size_t)P * M_;
 }

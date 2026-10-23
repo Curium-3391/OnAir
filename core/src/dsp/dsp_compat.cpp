@@ -1,5 +1,8 @@
 #include "dect2/dsp/dsp_compat.h"
 #include "dect2/dsp/simd.h"
+#if defined(DECT2_X86_DISPATCH)
+#include <immintrin.h>
+#endif
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -59,6 +62,14 @@ void gemvT(const float* x, int rows, int n, const float* t, float* b) { cblas_sg
 
 #else  // ------------------------------------------------------------------ portable versions
 
+// NEON stage passes for the FFT (clang and GCC: each with the contraction its own scalar loop gets, so the bits stay those of the loop)
+#if defined(__ARM_NEON) && defined(__GNUC__) && !defined(DECT2_NO_SIMD)
+#define DECT2_FFT_NEON 1
+#include <arm_neon.h>
+#else
+#define DECT2_FFT_NEON 0
+#endif
+
 namespace {
 // Radix-2 decimation in time on split arrays. Twiddles are stored per stage (contiguous) so that the butterfly loops vectorise.
 struct Plan {
@@ -91,19 +102,113 @@ const Plan& planFor(int log2n) {
     return *p;
 }
 
-DECT2_SIMD_BODY void forwardBody(float* __restrict re, float* __restrict im, int log2n) {
+#if DECT2_FFT_NEON
+// The stages from half-length 4 on, two or three per pass over the data instead of one: for a block of 8 h values, the 8 values
+// j + m h (m = 0..7) only meet each other in the stages h, 2h and 4h, so they are loaded once (four j at a time), go through the three
+// stages in registers and are stored once. Each butterfly is the one of the scalar loop with the same rounding (clang fuses the first product
+// of tr = wr br - wi bi and ti = wr bi + wi br, GCC the second; checked with both: the same bits, tests/dsp/test_fft_bits.cpp).
+// Fewer loads and stores per butterfly (5 passes instead of 13 for 32768 points).
+static inline void bfly(float32x4_t& ar, float32x4_t& ai, float32x4_t& br, float32x4_t& bi, float32x4_t wr, float32x4_t wi) {
+#if defined(__clang__)   // clang fuses the first product of each sum, GCC the second (checked against the scalar loop of each)
+    const float32x4_t tr = vfmaq_f32(vnegq_f32(vmulq_f32(wi, bi)), wr, br);
+    const float32x4_t ti = vfmaq_f32(vmulq_f32(wi, br), wr, bi);
+#else
+    const float32x4_t tr = vfmsq_f32(vmulq_f32(wr, br), wi, bi);
+    const float32x4_t ti = vfmaq_f32(vmulq_f32(wr, bi), wi, br);
+#endif
+    br = vsubq_f32(ar, tr); bi = vsubq_f32(ai, ti);
+    ar = vaddq_f32(ar, tr); ai = vaddq_f32(ai, ti);
+}
+
+template <int S>   // S stages (1..3) in one pass, starting at half-length h
+static void stagesPass(float* __restrict re, float* __restrict im, int n, int h, const float* wr, const float* wi) {
+    constexpr int R = 1 << S;
+    for (int i = 0; i < n; i += R * h)
+        for (int j = 0; j < h; j += 4) {
+            float32x4_t xr[R], xi[R];
+            for (int m = 0; m < R; m++) { xr[m] = vld1q_f32(re + i + j + m * h); xi[m] = vld1q_f32(im + i + j + m * h); }
+            for (int s = 0; s < S; s++) {
+                const int H = h << s, d = 1 << s;   // this stage pairs rows m and m + d (m with bit s clear); half-length H
+                for (int m = 0; m < R; m++) {
+                    if (m & d) continue;
+                    const int k = H - 1 + j + (m & (d - 1)) * h;   // the twiddle of position j + (m mod d) h within the 2H group
+                    bfly(xr[m], xi[m], xr[m + d], xi[m + d], vld1q_f32(wr + k), vld1q_f32(wi + k));
+                }
+            }
+            for (int m = 0; m < R; m++) { vst1q_f32(re + i + j + m * h, xr[m]); vst1q_f32(im + i + j + m * h, xi[m]); }
+        }
+}
+
+static void fftStagesNeon(float* re, float* im, int n, const float* wr, const float* wi) {
+    int h = 4;
+    while (h < n) {
+        if (8 * h <= n) { stagesPass<3>(re, im, n, h, wr, wi); h *= 8; }
+        else if (4 * h <= n) { stagesPass<2>(re, im, n, h, wr, wi); h *= 4; }
+        else { stagesPass<1>(re, im, n, h, wr, wi); h *= 2; }
+    }
+}
+#else
+// The same passes in plain C++ (x86: compiled into the baseline and the AVX2 copy of forward()). The butterfly is written exactly as in
+// the one-stage loop, so each compiler contracts it the same way (checked: the same bits, tests/dsp/test_fft_bits.cpp); the j loop vectorises.
+template <int S>
+DECT2_SIMD_BODY void stagesPassGeneric(float* __restrict re, float* __restrict im, int n, int h, const float* __restrict wr, const float* __restrict wi) {
+    constexpr int R = 1 << S;
+    for (int i = 0; i < n; i += R * h)
+        for (int j = 0; j < h; j++) {
+            float xr[R], xi[R];
+            for (int m = 0; m < R; m++) { xr[m] = re[i + j + m * h]; xi[m] = im[i + j + m * h]; }
+            for (int s = 0; s < S; s++) {
+                const int H = h << s, d = 1 << s;
+                for (int m = 0; m < R; m++) {
+                    if (m & d) continue;
+                    const int k = H - 1 + j + (m & (d - 1)) * h;
+                    const float tr = wr[k] * xr[m + d] - wi[k] * xi[m + d];
+                    const float ti = wr[k] * xi[m + d] + wi[k] * xr[m + d];
+                    xr[m + d] = xr[m] - tr; xi[m + d] = xi[m] - ti;
+                    xr[m] += tr; xi[m] += ti;
+                }
+            }
+            for (int m = 0; m < R; m++) { re[i + j + m * h] = xr[m]; im[i + j + m * h] = xi[m]; }
+        }
+}
+#endif
+
+DECT2_SIMD_BODY void forwardBody(float* __restrict re, float* __restrict im, int log2n, int passFrom) {
     const Plan& pl = planFor(log2n);
     const int n = pl.n;
-    for (int i = 0; i < n; i++) {
-        const uint32_t j = pl.rev[i];
-        if (j > (uint32_t)i) { std::swap(re[i], re[j]); std::swap(im[i], im[j]); }
-    }
-    // first stage (half = 1): no multiplications
-    for (int i = 0; i < n; i += 2) {
-        const float ar = re[i], ai = im[i], br = re[i + 1], bi = im[i + 1];
+    // bit reversal as a gather from a copy (re[i] = old re[rev[i]], what the swaps of the involution give) with the first stage (half = 1,
+    // no multiplications) in the same pass: the swap loop's branch (j > i) was mispredicted half the time and cost more than all the
+    // butterflies
+    thread_local std::vector<float> scratch;
+    if (scratch.size() < 2 * (size_t)n) scratch.resize(2 * (size_t)n);
+    float* __restrict cr = scratch.data();
+    float* __restrict ci = cr + n;
+    std::memcpy(cr, re, sizeof(float) * n);
+    std::memcpy(ci, im, sizeof(float) * n);
+    auto first = [&](uint32_t i, uint32_t a, uint32_t b) {
+        const float ar = cr[a], ai = ci[a], br = cr[b], bi = ci[b];
         re[i] = ar + br; im[i] = ai + bi; re[i + 1] = ar - br; im[i + 1] = ai - bi;
+    };
+    if (log2n >= 8) {
+        // in 16 x 16 tiles: i = (hi, mid, lo) reads (rev lo, rev mid, rev hi), so both the reads and the writes of a tile stay within
+        // 16 cache-line runs instead of jumping across the whole array for every sample
+        constexpr int B = 4;
+        static constexpr uint8_t r4[16] = {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+        const int mb = log2n - 2 * B, sh = mb + B;
+        const uint32_t* rv = pl.rev.data();
+        for (uint32_t mid = 0; mid < (1u << mb); mid++) {
+            const uint32_t rmid = rv[mid << B] >> B & ((1u << mb) - 1);   // mid's bits reversed within mb bits
+            for (uint32_t hi = 0; hi < 16; hi++) {
+                const uint32_t i0 = hi << sh | mid << B, s0 = rmid << B | r4[hi];
+                for (uint32_t lo = 0; lo < 16; lo += 2) first(i0 | lo, (uint32_t)r4[lo] << sh | s0, (uint32_t)r4[lo + 1] << sh | s0);
+            }
+        }
+    } else {
+        const uint32_t* __restrict rv = pl.rev.data();
+        for (int i = 0; i < n; i += 2) first((uint32_t)i, rv[i], rv[i + 1]);
     }
-    for (int h = 2; h < n; h <<= 1) {
+    // the stages below half-length passFrom one by one, as before; the callers run the rest several stages per pass
+    for (int h = 2; h < n && h < passFrom; h <<= 1) {
         const float* __restrict wr = &pl.wr[h - 1];
         const float* __restrict wi = &pl.wi[h - 1];
         for (int i = 0; i < n; i += 2 * h) {
@@ -120,7 +225,82 @@ DECT2_SIMD_BODY void forwardBody(float* __restrict re, float* __restrict im, int
         }
     }
 }
-DECT2_AVX2_DISPATCH(void, forward, (float* __restrict re, float* __restrict im, int log2n), (re, im, log2n))
+
+#if defined(DECT2_X86_DISPATCH)
+// AVX2 (clang builds): eight j at a time, from half-length 8 on (the stages 2 and 4 stay the one-stage loop). The butterfly with the
+// contraction clang gives the one-stage loop in its AVX2 copy (the first product of each sum fused; tests/dsp/test_fft_bits.cpp compares
+// against that loop compiled the same way, run under Rosetta with AVX2 forced on).
+DECT2_AVX2_TARGET static inline void bfly8(__m256& ar, __m256& ai, __m256& br, __m256& bi, __m256 wr, __m256 wi) {
+    const __m256 tr = _mm256_fmsub_ps(wr, br, _mm256_mul_ps(wi, bi));
+    const __m256 ti = _mm256_fmadd_ps(wr, bi, _mm256_mul_ps(wi, br));
+    br = _mm256_sub_ps(ar, tr); bi = _mm256_sub_ps(ai, ti);
+    ar = _mm256_add_ps(ar, tr); ai = _mm256_add_ps(ai, ti);
+}
+template <int S>
+DECT2_AVX2_TARGET static void stagesPassAvx2(float* __restrict re, float* __restrict im, int n, int h, const float* wr, const float* wi) {
+    constexpr int R = 1 << S;
+    for (int i = 0; i < n; i += R * h)
+        for (int j = 0; j < h; j += 8) {
+            __m256 xr[R], xi[R];
+            for (int m = 0; m < R; m++) { xr[m] = _mm256_loadu_ps(re + i + j + m * h); xi[m] = _mm256_loadu_ps(im + i + j + m * h); }
+            for (int s = 0; s < S; s++) {
+                const int H = h << s, d = 1 << s;
+                for (int m = 0; m < R; m++) {
+                    if (m & d) continue;
+                    const int k = H - 1 + j + (m & (d - 1)) * h;
+                    bfly8(xr[m], xi[m], xr[m + d], xi[m + d], _mm256_loadu_ps(wr + k), _mm256_loadu_ps(wi + k));
+                }
+            }
+            for (int m = 0; m < R; m++) { _mm256_storeu_ps(re + i + j + m * h, xr[m]); _mm256_storeu_ps(im + i + j + m * h, xi[m]); }
+        }
+}
+DECT2_AVX2_TARGET static void forwardAvx2(float* __restrict re, float* __restrict im, int log2n) {
+#if !defined(__clang__)
+    // GCC: its AVX2 copy of the one-stage loop rounds differently from the explicit passes (seen on the x86 CI with the second product
+    // fused, the form GCC uses on arm64), so GCC builds keep that loop for every stage here (the faster bit reversal still applies)
+    forwardBody(re, im, log2n, 1 << 30);
+    return;
+#endif
+    forwardBody(re, im, log2n, 8);
+    const Plan& pl = planFor(log2n);
+    const int n = pl.n;
+    const float* wr = pl.wr.data();
+    const float* wi = pl.wi.data();
+    for (int h = 8; h < n;) {
+        if (8 * h <= n) { stagesPassAvx2<3>(re, im, n, h, wr, wi); h *= 8; }
+        else if (4 * h <= n) { stagesPassAvx2<2>(re, im, n, h, wr, wi); h *= 4; }
+        else { stagesPassAvx2<1>(re, im, n, h, wr, wi); h *= 2; }
+    }
+}
+#endif
+
+void forward(float* __restrict re, float* __restrict im, int log2n) {
+#if defined(DECT2_X86_DISPATCH)
+    if (cpuHasAvx2()) { forwardAvx2(re, im, log2n); return; }
+#endif
+#if !DECT2_FFT_NEON && !defined(__clang__) && (defined(__FMA__) || defined(__ARM_FEATURE_FMA))
+    // GCC with fused multiply-add in the baseline (an AVX2 build, or a non-NEON FMA target): its contraction of the one-stage loop is not
+    // reproduced by the plain passes (seen with GCC on arm64), so the loop stays for every stage
+    forwardBody(re, im, log2n, 1 << 30);
+    return;
+#endif
+    forwardBody(re, im, log2n, 4);
+    const Plan& pl = planFor(log2n);
+    const int n = pl.n;
+    if (n <= 4) return;
+#if DECT2_FFT_NEON
+    fftStagesNeon(re, im, n, pl.wr.data(), pl.wi.data());
+#else
+    // the baseline x86 copy and other targets: no fused multiply-add (or clang, checked), so the passes give the loop's bits
+    const float* wr = pl.wr.data();
+    const float* wi = pl.wi.data();
+    for (int h = 4; h < n;) {
+        if (8 * h <= n) { stagesPassGeneric<3>(re, im, n, h, wr, wi); h *= 8; }
+        else if (4 * h <= n) { stagesPassGeneric<2>(re, im, n, h, wr, wi); h *= 4; }
+        else { stagesPassGeneric<1>(re, im, n, h, wr, wi); h *= 2; }
+    }
+#endif
+}
 } // namespace
 
 void fftSplit(float* re, float* im, int log2n, bool inverse) {
