@@ -8,14 +8,16 @@ namespace kaalvoice {
 namespace detail {
 
 namespace {
-// minBits20, gn, gd, ltp, tilt, fill, bwe
+// minBits20, gn, gd, ltp, tilt, fill, bwe. Tuned on the proxies of test_kaalvoice_enhance (2026-10-23): the first values (fill twice
+// these, harmonic share 0.7..0.9) lowered the STOI-like score at 4.8 kbit/s / 20 ms, and the pitch pulses of the harmonic extension
+// lined up into output peaks of 1.7 times the input at 3.2 / 4.8 kbit/s
 const EnhTier kEnhTiers[] = {
-    {0,   0.55, 0.76, 0.60, 0.80, 0.60, 0.90},   // 3.2
-    {80,  0.55, 0.75, 0.55, 0.80, 0.45, 0.90},   // 4.8
-    {110, 0.55, 0.73, 0.50, 0.80, 0.35, 0.85},   // 6.0
-    {140, 0.60, 0.75, 0.40, 0.80, 0.25, 0.80},   // 8.0
-    {200, 0.65, 0.75, 0.30, 0.80, 0.15, 0.75},   // HQ12
-    {280, 0.70, 0.75, 0.25, 0.80, 0.10, 0.70},   // HQ16
+    {0,   0.55, 0.76, 0.60, 0.80, 0.30,  0.50},   // 3.2
+    {80,  0.55, 0.75, 0.55, 0.80, 0.225, 0.50},   // 4.8
+    {110, 0.55, 0.73, 0.50, 0.80, 0.175, 0.50},   // 6.0
+    {140, 0.60, 0.75, 0.40, 0.80, 0.125, 0.50},   // 8.0
+    {200, 0.65, 0.75, 0.30, 0.80, 0.075, 0.50},   // HQ12
+    {280, 0.70, 0.75, 0.25, 0.80, 0.05,  0.50},   // HQ16
 };
 constexpr int kNEnhTiers = sizeof(kEnhTiers) / sizeof(kEnhTiers[0]);
 
@@ -259,9 +261,10 @@ void Enhancer::highBand(const CoreDecoder* core, const double (*Lv)[kHbBands], i
         for (int j = 0; j < kHbBands; j++) {
             L[j] = Lv[b][j];
             if (smooth) {
-                // fast attack, slower release, in dB per 5 ms block: no 6 dB level steps between frames (chirping)
+                // fast attack, a little slower release, in dB per 5 ms block: no 6 dB level steps between frames (chirping). A slower release
+                // (0.5) smeared the offsets and raised the bark loudness disturbance at every profile
                 if (!hbHave_) hbLs_[j] = L[j];
-                else hbLs_[j] += (L[j] > hbLs_[j] ? 0.85 : 0.5) * (L[j] - hbLs_[j]);
+                else hbLs_[j] += (L[j] > hbLs_[j] ? 0.85 : 0.8) * (L[j] - hbLs_[j]);
                 L[j] = hbLs_[j];
             }
         }
