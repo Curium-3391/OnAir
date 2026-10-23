@@ -443,6 +443,7 @@ void ingestRx(App& a) {
     }
     if (a.engine.running() && now - a.tsT > 0.25) {
         a.ts = a.engine.tsSnapshot(); tvRecOverrideTs(a); a.bb = a.engine.bbStats(); a.tsT = now;
+        tvHdIngest(a);
         if (a.engine.multiChannelActive()) a.mtvSvc = a.engine.multiServices(); else a.mtvSvc.clear();
     }
     RxTelemetry t;

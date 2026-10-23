@@ -42,6 +42,8 @@
 #include "dect2/engine/quality.h"
 #include "dect2/dsp/direction.h"
 #include "dect2/tv/teletext.h"
+#include "dect2/tv/hd_pair.h"
+#include <map>
 #include "dect2/net/feeds.h"
 #include "dect2/net/share.h"
 #include "dect2/net/pskreporter.h"
@@ -594,6 +596,17 @@ struct App {
     bool audioRecWasActive = false; int audioRecMode = 0; double audioRecFreq = 0; std::string audioRecDonePath;
     int recFormat = 0;                  // IQ recording format: 0 = 8-bit, 1 = float, 2 = X-Midas BLUE .tmp with float samples (pref "recFormat")
     int tvBufMb = 256;                  // TV live buffer for Pause (pref "tvBufMb")
+    // HD / SD simulcast (core/src/tv/hd_pair.h): the services of the scanned multiplexes (prefs "tvCatalog"), the user's pairing table ("tvHdPairs"), the per-programme
+    // choice ("tvHdChoice": programme key -> 1 HD, 0 SD) and "always prefer HD" ("tvHdAlways")
+    hd::Catalog hdCat; std::vector<hd::Override> hdTable; std::map<std::string, int> hdChoice; bool hdAlways = false;
+    int hdRev = 1;                      // counts changes of the catalogue and the table (for the cached pairing)
+    std::string hdCatText;              // the catalogue as last saved
+    double hdCatT = 0;
+    int hdPendSid = -1, hdPendTsid = 0; double hdPendFreq = 0, hdPendT = 0;   // a switch that waits for the retune to the other multiplex
+    std::string hdLang; int hdLangSid = -1;   // audio language to keep on the service just switched to
+    int hdLastSid = -1; double hdLastFreq = 0;   // the service the HD preference was last applied to
+    int hdKeySid = -1, hdKeyRev = 0; double hdKeyFreq = 0; int hdCacheHd = -1, hdCacheSd = -1; std::string hdCacheWhyHd, hdCacheWhySd;   // cached pairing of the playing service
+    int tvAudioIdx = 0;                 // the audio track chosen in the player tab
     int tvRecMin = 0, tvRecAtH = 0, tvRecAtM = 0;   // TV recording timer: stop after N minutes (0 = off), at a clock time
     bool tvRecAtOn = false, tvRecWasActive = false;
     std::string tvRecDonePath, tvRecErr;   // the last finished TV recording; why one could not start
@@ -1278,6 +1291,11 @@ const EpgEvent* epgCurrent(const App& a, int sid, const EpgEvent** next = nullpt
 void guideTab(App& a);
 void tvGuideTab(App& a);            // tvrec_ui.cpp: the programme guide grid, search, record / remind
 void tvRecordingsTab(App& a);       // scheduled and finished recordings, recorder settings
+void tvHdIngest(App& a);            // each 0.25 s with the multiplex's services: catalogue, switch waiting for a retune, HD preference
+void tvHdCheckbox(App& a);          // the 'HD' checkbox of the player tab (greyed out unless an HD or SD counterpart of the playing service exists)
+hd::Service tvHdService(const App& a, const TsService& sv);   // a service of the multiplex being received as the pairing sees it
+void tvHdLoad(App& a);
+void tvHdSave(const App& a);
 void tvPlaybackBar(App& a);         // timeshift pause / rewind / live and the controls of a recording being played
 void timeMachineLoad(App& a);       // timemachine_ui.cpp: the "Rewind" memory's settings from the preferences (before the first start)
 void timeMachineUi(App& a);         // the button in the diagnostics row and its window

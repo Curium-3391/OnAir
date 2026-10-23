@@ -801,9 +801,9 @@ void tvRecordingsTab(App& a) {
     // ---- settings
     if (ImGui::CollapsingHeader(trw("Recorder settings"))) {
         bool ch = false;
-        ImGui::SetNextItemWidth(360 * gUi);
+        ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x * 0.8f));
         if (ImGui::InputText(tr("Folder"), s.dirBuf, sizeof s.dirBuf)) { s.cfg.dir = s.dirBuf; ch = true; }
-        ImGui::SetNextItemWidth(360 * gUi);
+        ImGui::SetNextItemWidth(std::min(360 * gUi, ImGui::GetContentRegionAvail().x * 0.8f));
         if (ImGui::InputText(tr("File name"), s.tplBuf, sizeof s.tplBuf)) { s.cfg.nameTemplate = s.tplBuf; ch = true; }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("{title} {service} {date} {time} {year} {month} {day} {id}");
         ImGui::SetNextItemWidth(80 * gUi); ch |= ImGui::InputInt(tr("Start earlier (s)"), &s.padPre, 0, 0);

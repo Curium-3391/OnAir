@@ -216,6 +216,24 @@ void TsDemux::parseSdt(const uint8_t* s, int len) {
         if (e.hasProvider) sv.provider = dvbText(s + e.provider.off, (int)e.provider.len, gbText_);
         if (e.hasName) sv.name = dvbText(s + e.name.off, (int)e.name.len, gbText_);
     }
+    // linkage descriptors (0x4A) of the service loop; type 0x05 names the service that replaces this one (the HD simulcast), read here from the raw section
+    const int end = len - 4;
+    for (int i = 11; i + 5 <= end;) {
+        const int sid = s[i] << 8 | s[i + 1], dl = ((s[i + 3] & 0x0F) << 8) | s[i + 4];
+        i += 5;
+        if (i + dl > end) break;
+        for (int j = i; j + 2 <= i + dl;) {
+            const int tag = s[j], n = s[j + 1];
+            if (j + 2 + n > i + dl) break;
+            if (tag == 0x4A && n >= 7 && s[j + 8] == 0x05) {
+                TsService& sv = services_[sid];
+                sv.id = sid;
+                sv.linkTsid = s[j + 2] << 8 | s[j + 3]; sv.linkOnid = s[j + 4] << 8 | s[j + 5]; sv.linkSid = s[j + 6] << 8 | s[j + 7];
+            }
+            j += 2 + n;
+        }
+        i += dl;
+    }
 }
 
 void TsDemux::parseNit(const uint8_t* s, int len) {

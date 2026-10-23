@@ -139,6 +139,13 @@ struct DvbtReceiver::Impl {
     RxTelemetry tel;
     uint64_t seq = 0;
     std::vector<cf32> eqShow, rawShow, tpsShow, pilotShow;
+    // scratch of estimateAndDecode, kept between symbols (no allocation per symbol)
+    std::vector<cf32> scrGrid, scrEq;
+    std::vector<float> scrN0;
+    std::vector<uint8_t> scrRoles;
+    // the plots are read about 30 times a second: they are rebuilt every ~25 ms of signal, not every six symbols, and only copied into the telemetry when new
+    uint64_t showSeq = 0, pubShowSeq = ~0ull;
+    uint64_t lastShowSym = 0; bool showEver = false;
     std::vector<float> chMag, chPh;
     std::vector<float> irDb;
     int irTauMin = 0;
@@ -567,6 +574,7 @@ struct DvbtReceiver::Impl {
             if (symbols % 3 == 0) {
                 tpsShow.clear();
                 for (size_t i = 0; i < tpsK.size(); i++) { const cf32 z = Y[tpsK[i]] * std::conj(prevTurned(prevTps[i], tpsK[i])) * unturn; const float m = std::abs(z); if (m > 1e-9f) tpsShow.push_back(z / m); }
+                showSeq++;   // new TPS cells for the plot
             }
         } else tpsBitsSeen.push_back(-1);
         prevTps.resize(tpsK.size());
@@ -819,15 +827,17 @@ struct DvbtReceiver::Impl {
         gridFilled++;
         if (gridFilled < 4) { if (streaming) pushErasure(symIdx); return; }
         const double tau0 = (double)back + (double)G / 2.0;
-        std::vector<cf32> g((size_t)(K + 2) / 3);
-        for (size_t n = 0; n < g.size(); n++) g[n] = grid[n];
+        std::vector<cf32>& g = scrGrid;
+        g.assign(grid.begin(), grid.begin() + (ptrdiff_t)std::min(grid.size(), (size_t)(K + 2) / 3));
+        g.resize((size_t)(K + 2) / 3, cf32(0, 0));
         interp.run(g, 3, K, N, tau0, H, 1.0);
         // ---- equalise the data carriers
-        std::vector<uint8_t> roles;
+        std::vector<uint8_t>& roles = scrRoles;
         carrierRoles(mode, symIdx, roles);
         const int Nd = dataCarriers(mode);
-        std::vector<cf32> eq(Nd);
-        std::vector<float> n0(Nd);
+        std::vector<cf32>& eq = scrEq;
+        std::vector<float>& n0 = scrN0;
+        eq.resize((size_t)Nd); n0.resize((size_t)Nd);
         int di = 0;
         for (int k = 0; k < K && di < Nd; k++) {
             if (roles[k] != 0) continue;
@@ -840,7 +850,9 @@ struct DvbtReceiver::Impl {
         fecPush(eq.data(), n0.data(), symIdx);
         streaming = true;
         // ---- display data
-        if (symbols % 6 == 0) {
+        const uint64_t showEvery = (uint64_t)std::max(6.0, std::ceil(0.025 * fn / (double)(N + G)));
+        if (!showEver || symbols - lastShowSym >= showEvery) {
+            showEver = true; lastShowSym = symbols; showSeq++;
             eqShow.clear();
             const int step = std::max(1, Nd / 1500);
             for (int i = 0; i < Nd; i += step) eqShow.push_back(eq[i]);
@@ -883,13 +895,18 @@ struct DvbtReceiver::Impl {
         t.dataValid = tpsOk && gridFilled >= 4;
         t.dataSnrDb = (float)snrDb;
         t.cpSnrDb = (float)snrDb;
-        t.eqData = eqShow;
-        t.rawCells = rawShow;
-        t.eqCells = pilotShow;
-        t.p1Const = tpsShow;
+        const bool fresh = showSeq != pubShowSeq;
+        if (fresh) {
+            t.eqData = eqShow;
+            t.rawCells = rawShow;
+            t.eqCells = pilotShow;
+            t.p1Const = tpsShow;
+            t.chMagDb = chMag; t.chPhase = chPh;
+            t.irDb = irDb;
+        }
         t.chValid = !chMag.empty();
-        t.chMagDb = chMag; t.chPhase = chPh; t.chDecim = chDecimV; t.chCarriers = K;
-        t.irDb = irDb; t.irTauMin = irTauMin;
+        t.chDecim = chDecimV; t.chCarriers = K;
+        t.irTauMin = irTauMin;
         t.secSinceP1 = secSinceTps;
         t.l1preOk = tpsOk; t.l1postOk = tpsOk;
         t.dvbt.tpsOk = tpsOk; t.dvbt.mode = mode; t.dvbt.guard = gi;
@@ -902,6 +919,10 @@ struct DvbtReceiver::Impl {
         t.plpValid = tpsOk; t.plpFrames = fs.packets;
         t.plpMerDb = snrDb;
         std::lock_guard<std::mutex> lk(mu);
+        if (!fresh) {   // the plots did not change since the last publish: keep the ones in the telemetry (moved, not copied)
+            t.eqData = std::move(tel.eqData); t.rawCells = std::move(tel.rawCells); t.eqCells = std::move(tel.eqCells); t.p1Const = std::move(tel.p1Const);
+            t.chMagDb = std::move(tel.chMagDb); t.chPhase = std::move(tel.chPhase); t.irDb = std::move(tel.irDb);
+        } else { pubShowSeq = showSeq; }
         t.seq = ++seq;
         tel = std::move(t);
     }
@@ -917,7 +938,8 @@ void DvbtReceiver::configure(double inputRateHz, double bandwidthMhz) {
     I.fn = nativeRateHz(bandwidthMhz);
     I.mixer.set(0, inputRateHz);
     I.locator.configure(inputRateHz, carriersK(dvbt::k8K) * I.fn / 8192.0);
-    I.rateOk = I.resampler.configure(inputRateHz, I.fn) && inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
+    I.rateOk = I.resampler.configure(inputRateHz, I.fn, nullptr, carriersK(dvbt::k8K) * I.fn / 8192.0) &&   // the signal fills K carriers: only what folds into them has to be stopped (a kernel half as long at 10 Msps)
+                  inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
     I.decimate = I.rateOk && !I.resampler.passthrough();
 }
 
