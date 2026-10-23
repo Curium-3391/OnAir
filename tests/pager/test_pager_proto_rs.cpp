@@ -228,5 +228,6 @@ int main() {
     testPocsag(iters);
     testFlex(iters);
     printf("test_pager_proto_rs: pocsag messages %ld, flex messages %ld, alpha %ld, numeric %ld, long addr %ld, looks-alpha %ld\n", pocMsgs, flexMsgs, flexAlpha, flexNum, flexLong, looksTrue);
-    return golden::check("pager_proto_rs", dig, 0xe45623e6d27de0b8ull, !it);
+    // recorded again for 3.0: FLEX BIW / vector-word check nibble, long-address header in the second vector word, data polarity (flexnext-030)
+    return golden::check("pager_proto_rs", dig, 0x3c47c499bb95d830ull, !it);
 }

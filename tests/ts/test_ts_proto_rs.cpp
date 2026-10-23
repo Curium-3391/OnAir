@@ -266,5 +266,6 @@ int main() {
         { Buf d; rnd(d, r32() % 200); if (d.size() > 5 && r32() % 2) d[0] = 0x47; testCrcPacket(d); }
     }
     printf("ts proto: parsed ok: pat %ld pmt %ld sdt %ld nit %ld eit %ld tvct %ld tdt %ld packets %ld\n", okCount[0], okCount[1], okCount[2], okCount[3], okCount[4], okCount[5], okCount[6], okCount[7]);
-    return golden::check("ts_proto_rs", dig, 0xcd5ef97b4a7bfd45ull, !getenv("ONAIR_DIFF_ITERS"));
+    // recorded again for 3.0: stream type 0x14 is DRA audio (dtmb-dra-030, rust/onair_ts/src/si.rs)
+    return golden::check("ts_proto_rs", dig, 0x58ca169e78d44eaaull, !getenv("ONAIR_DIFF_ITERS"));
 }

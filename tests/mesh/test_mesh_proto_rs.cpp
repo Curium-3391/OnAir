@@ -193,5 +193,6 @@ int main() {
     if (rc2) return 1;
     // recorded again after the decoder kept battery level 101 ("powered") and cut the text detail on a whole UTF-8 character
 
-    return golden::checkDual("mesh_proto_rs", dig, 0xf7b897ff9f2bd52full, 0xad859aebe34a7637ull, !getenv("ONAIR_DIFF_ITERS"));
+    // recorded again for 3.0: the APRS message number stops at a '}' (APRS 1.1 reply-ack, fix-packet-030, rust/onair_ax25/src/aprs.rs)
+    return golden::checkDual("mesh_proto_rs", dig, 0x06855ab108a90207ull, 0xa47f503349624973ull, !getenv("ONAIR_DIFF_ITERS"));
 }
