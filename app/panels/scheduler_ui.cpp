@@ -622,7 +622,7 @@ void schedulerTick(App& a) {
 void schedulerWindow(App& a) {
     schedulerTick(a);
     if (!a.schedulerOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 640 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 640 * gUi);
     if (!ImGui::Begin("Scheduler###scheduler", &a.schedulerOpen)) { ImGui::End(); return; }
     ImGui::TextDisabled("%s", "Jobs run while this window is shut and while the program window is hidden. They need OnAir to be running.");
     drawJobs(a);

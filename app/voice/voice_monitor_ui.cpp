@@ -408,7 +408,7 @@ void window(App& a) {
     (void)a;
     if (!S.open) return;
     load();
-    ImGui::SetNextWindowSize(ImVec2(760 * gUi, 520 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(760 * gUi, 520 * gUi);
     if (!ImGui::Begin("Voice monitor", &S.open)) { ImGui::End(); return; }
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Mode"); ImGui::SameLine();

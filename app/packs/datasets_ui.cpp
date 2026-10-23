@@ -212,7 +212,7 @@ void previewPanel() {
     ImGui::TextDisabled("%s", u.pendPath.c_str());
     const Validation& v = u.pendVal;
     ImGui::Text(tr("%zu record(s), %zu error(s), %zu warning(s)"), v.records, v.errors(), v.issues.size() - v.errors());
-    if (!v.preview.empty() && ImGui::TreeNodeEx(tr("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (!v.preview.empty() && ImGui::TreeNodeEx(trw("Preview"), ImGuiTreeNodeFlags_DefaultOpen)) {
         for (const std::string& l : v.preview) ImGui::TextDisabled("%s", l.c_str());
         ImGui::TreePop();
     }
@@ -311,7 +311,7 @@ void table(float h) {
 }
 
 void updatesPanel() {
-    if (!ImGui::CollapsingHeader(tr("Updates (off by default)"))) return;
+    if (!ImGui::CollapsingHeader(trw("Updates (off by default)"))) return;
     ImGui::PushTextWrapPos(0);
     ImGui::TextDisabled("%s", tr("OnAir never fetches datasets by itself. With this switched on, the buttons below fetch a small manifest (manifest.json) from the sources you list, and only from them. Each file is checked against the sha256 and size in the manifest before it is installed. The data you imported yourself is never replaced without your click."));
     ImGui::PopTextWrapPos();
@@ -405,7 +405,7 @@ void body() {
 
 void datasetsWindow(App& a) {
     if (!a.datasetsOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(1100 * gUi, 620 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(1100 * gUi, 620 * gUi);
     if (!ImGui::Begin(trw("Datasets"), &a.datasetsOpen)) { ImGui::End(); return; }
     body();
     ImGui::End();

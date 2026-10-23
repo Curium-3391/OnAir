@@ -1087,7 +1087,7 @@ void antennaDesignerWindow(App& a) {
         return;
     }
     load();
-    ImGui::SetNextWindowSize(ImVec2(1180 * gUi, 820 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(1180 * gUi, 820 * gUi);
     if (!ImGui::Begin("Antenna designer", &a.antdOpen)) { ImGui::End(); return; }
     topBar();
     schedule();

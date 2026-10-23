@@ -301,7 +301,7 @@ void table(App& a, const ScanLive& l) {
 }
 
 void panel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(920 * gUi, 620 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(920 * gUi, 620 * gUi);
     if (!ImGui::Begin(trw("Scanner (highly experimental)"), &a.scanViewOpen)) { ImGui::End(); return; }
     const ScanLive l = scannerLive();
     ImGui::TextColored(pal::warnAmber(), "%s", tr("HIGHLY EXPERIMENTAL"));

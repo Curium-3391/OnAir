@@ -298,7 +298,7 @@ void settingsColumn(Studio& s) {
     ImGui::SetNextItemWidth(110 * gUi);
     ImGui::InputDouble(tr("Centre frequency (MHz, file info only)"), &s.centerMhz, 0, 0, "%.6f");
     if (dect2::txModeFinite(m)) ImGui::TextDisabled("%s", tr("This signal ends by itself (a message or file): it may be shorter than the length."));
-    if (ImGui::CollapsingHeader(tr("Advanced parameters"))) advancedPanel(s.ui, m, false);
+    if (ImGui::CollapsingHeader(trw("Advanced parameters"))) advancedPanel(s.ui, m, false);
 }
 
 // IQ scatter of the samples in the time window
@@ -635,8 +635,8 @@ void txStudioWindow(App& a) {
         if (const TxModeSpec* rm = rxMode(a)) chooseStudioMode(s, *rm);
         else if (!dect2::txModes().empty()) chooseStudioMode(s, dect2::txModes().front());
     }
-    ImGui::SetNextWindowSize(ImVec2(1180 * gUi, 780 * gUi), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("TX studio"), &a.txStudioOpen)) { ImGui::End(); return; }
+    firstWindowSize(1180 * gUi, 780 * gUi);
+    if (!ImGui::Begin(trw("TX studio"), &a.txStudioOpen)) { ImGui::End(); return; }
 
     // a finished job
     if (s.jobRunning && s.job.valid() && s.job.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -691,9 +691,9 @@ void txStudioWindow(App& a) {
     ImGui::EndChild();
     if (ImGui::BeginChild("##tstabs", ImVec2(0, 0), ImGuiChildFlags_None)) {
         if (ImGui::BeginTabBar("##tstab")) {
-            if (ImGui::BeginTabItem(tr("Measurements"))) { measureTab(s); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("Decoder check"))) { checkTab(s); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("Save and batch"))) { saveTab(a, s); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("Measurements"))) { measureTab(s); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("Decoder check"))) { checkTab(s); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("Save and batch"))) { saveTab(a, s); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
     }

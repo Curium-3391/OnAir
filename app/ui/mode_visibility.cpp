@@ -54,7 +54,7 @@ bool modeGroupListed(const App& a, int group, const char* query) {
 
 void modeVisibilityWindow(App& a) {
     if (!a.modeVisOpen) return;
-    ImGui::SetNextWindowSize(ImVec2(460, 560), ImGuiCond_FirstUseEver);
+    firstWindowSize(460, 560);
     if (!ImGui::Begin(trw("Modes shown"), &a.modeVisOpen)) { ImGui::End(); return; }
     modevis::Rules r = rulesOf(a);
     bool changed = false;
@@ -93,7 +93,7 @@ void modeVisibilityWindow(App& a) {
         if (ImGui::Checkbox("##grp", &on)) { modevis::setGroupShown(r, gn, mods, on); changed = true; }
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(kGroupCols[g]));
-        const bool open = ImGui::TreeNodeEx(tr(kGroupNames[g]), (q[0] ? ImGuiTreeNodeFlags_DefaultOpen : 0) | ImGuiTreeNodeFlags_SpanAvailWidth);
+        const bool open = ImGui::TreeNodeEx(trw(kGroupNames[g]), (q[0] ? ImGuiTreeNodeFlags_DefaultOpen : 0) | ImGuiTreeNodeFlags_SpanAvailWidth);
         ImGui::PopStyleColor();
         if (st == modevis::GroupState::Mixed) { ImGui::SameLine(); ImGui::TextDisabled("%s", tr("(some hidden)")); }
         if (open) {

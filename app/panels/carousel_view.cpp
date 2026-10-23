@@ -184,8 +184,8 @@ void carouselView(App& a) {
         ImGui::PushID(c.pid);
         if (ImGui::BeginTable("files", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable, ImVec2(0, std::min<float>(180.f, 24.f + 20.f * (float)c.files.size())))) {
             ImGui::TableSetupColumn(tr("Path"), ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn(tr("Size"), ImGuiTableColumnFlags_WidthFixed, 90.f);
-            ImGui::TableSetupColumn(tr("Complete"), ImGuiTableColumnFlags_WidthFixed, 80.f);
+            ImGui::TableSetupColumn(tr("Size"), ImGuiTableColumnFlags_WidthFixed, 90.f * gUi);
+            ImGui::TableSetupColumn(tr("Complete"), ImGuiTableColumnFlags_WidthFixed, 80.f * gUi);
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
             for (size_t i = 0; i < c.files.size() && i < 2000; i++) {

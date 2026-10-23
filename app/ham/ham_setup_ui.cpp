@@ -136,7 +136,7 @@ void hamGuideTab(App& a) {
     (void)a;
     ImGui::BeginChild("##hamguide");
     auto sec = [](const char* title, const char* body, bool open = false) {
-        if (ImGui::CollapsingHeader(tr(title), open ? ImGuiTreeNodeFlags_DefaultOpen : 0)) { ImGui::Indent(); ImGui::TextWrapped("%s", tr(body)); ImGui::Unindent(); ImGui::Spacing(); }
+        if (ImGui::CollapsingHeader(trw(title), open ? ImGuiTreeNodeFlags_DefaultOpen : 0)) { ImGui::Indent(); ImGui::TextWrapped("%s", tr(body)); ImGui::Unindent(); ImGui::Spacing(); }
     };
     sec("Getting started",
         "1. Station setup (F2): callsign, grid, licence, band plan, power, rig and audio.\n"
@@ -179,6 +179,6 @@ void hamGuideTab(App& a) {
     sec("Macros",
         "The Messages box keeps your own texts. {MYCALL} {MYGRID} {CALL} {GRID} {RST} {SNR} {SERIAL} {EXCH} {NAME} {QTH} are filled in. Click "
         "Send next to send one in the next slot (FT8 free text: 13 characters).");
-    if (ImGui::CollapsingHeader(tr("Keyboard shortcuts"), ImGuiTreeNodeFlags_DefaultOpen)) { ImGui::Indent(); hamShortcutsHelp(); ImGui::Unindent(); }
+    if (ImGui::CollapsingHeader(trw("Keyboard shortcuts"), ImGuiTreeNodeFlags_DefaultOpen)) { ImGui::Indent(); hamShortcutsHelp(); ImGui::Unindent(); }
     ImGui::EndChild();
 }

@@ -275,7 +275,7 @@ bool audioControlButton(App& a) {
         c |= recordButton(a, s);
         ImGui::Separator();
         if (ImGui::BeginTabBar("##acpt")) {
-            if (ImGui::BeginTabItem(tr("Squelch"))) {
+            if (ImGui::BeginTabItem(trw("Squelch"))) {
                 int k = (int)s.sqKind;
                 ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted(tr("Type")); ImGui::SameLine();
                 if (combo("##sqk", k, kSqN, 5, 140)) {
@@ -312,7 +312,7 @@ bool audioControlButton(App& a) {
                 }
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(tr("Tone"))) {
+            if (ImGui::BeginTabItem(trw("Tone"))) {
                 c |= sw(tr("High-pass"), s.hp); ImGui::SameLine();
                 c |= slider("##hpf", s.hpHz, 20, 2000, "%.0f Hz", 130); ImGui::SameLine();
                 { int sl = s.hpSlope == 24 ? 1 : 0; const char* const n[] = {"12 dB", "24 dB"}; if (combo("##hps", sl, n, 2, 70)) { s.hpSlope = sl ? 24 : 12; c = true; } }
@@ -345,7 +345,7 @@ bool audioControlButton(App& a) {
                 { int st = (int)s.stereo; ImGui::SameLine(0, 14 * gUi); if (combo("##st", st, kStereoN, 5, 100)) { s.stereo = (StereoMode)st; c = true; } }
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(tr("Level"))) {
+            if (ImGui::BeginTabItem(trw("Level"))) {
                 int g = (int)s.agc; ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("AGC"); ImGui::SameLine();
                 if (combo("##agc", g, kAgcN, 3, 80)) { s.agc = (AgcMode)g; c = true; }
                 if (s.agc != AgcMode::Off) {
@@ -362,7 +362,7 @@ bool audioControlButton(App& a) {
                 ImGui::TextDisabled("%s", tr("Noise reduction (spectral gating) is in Audio cleanup, the button next to this one."));
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(tr("Output"))) {
+            if (ImGui::BeginTabItem(trw("Output"))) {
                 ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted(tr("Device")); ImGui::SameLine();
                 ImGui::SetNextItemWidth(250 * gUi);
                 const bool gone = !s.device.empty() && audioPickDevice(S.devs, s.device).empty();

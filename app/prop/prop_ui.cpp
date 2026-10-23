@@ -608,10 +608,10 @@ void propagationWindow(App& a) {
             advancedResults(a, r);
             ImGui::EndChild();
         } else {
-            ImGui::BeginChild("##propin", ImVec2(0, avail.y * 0.42f), ImGuiChildFlags_Borders);
+            ImGui::BeginChild("##propin2", ImVec2(0, avail.y * 0.42f), ImGuiChildFlags_Borders);
             advancedInputs(a);
             ImGui::EndChild();
-            ImGui::BeginChild("##propout", ImVec2(0, 0));
+            ImGui::BeginChild("##propout2", ImVec2(0, 0));
             advancedResults(a, r);
             ImGui::EndChild();
         }

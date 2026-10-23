@@ -210,7 +210,7 @@ ImU32 heatColor(double v) {
 void inputPanel(App& a) {
     const bool busy = S.run == 1;
     if (!ImGui::BeginTabBar("##slin")) return;
-    if (ImGui::BeginTabItem(tr("Spectrum selection"))) {
+    if (ImGui::BeginTabItem(trw("Spectrum selection"))) {
         ImGui::TextWrapped("%s", tr("Select the unknown signal on the spectrum: the Identify tool (key I) or Shift+drag across it. While this window is open the samples of that selection are kept, and the lab analyses them."));
         const uint64_t ks = a.engine.sigid().keptSeq();
         const bool fresh = ks != 0 && ks != S.keptSeq;
@@ -230,7 +230,7 @@ void inputPanel(App& a) {
         if (!S.liveInfo.empty()) ImGui::TextDisabled("%s", S.liveInfo.c_str());
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(tr("Recording"))) {
+    if (ImGui::BeginTabItem(trw("Recording"))) {
         ImGui::SetNextItemWidth(-90 * gUi);
         ImGui::InputText("##slpath", S.path, sizeof S.path);
         ImGui::SameLine();
@@ -261,7 +261,7 @@ void inputPanel(App& a) {
         ImGui::EndDisabled();
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(tr("Bits"))) {
+    if (ImGui::BeginTabItem(trw("Bits"))) {
         ImGui::TextWrapped("%s", tr("Bits you already have (from another tool): one frame or stream per line, as 0/1 or hex. Stages 4 to 6 run on them."));
         struct Cb { static int resize(ImGuiInputTextCallbackData* d) { if (d->EventFlag == ImGuiInputTextFlags_CallbackResize) { auto* s = static_cast<std::string*>(d->UserData); s->resize((size_t)d->BufTextLen); d->Buf = s->data(); } return 0; } };
         ImGui::InputTextMultiline("##slpaste", S.pasted.data(), S.pasted.capacity() + 1, ImVec2(-1, 100 * gUi), ImGuiInputTextFlags_CallbackResize, Cb::resize, &S.pasted);
@@ -270,7 +270,7 @@ void inputPanel(App& a) {
         ImGui::EndDisabled();
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(tr("Test signal"))) {
+    if (ImGui::BeginTabItem(trw("Test signal"))) {
         ImGui::TextWrapped("%s", tr("A made-up signal with a known structure (the same generator as the evaluation): see what the lab finds, then compare with what was sent."));
         ImGui::SetNextItemWidth(120 * gUi);
         ImGui::InputInt(tr("Signal number"), &S.demoSeed);
@@ -280,7 +280,7 @@ void inputPanel(App& a) {
         ImGui::EndDisabled();
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(tr("Saved analysis"))) {
+    if (ImGui::BeginTabItem(trw("Saved analysis"))) {
         ImGui::TextWrapped("%s", tr("An analysis saved before (its frames, fields and notes)."));
         ImGui::BeginDisabled(busy);
         if (ImGui::Button(tr("Load..."))) {
@@ -309,7 +309,7 @@ void inputPanel(App& a) {
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();
-    if (ImGui::TreeNode(tr("Options"))) {
+    if (ImGui::TreeNode(trw("Options"))) {
         ImGui::SetNextItemWidth(130 * gUi);
         ImGui::Combo(tr("Modulation"), &S.forceMod, "automatic\0OOK\0ASK\0FSK\0MSK\0GMSK\0PSK\0QAM\0");
         ImGui::SameLine();
@@ -551,7 +551,7 @@ void interpretations(const sl::Bits& f, size_t s, size_t n) {
     }
     if (n >= 8) ImGui::Text("ASCII    %s", sl::interpretAscii(f, s, n, S.lsbFirst).c_str());
     // the same bits across the frames
-    if (ImGui::TreeNode(tr("This field in every frame"))) {
+    if (ImGui::TreeNode(trw("This field in every frame"))) {
         for (size_t i = 0; i < S.A.frame.frames.size() && i < 64; i++) {
             const sl::Bits& g = S.A.frame.frames[i];
             if (s + n > g.size()) continue;
@@ -665,7 +665,7 @@ void bitViewerTab() {
     if (S.selA >= 0 && S.selFrame < (int)fr.size()) interpretations(fr[(size_t)S.selFrame], (size_t)std::min(S.selA, S.selB), (size_t)(std::abs(S.selB - S.selA) + 1));
     else ImGui::TextDisabled("%s", tr("Click or drag across the bits of a frame to read them as hex, numbers or text."));
     // the fields, editable
-    if (ImGui::TreeNodeEx(tr("Fields"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::TreeNodeEx(trw("Fields"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##slfields", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
             ImGui::TableSetupColumn(tr("Name"));
             ImGui::TableSetupColumn(tr("Bits"));
@@ -744,8 +744,8 @@ void evaluationTab() {
 }
 
 void windowPanel(App& a) {
-    ImGui::SetNextWindowSize(ImVec2(820 * gUi, 680 * gUi), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(tr("Signal Lab"), &a.signallabOpen)) { ImGui::End(); return; }
+    firstWindowSize(820 * gUi, 680 * gUi);
+    if (!ImGui::Begin(trw("Signal Lab"), &a.signallabOpen)) { ImGui::End(); return; }
     ImGui::TextWrapped("%s", tr("Works out an unknown digital signal step by step: channel, modulation, symbol rate, symbols, line code, frames, checksum and fields. Every stage shows what it found and how sure it is."));
     inputPanel(a);
     if (S.run == 1) {
@@ -761,16 +761,16 @@ void windowPanel(App& a) {
     if (S.run == 1) { ImGui::End(); return; }   // the worker owns the analysis while it runs
     if (ImGui::BeginTabBar("##slres")) {
         if (S.have) {
-            if (ImGui::BeginTabItem(tr("Summary"))) { summaryTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("1 Channel"))) { channelTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("2 Modulation"))) { modulationTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("3 Symbol rate"))) { rateTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("4 Line code"))) { lineTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("5 Frames"))) { framesTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("6 Bit viewer"))) { bitViewerTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem(tr("Export"))) { exportTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("Summary"))) { summaryTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("1 Channel"))) { channelTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("2 Modulation"))) { modulationTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("3 Symbol rate"))) { rateTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("4 Line code"))) { lineTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("5 Frames"))) { framesTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("6 Bit viewer"))) { bitViewerTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem(trw("Export"))) { exportTab(); ImGui::EndTabItem(); }
         }
-        if (ImGui::BeginTabItem(tr("Evaluation"))) { evaluationTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Evaluation"))) { evaluationTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();

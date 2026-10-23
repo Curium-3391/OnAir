@@ -396,7 +396,7 @@ void drawDetail(App& a, rm::Entry e) {
         const std::string x = e.path.find_last_of('.') == std::string::npos ? "" : e.path.substr(e.path.find_last_of('.'));
         const std::string dt = x == ".cs8" ? "ci8" : x == ".cu8" ? "cu8" : x == ".cf32" || x == ".fc32" ? "cf32_le" : x == ".ci16" ? "ci16_le" : "";
         if (!dt.empty()) {
-            if (e.sampleRate <= 0) { ImGui::SetNextItemWidth(130 * gUi); ImGui::InputDouble("sample rate (Hz)", &S.rateIn, 0, 0, "%.0f"); }
+            if (e.sampleRate <= 0) { ImGui::SetNextItemWidth(130 * gUi); ImGui::InputDouble("sample rate (Hz)##b", &S.rateIn, 0, 0, "%.0f"); }
             if (ImGui::Button("Write SigMF metadata beside it")) {
                 std::string err;
                 const double rate = e.sampleRate > 0 ? e.sampleRate : S.rateIn;
@@ -517,7 +517,7 @@ void recmgrWindow(App& a) {
     if (!a.recmgrOpen) { if (S.player.f) S.player.stop(); return; }
     static bool wasOpen = false;
     if (!wasOpen) { wasOpen = true; rescan(); }
-    ImGui::SetNextWindowSize(ImVec2(1100 * gUi, 680 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(1100 * gUi, 680 * gUi);
     if (!ImGui::Begin("Recordings###recmgr", &a.recmgrOpen)) { ImGui::End(); return; }
     if (!a.recmgrOpen) wasOpen = false;
     ImGui::SetNextItemWidth(260 * gUi);

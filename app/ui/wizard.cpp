@@ -114,7 +114,7 @@ void radioStep(App& a) {
     if (!a.startErr.empty() && (cur >= 0 || !radios)) {
         if (const fixit::Entry* e = fixit::lookup(a.startErr)) { if (std::string(e->id) != "no_radio") { fixBox(*e); ImGui::Spacing(); } }
     }
-    if (ImGui::TreeNode(tr("Driver and permission notes for this computer"))) {
+    if (ImGui::TreeNode(trw("Driver and permission notes for this computer"))) {
         ImGui::TextUnformatted(tr(driverNote()));
         if (const fixit::Entry* e = fixit::byId("usb_permission")) { ImGui::Spacing(); fixBox(*e); }
         ImGui::TreePop();

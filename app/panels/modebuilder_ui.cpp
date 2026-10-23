@@ -395,14 +395,14 @@ bool formView(mb::Definition& d) {
     auto num = [&](const char* label, double& v, const char* fmt = "%.6g") { ImGui::SetNextItemWidth(w); if (ImGui::InputDouble(label, &v, 0, 0, fmt)) ch = true; };
     auto inum = [&](const char* label, int& v) { ImGui::SetNextItemWidth(w); if (ImGui::InputInt(label, &v)) ch = true; };
     auto chk = [&](const char* label, bool& v) { if (ImGui::Checkbox(label, &v)) ch = true; };
-    if (ImGui::CollapsingHeader(tr("Mode"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Mode"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (inputString(tr("Name"), d.name, wide)) { ch = true; }
         if (inputString(tr("Id (file name)"), d.id, wide)) ch = true;
         if (inputString(tr("Description"), d.description, wide)) ch = true;
         num(tr("Frequency (MHz)"), d.freqMhz, "%.6f");
         num(tr("Sample rate (Hz)"), d.sampleRate, "%.0f");
     }
-    if (ImGui::CollapsingHeader(tr("Modulation"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Modulation"), ImGuiTreeNodeFlags_DefaultOpen)) {
         static const char* mods[] = {"OOK", "ASK", "FSK", "GFSK", "GMSK", "PSK"};
         if (combo(tr("Type"), d.mod, mods, 6, w)) ch = true;
         if (d.mod == mb::Mod::FSK || d.mod == mb::Mod::GFSK || d.mod == mb::Mod::PSK || d.mod == mb::Mod::ASK) {
@@ -423,7 +423,7 @@ bool formView(mb::Definition& d) {
         if (combo(tr("Pulse shape"), p, pulses, 4, w)) { d.pulse = p; d.pulseSet = true; ch = true; }
         if (p == mb::Pulse::Rrc || p == mb::Pulse::Rc) num(tr("Roll-off"), d.rolloff, "%.2f");
     }
-    if (ImGui::CollapsingHeader(tr("Bits"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Bits"), ImGuiTreeNodeFlags_DefaultOpen)) {
         static const char* lines[] = {"NRZ", "NRZI", "Manchester", "Manchester-Thomas", "Differential-Manchester", "Miller", "4b5b", "8b10b"};
         if (combo(tr("Line code"), d.line, lines, 8, w)) ch = true;
         if (d.line == mb::Line::NRZI) { bool m = d.nrziToggleOn == 1; if (ImGui::Checkbox(tr("A 1 changes the level (NRZ-M)"), &m)) { d.nrziToggleOn = m ? 1 : 0; ch = true; } }
@@ -445,7 +445,7 @@ bool formView(mb::Definition& d) {
             if (ImGui::InputInt(tr("Seed"), &seed, 0, 0, ImGuiInputTextFlags_CharsHexadecimal)) { d.seed = (uint32_t)seed; ch = true; }
         }
     }
-    if (ImGui::CollapsingHeader(tr("Frame"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Frame"), ImGuiTreeNodeFlags_DefaultOpen)) {
         static const char* lm[] = {"fixed length", "length field", "end flag"};
         if (combo(tr("Length"), d.lenMode, lm, 3, w)) ch = true;
         if (d.lenMode == mb::LenMode::Fixed) inum(tr("Bytes"), d.fixedBytes);
@@ -499,7 +499,7 @@ bool formView(mb::Definition& d) {
         inum(tr("Interleaver rows"), d.ilRows);
         inum(tr("Interleaver columns"), d.ilCols);
     }
-    if (ImGui::CollapsingHeader(tr("Check value"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Check value"), ImGuiTreeNodeFlags_DefaultOpen)) {
         std::vector<std::string> names = mb::crcPresetNames();
         names.insert(names.begin(), "none");
         names.push_back("custom");
@@ -539,7 +539,7 @@ bool formView(mb::Definition& d) {
             chk(tr("List frames with a wrong check value"), d.showBadFrames);
         }
     }
-    if (ImGui::CollapsingHeader(tr("Fields"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Fields"), ImGuiTreeNodeFlags_DefaultOpen)) {
         static const char* types[] = {"uint", "int", "bool", "enum", "bitflags", "ascii", "bcd", "float32", "lat", "lon", "hex"};
         int remove = -1;
         if (ImGui::BeginTable("##mbfields", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollX)) {
@@ -602,7 +602,7 @@ bool formView(mb::Definition& d) {
         }
         ImGui::TextDisabled("%s", tr("Offsets count bits from the first bit after the sync word (after FEC and descrambling)."));
     }
-    if (ImGui::CollapsingHeader(tr("Display"), ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(trw("Display"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (d.display.empty()) d.display.push_back({});
         for (size_t i = 0; i < d.display.size(); i++) {
             ImGui::PushID((int)i);
@@ -776,14 +776,14 @@ void testTab() {
 void windowPanel(App& a) {
     if (!S.inited) init();
     if (S.run == 2) { if (S.worker.joinable()) S.worker.join(); S.run = 0; }
-    ImGui::SetNextWindowSize(ImVec2(980 * gUi, 720 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(980 * gUi, 720 * gUi);
     if (!ImGui::Begin(trw("Mode Builder"), &a.modeBuilderOpen)) { ImGui::End(); return; }
     reparse();
     libraryMenu();
     if (!S.msg.empty()) ImGui::TextWrapped("%s", S.msg.c_str());
     ImGui::Separator();
     if (ImGui::BeginTabBar("##mbtabs")) {
-        if (ImGui::BeginTabItem(tr("Form"))) {
+        if (ImGui::BeginTabItem(trw("Form"))) {
             if (!S.parsed.ok) {
                 ImGui::TextColored(pal::warnAmber(), "%s", tr("The JSON has errors; the form shows the last valid definition and editing it replaces the JSON."));
             }
@@ -795,7 +795,7 @@ void windowPanel(App& a) {
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr("JSON"))) {
+        if (ImGui::BeginTabItem(trw("JSON"))) {
             const float h = ImGui::GetContentRegionAvail().y;
             ImGui::PushFont(a.mono, 0);
             ImGui::InputTextMultiline("##mbjson", S.text.data(), S.text.capacity() + 1, ImVec2(-1, h * 0.72f), ImGuiInputTextFlags_CallbackResize | ImGuiInputTextFlags_AllowTabInput, resizeCb, &S.text);
@@ -813,7 +813,7 @@ void windowPanel(App& a) {
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr("Test"))) { testTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Test"))) { testTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();

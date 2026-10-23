@@ -199,12 +199,12 @@ void windowPanel(App& a) {
     }
     ImGui::SameLine();
     ch |= ImGui::Checkbox(tr("With position"), &S.posOnly);
-    ImGui::SetNextItemWidth(90); ch |= ImGui::InputFloat("##flo", &S.fLoMHz, 0, 0, "%.4f");
+    ImGui::SetNextItemWidth(90 * gUi); ch |= ImGui::InputFloat("##flo", &S.fLoMHz, 0, 0, "%.4f");
     ImGui::SameLine(); ImGui::TextUnformatted("-"); ImGui::SameLine();
-    ImGui::SetNextItemWidth(90); ch |= ImGui::InputFloat("##fhi", &S.fHiMHz, 0, 0, "%.4f");
+    ImGui::SetNextItemWidth(90 * gUi); ch |= ImGui::InputFloat("##fhi", &S.fHiMHz, 0, 0, "%.4f");
     ImGui::SameLine(); ImGui::TextDisabled("%s", tr("MHz (0 = open)"));
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(200);
+    ImGui::SetNextItemWidth(200 * gUi);
     ch |= ImGui::InputTextWithHint("##src", tr("Source file"), S.source, sizeof S.source);
     ImGui::SameLine();
     ch |= ImGui::Checkbox(tr("Best match first"), &S.relevance);

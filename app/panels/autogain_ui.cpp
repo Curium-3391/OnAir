@@ -291,7 +291,7 @@ void advancedPopup(App& a) {
     ImGui::Separator();
     ImGui::TextDisabled("%s", tr("History (gain, quality)"));
     historyGraph(440 * gUi, 46 * gUi);
-    if (ImGui::TreeNode(tr("Changes"))) {
+    if (ImGui::TreeNode(trw("Changes"))) {
         ImGui::BeginChild("##aglog", ImVec2(440 * gUi, 140 * gUi), true);
         const auto& lg = s.c.log();
         const double t = ImGui::GetTime();
@@ -299,7 +299,7 @@ void advancedPopup(App& a) {
         ImGui::EndChild();
         ImGui::TreePop();
     }
-    if (ImGui::TreeNode(tr("Remembered gains"))) {
+    if (ImGui::TreeNode(trw("Remembered gains"))) {
         const std::string rk = radioKeyOf(a.devices[(size_t)a.devIdx]) + "|";
         std::string forget;
         for (const auto& kv : s.mem.entries()) {

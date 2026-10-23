@@ -138,7 +138,7 @@ void toolbarButton(App& a) {
         s.touch(p.id); save();
         msg = r.notes.empty() ? "" : r.notes.front() + (r.notes.size() > 1 ? " (+" + std::to_string(r.notes.size() - 1) + " more)" : "");
     };
-    ImGui::SetNextItemWidth(160);
+    ImGui::SetNextItemWidth(160 * gUi);
     ImGui::InputTextWithHint("##pname", tr("name"), name, sizeof name);
     ImGui::SameLine();
     if (ImGui::Button(tr("Save as...")) && name[0]) {

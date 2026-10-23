@@ -272,7 +272,7 @@ void confirmDialogs() {
             }
             ImGui::SameLine();
         }
-        if (ImGui::Button(tr("Cancel"))) ImGui::CloseCurrentPopup();
+        if (ImGui::Button((std::string(tr("Cancel")) + "##c275").c_str())) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     if (S.openClear) { ImGui::OpenPopup("Clear all keys##vkclear"); S.openClear = false; }
@@ -323,7 +323,7 @@ void importDialog() {
             else { S.preview = keyswin::previewKeyList(std::move(keys), vk::store().list()); S.importNeedsPass = false; S.importError.clear(); }
         }
         if (!S.importError.empty()) ImGui::TextColored(pal::badRed(), "%s", S.importError.c_str());
-        if (ImGui::Button(tr("Cancel"))) close();
+        if (ImGui::Button((std::string(tr("Cancel")) + "##c326").c_str())) close();
         ImGui::EndPopup();
         return;
     }
@@ -455,7 +455,7 @@ void voiceKeysWindow(App& a) {
     init();
     if (!a.voiceKeysOpen) { S.revealed.clear(); return; }
     centre(960, 560);
-    if (!ImGui::Begin(tr("Voice keys"), &a.voiceKeysOpen)) { ImGui::End(); return; }
+    if (!ImGui::Begin(trw("Voice keys"), &a.voiceKeysOpen)) { ImGui::End(); return; }
     const keyswin::StoreState st = state();
     // status line
     ImGui::TextColored(st == keyswin::StoreState::Unlocked ? pal::okGreen() : pal::warnAmber(), "%s", tr(keyswin::storeStateText(st)));

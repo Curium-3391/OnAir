@@ -624,7 +624,7 @@ void hamPanel(App& a) {
             if (ImGui::Button(tr("Clear DX"))) { h.eng.halt(); h.override.clear(); h.dxGrid.clear(); }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ends the QSO without sending anything more (F4)"));
         }
-        if (ImGui::CollapsingHeader(tr("Rig and audio"))) rigWidgets();
+        if (ImGui::CollapsingHeader(trw("Rig and audio"))) rigWidgets();
 
         // meters and the timeline
         const HfdigTelemetry& ht = a.rx.hfdig;

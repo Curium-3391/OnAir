@@ -383,7 +383,7 @@ void picture(learn::Pic pic, ImVec2 o, float w, float h) {
 void glossaryWindow(App& a) {
     if (!a.glossaryOpen) return;
     const float u = gUi;
-    ImGui::SetNextWindowSize(ImVec2(560 * u, 520 * u), ImGuiCond_FirstUseEver);
+    firstWindowSize(560 * u, 520 * u);
     if (!ImGui::Begin(trw("Concepts"), &a.glossaryOpen)) { ImGui::End(); return; }
     ImGui::TextWrapped("%s", tr("The words you meet on a radio, in plain language. Type to search."));
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -422,7 +422,7 @@ void glossaryWindow(App& a) {
 void lessonsWindow(App& a) {
     if (!a.lessonsOpen) return;
     const float u = gUi;
-    ImGui::SetNextWindowSize(ImVec2(520 * u, 500 * u), ImGuiCond_FirstUseEver);
+    firstWindowSize(520 * u, 500 * u);
     if (!ImGui::Begin(trw("Lessons"), &a.lessonsOpen)) { ImGui::End(); return; }
     const unsigned goals = (unsigned)plat::prefs().getI("setupGoals", 0);
     const std::vector<int> plan = learn::lessonPlan(goals);

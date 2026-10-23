@@ -180,7 +180,7 @@ void importPopup(MemoryBank& b) {
 void listsSection(MemoryBank& b) {
     ensure();
     s.lists.sync(b);
-    if (!ImGui::CollapsingHeader(tr("My lists"))) return;
+    if (!ImGui::CollapsingHeader(trw("My lists"))) return;
     ImGui::TextDisabled("%s", tr("A list is a group of memories. Switched-off lists are hidden from the panel and the quick-tune bar."));
     int moveFrom = -1, moveTo = -1;
     const auto& L = s.lists.lists();

@@ -339,7 +339,7 @@ void dockPanes(App& a) {
         const bool docked = dock::contains(gTree, b.key);
         if (!docked && !gFloat.count(b.key)) continue;
         const std::string name = std::string(tr(b.title)) + b.key;
-        if (!docked) ImGui::SetNextWindowSize(ImVec2(520 * gUi, 360 * gUi), ImGuiCond_FirstUseEver);
+        if (!docked) firstWindowSize(520 * gUi, 360 * gUi);
         bool open = true;
         const bool scrollable = !std::strcmp(b.key, "###dk_modes") || !std::strcmp(b.key, "###dk_log");
         if (ImGui::Begin(name.c_str(), &open, scrollable ? 0 : (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))) {
