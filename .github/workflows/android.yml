@@ -1,0 +1,109 @@
+# Android app (android/): builds the APK. It never publishes anything: the APK is a workflow artifact only.
+#  - a version tag (v0.3.0, v0.3.0-beta.1) and "Run workflow" by hand: libonair.so (the desktop core for arm64-v8a, Rust included) +
+#    the signed release APK. Signing comes from repository secrets (android/README.md, "Signing"); without them the APK is unsigned.
+#  - a push to an android-* branch that touches android/: a quick check without the native library (JNI table, Kotlin compile,
+#    debug APK), so the Android work can be tested on GitHub instead of a laptop.
+name: Android
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['android-*']
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+    inputs:
+      native:
+        description: "Build libonair.so and the release APK (off: quick Kotlin-only debug build)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: "27.2.12479018"
+  CMAKE_VERSION: "3.31.5"
+
+jobs:
+  check:
+    name: Kotlin check (no native library)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') || (github.event_name == 'workflow_dispatch' && !inputs.native)
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: android } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: JNI declarations match the C++ bridge
+        run: python3 tools/check_jni.py
+      - name: Scripts
+        run: bash -n tools/build_native.sh && python3 -m py_compile tools/*.py
+      - name: Debug APK (Kotlin compile, resources, manifest)
+        run: ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with: { name: onair-android-debug-no-native, path: android/app/build/outputs/apk/debug/*.apk, retention-days: 7 }
+
+  apk:
+    name: Release APK (arm64-v8a)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.native)
+    runs-on: macos-15            # the maintainer's own build host: Homebrew gives the pkg-config headers the core configures with
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build tools and headers
+        # only headers are used for Android (android/native/src/stubs_ext.c stands in for the libraries)
+        run: brew install pkg-config hackrf libusb ffmpeg
+      - name: Rust with the Android target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+      - name: NDK and CMake
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "CMAKE=$ANDROID_HOME/cmake/$CMAKE_VERSION/bin/cmake" >> "$GITHUB_ENV"
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "ONAIR_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"; fi
+      - name: libonair.so (core + JNI bridge)
+        run: JOBS=$(sysctl -n hw.ncpu) android/tools/build_native.sh
+      - name: Signing key from secrets
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is built unsigned"; exit 0; fi
+          echo "$KS_B64" | base64 --decode > "$RUNNER_TEMP/onair-release.jks"
+          {
+            echo "ONAIR_STORE_FILE=$RUNNER_TEMP/onair-release.jks"
+            echo "ONAIR_STORE_PASSWORD=$KS_PASS"
+            echo "ONAIR_KEY_ALIAS=$KEY_ALIAS"
+            echo "ONAIR_KEY_PASSWORD=${KEY_PASS:-$KS_PASS}"
+          } >> "$GITHUB_ENV"
+      - name: Release APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Name the APK
+        run: |
+          V="${ONAIR_VERSION:-$(grep -m1 -oE 'project\(OnAir VERSION [0-9.]+' CMakeLists.txt | awk '{print $3}')}"
+          mkdir -p out
+          for f in android/app/build/outputs/apk/release/*.apk; do
+            case "$f" in *unsigned*) cp "$f" "out/OnAir-$V-android-unsigned.apk" ;; *) cp "$f" "out/OnAir-$V-android.apk" ;; esac
+          done
+          rm -f "$RUNNER_TEMP/onair-release.jks"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with: { name: onair-android-apk, path: out/*.apk, retention-days: 30 }

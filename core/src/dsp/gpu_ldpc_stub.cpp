@@ -1,5 +1,5 @@
-// Builds without a GPU backend (everything except macOS for now): the GPU decoder reports itself as unavailable and the engine's
-// Auto/CPU modes use the CPU decoder. A Vulkan / OpenCL implementation can replace this file.
+// Builds without a GPU backend (Android): the GPU decoder reports itself as unavailable and the engine's
+// Auto/CPU modes use the CPU decoder. Linux uses gpu_ldpc_vulkan.cpp.
 #include "dect2/dsp/gpu_ldpc.h"
 #include <cstdint>
 

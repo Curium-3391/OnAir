@@ -10,16 +10,17 @@
 #include <string>
 
 namespace cmap {
-enum Map { Classic, Viridis, Inferno, Grey, Turbo, Cividis, Magma, SdrClassic, Ice, Fire, NightRed, HighContrast, Custom, NumMaps };
+enum Map { Classic, Viridis, Inferno, Grey, Turbo, Cividis, Magma, SdrClassic, Ice, Fire, NightRed, HighContrast, Custom, SdrppSmooth, OxideBlue, NumMaps };
 
 inline const char* name(int m) {
-    static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis", "Magma", "SDR++ classic", "Ice", "Fire", "Night (red)", "High contrast", "Custom"};
+    static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis", "Magma", "SDR++ classic", "Ice", "Fire", "Night (red)", "High contrast", "Custom",
+                                           "SDR++ smooth", "Oxide blue"};
     return n[m < 0 || m >= NumMaps ? 0 : m];
 }
 // reads the same with the common colour blindnesses (perceptually even, one hue ramp or lightness only)
 inline bool colourBlindSafe(int m) { return m == Viridis || m == Cividis || m == Magma || m == Inferno || m == Grey || m == Ice; }
 // the rainbow maps: their brightness goes up and down by design (the custom one may be anything)
-inline bool hueRamp(int m) { return m == Turbo || m == SdrClassic || m == HighContrast || m == Custom; }
+inline bool hueRamp(int m) { return m == Turbo || m == SdrClassic || m == HighContrast || m == Custom || m == SdrppSmooth || m == OxideBlue; }
 
 inline uint32_t stopsColor(const float (*s)[3], int n, float v) {   // n colour stops (0..255 per channel), blended linearly
     v *= (float)(n - 1);
@@ -125,6 +126,10 @@ inline uint32_t color(int map, float v) {
     static const float fire[7][3] = {{0, 0, 0}, {60, 0, 0}, {150, 20, 0}, {220, 80, 0}, {255, 160, 20}, {255, 230, 120}, {255, 255, 240}};
     static const float night[6][3] = {{0, 0, 0}, {40, 0, 0}, {100, 0, 0}, {170, 10, 5}, {230, 40, 20}, {255, 90, 60}};   // keeps the eyes dark-adapted
     static const float hc[6][3] = {{0, 0, 0}, {0, 0, 255}, {0, 255, 0}, {255, 255, 0}, {255, 0, 0}, {255, 255, 255}};
+    // the SDR++ look: black, dark blue, cyan, yellow, orange, white, evenly blended (no hard band)
+    static const float sdrs[9][3] = {{0, 0, 0}, {0, 4, 40}, {0, 12, 110}, {0, 60, 200}, {0, 200, 250}, {255, 245, 40}, {255, 150, 0}, {255, 70, 10}, {255, 255, 255}};
+    // the SDRoxide look: deep navy, blue, a bright blue floor-to-signal step, cyan, green, pale green
+    static const float oxide[8][3] = {{0, 4, 28}, {0, 12, 80}, {6, 30, 170}, {20, 70, 235}, {30, 150, 250}, {40, 220, 225}, {60, 240, 110}, {225, 255, 220}};
     switch (map) {
     case Cividis: return stopsColor(cividis, 9, v);
     case Viridis: return stopsColor(viridis, 9, v);
@@ -136,6 +141,8 @@ inline uint32_t color(int map, float v) {
     case Fire: return stopsColor(fire, 7, v);
     case NightRed: return stopsColor(night, 6, v);
     case HighContrast: return stopsColor(hc, 6, v);
+    case SdrppSmooth: return stopsColor(sdrs, 9, v);
+    case OxideBlue: return stopsColor(oxide, 8, v);
     default: return stopsColor(cool, 5, v);
     }
 }
@@ -162,6 +169,7 @@ inline const TracePreset kTracePresets[] = {
     {"Orange (CB safe)", {0.90f, 0.62f, 0.00f}, {0.75f, 0.45f, 0.00f}},    // Okabe-Ito
     {"Sky blue (CB safe)", {0.34f, 0.71f, 0.91f}, {0.00f, 0.45f, 0.70f}},
     {"Pink", {1.00f, 0.55f, 0.80f}, {0.70f, 0.15f, 0.45f}},
+    {"Light blue", {0.70f, 0.84f, 1.00f}, {0.10f, 0.35f, 0.70f}},   // the SDRoxide look
 };
 constexpr int kNumTracePresets = (int)(sizeof kTracePresets / sizeof *kTracePresets);
 inline const float* traceRgb(int i, bool light) {

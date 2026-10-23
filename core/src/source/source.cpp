@@ -4,6 +4,7 @@
 #include "dect2/source/hamlib_rig.h"
 #include "dect2/source/source.h"
 #include "dect2/net/netradio.h"
+#include "dect2/source/synth_group.h"
 #include "dect2/dsp/gen_util.h"
 #include "dect2/tv/demo_ts.h"
 #include "dect2/dvbt/dvbt_gen.h"
@@ -624,6 +625,7 @@ std::vector<DeviceInfo> listRadios(std::string& err) {
         if (!dup) out.push_back(d);
     }
     for (auto& d : hamlibRigDevices(hamlibRigs())) out.push_back(d);
+    for (auto& d : synthGroupDevices(out)) out.push_back(d);   // the radio groups the user saved whose members are here (synth_group.h)
     const std::vector<std::string> hid = hiddenRadios();
     if (!hid.empty()) out.erase(std::remove_if(out.begin(), out.end(), [&](const DeviceInfo& d) { return std::find(hid.begin(), hid.end(), d.name) != hid.end(); }), out.end());
     return out;
@@ -639,6 +641,7 @@ std::unique_ptr<IqSource> makeSource(const DeviceInfo& d) {
     case DeviceInfo::Synthetic: return std::make_unique<SyntheticSource>();
     case DeviceInfo::Audio: return makeAudioSource(d);
     case DeviceInfo::Hamlib: return makeHamlibSource(d);
+    case DeviceInfo::Group: return makeSynthGroupSource(d);
     default: return nullptr;
     }
 }

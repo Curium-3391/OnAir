@@ -245,7 +245,7 @@ int main() {
         "Those vocoders are patented. OnAir loads mbelib to decode only; there is no encoder,\n"
         "so the phrase cannot be turned into AMBE/IMBE bits. Earlier 03/04 files were random\n"
         "decoder output, not speech — they were removed.\n"
-        "TETRA / TETRAPOL: no speech codec in OnAir (signalling only).\n"
+        "TETRA / TETRAPOL: the speech codecs are user-installed plug-ins; OnAir has no encoder for them.\n"
         "FreeDV RADE: UI slot only, not encoded here.\n";
     std::string err;
     CHECK(wb::writeTextFile(dir + "/LISTEN.txt", note, err), "LISTEN.txt %s", err.c_str());

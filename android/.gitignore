@@ -1,0 +1,27 @@
+# Signing material: never in git (android/README.md, "Signing")
+keystore.properties
+*.jks
+*.keystore
+*.p12
+key-backups*/
+
+# Machine-specific SDK path
+local.properties
+
+# Build output
+build/
+.gradle/
+.kotlin/
+.cxx/
+native/build/
+app/src/main/jniLibs/
+*.apk
+*.aab
+*.idsig
+
+# Editor and backup leftovers
+.idea/
+*.iml
+*.bak-*
+.DS_Store
+captures/

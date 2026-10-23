@@ -1,7 +1,8 @@
 // ISDB-S test signal generator, see isdbs.h. Nothing is transmitted: the samples only exist in memory or in a file.
 #include "dect2/isdbs/isdbs.h"
 #include "dect2/dvbs/dvbs_gen.h"
-#include "isdbs_slot.h"
+#include "isdbs_fec.h"
+#include "dect2/fec/fec_proto.h"
 #include "dect2/common/mathconst.h"
 #include <algorithm>
 #include <cmath>
@@ -11,32 +12,35 @@
 namespace dect2 {
 namespace isdbs {
 
-bool tmccFromStreams(const std::vector<StreamCfg>& s, int change, Tmcc& t, std::string* err) {
+bool tmccFromStreams(const std::vector<StreamCfg>& in, int change, Tmcc& t, std::string* err, std::vector<int>* orderOut) {
     auto fail = [&](const char* m) { if (err) *err = m; return false; };
-    if (s.empty() || s.size() > (size_t)kMaxStreams) return fail("1 to 8 streams");
+    if (in.empty() || in.size() > (size_t)kMaxStreams) return fail("1 to 8 streams");
+    // most efficient first (BO.1408 3.2); streams of one modulation keep their order, and the relative numbers follow the slots (TR-B15 6.1.1)
+    std::vector<int> order(in.size());
+    for (size_t i = 0; i < in.size(); i++) order[i] = (int)i;
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return efficiencyRank(in[(size_t)a].mod) < efficiencyRank(in[(size_t)b].mod); });
     Tmcc r;
     r.change = change & 31;
     int slot = 0, groups = 0;
-    for (size_t i = 0; i < s.size(); i++) {
-        const StreamCfg& c = s[i];
-        if (c.mod < kBpsk12 || c.mod > kTc8psk23) return fail("a stream needs a modulation");
-        if (c.slots < 1) return fail("a stream needs at least one slot");
+    for (size_t i = 0; i < order.size(); i++) {
+        const StreamCfg& c = in[(size_t)order[i]];
+        if (!isMod(c.mod)) return fail("a stream needs a modulation");
+        if (c.slots < 1 || c.slots % slotUnit(c.mod)) return fail("the slots of a stream must be a whole number of units of its modulation");
         if (slot + c.slots > kSlots) return fail("more than 48 slots");
-        if (groups > 0 && r.mode[groups - 1] == c.mod && i > 0) r.count[groups - 1] += c.slots;
+        if (c.tsId == 0xFFFF) return fail("TS id 0xFFFF marks an unused relative number");
+        if (groups > 0 && r.mode[groups - 1] == c.mod) r.count[groups - 1] += c.slots;
         else {
-            if (groups >= 4) return fail("more than four groups of modulation");
+            if (groups >= kMaxGroups) return fail("more than four modulations");
             r.mode[groups] = c.mod; r.count[groups] = c.slots; groups++;
         }
         for (int k = 0; k < c.slots; k++) r.slotTs[(size_t)(slot + k)] = (uint8_t)i;
         r.tsId[i] = c.tsId;
         slot += c.slots;
     }
-    if (slot < kSlots) {   // the rest: filler
-        if (groups >= 4) return fail("more than four groups of modulation (the filler is one)");
-        r.mode[groups] = kUnused; r.count[groups] = kSlots - slot;
-    }
+    if (slot != kSlots) return fail("the streams must take all 48 slots (as on the air)");
     r.valid = true;
     t = r;
+    if (orderOut) *orderOut = order;
     return true;
 }
 
@@ -44,11 +48,10 @@ struct Generator::Impl {
     GenConfig cfg;
     std::string err;
     bool ok = false;
-    Tmcc tmcc;
-    std::vector<std::unique_ptr<SlotEncoder>> enc;      // per slot, null for filler
-    std::vector<size_t> fillerPos;
-    uint64_t frame = 0;
+    Tmcc tmcc;                                          // layout of the super-frame being sent
+    uint64_t frame = 0, super = 0;
     uint64_t packets = 0;
+    FrameEncoder enc;
     // pulse shaping
     static constexpr int kPhases = 128;
     int half = 10;
@@ -63,71 +66,76 @@ struct Generator::Impl {
     std::vector<cf32> pending;                          // shaped samples not handed out yet
     size_t pendPos = 0;
 
-    void buildEncoders(const std::vector<StreamCfg>& streams) {
-        enc.clear();
-        enc.resize(kSlots);
-        fillerPos.assign(kSlots, 0);
-        for (int s = 0; s < kSlots; s++) {
-            const int mod = tmcc.slotMod(s);
-            if (mod == kUnused) continue;
-            const StreamCfg& sc = streams[tmcc.slotTs[(size_t)s]];
-            auto src = sc.src;
-            uint64_t* counter = &packets;
-            enc[(size_t)s] = std::make_unique<SlotEncoder>(mod, [src, counter](uint8_t* p) {
-                (*counter)++;
-                if (src) src(p);
-                else { memset(p, 0xFF, 188); p[0] = 0x47; p[1] = 0x1F; p[3] = 0x10; }
-            });
-        }
-    }
+    bool second(uint64_t sf) const { return cfg.changeAfterSuper >= 0 && sf >= (uint64_t)cfg.changeAfterSuper; }
+    const std::vector<StreamCfg>& streamsAt(uint64_t sf) const { return second(sf) ? cfg.streams2 : cfg.streams; }
 
-    void frameSymbols(std::vector<cf32>& f) {
-        const int fi = (int)(frame % kFramesPerSuper);
-        const uint64_t super = frame / kFramesPerSuper;
-        if (fi == 0 && cfg.changeAfterSuper >= 0 && (int64_t)super == cfg.changeAfterSuper) {
-            Tmcc t2;
-            tmccFromStreams(cfg.streams2, tmcc.change + 1, t2);
-            tmcc = t2;
-            buildEncoders(cfg.streams2);
-        }
-        f.assign(kFrameSyms, cf32(0, 0));
-        // header
-        const auto& sw = syncWord();
-        for (int i = 0; i < kSyncSyms; i++) f[(size_t)i] = cf32(sw[(size_t)i], 0);
-        const auto bits = tmccPack(tmcc);
-        uint8_t coded[64];
-        tmccSliceEncode(&bits[(size_t)fi * kTmccSliceBits], coded);
-        for (int i = 0; i < 64; i++) {
-            const float v = coded[i] ? -1.f : 1.f;
-            f[(size_t)(kSyncSyms + i)] = cf32(v, 0);
-            f[(size_t)(kSyncSyms + 64 + i)] = cf32(v, 0);
-        }
-        const auto& fw = frameIdWord(fi);
-        for (int i = 0; i < kFrameIdSyms; i++) f[(size_t)(kSyncSyms + kTmccSyms + i)] = cf32(fw[(size_t)i], 0);
-        // data: the slots in order (the order the packets are taken from the sources in), then laid on the blocks
-        static thread_local std::vector<cf32> sl[kSlots];
-        for (int s = 0; s < kSlots; s++) {
-            sl[s].resize(kSlotSyms);
-            if (enc[(size_t)s]) enc[(size_t)s]->symbols(sl[s].data(), kSlotSyms);
-            else {
-                const std::vector<float> fl = fillerSequence(s + (int)(frame & 1) * 48, kSlotSyms);
-                for (int i = 0; i < kSlotSyms; i++) sl[s][(size_t)i] = cf32(fl[(size_t)i], 0);
+    // the eight frames of the next super-frame
+    void superFrame(std::vector<cf32>& out) {
+        const uint64_t sf = super++;
+        std::vector<int> order;
+        Tmcc now, announced;
+        tmccFromStreams(streamsAt(sf), second(sf) ? 1 : 0, now, nullptr, &order);
+        // the TMCC is sent two super-frames ahead of the frames it describes (TR-B15 6.2.1)
+        tmccFromStreams(streamsAt(sf + 2), second(sf + 2) ? 1 : 0, announced);
+        tmcc = now;
+        const std::vector<StreamCfg>& st = streamsAt(sf);
+        Layout L;
+        L.build(now);
+        // packets -> RS(204,188) -> energy dispersal (the sync byte is left alone and not sent)
+        static thread_local std::vector<uint8_t> orig, inter;
+        orig.assign((size_t)kFramesPerSuper * kSlots * kSlotBytes, 0);
+        inter.assign(orig.size(), 0);
+        for (int f = 0; f < kFramesPerSuper; f++)
+            for (int s = 0; s < kSlots; s++) {
+                uint8_t ts[188], rs[204];
+                memset(ts, 0xFF, sizeof ts); ts[0] = 0x47; ts[1] = 0x1F; ts[2] = 0xFF; ts[3] = 0x10;   // null packet (dummy slots)
+                if (L.ordinal[(size_t)s] >= 0) {
+                    const StreamCfg& c = st[(size_t)order[now.slotTs[(size_t)s]]];
+                    if (c.src) c.src(ts);
+                    ts[0] = 0x47;
+                    packets++;
+                }
+                fecp::rs204Encode(ts, rs);
+                uint8_t* o = &orig[(size_t)(f * kSlots + s) * kSlotBytes];
+                for (int b = 1; b < 204; b++) o[b - 1] = rs[b] ^ prbsByte(f, s, b);
             }
+        // byte interleaving of each slot across the eight frames
+        for (int f = 0; f < kFramesPerSuper; f++)
+            for (int s = 0; s < kSlots; s++)
+                for (int j = 0; j < kSlotBytes; j++) {
+                    int F, k;
+                    interleavePos(f, j, F, k);
+                    inter[(size_t)(F * kSlots + s) * kSlotBytes + (size_t)k] = orig[(size_t)(f * kSlots + s) * kSlotBytes + (size_t)j];
+                }
+        uint8_t tm[kTmccCoded];
+        const auto info = tmccPack(announced);
+        tmccEncode(info.data(), tm);
+        out.resize((size_t)kFramesPerSuper * kFrameSyms);
+        std::vector<std::vector<uint8_t>> gb(L.groups.size());
+        for (int f = 0; f < kFramesPerSuper; f++) {
+            for (size_t g = 0; g < L.groups.size(); g++) {
+                gb[g].clear();
+                const auto& G = L.groups[g];
+                for (int s = G.firstSlot; s < G.firstSlot + G.count; s++)
+                    if (L.ordinal[(size_t)s] >= 0) { const uint8_t* p = &inter[(size_t)(f * kSlots + s) * kSlotBytes]; gb[g].insert(gb[g].end(), p, p + kSlotBytes); }
+            }
+            uint8_t hb[kHeaderBits];
+            headerBits(tm, f, hb);
+            if (cfg.burstData) {
+                std::vector<float> bd((size_t)kBlocks * kBurstSyms);
+                for (auto& v : bd) v = (rng() & 1) ? -1.f : 1.f;
+                enc.encode(L, hb, gb, &out[(size_t)f * kFrameSyms], bd.data());
+            } else {
+                enc.encode(L, hb, gb, &out[(size_t)f * kFrameSyms]);
+            }
+            frame++;
         }
-        const auto& burst = burstSequence();
-        for (int j = 0; j < kBlocks; j++) {
-            cf32* b = &f[(size_t)(kHeaderSyms + j * kBlockSyms)];
-            const cf32* d = &sl[j % kSlots][(size_t)(j / kSlots) * kBlockData];
-            for (int i = 0; i < kBlockData; i++) b[i] = d[i];
-            for (int i = 0; i < kBurstSyms; i++) b[kBlockData + i] = cf32(burst[(size_t)(j * kBurstSyms + i)], 0);
-        }
-        frame++;
     }
 
     void ensureSymbols(long long upto) {   // symbols with index < upto exist
         while (base + (long long)hist.size() < upto) {
             std::vector<cf32> f;
-            frameSymbols(f);
+            superFrame(f);
             hist.insert(hist.end(), f.begin(), f.end());
         }
     }
@@ -163,7 +171,7 @@ struct Generator::Impl {
         }
         // drop symbols that can no longer be reached
         const long long keepFrom = (long long)std::floor(t) - half;
-        if (keepFrom - base > 4 * kFrameSyms) {
+        if (keepFrom - base > 10 * kFrameSyms) {
             const long long cut = keepFrom - base;
             hist.erase(hist.begin(), hist.begin() + cut);
             base += cut;
@@ -177,7 +185,6 @@ Generator::Generator(const GenConfig& cfg) : p_(new Impl) {
     if (!tmccFromStreams(cfg.streams, 0, m.tmcc, &m.err)) return;
     if (cfg.changeAfterSuper >= 0) { Tmcc t2; if (!tmccFromStreams(cfg.streams2, 1, t2, &m.err)) return; }
     m.rng.seed(cfg.seed);
-    m.buildEncoders(cfg.streams);
     m.half = std::max(6, 10);
     m.taps.assign((size_t)(Impl::kPhases + 1) * 2 * (size_t)m.half, 0.f);
     for (int p = 0; p <= Impl::kPhases; p++)

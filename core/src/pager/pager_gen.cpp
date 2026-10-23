@@ -50,7 +50,7 @@ std::vector<pager::FlexPage> flexPages(int speed) {
     const std::string name = std::string(pagerSpeedName(speed)).substr(5);       // "1600/2" from "FLEX 1600/2"
     auto page = [](uint32_t cap, int type, const std::string& t) { FlexPage p; p.cap = cap; p.type = type; p.text = t; return p; };
     return {page(1234567, kPagerAlpha, "OnAir test " + name + ": hello"), page(1234568, kPagerNumeric, "555-0123 U 45"), page(1234569, kPagerTone, ""),
-            page(1234570, kPagerAlpha, "Second page " + name)};
+            page(1234570, kPagerAlpha, "Second page " + name), page(2101234, kPagerAlpha, "Long address " + name)};
 }
 
 bool included(int speed, int onlyKind, int onlySpeed) {
@@ -70,7 +70,10 @@ Tx pocsagTx(int speed) {
     return tx;
 }
 
-Tx flexTx(int speed, int cycle, int frame) {
+// One FLEX frame. The sync code and marker bits are in the sense of the table (a 1 is the lower frequency); the FIW and the phase data go out
+// complemented against them (a data 1 is the higher frequency), as in every real recording (issues #95 and #261): with the same sense for both,
+// no real FIW passes its check. In 4-level frames the sign carries the first bit of a symbol and the inner levels a second bit of 1.
+Tx flexFrameTx(int speed, int cycle, int frame, const std::vector<pager::FlexPage>* per) {
     using namespace pager;
     const FlexMode* m = flexModeForSpeed(speed);
     Tx tx;
@@ -84,32 +87,38 @@ Tx flexTx(int speed, int cycle, int frame) {
     for (int i = 15; i >= 0; i--) bit2((m->code >> i) & 1);
     for (int i = 31; i >= 0; i--) bit2((kFlexMarker >> i) & 1);
     for (int i = 15; i >= 0; i--) bit2(((uint16_t)~m->code >> i) & 1);
-    for (int i = 0; i < 16; i++) bit2(~i & 1);
+    for (int i = 15; i >= 0; i--) bit2(((uint16_t)~(kFlexMarker >> 16) >> i) & 1);   // the complement of the marker's first half
     const uint32_t fiw = encodeWord(rev21(flexFiwData(cycle, frame)));
-    for (int i = 31; i >= 0; i--) bit2((fiw >> i) & 1);
+    for (int i = 31; i >= 0; i--) bit2(!((fiw >> i) & 1));
     tx.runs.push_back(std::move(a));
     // sync 2 (dotting at the data rate), then the 11 blocks
     Run d;
     d.baud = m->baud;
     for (int i = 0; i < m->baud * 25 / 1000; i++) d.sym.push_back(i & 1 ? 3 : -3);
     const int nph = speed == kFlex1600_2 ? 1 : (speed == kFlex6400_4 ? 4 : 2);
-    std::vector<FlexPage> per[4];
-    const std::vector<FlexPage> pages = flexPages(speed);
-    for (size_t k = 0; k < pages.size(); k++) per[k % (size_t)nph].push_back(pages[k]);
     std::vector<uint8_t> ph[4];
     for (int p = 0; p < nph; p++) ph[p] = flexPhaseBits(per[p]);
-    auto lev4 = [](int a1, int b1) -> int8_t { return a1 ? (b1 ? -1 : -3) : (b1 ? 1 : 3); };
+    auto lev2 = [](int b) -> int8_t { return b ? 3 : -3; };
+    auto lev4 = [](int a1, int b1) -> int8_t { return a1 ? (b1 ? 1 : 3) : (b1 ? -1 : -3); };
     const size_t nb = 2816;
     for (size_t i = 0; i < nb; i++) {
         switch (speed) {
-        case kFlex1600_2: d.sym.push_back(ph[0][i] ? -3 : 3); break;
-        case kFlex3200_2: d.sym.push_back(ph[0][i] ? -3 : 3); d.sym.push_back(ph[1][i] ? -3 : 3); break;
+        case kFlex1600_2: d.sym.push_back(lev2(ph[0][i])); break;
+        case kFlex3200_2: d.sym.push_back(lev2(ph[0][i])); d.sym.push_back(lev2(ph[1][i])); break;
         case kFlex3200_4: d.sym.push_back(lev4(ph[0][i], ph[1][i])); break;
         default:          d.sym.push_back(lev4(ph[0][i], ph[1][i])); d.sym.push_back(lev4(ph[2][i], ph[3][i])); break;
         }
     }
     tx.runs.push_back(std::move(d));
     return tx;
+}
+
+Tx flexTx(int speed, int cycle, int frame) {
+    const int nph = speed == kFlex1600_2 ? 1 : (speed == kFlex6400_4 ? 4 : 2);
+    std::vector<pager::FlexPage> per[4];
+    const std::vector<pager::FlexPage> pages = flexPages(speed);
+    for (size_t k = 0; k < pages.size(); k++) per[k % (size_t)nph].push_back(pages[k]);
+    return flexFrameTx(speed, cycle, frame, per);
 }
 
 std::vector<Tx> buildCycle(int onlyKind, int onlySpeed) {
@@ -242,40 +251,9 @@ std::unique_ptr<ModeSynth> makePagerSynthPage(const SynthConfig& cfg, double sam
         p.cap = address ? address : 1234567;
         p.type = type;
         p.text = text;
-        using namespace pager;
-        const FlexMode* m = flexModeForSpeed(speed);
-        Tx tx;
-        tx.dev = 4800;
-        Run a;
-        a.baud = 1600;
-        auto bit2 = [&](int b) { a.sym.push_back(b ? -3 : 3); };
-        for (int i = 0; i < 64; i++) bit2(~i & 1);
-        for (int i = 0; i < 32; i++) bit2(~i & 1);
-        for (int i = 15; i >= 0; i--) bit2((m->code >> i) & 1);
-        for (int i = 31; i >= 0; i--) bit2((kFlexMarker >> i) & 1);
-        for (int i = 15; i >= 0; i--) bit2(((uint16_t)~m->code >> i) & 1);
-        for (int i = 0; i < 16; i++) bit2(~i & 1);
-        const uint32_t fiw = encodeWord(rev21(flexFiwData(0, 3)));
-        for (int i = 31; i >= 0; i--) bit2((fiw >> i) & 1);
-        tx.runs.push_back(std::move(a));
-        Run d;
-        d.baud = m->baud;
-        for (int i = 0; i < m->baud * 25 / 1000; i++) d.sym.push_back(i & 1 ? 3 : -3);
-        const int nph = speed == kFlex1600_2 ? 1 : (speed == kFlex6400_4 ? 4 : 2);
-        std::vector<uint8_t> ph[4];
-        ph[0] = flexPhaseBits({p});
-        for (int i = 1; i < nph; i++) ph[i] = flexPhaseBits({});
-        auto lev4 = [](int a1, int b1) -> int8_t { return a1 ? (b1 ? -1 : -3) : (b1 ? 1 : 3); };
-        const size_t nb = 2816;
-        for (size_t i = 0; i < nb; i++) {
-            switch (speed) {
-            case kFlex1600_2: d.sym.push_back(ph[0][i] ? -3 : 3); break;
-            case kFlex3200_2: d.sym.push_back(ph[0][i] ? -3 : 3); d.sym.push_back(ph[1][i] ? -3 : 3); break;
-            case kFlex3200_4: d.sym.push_back(lev4(ph[0][i], ph[1][i])); break;
-            default:          d.sym.push_back(lev4(ph[0][i], ph[1][i])); d.sym.push_back(lev4(ph[2][i], ph[3][i])); break;
-            }
-        }
-        tx.runs.push_back(std::move(d));
+        std::vector<pager::FlexPage> per[4];
+        per[0].push_back(p);
+        Tx tx = flexFrameTx(speed, 0, 3, per);
         txs.clear();
         txs.push_back(std::move(tx));
     }

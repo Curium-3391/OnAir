@@ -1,6 +1,7 @@
 // Native driver for the Airspy HF+ and HF+ Discovery: the radio's own library (libairspyhf) is loaded at run time when it is installed. See native_common.h.
 // The radio is an HF/VHF receiver with a very narrow output (at most 912 kHz): it suits the narrow modes (DRM, AIS, marine, FM, ...), not TV.
 #include "native_common.h"
+#include "dect2/source/usb_fd.h"   // Android: radios handed over as descriptors
 #include <chrono>
 #include <map>
 #include <set>
@@ -53,6 +54,7 @@ struct AirspyHfApi {
     int (DECT2_CALL* set_calibration)(airspyhf_device*, int32_t) = nullptr;
     int (DECT2_CALL* set_bias_tee)(airspyhf_device*, int8_t) = nullptr;
     int (DECT2_CALL* get_bias_tee_count)(airspyhf_device*, int32_t*) = nullptr;
+    int (DECT2_CALL* open_fd)(airspyhf_device**, int) = nullptr;   // optional (libairspyhf built for Android): a descriptor the system opened
     bool ok = false;
     DynLib lib;
     AirspyHfApi() {
@@ -68,7 +70,21 @@ struct AirspyHfApi {
         lib.opt(set_calibration, "airspyhf_set_calibration");
         lib.opt(set_bias_tee, "airspyhf_set_bias_tee");
         lib.opt(get_bias_tee_count, "airspyhf_get_bias_tee_count");
+        lib.opt(open_fd, "airspyhf_open_fd");
+        if (ok && usbFdPlatform() && !open_fd) {   // Android: a bus scan is not allowed, only the descriptors the app hands over
+            fprintf(stderr, "Airspy HF+: the bundled libairspyhf has no airspyhf_open_fd: HF+ radios are not available on this phone\n");
+            ok = false;
+        }
     }
+    // Android: the HF+ the app handed over whose serial is sn (0 = the first one). 0 or a library error.
+    int openFromFd(uint64_t sn, airspyhf_device** dev) {
+        if (!open_fd) return -1;
+        for (const UsbFdRadio& r : usbFdList("airspyhf"))
+            if (!sn || usbFdAirspySerial(r.serial) == sn) return open_fd(dev, r.fd);
+        return -1;
+    }
+    // open_sn, or the descriptor on Android
+    int openSn(airspyhf_device** dev, uint64_t sn) { return usbFdPlatform() ? openFromFd(sn, dev) : open_sn(dev, sn); }
 };
 AirspyHfApi& airspyhf() { static AirspyHfApi a; return a; }
 
@@ -142,7 +158,7 @@ protected:
             }
         }
         if (!dev_) {
-            if (airspyhf().open_sn(&dev_, serial_) != 0 || !dev_) { dev_ = nullptr; err = "Airspy HF+: cannot open the radio (in use, or the driver is missing)"; return false; }
+            if (airspyhf().openSn(&dev_, serial_) != 0 || !dev_) { dev_ = nullptr; err = "Airspy HF+: cannot open the radio (in use, or the driver is missing)"; return false; }
             if (airspyhf().set_lib_dsp) airspyhf().set_lib_dsp(dev_, 1);   // the library's own IQ correction and fine tuning
             gHfOpen.insert(serial_);
             gHfUsed = true;
@@ -342,7 +358,10 @@ void listAirspyHf(std::vector<DeviceInfo>& out) {
         return;
     }
     uint64_t sn[16] = {0};
-    const int n = std::min(airspyhf().list_devices(sn, 16), 16);
+    int n = 0;
+    if (usbFdPlatform()) {   // Android: the radios the app was given, never a bus scan
+        for (const UsbFdRadio& r : usbFdList("airspyhf")) if (n < 16) sn[n++] = usbFdAirspySerial(r.serial);
+    } else n = std::min(airspyhf().list_devices(sn, 16), 16);
     std::set<uint64_t> listed;
     for (int i = 0; i < n; i++) listed.insert(sn[i]);
     for (uint64_t s : gHfOpen) {   // a radio streaming here may be missing from the library's list (Windows): it is still there
@@ -363,7 +382,7 @@ void listAirspyHf(std::vector<DeviceInfo>& out) {
         // the rates come from the radio (a Discovery has 912 kHz as well); when it is busy (streaming here, or in another program) the standard model's list
         d.minRateHz = 192e3; d.maxRateHz = 768e3;
         AirspyHfApi::airspyhf_device* dev = nullptr;
-        if (!gHfOpen.count(sn[i]) && airspyhf().open_sn(&dev, sn[i]) == 0 && dev) {
+        if (!gHfOpen.count(sn[i]) && airspyhf().openSn(&dev, sn[i]) == 0 && dev) {
             uint32_t count = 0, rates[16] = {0};
             airspyhf().get_samplerates(dev, &count, 0);
             count = std::min<uint32_t>(count, 16);

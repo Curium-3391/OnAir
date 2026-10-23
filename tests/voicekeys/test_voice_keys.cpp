@@ -9,6 +9,7 @@
 #include "dect2/mesh/mesh_crypto.h"
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <cstring>
 #include <random>
 
@@ -191,6 +192,13 @@ static void testKeychainLoss() {
     failReads = false;
     s.clear();
     CHECK(loadFromFile(path).empty() && s.list().size() == 1, "the old file still opens with the old key");
+    // the keychain item is gone for good: the user discards the old file (moved aside, not deleted) and can save again
+    CHECK(discardKeyFile(path).empty() && !std::ifstream(path).good() && std::ifstream(path + ".discarded").good(), "discard moves the old file aside");
+    failReads = true;
+    s.add(k);
+    CHECK(saveToFile(path).empty(), "after a discard a save may make a new key");
+    std::remove((path + ".discarded").c_str());
+    failReads = false;
     // with no file at all a new key may be made
     std::remove(path.c_str());
     stored.clear(); sets = 0;

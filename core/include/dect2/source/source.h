@@ -120,7 +120,7 @@ struct AudioHilbert {
 void audioStereoToIq(const float* stereo, int n, AudioIqMode mode, cf32* out, AudioHilbert& h);
 
 struct DeviceInfo {
-    enum Kind { Synthetic, File, HackRF, Soapy, Native, Audio, Hamlib } kind = Synthetic;   // Native: a radio driven by its own library (experimental), see source_native.cpp. Audio: a sound card (WebSDR / VAC / speaker tap), source_audio.cpp. Hamlib: CAT rig + optional sound card for IQ (source_hamlib.cpp).
+    enum Kind { Synthetic, File, HackRF, Soapy, Native, Audio, Hamlib, Group } kind = Synthetic;   // Native: a radio driven by its own library (experimental), see source_native.cpp. Audio: a sound card (WebSDR / VAC / speaker tap), source_audio.cpp. Hamlib: CAT rig + optional sound card for IQ (source_hamlib.cpp). Group: 2-5 radios stitched into one wide one (synth_group.h).
     std::string name;   // display name
     std::string serial; // HackRF serial / file path
     std::string board;  // "HackRF One", "HackRF Pro", "airspy", "sdrplay", ...
@@ -150,8 +150,8 @@ struct DeviceInfo {
     double txGainMinDb = 0, txGainMaxDb = 0;
     std::string txGainNote;                // what the TX gain number means on this radio ("HackRF: 0-47 dB TX VGA, +14 dB with the amplifier")
     std::vector<RadioSetting> settings;    // the radio's own settings the app offers (TuneSettings::radio); empty for files and the test signal
-    bool isRadio() const { return kind == HackRF || kind == Soapy || kind == Native || kind == Hamlib; }
-    bool isGeneric() const { return kind == Soapy || kind == Native; }   // one overall gain, a sample-rate range reported by the radio
+    bool isRadio() const { return kind == HackRF || kind == Soapy || kind == Native || kind == Hamlib || kind == Group; }
+    bool isGeneric() const { return kind == Soapy || kind == Native || kind == Group; }   // one overall gain, a sample-rate range reported by the radio
     bool isAudio() const { return kind == Audio; }
     bool network = false;                  // reached over a network link, not USB (set where the name does not say "(network)": a Pluto found by mDNS)
     bool isNetwork() const { return network || name.find(" (network") != std::string::npos; }   // rtl_tcp, SpyServer, KiwiSDR, a Pluto by IP, ...
@@ -185,6 +185,7 @@ struct TxTune {
 // The hertz value a transmit sink writes at its set-frequency call. PPM correction, where a radio has it, is applied to this result.
 inline double txRadioHz(const TxTune& t) { return t.centerHz + t.offsetHz; }
 
+#ifndef ONAIR_WEB_SESSION   // the transmit path does not exist for OnAir Web code (server/web): see dect2/tx/tx.h
 // A radio that transmits. open() starts the radio's transmit path (a driver that refuses a frequency or a rate says why in err, in plain
 // words); write() hands it complex float samples (full scale = +-1.0; beyond that is clipped) and returns when the radio has taken them, so a
 // real radio paces the caller; close() stops the transmitter: no sample goes out after it returns. Used from one thread at a time.
@@ -205,6 +206,7 @@ std::unique_ptr<TxSink> makeTxSink(const DeviceInfo& d);
 std::unique_ptr<TxSink> makeUsbHackrfTxSink(const std::string& serial);   // hackrf_usb.cpp
 void hackrfTxPack(const cf32* x, size_t n, int8_t* out);                  // the HackRF's DAC format: float (1.0 = full scale) to signed 8-bit I/Q pairs
 std::unique_ptr<TxSink> makeNativeTxSink(const DeviceInfo& d);           // source_native.cpp (PlutoSDR)
+#endif
 
 // Radios the user hid from the list (by display name; saved in the settings). Synthetic/file entries are never hidden.
 void setHiddenRadios(const std::vector<std::string>& names);

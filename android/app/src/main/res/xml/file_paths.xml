@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider (authority ${applicationId}.files): only cache/share/ is exposed; CrashLog.shareIntent copies the logs there first. -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

@@ -137,6 +137,7 @@ void refreshDevices(App& a) {
     std::string err;
     setNetworkRadios(a.netRadios);   // the ones the user added by address come after the ones found
     setHamlibRigs(a.hamlibRigs);
+    setSynthGroups(a.synthGroups);   // the saved radio groups: listed after the radios they are made of
     // HackRF, the radios with a native driver (RTL-SDR, Airspy, BladeRF, LimeSDR, PlutoSDR, USRP) and the rest through SoapySDR
     for (auto& d : listRadios(err)) a.devices.push_back(d);
     for (App* o : receiversAll()) {   // a radio another receiver has open may be missing from the list (drivers cannot look at a radio in use): it stays, as "in use by RX n"
@@ -378,6 +379,15 @@ static void syncSpectrumEngine(App& a) {
 
 void ingestSpectrum(App& a) {
     syncSpectrumEngine(a);
+    if (a.specDemo && !a.engine.running()) {   // --specdemo: the synthetic test spectrum (spec_look.h), 30 frames a second, no radio needed
+        static double nextT = 0;
+        const double t = glfwGetTime();
+        if (t < nextT) return;
+        nextT = t + 1.0 / 30;
+        const double fsMhz = a.tune.sampleRate > 0 ? a.tune.sampleRate / 1e6 : 10.0;
+        slook::demoSpectrum(a.spec.dbfs, 8192, radioCenterMhz(a), fsMhz, t, (uint32_t)(a.lastSeq + 1));
+        a.spec.seq = a.lastSeq + 1;
+    } else
     if (!a.engine.latestSpectrum(a.spec, a.lastSeq)) return;   // straight into the kept frame: no copy that allocates, 30 times a second
     const SpectrumFrame& f = a.spec;
     const uint64_t prevSeq = a.lastSeq;
@@ -403,7 +413,7 @@ void ingestSpectrum(App& a) {
     {   // the history has the width the detail setting and the FFT give (#243), and follows the radio: a retune moves the rows along (#270)
         const double fsMhz = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
         a.wf.setCols(specaxis::historyCols(a.wf.detail, n, Waterfall::kMaxCols));
-        if (!a.wf.paused) a.wf.follow(radioCenterMhz(a), fsMhz);
+        a.wf.follow(radioCenterMhz(a), fsMhz);   // also while paused: the frozen picture must stay under its frequencies
     }
     // frames the screen did not take (it drew slower than they came): the row is repeated for them, so the picture keeps its true speed (#246)
     const int missed = a.wf.rowsPerSec <= 0 ? specaxis::missedRows(prevSeq, f.seq) : 0;

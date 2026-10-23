@@ -1,0 +1,79 @@
+# English texts that stay the same in every language (units, acronyms, standards); tools/i18n_missing.py skips them.
+%+.2f MHz
+%.1f dBFS
+%s  #%d  %.3f MHz%s
+%s  %.4f MHz  %s%s%s%s  %.1f dB  %s
+, %.0f baud
+12.5 kHz
+25 kHz
+8 MHz
+868 MHz ISM
+ADS-B
+ADS-B 1090 MHz
+AGC
+AIS
+AOS
+APRS
+ASCII
+CFO
+CPU %.0f %%
+Capcode
+Cassiopeia A
+Cygnus A
+DVB-T
+EVM %.1f dB
+Es'hail-2, 10.49 GHz
+FIC
+FM, 1200 bit/s FSK, %.2f Msps
+FREQ
+GNSS NMEA RMC/GGA (UDP)
+GPS, GLONASS, BeiDou
+IoT, 2.4 GHz
+IoT, 868.1 MHz
+Journaline
+LNA
+LNB
+LO (MHz)
+LOS
+LoRa / LoRaWAN / Meshtastic, JSON (UDP)
+LoRa, 433.175 MHz
+LoRa, 433.775 MHz
+MHz
+MMSI
+MODE
+Mode
+NFM / AM / SSB / CW
+NFM / VHF / UHF
+NRZ
+NextGen TV
+ONAIR
+OnAir %s
+PAL, SECAM, NTSC
+PSK Reporter
+R0 kpc
+RDS
+RDS PI
+RFPI
+RMS
+RX %.6f MHz
+Rate
+SDR
+SNR
+SNR dB
+SPECTRUM
+SRC
+SRO
+SSB / HF
+STD
+Sagittarius A*
+Std
+Tsys K
+VGA
+WPM
+WSJT, 1.8366 MHz
+WSJT, 14.074 MHz
+WSJT, 14.076 MHz
+WSJT, 14.078 MHz
+WSJT, 14.080 MHz
+WSJT, 14.084 MHz
+WSJT, 14.100 MHz

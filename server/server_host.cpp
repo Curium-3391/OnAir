@@ -1,6 +1,7 @@
 #include "dect2/common/thread_name.h"
 #include "server_host.h"
 #include "web_ui.h"
+#include "web/web_hub.h"
 #include "dect2/audio/audio_monitor.h"
 #include "dect2/audio/hf_demod.h"
 #include "dect2/engine/mode_tuning.h"
@@ -249,6 +250,23 @@ void ServerHost::saveState() {
 }
 
 void ServerHost::shutdown() { std::lock_guard<std::mutex> lk(mu_); stopLocked(); }
+
+void ServerHost::setWebHub(onair_web::WebHub* hub) {
+    if (!hub) { e_.setIqTap(nullptr); return; }
+    // the raw samples at the radio's rate, centred on the radio's own frequency (the receivers' offset tuning is not applied to them)
+    e_.setIqTap([this, hub](const std::complex<float>* x, size_t n, double rate) { hub->pushIq(x, n, e_.captureCentreHz(), rate); });
+}
+
+std::string ServerHost::modeId() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return modeIdx_ >= 0 && (size_t)modeIdx_ < modes_.size() ? modes_[(size_t)modeIdx_].id : std::string();
+}
+
+void ServerHost::editConfig(const std::function<void(ConfigFile&)>& f) {
+    std::lock_guard<std::mutex> lk(mu_);
+    f(cfg_);
+    dirty_ = true;
+}
 
 std::string ServerHost::lastError() const { std::lock_guard<std::mutex> lk(mu_); return err_; }
 

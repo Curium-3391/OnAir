@@ -34,7 +34,7 @@ std::unique_ptr<ModeSynth> makeIsdbsSynth(const SynthConfig& cfg, double sampleR
         g.streams.push_back(s);
     } else {
         StreamCfg a, b, c;
-        a.mod = kTc8psk23; a.slots = 16; a.tsId = 0x4010; a.src = demoTsSource(slotTsBitrate(a.mod) * a.slots * 0.9);
+        a.mod = kTc8psk23; a.slots = 36;   // all 48 slots are allocated: 36 + 8 + 4 a.tsId = 0x4010; a.src = demoTsSource(slotTsBitrate(a.mod) * a.slots * 0.9);
         b.mod = kQpsk34; b.slots = 8; b.tsId = 0x4011;
         c.mod = kBpsk12; c.slots = 4; c.tsId = 0x4012;
         g.streams = {a, b, c};

@@ -124,7 +124,7 @@ void receiver(App& a) {
     kv("carrier offset", "%+.1f Hz", t.cfoHz);
     kv("Es/N0", "%.1f dB", t.snrDb);
     kv("frames", "%llu (%llu super-frames), sync lost %llu times", (unsigned long long)t.frames, (unsigned long long)t.superFrames, (unsigned long long)t.syncLosses);
-    kv("TMCC", "%llu good, %llu bad slices, change counter %d", (unsigned long long)t.tmccGood, (unsigned long long)t.tmccBad, t.tmcc.change);
+    kv("TMCC", "%llu good, %llu bad super-frames, change counter %d", (unsigned long long)t.tmccGood, (unsigned long long)t.tmccBad, t.tmcc.change);
     ImGui::Spacing();
     if (t.streams.empty()) kv("streams", "not known yet");
     for (const auto& s : t.streams)

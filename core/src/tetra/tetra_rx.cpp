@@ -367,7 +367,15 @@ CarrierDecode decodeCarrier(const cf32* x, size_t n, int kMcc, int kMnc, int kCc
     if (ftn < 1 || ftn > 4) return out;
     constexpr long kMaxLost = 41;   // frames of the slot between two captures filled with silence: one capture; after more the sound has run dry anyway
     if (timeline && timeline->tn != ftn) timeline->next = -1;
+    // The frames of one slot reach the sink in strictly forward order: a frame number at or just behind the one expected next has already been
+    // given (a second decode of the same air time: a repeated slot of the capture, a capture that overlaps the last one) and is dropped, so that
+    // no piece of speech is ever played twice.
+    long expect = timeline ? timeline->next : -1;
     for (const SlotFrame& f : frames[ftn]) {
+        if (expect >= 0) {
+            const long back = (expect - f.speech + VoiceTimeline::kSpeechFrames) % VoiceTimeline::kSpeechFrames;
+            if (back > 0 && back <= kMaxLost) { out.voiceDup++; continue; }
+        }
         if (timeline && timeline->next >= 0) {
             const long lost = (f.speech - timeline->next + VoiceTimeline::kSpeechFrames) % VoiceTimeline::kSpeechFrames;
             if (lost <= kMaxLost) for (long k = 0; k < lost; k++) { sink->onMissingBurst(); out.voiceGaps++; }
@@ -376,6 +384,7 @@ CarrierDecode decodeCarrier(const cf32* x, size_t n, int kMcc, int kMnc, int kCc
             out.voiceTn = ftn;
         } else { sink->onMissingBurst(); out.voiceGaps++; }
         if (timeline) { timeline->tn = ftn; timeline->next = (f.speech + 1) % VoiceTimeline::kSpeechFrames; }
+        expect = (f.speech + 1) % VoiceTimeline::kSpeechFrames;
     }
     return out;
 }
@@ -461,14 +470,26 @@ struct TetraReceiver::Impl {
     // per-call encryption state of each carrier (analysis thread only), keyed by the carrier's 25 kHz channel
     std::map<long, tetra::CallTracker> callTrackers;
     tetra::VoiceStreamPicker voicePick;   // the one carrier and timeslot whose voice is played
-    tetra::VoiceTimeline voiceTimeline;   // its frames across captures (the slots lost between two captures go to the sink as silence)
+    std::map<long, tetra::VoiceTimeline> timelines;   // the frames of each carrier across captures (the slots lost between two captures go to the sink as silence)
     // the user's choice (issue #267): the timeslot to listen to (0 the first with clear voice), the carrier (0 any), only the carrier at the dial frequency
     std::atomic<int> wantTn{0};
     std::atomic<double> wantCarrierHz{0.0};
-    std::atomic<bool> single{false};
+    std::atomic<bool> single{false};      // Single carrier: only the user's channel is decoded, no search of the span
     std::atomic<double> playCarrierHz{0.0};   // the stream whose voice reached the sink in the last capture (0: none)
     std::atomic<int> playTn{0};
-    static long callKey(double center, double off) { return std::lround(((center > 0 ? center : 0.0) + off) / 25e3); }
+    // A carrier's name across captures. The centre of its rise in the spectrum moves a few kHz from capture to capture (and a carrier near the
+    // middle of two 25 kHz grid steps changed name every time, losing its call state and its place in the voice stream), so a carrier within
+    // kSameCarrierHz of a known one is that carrier. Analysis thread only.
+    static constexpr double kSameCarrierHz = 9e3;
+    std::vector<std::pair<double, long>> carrierNames;
+    long nextName = 1;
+    long callKey(double center, double off) {
+        const double f = (center > 0 ? center : 0.0) + off;
+        for (auto& c : carrierNames) if (std::fabs(c.first - f) < kSameCarrierHz) { c.first += 0.25 * (f - c.first); return c.second; }
+        if (carrierNames.size() > 96) carrierNames.erase(carrierNames.begin());
+        carrierNames.push_back({f, nextName});
+        return nextName++;
+    }
     // capture (analysis thread)
     std::vector<cf32> acc;
     size_t want = 0;
@@ -523,17 +544,14 @@ struct TetraReceiver::Impl {
     std::vector<Carrier> carriers(const std::vector<cf32>& x, double fs) { return tetra::findCarriers(x.data(), x.size(), fs); }
 
     void process(const std::vector<cf32>& x, double center, double fs, double sec, uint64_t g) {
-        std::vector<Carrier> car = carriers(x, fs);
+        std::vector<Carrier> car;
         if (single.load()) {
             // one 25 kHz channel at the dial frequency: the others are not decoded (no copies of the call from other sites, and the capture is
             // decoded in a fraction of the time, so fewer samples are dropped while it is)
             double off0;
             { std::lock_guard<std::mutex> lk(mu); off0 = sigOff; }
-            std::vector<Carrier> one;
-            for (const auto& c : car) if (std::fabs(c.off - off0) <= 12.5e3 && (one.empty() || std::fabs(c.off - off0) < std::fabs(one[0].off - off0))) one.assign(1, c);
-            if (one.empty()) { Carrier c; c.off = off0; c.levelDb = 0; c.powerDb = -200; one.push_back(c); }   // too weak to stand out: decoded all the same
-            car = one;
-        }
+            if (std::fabs(off0) < fs * 0.45) { Carrier c; c.off = off0; c.levelDb = 0; c.powerDb = 0; car.push_back(c); }
+        } else car = carriers(x, fs);
         const int tnWant = wantTn.load();
         const double carWant = wantCarrierHz.load();
         bool gaveVoice = false;
@@ -541,7 +559,10 @@ struct TetraReceiver::Impl {
         std::vector<Found> found;
         std::vector<TetraCarrierSeen> seen;
         voicePick.newCapture();
-        bool captureEnded = false;
+        // One carrier's voice per capture: what each candidate gives is collected first and only the chosen one is handed to the sink, so a
+        // carrier that gave silence is never heard in front of (or besides) the carrier that gave the speech
+        tetra::FrameBuffer fallback;
+        bool haveFallback = false, voiced = false;
         for (const auto& c : car) {
             if (gen.load() != g) return;   // retuned meanwhile: these samples belong to another frequency
             int kMcc = -1, kMnc = -1, kCc = -1;
@@ -556,32 +577,38 @@ struct TetraReceiver::Impl {
                 }
             }
             const std::vector<cf32> s = tetra::channelize(x.data(), x.size(), fs, c.off);
-            if (callTrackers.size() > 64) callTrackers.clear();
+            if (callTrackers.size() > 64) { callTrackers.clear(); timelines.clear(); }
             const long key = callKey(center, c.off);
             int voiceTn = 0;
-            bool voice = voicePick.offer(key, sec, voiceTn);
+            bool voice = !voiced && voiceSink.load() && voicePick.offer(key, sec, voiceTn);
             if (voice && carWant > 0 && std::fabs((center > 0 ? center : 0.0) + c.off - carWant) > 12.5e3) voice = false;   // another carrier was chosen
             if (voice && tnWant >= 1 && tnWant <= 4) voiceTn = tnWant;   // the chosen timeslot only (the TETRA "listen to" row)
             else if (voice) {   // otherwise the listener's slot rule (tetra_slots.h); the encryption gate in decodeCarrier still decides what is decoded
                 const int want = tetra::pickSlot(slotSelect(), known, (double)wallNow());
                 if (want == tetra::kFollowNothing) voice = false; else if (want > 0) voiceTn = want;
             }
-            if (voice && voiceTimeline.key != key) { voiceTimeline = tetra::VoiceTimeline{}; voiceTimeline.key = key; }   // another carrier: a new stream
-            tetra::CarrierDecode d = tetra::decodeCarrier(s.data(), s.size(), kMcc, kMnc, kCc, voice ? voiceSink.load() : nullptr, &callTrackers[key], (double)wallNow(), voiceTn,
-                                                          voice ? &voiceTimeline : nullptr);
-            // a chosen timeslot is reported as passed even when it was quiet: the carrier is followed only while its voice is clear
-            if (voice) voicePick.heard(key, tnWant && d.voicePassed == 0 ? 0 : d.voiceTn, sec);
-            if (voice && d.voiceTn > 0 && d.voicePassed > 0) { playCarrierHz = (center > 0 ? center : 0.0) + c.off + d.cfoHz; playTn = d.voiceTn; gaveVoice = true; }
-            if (voice && (d.voiceTn > 0 || d.voiceGaps > 0)) {   // the voice of this capture is all out: told at once, not after the other carriers (the sink may hold it)
-                if (SpeechFrameSink* vs = voiceSink.load()) vs->onCaptureEnd();
-                captureEnded = true;
+            tetra::FrameBuffer buf;
+            tetra::CarrierDecode d = tetra::decodeCarrier(s.data(), s.size(), kMcc, kMnc, kCc, voice ? &buf : nullptr, &callTrackers[key], (double)wallNow(), voiceTn,
+                                                          voice ? &timelines[key] : nullptr);
+            if (voice) {
+                // a chosen timeslot is reported as passed even when it was quiet: the carrier is followed only while its voice is clear
+                voicePick.heard(key, tnWant && d.voicePassed == 0 ? 0 : d.voiceTn, sec);
+                SpeechFrameSink* vs = voiceSink.load();
+                if (vs && d.voiceTn > 0) {   // speech: this carrier is the capture's voice; told at once, not after the other carriers (the sink may hold it)
+                    if (d.voicePassed > 0) { playCarrierHz = (center > 0 ? center : 0.0) + c.off + d.cfoHz; playTn = d.voiceTn; gaveVoice = true; }
+                    buf.flush(*vs);
+                    vs->onCaptureEnd();
+                    voiced = true;
+                } else if (vs && buf.size() > 0 && !haveFallback) { fallback = std::move(buf); haveFallback = true; }
             }
             const double freq = (center > 0 ? center : 0.0) + c.off + d.cfoHz;
             TetraCarrierSeen cs; cs.freqHz = d.tetra ? freq : (center > 0 ? center : 0.0) + c.off; cs.levelDb = c.levelDb; cs.synced = d.synced;
             seen.push_back(cs);
             if (d.tetra && (d.synced || d.scrambler)) found.push_back({c, std::move(d), freq});
         }
-        if (!captureEnded) if (SpeechFrameSink* vs = voiceSink.load()) vs->onCaptureEnd();   // no carrier gave voice: the capture is over all the same
+        if (!voiced) {   // no carrier gave speech: the silence of the first followed one (pauses keep their length), then the end of the capture
+            if (SpeechFrameSink* vs = voiceSink.load()) { if (haveFallback) fallback.flush(*vs); vs->onCaptureEnd(); }
+        }
         if (!gaveVoice) { playCarrierHz = 0.0; playTn = 0; }
         std::lock_guard<std::mutex> lk(mu);
         if (gen.load() != g) return;
@@ -746,7 +773,7 @@ bool TetraReceiver::ready() const { std::lock_guard<std::mutex> lk(p_->mu); retu
 void TetraReceiver::setVoiceSink(SpeechFrameSink* s) { p_->voiceSink.store(s); }
 void TetraReceiver::setVoiceTimeslot(int tn) { p_->wantTn = tn >= 1 && tn <= 4 ? tn : 0; }
 void TetraReceiver::setVoiceCarrier(double hz) { p_->wantCarrierHz = hz > 0 ? hz : 0.0; }
-void TetraReceiver::setSingleCarrier(bool on) { p_->single = on; }
+void TetraReceiver::setSingleCarrier(bool on) { if (p_->single.exchange(on) != on) p_->gen++; }
 bool TetraReceiver::singleCarrier() const { return p_->single.load(); }
 double TetraReceiver::voiceCarrierHz() const { return p_->playCarrierHz.load(); }
 int TetraReceiver::voiceTimeslot() const { return p_->playTn.load(); }

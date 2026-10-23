@@ -7,12 +7,15 @@
 #include "dect2/net/share.h"
 #include "server_config.h"
 #include "server_host.h"
+#include "web/web_config.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -20,6 +23,24 @@ using namespace onair_server;
 
 static std::atomic<bool> gQuit{false};
 static void onSignal(int) { gQuit = true; }
+
+// OnAir Web's "host" decoder: the server's own receiver (the mode chosen in the page) as events for web listeners who subscribe to it. Its
+// policy kind is the running mode, so a voice or pager mode stays private unless the host enabled that kind (web_policy.h).
+class HostDecoder : public onair_web::WebDecoder {
+public:
+    explicit HostDecoder(ServerHost& h) : h_(h) {}
+    void poll(std::vector<std::string>& ev) override {
+        uint64_t seq = 0;
+        std::string j = h_.telemetryJson(seq);
+        if (seq == seq_ || j.empty()) return;
+        seq_ = seq;
+        ev.push_back("{\"mode\":\"" + onair_web::jsonEsc(h_.modeId()) + "\",\"telemetry\":" + j + "}");
+    }
+    std::string policyKind() const override { return h_.modeId(); }
+private:
+    ServerHost& h_;
+    uint64_t seq_ = 0;
+};
 
 static void usage() {
     printf("onair-server %s: OnAir with no window, controlled from a web browser or the remote-control API\n\n"
@@ -35,6 +56,10 @@ static void usage() {
            "  --freq MHZ         tuning frequency\n"
            "  --autostart        start the receiver at once and keep it running (comes back when the radio is replugged)\n"
            "  --share-rtltcp [PORT]   also share the raw samples as an rtl_tcp server (default port 1234) for SDR++, SDR# or another OnAir; no access control: trusted networks only\n"
+           "  --web              OnAir Web: many listeners, each with an own receiver in this radio's capture (docs/ONAIR-WEB.md)\n"
+           "  --web-port N       OnAir Web port (default 8073)\n"
+           "  --web-lan          OnAir Web on every interface (without TLS only private addresses are let in)\n"
+           "  --directory-remove remove this server from the public OnAir Web directory now (signed with its key), then exit\n"
            "  --version, --help\n\n"
            "Settings file: plain key=value lines (see docs/headless-server.md).\n",
            ONAIR_SERVER_VERSION, defaultConfigPath().c_str());
@@ -61,6 +86,7 @@ int main(int argc, char** argv) {
     api.token = cfg.get("token");
     api.tlsCert = cfg.get("tls_cert");
     api.tlsKey = cfg.get("tls_key");
+    bool dirRemove = false;
     bool newToken = false, share = cfg.flag("share_rtltcp", false);
     int sharePort = (int)cfg.num("share_port", 1234);
     for (int i = 1; i < argc; i++) {
@@ -77,6 +103,10 @@ int main(int argc, char** argv) {
         else if (a == "--mode") cfg.set("mode", next());
         else if (a == "--freq") cfg.set("freq_mhz", next());
         else if (a == "--autostart") cfg.set("autostart", "1");
+        else if (a == "--web") cfg.set("web", "1");
+        else if (a == "--web-port") cfg.set("web_port", next());
+        else if (a == "--web-lan") cfg.set("web_lan", "1");
+        else if (a == "--directory-remove") dirRemove = true;
         else if (a == "--share-rtltcp") { share = true; if (i + 1 < argc && argv[i + 1][0] != '-') sharePort = atoi(argv[++i]); }
         else { fprintf(stderr, "unknown option %s (try --help)\n", a.c_str()); return 2; }
     }
@@ -91,6 +121,18 @@ int main(int argc, char** argv) {
         fprintf(stderr, "onair-server: new access token %s (saved in %s)\n", api.token.c_str(), path.c_str());
     }
     if (api.token.size() > 0 && api.token.size() < 16) { fprintf(stderr, "onair-server: the token must have 16 characters or more\n"); return 2; }
+    bool madeAdmin = false;
+    onair_web::WebSettings webCfg = onair_web::loadWebSettings(cfg, madeAdmin);
+    if (madeAdmin) { saveCfg = true; fprintf(stderr, "onair-server: OnAir Web admin token made (web_admin_token in %s)\n", path.c_str()); }
+    if (webCfg.directory.keyFile.empty()) webCfg.directory.keyFile = (std::filesystem::path(path).parent_path() / "web_directory.key").string();
+    webCfg.directory.version = ONAIR_SERVER_VERSION;
+    if (dirRemove) {
+        std::unique_ptr<onair_web::DirectoryHeartbeat> d(onair_web::makeDirectoryHeartbeat());
+        std::string err;
+        if (!d->removeNow(webCfg.directory, err)) { fprintf(stderr, "onair-server: directory removal failed: %s\n", err.c_str()); return 1; }
+        printf("onair-server: removed from the directory %s. It stays removed until web_directory is on and a heartbeat is sent again.\n", webCfg.directory.url.c_str());
+        return 0;
+    }
     if (saveCfg) {
         std::string err;
         if (!cfg.save(path, err)) fprintf(stderr, "onair-server: %s (the settings will not be saved)\n", err.c_str());
@@ -119,6 +161,54 @@ int main(int argc, char** argv) {
         if (!ss.listening) fprintf(stderr, "onair-server: rtl_tcp share: %s\n", ss.lastError.c_str());
         else printf("onair-server: sharing the samples as rtl_tcp on port %d (%s; no password)\n", sharePort, api.lan ? "whole network" : "this computer only");
     }
+    std::unique_ptr<onair_web::WebHub> hub;
+    std::unique_ptr<onair_web::WebServer> web;
+    std::unique_ptr<onair_web::DirectoryHeartbeat> directory;   // OnAir Web directory (off unless web_directory=1 and confirmed)
+    if (webCfg.on && webCfg.server.webRoot.empty()) {
+        // the browser UI's files: beside the program (web/onair-web), or where a package puts them (../share/onair/web/onair-web)
+        std::error_code ec;
+        const std::filesystem::path exe = std::filesystem::absolute(argv[0], ec).parent_path();
+        for (const auto& p : {exe / "web" / "onair-web", exe / ".." / "share" / "onair" / "web" / "onair-web", exe / ".." / "web" / "onair-web"})
+            if (std::filesystem::is_regular_file(p / "index.html", ec)) { webCfg.server.webRoot = p.string(); break; }
+    }
+    if (webCfg.on) {
+        hub.reset(new onair_web::WebHub);
+        hub->setLimits(webCfg.limits);
+        hub->policy().load(cfg);
+        { std::vector<std::string> rw; hub->ranges().load(cfg, &rw); webCfg.warnings.insert(webCfg.warnings.end(), rw.begin(), rw.end()); }
+        hub->setLogIp(webCfg.logIp);
+        hub->setServerInfo(webCfg.name, webCfg.location, webCfg.antenna);
+        hub->setLog([](const std::string& l) { printf("onair-server: %s\n", l.c_str()); });
+        hub->registerDecoder(onair_web::DecoderFactory{"host", "This server's receiver (its mode's results)", 0, false,
+                                                       [&host](double) { return std::unique_ptr<onair_web::WebDecoder>(new HostDecoder(host)); }});
+        hub->start();
+        host.setWebHub(hub.get());
+        web.reset(new onair_web::WebServer(*hub));
+        web->setOnChange([&host, &hub](const onair_web::WebPolicy& p, const std::vector<onair_web::InviteToken>& inv) {
+            host.editConfig([&](ConfigFile& c) { onair_web::saveWebState(c, p, inv); hub->ranges().save(c); });   // called with the policy mutex held: the ranges are safe to read
+        });
+        for (const auto& w : webCfg.warnings) fprintf(stderr, "onair-server: %s\n", w.c_str());
+        if (!web->start(webCfg.server)) {
+            fprintf(stderr, "onair-server: OnAir Web: %s\n", web->status().lastError.c_str());
+            host.setWebHub(nullptr);
+            web.reset();
+            hub->stop();
+            hub.reset();
+        } else {
+            const auto st = web->status();
+            printf("onair-server: OnAir Web on %s://%s:%d/ (%s access, at most %d listeners)\n", st.tls ? "https" : "http", webCfg.server.bind.c_str(), st.port,
+                   onair_web::authModeName(webCfg.server.auth.mode), webCfg.limits.maxUsers);
+            if (webCfg.directory.on) {
+                directory.reset(onair_web::makeDirectoryHeartbeat());
+                std::string derr;
+                onair_web::WebHub* h = hub.get();
+                if (!directory->start(webCfg.directory, [h] { return h->infoJson(); }, derr)) {
+                    fprintf(stderr, "onair-server: %s\n", derr.c_str());
+                    directory.reset();
+                }
+            }
+        }
+    }
     signal(SIGINT, onSignal);
     signal(SIGTERM, onSignal);
 #ifdef SIGPIPE
@@ -127,9 +217,14 @@ int main(int argc, char** argv) {
     dect2::crash::startupDone();
     while (!gQuit) {
         host.supervise(path);
+        if (hub) hub->tick();   // OnAir Web: time limits, idle listeners, CPU and bandwidth budgets
         for (int i = 0; i < 10 && !gQuit; i++) std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     printf("onair-server: stopping\n");
+    if (directory) directory->stop();
+    if (web) web->stop();
+    host.setWebHub(nullptr);
+    if (hub) hub->stop();
     host.supervise(path);
     host.shutdown();   // the receiver stops; the saved "autostart" keeps what the user last chose, so a restart brings it back
     dect2::ShareServer::get().configure(dect2::ShareConfig{});

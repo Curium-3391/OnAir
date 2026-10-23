@@ -12,6 +12,10 @@ import { generateDemo, stepDemo } from "./demo.js";
 import { watchMapTheme, themeKey, onThemeChange } from "./theme.js";
 import { mergeTrails, appendLive, toLine } from "./trail.js";
 import { cellsToGeo, LEVEL_COLOURS } from "./jamlayer.js";
+import { clusterPoints, shouldCluster } from "./cluster.js";
+import { searchTracks as rankTracks } from "./search.js";
+import { initConsent, photoAllowed } from "./consent-ui.js";
+import { initHam } from "./ham-ui.js";
 
 const DEMO = new URLSearchParams(location.search).get("demo") === "1";
 // ?view=lat,lon,zoom opens the map there (used for screenshots and shared links)
@@ -339,8 +343,30 @@ function geojson() {
       geometry: { type: "Point", coordinates: displayLonLat(t) },
     });
   }
-  return { type: "FeatureCollection", features };
+  return { type: "FeatureCollection", features: clusterFeatures(features) };
 }
+
+/** Zoomed out with many tracks: dense cells become one counted bubble (clusters source), the rest stay single icons. */
+function clusterFeatures(features) {
+  const csrc = map.getSource("clusters");
+  const zoom = map.getZoom();
+  if (!shouldCluster(features.length, zoom)) {
+    if (csrc && clusterState) { csrc.setData({ type: "FeatureCollection", features: [] }); clusterState = false; }
+    return features;
+  }
+  const pts = features.map((f) => ({ id: f.properties.id, kind: f.properties.kind, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
+  const { clusters, singles } = clusterPoints(pts, zoom, { keep: (id) => id === selected });
+  const keepIds = new Set(singles.map((p) => p.id));
+  if (csrc) {
+    csrc.setData({ type: "FeatureCollection", features: clusters.map((c) => ({
+      type: "Feature", properties: { n: c.n, label: c.n >= 1000 ? Math.round(c.n / 100) / 10 + "k" : String(c.n) },
+      geometry: { type: "Point", coordinates: [c.lon, c.lat] },
+    })) });
+    clusterState = true;
+  }
+  return features.filter((f) => keepIds.has(f.properties.id));
+}
+let clusterState = false;
 
 function trailGeo() {
   const g = trailGeoSelected();
@@ -664,7 +690,7 @@ const sheet = createSheet({
 
 const card = createCard($("card"), {
   demo: DEMO,
-  loadPhoto: true,
+  loadPhoto: () => photoAllowed(),
   onClose: () => clearSelection(),
   onFollow: (v) => { followId = v ? selected : null; },
   onTrack: (v) => {
@@ -797,6 +823,7 @@ function toast(msg) {
 
 map.on("load", () => {
   map.addSource("trails", { type: "geojson", data: trailGeo() });
+  map.addSource("clusters", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addSource("live", { type: "geojson", data: geojson() });
   map.addLayer({
     id: "trail", type: "line", source: "trails",
@@ -888,6 +915,26 @@ map.on("load", () => {
     layout: { ...labelLayout, "text-size": 12, "text-allow-overlap": true, "text-ignore-placement": true, "text-offset": [0, 1.9] },
     paint: { "text-color": dark ? "#ffffff" : "#000000", "text-halo-color": dark ? "#0b0c0d" : "#ffffff", "text-halo-width": 1.6 },
   });
+  map.addLayer({
+    id: "clusterDot", type: "circle", source: "clusters",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["get", "n"], 4, 13, 50, 20, 500, 30],
+      "circle-color": themeKey() === "d" ? "#2a3a4c" : "#dce8f4",
+      "circle-opacity": 0.92, "circle-stroke-width": 1.5, "circle-stroke-color": "#6fa8dc",
+    },
+  });
+  map.addLayer({
+    id: "clusterNum", type: "symbol", source: "clusters",
+    layout: { "text-field": ["get", "label"], "text-size": 12, "text-font": ["Open Sans Regular"], "text-allow-overlap": true },
+    paint: { "text-color": themeKey() === "d" ? "#e4e6e8" : "#14181c" },
+  });
+  map.on("click", "clusterDot", (e) => {
+    map.easeTo({ center: e.lngLat, zoom: Math.min(map.getZoom() + 2, 8), duration: REDUCED ? 0 : 400 });
+  });
+  map.on("zoomend", () => { const src = map.getSource("live"); if (src) src.setData(geojson()); });
+  map.on("mouseenter", "clusterDot", () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "clusterDot", () => { map.getCanvas().style.cursor = ""; });
+  initHam({ map, tracks: () => tracks, selectById: (id) => { const t = tracks.get(id); if (t) focusTrack(id); }, esc, REDUCED });
   const hit = ["dot", "sym"];
   /** Nearest feature to the click within a 14 px box, so thin icons are easy to hit on touch screens too. */
   map.on("click", (e) => {
@@ -945,6 +992,8 @@ for (const [id, v] of [["layersAll", true], ["layersNone", false]]) {
   });
 }
 
+initConsent();
+
 // ---------- search: callsign, registration, ICAO hex, MMSI ----------
 
 const qEl = $("q");
@@ -952,26 +1001,7 @@ const resEl = $("results");
 let resItems = [];
 let resIdx = -1;
 
-/** Rank matches: exact id/label first, then prefix, then substring. Returns at most 8 tracks. */
-function searchTracks(q) {
-  q = q.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const scored = [];
-  for (const t of tracks.values()) {
-    const m = t.meta || {};
-    const keys = [t.label, String(t.id).split(":")[1], m.registration, m.flightNumber].filter(Boolean).map((s) => String(s).toLowerCase());
-    let score = 0;
-    for (const k of keys) {
-      if (k === q) score = Math.max(score, 3);
-      else if (k.startsWith(q)) score = Math.max(score, 2);
-      else if (k.includes(q)) score = Math.max(score, 1);
-    }
-    if (!score && (t.sub || "").toLowerCase().includes(q)) score = 0.5;
-    if (score) scored.push([score, t]);
-  }
-  scored.sort((a, b) => b[0] - a[0] || String(a[1].label).localeCompare(String(b[1].label)));
-  return scored.slice(0, 8).map((x) => x[1]);
-}
+function searchTracks(q) { return rankTracks(tracks.values(), q, 8); }
 
 function renderResults() {
   const q = qEl.value;

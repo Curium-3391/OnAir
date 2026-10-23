@@ -1,5 +1,7 @@
-// OpenGL 3.2 core back end (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
+// OpenGL 3.2 core back end (falls back to 3.1 and 3.0 where the driver offers no more, see gl_level.h) (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
 #include "gfx.h"
+#include "render_caps.h"
+#include "gl_level.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #define GLFW_INCLUDE_NONE
@@ -20,7 +22,7 @@ enum : GLenum {
     CLAMP_TO_EDGE = 0x812F, FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0, UNPACK_ALIGNMENT = 0x0CF5, FRAGMENT_SHADER = 0x8B30,
     VERTEX_SHADER = 0x8B31, COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82, TRIANGLES = 0x0004, COLOR_BUFFER_BIT = 0x4000, TEXTURE0 = 0x84C0,
     TEXTURE1 = 0x84C1, FRAMEBUFFER_BINDING = 0x8CA6, VIEWPORT = 0x0BA2, CURRENT_PROGRAM = 0x8B8D, TEXTURE_BINDING_2D = 0x8069,
-    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5
+    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5, RENDERER = 0x1F01
 };
 
 #define GLFN(ret, name, args) typedef ret (*PFN_##name) args; PFN_##name name = nullptr;
@@ -61,6 +63,7 @@ GLFN(void, glReadPixels, (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*)
 GLFN(void, glReadBuffer, (GLenum))
 GLFN(void, glGetIntegerv, (GLenum, GLint*))
 GLFN(void, glFlush, ())
+GLFN(const GLubyte*, glGetString, (GLenum))
 #undef GLFN
 
 bool loadGl() {
@@ -72,7 +75,7 @@ bool loadGl() {
     LOAD(glGetShaderiv) LOAD(glGetShaderInfoLog) LOAD(glDeleteShader) LOAD(glCreateProgram) LOAD(glAttachShader) LOAD(glLinkProgram)
     LOAD(glGetProgramiv) LOAD(glUseProgram) LOAD(glGetUniformLocation) LOAD(glUniform1i) LOAD(glUniform3f) LOAD(glGenVertexArrays)
     LOAD(glBindVertexArray) LOAD(glDrawArrays) LOAD(glViewport) LOAD(glClearColor) LOAD(glClear) LOAD(glReadPixels) LOAD(glReadBuffer)
-    LOAD(glGetIntegerv) LOAD(glFlush)
+    LOAD(glGetIntegerv) LOAD(glFlush) LOAD(glGetString)
 #undef LOAD
     return ok;
 }
@@ -120,14 +123,14 @@ struct GlImage : Image {
     }
 };
 
-const char* kVert = R"(#version 150
+const char* kVert = R"(
 void main() {
     vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
 // NV12 -> RGB, same maths as the Metal kernel (limited/full range, BT.601/709, optional comb removal for interlaced pictures)
-const char* kFrag = R"(#version 150
+const char* kFrag = R"(
 uniform sampler2D Y;
 uniform sampler2D UV;
 uniform vec3 prm;     // x: BT.709, y: full range, z: deinterlace
@@ -153,7 +156,12 @@ void main() {
 }
 )";
 
-GLuint compile(GLenum type, const char* src) {
+int gLevel = 0;   // index into kGlLevels: set by setLevel() before the windows are created
+
+GLuint compile(GLenum type, const char* body) {
+    static char text[4096];
+    glShaderText(text, sizeof text, gLevel, body);
+    const char* src = text;
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
     glCompileShader(s);
@@ -276,6 +284,7 @@ struct GlBackend : Backend {
             writePng(shotPath, flipped.data(), fbW, fbH);
         }
         glfwSwapBuffers(win);
+        rcaps::frameDone(glfwGetTime() - rcaps::frameStart());   // DECT2_FRAMETIME=1: build, render and swap of this frame
     }
     GLFWwindow* shareWindow() const override { return win; }
     Surface* createSurface(GLFWwindow* w) override { return new GlSurface(w); }
@@ -284,18 +293,41 @@ struct GlBackend : Backend {
 
 } // namespace
 
-void windowHints() {
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+int levelCount() { return kGlLevelCount; }
+int level() { return gLevel; }
+void setLevel(int l) { gLevel = l < 0 ? 0 : l >= kGlLevelCount ? kGlLevelCount - 1 : l; }
+const char* levelName() {
+    static const char* n[] = {"OpenGL 3.2 core", "OpenGL 3.1", "OpenGL 3.0"};
+    return n[gLevel];
 }
+
+void windowHints() {
+    const GlLevel& l = glLevel(gLevel);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, l.major);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, l.minor);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, l.core ? GLFW_OPENGL_CORE_PROFILE : GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, l.core ? GLFW_TRUE : GLFW_FALSE);
+}
+
+#if defined(__linux__)
+}   // namespace gfx
+extern bool gWayland;   // main_window.cpp
+namespace gfx {
+#endif
 
 Backend* create(GLFWwindow* window) {
     glfwMakeContextCurrent(window);
+#if defined(__linux__)
+    // Native Wayland: eglSwapBuffers with an interval of 1 waits for the compositor's frame callback, which a hidden, minimised or
+    // covered window does not get, so Mesa holds the frame loop (and the whole interface) until the window is shown again. The loop paces
+    // itself (paceFrame, rcaps::frameGate) and a Wayland compositor never tears, so interval 0 there. X11 keeps vsync.
+    glfwSwapInterval(gWayland ? 0 : 1);
+#else
     glfwSwapInterval(1);
+#endif
     if (!loadGl()) return nullptr;
-    if (!ImGui_ImplOpenGL3_Init("#version 150")) return nullptr;
+    rcaps::detect((const char*)glGetString(RENDERER));
+    if (!ImGui_ImplOpenGL3_Init(glLevel(gLevel).glsl)) return nullptr;
     return new GlBackend(window);
 }
 

@@ -215,6 +215,17 @@ void slotPanel(App& a) {
     static const char* modes[] = {"first clear voice", "slot 1", "slot 2", "slot 3", "slot 4", "talkgroup", "ISSI"};
     int cur = a.tetraSlotMode == 1 ? a.tetraSlotNum + 0 : a.tetraSlotMode == 2 ? 5 : a.tetraSlotMode == 3 ? 6 : 0;
     ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Carriers");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150 * gUi);
+    if (ImGui::BeginCombo("##tetrasingle", a.tetraSingle ? "Single carrier" : "Search span")) {
+        if (ImGui::Selectable("Search span", !a.tetraSingle)) a.tetraSingle = 0;
+        if (ImGui::Selectable("Single carrier", a.tetraSingle != 0)) a.tetraSingle = 1;
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", a.tetraSingle ? "only the 25 kHz channel at the dial frequency is filtered out and decoded" : "every carrier in the span is searched for");
+    ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Listen to");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(150 * gUi);
@@ -464,6 +475,7 @@ void tick(App& a) {
     if (a.engine.running()) {   // the saved 'Listen to' choice reaches the receiver whichever tab is drawn
         dect2::tetra::SlotSelect sel; sel.mode = (dect2::tetra::SlotMode)a.tetraSlotMode; sel.slot = a.tetraSlotNum; sel.id = (uint32_t)a.tetraSlotId;
         a.engine.tetra().setVoiceSlot(sel);
+        a.engine.tetra().setSingleCarrier(a.tetraSingle != 0);
     }
     if (!S.scanning) return;
     if (!a.engine.running()) { S.scanning = false; return; }

@@ -203,6 +203,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     datasetsWindow(a);
     // the "add a radio" windows: here, not with the source controls, so they open whichever layout is up and from the setup wizard too
     netRadioWindow(a);
+    synthGroupWindow(a);
     kiwiFindWindow(a);
     hamlibRigWindow(a);
     setupWizard(a, disp);
@@ -216,6 +217,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     a.engine.setWideDecode(a.wideDecode && modeSupportsWideHf(a.family));
     a.engine.setMultiChannel(a.mtvOn && a.family == 0, a.mtvMax, a.mtvGrid);
     feedsWindow(a);
+    swarmWindow(a);
     automationWindow(a);
     protolabWindow(a);
     signallabWindow(a);
@@ -280,6 +282,7 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     }
     tickReceiver(a);
     if (!draw) return;   // a receiver whose tab is not shown: ticked above, not drawn
+    dockFrameBegin(a);   // View > Docking: the placement hook (ui2_dock.cpp)
     videoOnlyKeys(a);
     if (a.videoOnly) { videoOnlyWindow(a, disp); return; }
     applyUiTheme(a);
@@ -292,4 +295,5 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     commandPalette(a);   // Ctrl+K (ui/command_palette.h)
     crashNotePopup(disp);
     hiddenPopOut(a);
+    dockFrameEnd(a);
 }

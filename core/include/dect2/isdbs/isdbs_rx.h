@@ -1,9 +1,11 @@
 // ISDB-S receiver (BS satellite television, L-band IF after the LNB), written to the engine's contract: configure() once the sample rate is
 // known, feed() from the analysis thread, telemetry() and the setters from the interface thread.
 // Input: complex baseband with the transponder (34.5 MHz wide, 28.86 Msymbol/s) near the centre, at least 39 Msample/s.
-// Chain: matched filter and timing recovery (the DVB-S front end) -> coarse carrier from the 8th power -> frame sync (BPSK header) ->
-// carrier phase and frequency from the 768 known burst symbols of each frame -> TMCC (which slots carry which stream, in which modulation)
-// -> per slot Viterbi / trellis decoding, Reed-Solomon, de-scrambling -> the packets of one transport stream, handed to the packet callback.
+// Chain: matched filter and timing recovery (the DVB-S front end) -> coarse carrier from the 8th power -> frame sync (the coded W1 and
+// W2 / W3 words of the BPSK header) -> carrier phase and frequency from W1 and the 192 bursts of each frame (squared: their content is not
+// relied on) -> header Viterbi (TMCC bits, first frame of a super-frame) -> TMCC of the super-frame (RS(64,48)), applied two super-frames
+// later -> Viterbi over the selected stream's slots (one code through the frame, TC8PSK's uncoded bit decided after) -> de-interleaving
+// across the 8 frames, energy dispersal, Reed-Solomon -> the packets of one transport stream, handed to the packet callback.
 // Receive only, and only what is sent in the clear: scrambled (conditional access) streams come out scrambled and are not touched.
 // Not tried on a real BS transponder, see isdbs.h and docs/ISDBS.md.
 #pragma once
@@ -24,7 +26,7 @@ struct IsdbsStreamRow {
     int slots = 0;
     int mod = 0;                // isdbs::Mod of its slots
     double bitrate = 0;         // transport stream bit/s it can carry
-    bool mixed = false;         // its slots do not all use one modulation (packets may arrive out of order)
+    bool mixed = false;         // its slots do not all use one modulation
 };
 
 struct IsdbsTelemetry {
@@ -70,8 +72,8 @@ private:
 ModeTuning isdbsTuning();
 std::string isdbsSummary(const IsdbsTelemetry& t);
 // The test signal of the mode (engine standard 156), the built-in source plays it. SynthConfig: snrDb is Es/N0, cfoHz the carrier offset, sroPpm the symbol clock
-// offset; modeOpt[0] the layout: 0 (default) three streams in three modulations (TC8PSK 2/3 in 16 slots with the test programme, QPSK 3/4 in 8 slots and BPSK 1/2
-// in 4, null packets in the last two, the rest filler), 1 TC8PSK 2/3 in all 48 slots, 2 QPSK 1/2 in all 48 slots. nullptr when the rate is under 39 Msample/s.
+// offset; modeOpt[0] the layout: 0 (default) three streams in three modulations (TC8PSK 2/3 in 36 slots with the test programme, QPSK 3/4 in 8 slots and BPSK 1/2
+// in 4, null packets in the last two), 1 TC8PSK 2/3 in all 48 slots, 2 QPSK 1/2 in all 48 slots. nullptr when the rate is under 39 Msample/s.
 std::unique_ptr<ModeSynth> makeIsdbsSynth(const SynthConfig& cfg, double sampleRate);
 
 }  // namespace dect2

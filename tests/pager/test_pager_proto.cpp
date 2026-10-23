@@ -166,24 +166,25 @@ static void flexTests() {
     printf("  FLEX: %zu pages, %d code words ok, %d repaired\n", out.size(), st.ok, st.fixed);
 }
 
-// A frame built by hand from multimon-ng's documented layout, not with flexPhaseBits: a long address (capcode 4096 + ((0x1FFFFE ^ 0x1FFFFF) << 15) + 0x1F9000
-// = 2105344) with an alphanumeric "TEST" page, a short address 0x8000 + 1234567 with a numeric page "123" and a short one with a tone.
+// A frame built by hand, not with flexPhaseBits: a long address (capcode 4096 + ((0x1FFFFE ^ 0x1FFFFF) << 15) + 0x1F9000 = 2105344) with an
+// alphanumeric "TEST" page, a short address 0x8000 + 1234567 with a numeric page "123" and a short one with a tone. The layout follows real
+// frames (issues #95, #261): the BIW and the first vector word of each page carry the 4-bit check, and for a long address the message header is the
+// second vector word, the text starting at the start index (the messages then tile the message field exactly).
 static void handBuiltTest() {
     uint32_t f[kFlexPhaseWords] = {};
-    f[0] = 5u << 10;                                     // BIW: address words from index 1 (bits 8-9 = 0), vector words from index 5 (bits 10-15)
+    f[0] = flexWithCheck(5u << 10);                      // BIW: address words from index 1 (bits 8-9 = 0), vector words from index 5 (bits 10-15)
     f[1] = 0x1000; f[2] = 0x1FFFFE;                      // long address (two words)
     f[3] = 0x8000 + 1234567;                             // short
     f[4] = 0x8000 + 77;                                  // short
     // vector words: types in bits 4-6, start word in bits 7-13, length in bits 14-20; the long address has two (5 and 6)
-    f[5] = (5u << 4) | (9u << 7) | (3u << 14);           // alphanumeric from word 9, 3 words (header + 2)
-    f[6] = 0;
-    f[7] = (3u << 4) | (12u << 7);                       // standard numeric from word 12, 1 word
-    f[8] = (2u << 4) | (1u << 7);                        // tone only
-    f[9] = 3u << 11;                                     // header: continuation 0, fragment 3 (complete)
-    f[10] = ((uint32_t)'T' << 7) | ((uint32_t)'E' << 14);        // bits 0-6 are not text in the first word of a complete message
-    f[11] = (uint32_t)'S' | ((uint32_t)'T' << 7) | (3u << 14);   // 3 is a filler
+    f[5] = flexWithCheck((5u << 4) | (9u << 7) | (3u << 14));    // alphanumeric from word 9, length 3 (the header in word 6, two text words)
+    f[6] = 3u << 11;                                     // header: continuation 0, fragment 3 (complete)
+    f[7] = flexWithCheck((3u << 4) | (11u << 7));        // standard numeric from word 11, 1 word
+    f[8] = flexWithCheck((2u << 4) | (1u << 7));         // tone only
+    f[9] = ((uint32_t)'T' << 7) | ((uint32_t)'E' << 14);         // bits 0-6 are not text in the first word of a complete message
+    f[10] = (uint32_t)'S' | ((uint32_t)'T' << 7) | (3u << 14);   // 3 is a filler
     // numeric: 2 header bits, then 4-bit digits from bit 0 upwards: 1, 2, 3, then filler 12
-    f[12] = (1u << 2) | (2u << 6) | (3u << 10) | (12u << 14) | (12u << 18);
+    f[11] = (1u << 2) | (2u << 6) | (3u << 10) | (12u << 14) | (12u << 18);
     std::vector<uint8_t> bits(2816);
     for (int blk = 0; blk < 11; blk++)
         for (int w = 0; w < 8; w++) {

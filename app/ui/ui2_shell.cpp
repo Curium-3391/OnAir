@@ -22,6 +22,7 @@
 #include "../platform/discord_rpc.h"
 #include "../panels/report_problem.h"
 #include "../panels/backup_ui.h"
+#include "../gfx/render_caps.h"
 
 using namespace ui2;
 
@@ -218,6 +219,8 @@ void sidebar(App& a) {
         wfAutoButton(a);
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Look")); ImGui::SameLine(col);
+        specLookCombo(a, std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Colours")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
         if (ImGui::BeginCombo("##wfmap", tr(Waterfall::mapName(a.wf.effMap())))) {   // also in the Waterfall popup on the plot
             for (int i = 0; i < Waterfall::NumMaps; i++)
@@ -246,6 +249,7 @@ void sidebar(App& a) {
         tool("Passive radar", a.passiveRadarOpen, N_("Aircraft from the echoes of a broadcast transmitter, with two coherent channels"));
         tool("Images", a.galleryOpen, "The pictures the receivers have decoded");
         tool("Data feeds...", a.feedsOpen, "Send decoded data to other programs and services");
+        tool("LAN swarm...", a.swarmOpen, "See and cooperate with other OnAir programs on this network (opt-in)");
         tool("Messages...", a.msgdbOpen, N_("Every decoded message in one searchable database, with filters and export"));
         tool("Protocol lab...", a.protolabOpen, N_("Work out an unknown digital signal: modulation, baud rate, sync word, CRC and fields, with an export"));
         tool("Signal Lab...", a.signallabOpen, N_("Blind analysis of an unknown digital signal from the spectrum or a recording, stage by stage with confidences, a bit viewer and a Mode Builder export"));
@@ -491,6 +495,7 @@ static void viewMenu(App& a) {
         if (!a.touchUi && ImGui::MenuItem(tr("Reset layout"))) layoutReset();   // forgets the saved window positions of every mode
         if (ImGui::MenuItem(tr("Touch interface"), nullptr, &a.touchUi)) savePrefs(a);   // the same flag as the side panel: big targets, bottom dock (ui/touch.h)
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("For tablets and touch screens: big buttons, an on-screen keypad for the frequency, a full-screen mode picker."));
+        dockMenu(a);   // View > Docking (ui2_dock.cpp)
         if (ImGui::MenuItem(tr("Reset layout"))) { a.splitSide = a.splitRight = a.splitBottom = a.splitDock = a.splitBot2 = 0; savePrefs(a); }
         if (ImGui::MenuItem(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Put the panels back to their automatic sizes (drag the bars between panels to resize them)"));
@@ -520,6 +525,7 @@ static void viewMenu(App& a) {
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("While the window is minimised or hidden: the spectrum and telemetry update a few times a second and scans wait. Decoding and audio go on."));
             ImGui::EndMenu();
         }
+        rcaps::viewMenuItem();   // Low-power drawing (gfx/render_caps.h)
         {   // opt-in Discord Rich Presence
             const bool have = *discord::appId() != 0;
             ImGui::BeginDisabled(!have);
@@ -551,6 +557,7 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Passive radar"), nullptr, &a.passiveRadarOpen);
         ImGui::MenuItem(tr("Images"), nullptr, &a.galleryOpen);
         ImGui::MenuItem(tr("Data feeds..."), nullptr, &a.feedsOpen);
+        ImGui::MenuItem(tr("LAN swarm..."), nullptr, &a.swarmOpen);
         ImGui::MenuItem(tr("Messages..."), nullptr, &a.msgdbOpen);
         ImGui::MenuItem(tr("Protocol lab..."), nullptr, &a.protolabOpen);
         ImGui::MenuItem(tr("Signal Lab..."), nullptr, &a.signallabOpen);

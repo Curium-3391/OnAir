@@ -93,11 +93,16 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagI("touchUi", AT(a.touchUi), false)), shared(scaled("touchScale", AT(a.touchScale), 100, 135, 1.0, 2, true)),
         num("tetraSlotMode", AT(a.tetraSlotMode), 0, 0, 3, true), num("tetraSlotNum", AT(a.tetraSlotNum), 1, 1, 4, true),
         num("tetraSlotId", AT(a.tetraSlotId), 0, 0, 16777215, true),
+        num("tetraSingle", AT(a.tetraSingle), 0, 0, 1, true),
         num("wfMap", AT(a.wf.map), -1, -1, (int)Waterfall::NumMaps - 1, true),
         flagB("wfAuto", AT(a.wf.autoTrack), false),
         real("wfGamma", AT(a.wf.gamma), 0.4, 2.5),
         real("wfBright", AT(a.wf.brightness), -0.5, 0.5), real("wfContrast", AT(a.wf.contrast), 0.25, 4),
         num("wfDetail", AT(a.wf.detail), 0, 0, Waterfall::kMaxCols, true), flagB("wfPerMode", AT(a.wfPerMode), false, false, true),
+        flagB("wf3d", AT(a.wf.s3d.on), false), num("wf3dRows", AT(a.wf.s3d.rows), 256, 64, 1024), real("wf3dHeight", AT(a.wf.s3d.heightScale), 0.05, 1.5),
+        flagB("wf3dSmooth", AT(a.wf.s3d.smooth), false), flagB("wf3dPeak", AT(a.wf.s3d.peak), true), flagB("wf3dMarker", AT(a.wf.s3d.marker), true),
+        flagB("wf3dShade", AT(a.wf.s3d.shade), true), num("wf3dPreset", AT(a.wf.s3d.preset), 0, 0, w3d::NumPresets - 1),
+        real("wf3dYaw", AT(a.wf.s3d.cam.yaw), -3.2, 3.2), real("wf3dPitch", AT(a.wf.s3d.cam.pitch), 0.03, 1.553), real("wf3dDist", AT(a.wf.s3d.cam.dist), 0.35, 8),
         text("wfCustom", AT(a.wfCustom)), text("specMarkers", AT(a.specMarkers)),
         num("traceColor", AT(a.traceColor), 0, 0, cmap::kNumTracePresets - 1, true), num("holdColor", AT(a.holdColor), -1, -1, cmap::kNumTracePresets - 1, true),
         flagB("minHold", AT(a.minHold), false, false, true), flagB("showLive", AT(a.showLive), false, false, true),
@@ -108,6 +113,11 @@ const std::vector<PrefKey>& keyTable() {
         real("specAvg", AT(a.specAvgSec), 0, 5), num("specFft", AT(a.specFft), 0, 0, 262144, true), real("specLine", AT(a.specLine), 0.6, 3),
         flagB("specFill", AT(a.specFill), true, false, true), flagB("specGrid", AT(a.specGrid), false, false, true), flagB("specPeaks", AT(a.specPeaks), false, false, true), flagB("specLabels", AT(a.specLabels), true, false, true), num("specLabelMask", AT(a.specLabelMask), 63, 0, 63, true),
         flagB("specReadout", AT(a.specReadout), false, false, true), flagB("specDbm", AT(a.specDbm), false, false, true),
+        num("specLook", AT(a.specLook), 0, 0, slook::NumLooks - 1, true), num("specAxisLabels", AT(a.specAxisLabels), -1, -1, 1, true),
+        real("specLabelSize", AT(a.specLabelSize), 0.7, 1.6), num("specSmoothTrace", AT(a.specSmoothTrace), -1, -1, 4, true),
+        flagB("specNfMarker", AT(a.specNfMarker), false, false, true), flagB("specSmoothZoom", AT(a.specSmoothZoom), true, false, true),
+        num("specSnapHz", AT(a.specSnapHz), 0, 0, 1000000, true), flagB("wfLowPass", AT(a.wfLowPass), false, false, true),
+        real("wfAutoBelow", AT(a.wf.autoBelow), 0, 30), real("wfAutoHeadroom", AT(a.wf.autoHeadroom), -10, 30),
         num("tuningMode", AT(a.tuningMode), 0, 0, 1, true),
         flagB("centreTuning", AT(a.centreTuning), false, false, true), flagB("dragMovesTuned", AT(a.dragMovesTuned), false, false, true),
         flagI("fmMono", AT(a.fmMono), false),
@@ -124,6 +134,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagB("bwAuto", AT(a.bwAuto), false, true, true)),
         // ---- shared by all receivers (written by receiver 1)
         shared(flagB("newUi", AT(a.newUi), true, true)),
+        shared(flagB("dockOn", AT(a.dockOn), false, true)),
         shared(scaled("splitSide", AT(a.splitSide), 1, 0, 1, 0, false)), shared(scaled("splitRight", AT(a.splitRight), 1, 0, 1, 0, false)),
         shared(scaled("splitBottom", AT(a.splitBottom), 1, 0, 1, 0, false)), shared(scaled("splitDock", AT(a.splitDock), 1, 0, 1, 0, false)),
         shared(scaled("splitBot2", AT(a.splitBot2), 1, 0, 1, 0, false)),
@@ -329,6 +340,7 @@ void saveSpectrumRanges(plat::Prefs& d, const App& a) {
 void loadPrefs(App& a) {
     plat::Prefs& d = plat::prefs();
     a.netRadios = netRadiosFromString(d.getS("netRadios", ""));
+    a.synthGroups = synthGroupsFromString(d.getS("synthGroups", ""));
     a.hamlibRigs = hamlibRigsFromString(d.getS("hamlibRigs", ""));
     {   // radios hidden from the list, one name per line
         a.hiddenRadios.clear();
@@ -387,6 +399,7 @@ void savePrefs(const App& a) {
     plat::Prefs& d = plat::prefs();
     if (a.rxId == 1) {
         d.setS("netRadios", netRadiosToString(a.netRadios));
+        d.setS("synthGroups", synthGroupsToString(a.synthGroups));
         d.setS("hamlibRigs", hamlibRigsToString(a.hamlibRigs));
         { std::string j; for (const auto& n : a.hiddenRadios) j += n + "\n"; d.setS("hiddenRadios", j); }
         d.setB("netDiscovery", networkDiscovery());

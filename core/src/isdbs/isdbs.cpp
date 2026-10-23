@@ -1,7 +1,10 @@
-// ISDB-S: modulation table, TMCC bits, the fixed words of the frame and the 8PSK trellis. See isdbs.h for what is and is not verified.
+// ISDB-S: modulation table, TMCC bits and their RS(64,48) code, the fixed parts of the frame. See isdbs.h and docs/ISDBS.md for the sources.
 #include "dect2/isdbs/isdbs.h"
 #include "dect2/common/mathconst.h"
+#include "dect2/fec/fec_proto.h"
+#include "isdbs_fec.h"
 #include <cmath>
+#include <cstring>
 
 namespace dect2 {
 namespace isdbs {
@@ -19,175 +22,186 @@ const char* modName(int mod) {
     }
 }
 
-int bitsPerSymbol(int mod) { return mod == kBpsk12 ? 1 : mod == kUnused ? 0 : 2; }
+bool isMod(int mod) { return mod >= kBpsk12 && mod <= kTc8psk23; }
+int efficiencyRank(int mod) { return isMod(mod) ? kTc8psk23 - mod : 99; }   // the words of Table 1 rise with the efficiency
 
-int convRate(int mod) {
+int slotUnit(int mod) {
     switch (mod) {
-    case kBpsk12: case kQpsk12: return 0;
-    case kQpsk23: return 1;
-    case kQpsk34: return 2;
-    case kQpsk56: return 3;
-    case kQpsk78: return 4;
-    default: return -1;
+    case kBpsk12: return 4;
+    case kQpsk12: return 2;
+    case kQpsk23: return 3;
+    case kQpsk34: return 4;
+    case kQpsk56: return 6;
+    case kQpsk78: return 8;
+    default: return 1;
     }
 }
 
-bool isConv(int mod) { return mod >= kBpsk12 && mod <= kQpsk78; }
-
-double slotNetBits(int mod) {
-    static const double kRate[5] = {1.0 / 2, 2.0 / 3, 3.0 / 4, 5.0 / 6, 7.0 / 8};
-    if (mod == kTc8psk23) return 2.0 * kSlotSyms;
-    if (!isConv(mod)) return 0;
-    return slotCodedBits(mod) * kRate[convRate(mod)];
+int slotActive(int mod) {
+    switch (mod) {
+    case kBpsk12: return 1;
+    case kQpsk12: return 1;
+    case kQpsk23: return 2;
+    case kQpsk34: return 3;
+    case kQpsk56: return 5;
+    case kQpsk78: return 7;
+    default: return 1;
+    }
 }
 
-double slotTsBitrate(int mod) { return slotNetBits(mod) * (188.0 / 204.0) / kFrameSeconds; }
+int groupSteps(int mod, int count) {
+    if (!isMod(mod)) return 0;
+    const int packets = count / slotUnit(mod) * slotActive(mod);
+    return mod == kTc8psk23 ? packets * kSlotSyms : packets * kSlotBytes * 8;
+}
+
+double slotTsBitrate(int mod) {
+    if (!isMod(mod)) return 0;
+    return (double)slotActive(mod) / slotUnit(mod) * 188.0 * 8.0 / kFrameSeconds;
+}
 
 bool Tmcc::operator==(const Tmcc& o) const {
-    if (valid != o.valid || change != o.change || slotTs != o.slotTs || tsId != o.tsId) return false;
-    for (int i = 0; i < 4; i++) if (mode[i] != o.mode[i] || count[i] != o.count[i]) return false;
+    if (valid != o.valid || change != o.change || slotTs != o.slotTs || tsId != o.tsId || ews != o.ews || uplink != o.uplink) return false;
+    for (int i = 0; i < kMaxGroups; i++) if (mode[i] != o.mode[i] || count[i] != o.count[i]) return false;
     return true;
 }
 
 int Tmcc::slotMod(int slot) const {
     int first = 0;
-    for (int g = 0; g < 4; g++) {
+    for (int g = 0; g < kMaxGroups; g++) {
+        if (!isMod(mode[g])) continue;
         if (slot >= first && slot < first + count[g]) return mode[g];
         first += count[g];
     }
     return kUnused;
 }
 
+bool Tmcc::slotCarries(int slot) const {
+    int first = 0;
+    for (int g = 0; g < kMaxGroups; g++) {
+        if (!isMod(mode[g])) continue;
+        if (slot >= first && slot < first + count[g]) return (slot - first) % slotUnit(mode[g]) < slotActive(mode[g]);
+        first += count[g];
+    }
+    return false;
+}
+
 int Tmcc::slotsOf(int rel) const {
     int n = 0;
-    for (int s = 0; s < kSlots; s++) if (slotTs[s] == rel && slotMod(s) != kUnused) n++;
+    for (int s = 0; s < kSlots; s++) if (slotTs[(size_t)s] == rel && slotMod(s) != kUnused) n++;
+    return n;
+}
+
+int Tmcc::packetsOf(int rel) const {
+    int n = 0;
+    for (int s = 0; s < kSlots; s++) if (slotTs[(size_t)s] == rel && slotCarries(s)) n++;
     return n;
 }
 
 int Tmcc::modOf(int rel) const {
-    for (int s = 0; s < kSlots; s++) if (slotTs[s] == rel && slotMod(s) != kUnused) return slotMod(s);
+    for (int s = 0; s < kSlots; s++) if (slotTs[(size_t)s] == rel && slotMod(s) != kUnused) return slotMod(s);
     return -1;
 }
 
 namespace {
-void putBits(std::vector<uint8_t>& v, unsigned val, int n) { for (int i = n - 1; i >= 0; i--) v.push_back((val >> i) & 1); }
-unsigned getBits(const uint8_t* b, size_t& pos, int n) { unsigned v = 0; for (int i = 0; i < n; i++) v = (v << 1) | b[pos++]; return v; }
-uint16_t crc16(const uint8_t* bits, int n) {
-    uint16_t c = 0xFFFF;
-    for (int i = 0; i < n; i++) {
-        const bool fb = ((c >> 15) & 1) ^ (bits[i] & 1);
-        c <<= 1;
-        if (fb) c ^= 0x1021;
-    }
-    return c;
-}
+void putBits(uint8_t*& o, unsigned val, int n) { for (int i = n - 1; i >= 0; i--) *o++ = (uint8_t)((val >> i) & 1); }
+unsigned getBits(const uint8_t*& b, int n) { unsigned v = 0; for (int i = 0; i < n; i++) v = (v << 1) | (*b++ & 1); return v; }
 }  // namespace
 
-std::array<uint8_t, kFramesPerSuper * kTmccSliceBits> tmccPack(const Tmcc& t) {
-    std::vector<uint8_t> pay;
-    for (int g = 0; g < 4; g++) putBits(pay, (unsigned)t.mode[g], 4);
-    for (int g = 0; g < 4; g++) putBits(pay, (unsigned)t.count[g], 6);
-    for (int s = 0; s < kSlots; s++) putBits(pay, t.slotTs[s], 3);
-    for (int r = 0; r < kMaxStreams; r++) putBits(pay, t.tsId[r], 16);
-    pay.resize(kTmccPayloadBits, 0);
-    std::array<uint8_t, kFramesPerSuper * kTmccSliceBits> out{};
-    for (int k = 0; k < kFramesPerSuper; k++) {
-        uint8_t* o = &out[(size_t)k * kTmccSliceBits];
-        for (int i = 0; i < 5; i++) o[i] = (t.change >> (4 - i)) & 1;
-        for (int i = 0; i < 43; i++) o[5 + i] = pay[(size_t)k * 43 + i];
+std::array<uint8_t, kTmccBits> tmccPack(const Tmcc& t) {
+    std::array<uint8_t, kTmccBits> out{};
+    uint8_t* o = out.data();
+    putBits(o, (unsigned)t.change & 31, 5);
+    for (int g = 0; g < kMaxGroups; g++) {
+        const bool used = isMod(t.mode[g]) && t.count[g] > 0;
+        putBits(o, used ? (unsigned)t.mode[g] : (unsigned)kDummyWord, 4);
+        putBits(o, used ? (unsigned)t.count[g] : 0u, 6);
     }
+    for (int s = 0; s < kSlots; s++) putBits(o, t.slotTs[(size_t)s] & 7u, 3);
+    for (int r = 0; r < kMaxStreams; r++) putBits(o, t.tsId[(size_t)r], 16);
+    putBits(o, t.ews ? 1u : 0u, 1);
+    putBits(o, (unsigned)t.uplink & 15, 4);
+    // 62 reserved bits: left at 0 here (the transmitter's value is not known)
     return out;
 }
 
 bool tmccUnpack(const uint8_t* bits, Tmcc& t) {
-    std::vector<uint8_t> pay(kTmccPayloadBits);
-    int change = -1;
-    for (int k = 0; k < kFramesPerSuper; k++) {
-        const uint8_t* s = bits + (size_t)k * kTmccSliceBits;
-        int c = 0;
-        for (int i = 0; i < 5; i++) c = (c << 1) | s[i];
-        if (change >= 0 && c != change) return false;
-        change = c;
-        for (int i = 0; i < 43; i++) pay[(size_t)k * 43 + i] = s[5 + i];
-    }
     Tmcc r;
-    r.change = change;
-    size_t pos = 0;
+    const uint8_t* b = bits;
+    r.change = (int)getBits(b, 5);
     int total = 0;
-    for (int g = 0; g < 4; g++) { r.mode[g] = (int)getBits(pay.data(), pos, 4); if (r.mode[g] > kTc8psk23) return false; }
-    for (int g = 0; g < 4; g++) { r.count[g] = (int)getBits(pay.data(), pos, 6); total += r.count[g]; }
+    for (int g = 0; g < kMaxGroups; g++) {
+        const int w = (int)getBits(b, 4), c = (int)getBits(b, 6);
+        if (w == kDummyWord) { if (c != 0) return false; r.mode[g] = kUnused; r.count[g] = 0; continue; }
+        if (!isMod(w) || c % slotUnit(w)) return false;
+        r.mode[g] = w; r.count[g] = c; total += c;
+    }
     if (total > kSlots) return false;
-    for (int s = 0; s < kSlots; s++) r.slotTs[s] = (uint8_t)getBits(pay.data(), pos, 3);
-    for (int q = 0; q < kMaxStreams; q++) r.tsId[q] = (uint16_t)getBits(pay.data(), pos, 16);
+    for (int s = 0; s < kSlots; s++) r.slotTs[(size_t)s] = (uint8_t)getBits(b, 3);
+    for (int q = 0; q < kMaxStreams; q++) r.tsId[(size_t)q] = (uint16_t)getBits(b, 16);
+    r.ews = getBits(b, 1) != 0;
+    r.uplink = (int)getBits(b, 4);
     r.valid = true;
     t = r;
     return true;
 }
 
-void tmccSliceEncode(const uint8_t slice[48], uint8_t out[64]) {
-    for (int i = 0; i < 48; i++) out[i] = slice[i] & 1;
-    const uint16_t c = crc16(out, 48);
-    for (int i = 0; i < 16; i++) out[48 + i] = (c >> (15 - i)) & 1;
+// RS(64,48): the RS(204,188) code is RS(255,239) shortened by 51 bytes; 140 more zero bytes in front shorten it to (64,48)
+void tmccEncode(const uint8_t* bits, uint8_t* out) {
+    uint8_t in[188] = {}, cw[204];
+    for (int i = 0; i < 48; i++) { unsigned v = 0; for (int k = 0; k < 8; k++) v = (v << 1) | (bits[i * 8 + k] & 1); in[140 + i] = (uint8_t)v; }
+    fecp::rs204Encode(in, cw);
+    for (int i = 0; i < 64; i++) for (int k = 0; k < 8; k++) out[i * 8 + k] = (cw[140 + i] >> (7 - k)) & 1;
 }
 
-bool tmccSliceCheck(const uint8_t bits[64]) {
-    const uint16_t c = crc16(bits, 48);
-    uint16_t r = 0;
-    for (int i = 0; i < 16; i++) r = (uint16_t)((r << 1) | (bits[48 + i] & 1));
-    return c == r;
+int tmccDecode(const uint8_t* bits, uint8_t* out) {
+    uint8_t cw[204] = {};
+    for (int i = 0; i < 64; i++) { unsigned v = 0; for (int k = 0; k < 8; k++) v = (v << 1) | (bits[i * 8 + k] & 1); cw[140 + i] = (uint8_t)v; }
+    const int r = fecp::rs204Decode(cw);
+    if (r < 0) return -1;
+    for (int i = 0; i < 140; i++) if (cw[i]) return -1;   // a "correction" in the bytes that are zero by definition: too many errors
+    for (int i = 0; i < 48; i++) for (int k = 0; k < 8; k++) out[i * 8 + k] = (cw[140 + i] >> (7 - k)) & 1;
+    return r;
 }
-
-const std::array<float, kSyncSyms>& syncWord() {
-    static const std::array<float, kSyncSyms> w = [] {
-        std::array<float, kSyncSyms> a{};
-        const uint32_t v = 0x072D957Bu;   // picked for the lowest side lobes of the aperiodic autocorrelation (4 of 32)
-        for (int i = 0; i < kSyncSyms; i++) a[i] = ((v >> i) & 1) ? -1.f : 1.f;
-        return a;
-    }();
-    return w;
-}
-
-const std::array<float, kFrameIdSyms>& frameIdWord(int frame) {
-    static const std::array<std::array<float, kFrameIdSyms>, kFramesPerSuper> w = [] {
-        std::array<std::array<float, kFrameIdSyms>, kFramesPerSuper> a{};
-        for (int f = 0; f < kFramesPerSuper; f++)
-            for (int j = 0; j < kFrameIdSyms; j++) a[f][j] = (__builtin_popcount((unsigned)(f + 1) & (unsigned)j) & 1) ? -1.f : 1.f;   // Walsh rows 1..8
-        return a;
-    }();
-    return w[(size_t)(frame & 7)];
-}
-
-namespace {
-std::vector<float> lfsr15(unsigned seed, size_t n) {
-    std::vector<float> v(n);
-    unsigned reg = seed & 0x7FFF;
-    for (size_t i = 0; i < n; i++) {
-        const unsigned fb = ((reg >> 14) ^ (reg >> 13)) & 1;
-        reg = ((reg << 1) | fb) & 0x7FFF;
-        v[i] = fb ? -1.f : 1.f;
-    }
-    return v;
-}
-}  // namespace
 
 const std::vector<float>& burstSequence() {
-    static const std::vector<float> b = lfsr15(0x4A80, (size_t)kBlocks * kBurstSyms);
+    static const std::vector<float> b = [] {
+        std::vector<float> v((size_t)kBlocks * kBurstSyms);
+        unsigned reg = 0x1FF;   // 1 + x^5 + x^9, all ones at the start of every frame: a choice of this code, see isdbs.h
+        for (auto& x : v) {
+            const unsigned o = ((reg >> 8) ^ (reg >> 4)) & 1;
+            reg = ((reg << 1) | o) & 0x1FF;
+            x = o ? -1.f : 1.f;
+        }
+        return v;
+    }();
     return b;
 }
 
-std::vector<float> fillerSequence(int slot, size_t n) { return lfsr15(0x1234u + (unsigned)slot * 37u, n); }
-
-int tc8Step(Tc8State& s, int u, int v) {
-    // parity check h0 = 11, h1 = 02, h2 = 04 (octal) of the 8-state Ungerboeck code for 8PSK: z0(n) = z0(n-3) + z1(n-1) + z2(n-2), here as a
-    // three bit register (a = z0 now, b = z0(n-2) + z2(n-1), c = z0(n-1)); the information bits are z1 = u and z2 = v
-    const int label = (v << 2) | (u << 1) | s.a;
-    const uint8_t na = (uint8_t)(s.b ^ u), nb = (uint8_t)(s.c ^ v), nc = s.a;
-    s.a = na; s.b = nb; s.c = nc;
-    return label;
+namespace {
+std::array<float, 20> wordTail(uint16_t w) {
+    unsigned s = 0;
+    for (int i = 0; i < 6; i++) s = convNext(s, (w >> (15 - i)) & 1);
+    std::array<float, 20> a{};
+    for (int i = 6; i < 16; i++) {
+        const int in = (w >> (15 - i)) & 1;
+        const unsigned o = convOut(s, in);
+        s = convNext(s, in);
+        a[(size_t)(2 * (i - 6))] = (o >> 1) ? -1.f : 1.f;
+        a[(size_t)(2 * (i - 6) + 1)] = (o & 1) ? -1.f : 1.f;
+    }
+    return a;
 }
+}  // namespace
+
+const std::array<float, 20>& w1Tail() { static const auto a = wordTail(kW1); return a; }
+const std::array<float, 20>& w2Tail() { static const auto a = wordTail(kW2); return a; }
 
 cf32 psk8Point(int label) {
-    const double a = dect2::math::kPi * 0.25 * label;
+    // (W, Y, X): 000 at 0 degrees, then 001, 011, 010 every 45 degrees; W = 1 is the opposite point
+    static const int kGray[4] = {0, 1, 3, 2};   // (Y, X) = 00, 01, 10, 11 -> 0, 1, 3, 2
+    const int idx = ((label >> 2) & 1) * 4 + kGray[label & 3];
+    const double a = dect2::math::kPi * 0.25 * idx;
     return cf32((float)std::cos(a), (float)std::sin(a));
 }
 

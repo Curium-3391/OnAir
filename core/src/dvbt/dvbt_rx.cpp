@@ -904,8 +904,8 @@ struct DvbtReceiver::Impl {
         // ---- display data
         const uint64_t showEvery = (uint64_t)std::max(6.0, std::ceil(0.025 * fn / (double)(N + G)));
         if (!showEver || symbols - lastShowSym >= showEvery) {
-            showEver = true; lastShowSym = symbols; showSeq++;
             DECT2_STAGE("dvbt.telemetry");
+            showEver = true; lastShowSym = symbols; showSeq++;
             eqShow.clear();
             const int step = std::max(1, Nd / 1500);
             for (int i = 0; i < Nd; i += step) eqShow.push_back(eq[i]);
