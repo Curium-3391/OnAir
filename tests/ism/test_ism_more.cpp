@@ -294,5 +294,5 @@ int main() {
         }
         CHECK(ok, "ERT SCM");
     }
-    return summary();
+    return testSummary("ism more");
 }

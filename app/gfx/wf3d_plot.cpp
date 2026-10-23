@@ -168,7 +168,9 @@ void waterfall3dPlot(App& a, ImVec2 size) {
 
     // ---- the mesh, made again only when something it depends on changed
     w3d::Look lk; lk.heightScale = s.heightScale; lk.shade = s.shade && !lowPower;
-    const w3d::Proj p = w3d::makeProj(cam, 0, 0, sz.x, sz.y);   // relative to the plot's corner: moving the window keeps the mesh
+    lk.depth = std::min(1.f, std::max(0.45f, 2.2f * sz.y / sz.x));   // a wide, short plot: a shallower time axis, so the band gets the width
+    // relative to the plot's corner (moving the window keeps the mesh); framed to fill the plot whatever its shape
+    const w3d::Proj p = w3d::makeProj(cam, 0, 0, sz.x, sz.y, w3d::fitScale(cam, sz.x, sz.y, std::min(0.5f, lk.heightScale), lk.depth));
     w3d::Key k;
     k.rows = s.hist.count; k.lutGen = a.wf.lutGen; k.cols = s.hist.cols; k.gridRows = b.rows; k.group = b.group;
     k.vw = sz.x; k.vh = sz.y; k.yaw = cam.yaw; k.pitch = cam.pitch; k.dist = cam.dist; k.tx = cam.tx; k.ty = cam.ty; k.tz = cam.tz; k.hs = lk.heightScale;

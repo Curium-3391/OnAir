@@ -48,6 +48,11 @@ struct Backend {
     virtual void shutdown() = 0;
 };
 
+// Context levels, best first (OpenGL: 3.2 core, 3.1, 3.0; Metal: one). The caller tries each until the window opens (#283).
+int levelCount();
+int level();
+void setLevel(int l);                     // before windowHints(); the pop-out window then uses the same level as the main one
+const char* levelName();
 void windowHints();                       // before glfwCreateWindow
 Backend* create(GLFWwindow* window);      // after the window exists; also initialises the ImGui renderer back end
 
