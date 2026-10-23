@@ -1114,6 +1114,7 @@ void scannerControl(App& a, int what);                                  // 0 sto
 void scannerTuning(float squelchDb, double hangSec, double holdMaxSec, double prioritySec);
 void scanViewWindow(App& a);                                            // scan_view_ui.cpp: the merged Scanner view (a.scanViewOpen)
 void selectMode(App& a, int family, const char* subId = nullptr);
+void marineVhfJump(App& a, int channel, char suffix = 0);   // marinevhf_ui.cpp: open the Marine VHF mode on this channel (the DSC screen names one in a call)
 bool modeSelected(const App& a, const ModeDef& m);    // the row of the current mode
 const char* modeSearchBox();                          // a search box at the top of a mode drop-down (mode_select.cpp); returns the query
 bool modeMatches(const ModeDef& m, const char* query); // the search box: name, subtitle, description and keywords

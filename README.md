@@ -87,7 +87,7 @@ OnAir is a receiver first. It can also send test signals through a transmit-capa
 | **Aviation** | 14 | ADS-B with a live map, UAT, ACARS, VDL2 and VDL4, HFDL, airband, VOR / ILS / NDB, FLARM, drones |
 | **Broadcast radio** | 5 | DAB+, DRM (with its data services), HD Radio, CDR, and FM with RDS, a Mono switch for weak stations and a saved-station library |
 | **Aviation** | 16 | ADS-B with a live map, ASTERIX radar data from UDP or a file, Mode A/C squawks and altitudes, UAT, ACARS, VDL2 and VDL4, HFDL, airband, VOR / ILS / NDB, FLARM, drones |
-| **Maritime** | 5 | AIS, VDES, NAVTEX, DSC, weather fax |
+| **Maritime** | 6 | AIS, VDES, NAVTEX, DSC, weather fax, Marine VHF voice |
 | **Satellite and navigation** | 13 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, COSPAS-SARSAT 406 MHz distress beacons, Argos platforms and downlink |
 | **Two-way radio** | 7 | DMR, P25 (with a trunking follower), NXDN, dPMR, TETRA, TETRAPOL, tone decoders (CTCSS, DCS, DTMF, selcall) |
 | **Satellite and navigation** | 15 | Weather pictures from Meteor, GOES, Elektro-L and MetOp, Iridium, Inmarsat, Orbcomm, QO-100, CubeSat telemetry, GNSS, SBAS corrections, COSPAS-SARSAT 406 MHz distress beacons, GOES / Meteosat DCS platform reports, Argos platforms and downlink |
@@ -274,6 +274,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 ### Maritime
 
 - **AIS** ship positions, **VDES** (ASM decoded; VDE-TER only detected), **NAVTEX**, **DSC** and **Weather fax**.
+- **Marine VHF** voice, channels 1 to 88 (156 to 162 MHz): narrow FM with squelch, a channel picker by number with names and uses, the regional plans (international, Europe, Baltic, USA, Canada, with the A / B variants), up / down, a scan with a priority watch on 16, every channel of the captured span followed at once with an activity list, a call log and a WAV per transmission. The DSC screen offers a one-click jump to the channel a call names. See [docs/marine-vhf.md](docs/marine-vhf.md).
 
 ### Satellite and navigation
 
