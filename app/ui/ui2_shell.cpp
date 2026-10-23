@@ -21,6 +21,7 @@
 #include "dect2/engine/overload_hint.h"
 #include "../platform/discord_rpc.h"
 #include "../panels/report_problem.h"
+#include "../panels/backup_ui.h"
 
 using namespace ui2;
 
@@ -546,6 +547,7 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Watchlists..."), nullptr, &a.watchlistOpen);
         ImGui::MenuItem(tr("Automations..."), nullptr, &a.automationOpen);
         ImGui::MenuItem(tr("Plugins..."), nullptr, &a.pluginsOpen);
+        ImGui::MenuItem(tr("Backup and restore..."), nullptr, &a.backupOpen);
         ImGui::MenuItem(tr("Memory..."), "Ctrl+M", &a.memoryOpen);
         ImGui::MenuItem(tr("Datasets..."), nullptr, &a.datasetsOpen);
         ImGui::MenuItem(tr("Data packs..."), nullptr, &a.packsOpen);
@@ -699,6 +701,7 @@ float menuBar(App& a) {
     tx::windowPanel(a);
     reportProblemWindow(a);
     modeVisibilityWindow(a);
+    backupWindow(a);
     tx::captionsWindow(a);
     return menuH;
 }

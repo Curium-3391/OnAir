@@ -29,6 +29,7 @@ struct RxPrefs : Prefs {
     void setChannels(const std::vector<Channel>& c) override { b().setChannels(c); }
     void flush() override { b().flush(); }
     std::string setAside() override { return b().setAside(); }
+    std::vector<dect2::backup::PrefItem> dumpAll() override { return b().dumpAll(); }
 };
 }
 

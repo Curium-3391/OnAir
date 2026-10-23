@@ -446,6 +446,11 @@ struct FilePrefs : Prefs {
         if (replaceFile(tmp, path)) dirty = false;
         else fprintf(stderr, "settings: cannot replace %s (the changes are kept in memory and tried again)\n", path.c_str());
     }
+    std::vector<dect2::backup::PrefItem> dumpAll() override {
+        std::vector<dect2::backup::PrefItem> o;
+        for (auto& e : kv) o.push_back({e.first, 'S', e.second});   // stored as text: getD/getI/getB read it back the same
+        return o;
+    }
     std::string setAside() override {
         const std::string old = configDir() + "/settings-crashed.conf";
         const bool kept = replaceFile(path, old);
