@@ -119,6 +119,9 @@ const Known kKnown[] = {
 {"DominoEX", "hfdig", "dominoex", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModFm, {}, {299}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "IFK+ MFSK 18 tones", 18, 15.625},
 {"Hellschreiber", "hfdig", "hell", "HF and utility", MB(ModQam)|MB(ModPulse)|MB(ModAm)|MB(ModCarrier), ModPulse, {122.5}, {438}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "keyed carrier 122.5 Bd (Feld Hell)"},
 {"JS8Call", "js8", "", "HF and utility", MB(ModFm)|MB(ModPulse)|MB(ModCarrier)|MB(ModAm), ModFm, {6.25}, {184, 50}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "8-GFSK, 15 s slots", 8, 6.25},
+// ROS: proprietary, no public framing or FEC, so nothing decodes it; the row is proposed only when the tone-grid check (ros_detect.h) finds it.
+// Opens in the General receiver (USB) to listen. Numbers: docs/ROS.md (sigidwiki ROS, radioscanner.ru signal 236).
+{"ROS", "general", "", "HF and utility", MB(ModFm)|MB(ModQam)|MB(ModGmsk)|MB(ModFsk2)|MB(ModFsk4)|MB(ModPulse)|MB(ModAm)|MB(ModCarrier)|MB(ModOfdm), ModFm, {}, {2.25e3}, 0, 0, 0, 0, SyncRos, {1.8f, 30, 50, 54, 144, 146}, "single-tone MFSK on a ~15.6 Hz grid, about 2.25 kHz, 4 / 8 / 16 Bd; identification only (ROS is proprietary)"},
 {"ALE", "ale", "", "HF and utility", MB(ModFsk4)|MB(ModFsk2)|MB(ModPsk8)|MB(ModFm), ModPsk8, {125}, {2e3}, 0, 2, 0, 0, SyncNone, {2, 30}, "8-FSK 125 Bd (MIL-STD-188-141)"},
 {"HF beacons", "hfbeacon", "", "HF and utility", MB(ModCarrier)|MB(ModPulse)|MB(ModAm), ModCarrier, {}, {200}, 0, 2, 0, 0, SyncNone, {14.1f, 14.11f, 18.11f, 18.12f, 21.15f, 21.16f, 24.93f, 24.94f, 28.2f, 28.3f}, "NCDXF/IARU beacons, 100 W to 1 W in 10 s slots"},
 {"CODAR", "codar", "", "HF and utility", MB(ModChirp)|MB(ModFsk4)|MB(ModFm)|MB(ModQam), ModChirp, {}, {49.8e3, 25e3}, 0, 1, 0, 0, SyncNone, {4.4f, 5.4f, 12, 14, 24, 27, 41, 43}, "FMCW sweep, ocean radar"},

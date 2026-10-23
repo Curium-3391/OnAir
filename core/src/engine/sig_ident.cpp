@@ -10,6 +10,7 @@
 #include "dect2/nxdn/nxdn_proto.h"
 #include "dect2/p25/p25_proto.h"
 #include "dect2/pager/pager_proto.h"
+#include "dect2/ros/ros_detect.h"
 #include "dect2/specx/specx_measure.h"
 #include <algorithm>
 #include <chrono>
@@ -1290,12 +1291,22 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
             sync[SyncAis] = countWord(nr, 0x007E, 16, 1);   // the training alternates on the line: NRZI zeros, then the flag
         }
     }
+    // ROS (proprietary, identification only): one tone at a time on a ~15.6 Hz grid, about 2.25 kHz wide, 4 / 8 / 16 Bd
+    ros::Detection rosDet;
+    if (f.obwHz > 1200 && f.obwHz < 3600) {
+        tried[SyncRos] = true;
+        ros::DetectOptions ro;
+        ro.centreHz = f.centreHz; ro.halfWidthHz = 1500;
+        rosDet = ros::detect(x, n, fs, ro);
+        sync[SyncRos] = rosDet.ros ? (rosDet.weak ? 1 : 2) : 0;
+    }
     // ---- rank the table: every rule that can be applied adds what it earns to `sc` and what it could have earned to `mx`; the score is the
     // share (0 .. 100) of the evidence that holds, so a mode with few measurable traits is not held back by the traits it does not have
     const double rf = f.rfHz / 1e6;
     auto atUsual = [&](const Known& k) { return o.rfHz > 0 && k.defMhz > 0 && std::fabs(rf - k.defMhz) <= std::max(0.025, 0.003 * k.defMhz); };
     for (size_t i = 0; i < sigs.size(); i++) {
         const Known& k = sigs[i];
+        if (k.sync == SyncRos && !sync[SyncRos]) continue;   // only proposed when its tone grid is found: its width alone fits too much
         if (k.source == 2) {   // a mode known by its name and usual frequency only: a candidate there, with little weight
             if (!atUsual(k)) continue;
             Candidate c;
@@ -1398,7 +1409,11 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
             if (q > 0.9 && std::fabs(q - std::round(q)) < 0.06) rule(5, 5, F("spectral comb every %.0f carriers (pilots)", std::round(q)));
         }
         c.name = k.name; c.modeId = k.modeId; c.subId = k.subId; c.why = k.note; c.family = k.family; c.source = k.source; c.sig = (int)i;
-        if (k.sync && tried[k.sync]) {
+        if (k.sync == SyncRos) {
+            c.syncTried = true; c.syncHits = sync[k.sync];
+            rule(c.syncHits >= 2 ? 40 : 15, 40, (c.syncHits >= 2 ? "ROS tone grid: " : "ROS tone grid, few symbols: ") + rosDet.why);
+            c.why = rosDet.name + ", " + k.note;
+        } else if (k.sync && tried[k.sync]) {
             c.syncTried = true; c.syncHits = sync[k.sync];
             if (c.syncHits >= 2) rule(40, 40, F("frame sync found %.0f times", c.syncHits));
             else if (c.syncHits == 1) rule(15, 40, F("frame sync found once", 0));
