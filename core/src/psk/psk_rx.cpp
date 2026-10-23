@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <complex>
 #include <mutex>
 #include <utility>
@@ -24,6 +25,12 @@ namespace {
 using dect2::math::kPi;
 constexpr double kBase = marine::kBaseRate;      // 24 kHz complex
 constexpr double kWideSpanMaxPsk = 100000;       // whole span: a receiver per 3.4 kHz of it (about 20 % of a core at 100 kHz)
+static const bool kPskIsiBpsk = !std::getenv("PSK_NOISI");   // measuring only (the PSK_NO* switches)
+static const bool kPskReplay = !std::getenv("PSK_NOREPLAY");
+static const bool kPskSquelch = !std::getenv("PSK_NOSQL");
+constexpr double kReplaySec = 1.5;
+static const float kSqlA = std::getenv("PSK_SQLA") ? (float)std::atof(std::getenv("PSK_SQLA")) : 0.4f;
+static const float kSqlT = std::getenv("PSK_SQLT") ? (float)std::atof(std::getenv("PSK_SQLT")) : 0.2f;
 constexpr int kN = 4096, kHop = 2048;            // window spectrum
 constexpr double kBinHz = kBase / kN;
 constexpr double kLoHz = 100, kHiHz = 3900;      // the audio passband searched
@@ -53,7 +60,11 @@ struct Chan {
     bool havePrev = false;
     float q = 0.2f;              // phase decision quality: 1 clean, 0 noise
     float errVar = 1;            // mean square phase error: the SNR (Es/N0 = 1 / variance for differential detection)
+    float errShown = 1;          // errVar of a second ago while text came out: what is shown (the noise after a signal ends would read ~1 dB)
+    float errHist[32] = {};
+    int errPos = 0;
     bool dcd = false;
+    float fastPw = 0, dcdPw = 0;  // symbol power: quick, and slow while decoding (a signal that stops drops the DCD at once)
     psk::Viterbi vit;
     psk::VaricodeRx vrx;
     std::string text;
@@ -74,13 +85,15 @@ struct PskReceiver::Impl {
     PskTelemetry pub;
     std::atomic<bool> resetReq{true}, offsetReq{false}, clearReq{false};
     bool focusReq = false; double focusHz = 0;   // under mu
-    std::atomic<float> thrDb{8.f};
+    std::atomic<float> thrDb{5.f};
     std::atomic<int> modeReq{0};
     // receiver thread
     PskTelemetry tel;
     double curRate = 0;
     bool running = false;
     int mode = 0, sps = 32;
+    std::vector<cf32> hist;      // the last kReplaySec of the 24 kHz band (replay)
+    size_t histPos = 0;
     std::vector<float> h;        // matched filter
     int64_t nIn = 0, nBase = 0;
     double nextReport = 0;
@@ -214,6 +227,7 @@ struct PskReceiver::Impl {
         base.clear(); fftIn.clear();
         const int W = kHiBin - kLoBin + 1;
         held.assign((size_t)W, 0.f); acc.assign((size_t)W, 0.f); accN = 0; frames = 0; floorLin = 0;
+        hist.assign((size_t)(kReplaySec * kBase), cf32(0, 0)); histPos = 0;
         setupMode(modeReq.load());
         buildWide();
         if (cb && curRate > 0 && wide) cb("PSK: decoding the whole span (" + std::to_string((int)(wide->dec.spanHz() / 1000)) + " kHz)");
@@ -289,7 +303,7 @@ struct PskReceiver::Impl {
                 ch->lastPeak = now;
                 if (!ch->manual && !ch->dcd) { ch->setFreq(ch->f + 0.1 * (hz - ch->f)); ch->f0 = ch->f; }
             } else if (!skirt && !find(hz, 1.4 * baud()) && (int)chans.size() < kPskMaxSignals) {
-                add(hz, false);
+                replay(add(hz, false));
             }
         }
         for (const Chan& c : chans) if (c.id != focusId && now - std::max(c.lastActive, c.lastPeak) > 40) retire(c);
@@ -330,7 +344,7 @@ struct PskReceiver::Impl {
             if (PskReporter::get().want())
                 for (const std::string& k : now)
                     if (std::find(c.calls.begin(), c.calls.end(), k) == c.calls.end() && pskr::sendsInText(flat, k))
-                        PskReporter::get().spot(mode == 0 ? "PSK31" : mode == 1 ? "PSK63" : mode == 4 ? "PSK125" : mode == 5 ? "PSK250" : "PSK", c.f + spotShift.load(), (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errVar)))), k);
+                        PskReporter::get().spot(mode == 0 ? "PSK31" : mode == 1 ? "PSK63" : mode == 4 ? "PSK125" : mode == 5 ? "PSK250" : "PSK", c.f + spotShift.load(), (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errShown)))), k);
             c.calls = now;
         }
     }
@@ -348,9 +362,19 @@ struct PskReceiver::Impl {
         const double en = err / (qp ? kPi / 4 : kPi / 2);
         c.q += 0.1f * ((float)(1 - 3 * en * en) - c.q);
         c.errVar += 0.05f * ((float)(err * err) - c.errVar);
+        const float old = c.errHist[c.errPos];
+        c.errHist[c.errPos] = c.errVar;
+        c.errPos = (c.errPos + 1) & 31;
+        if (c.chars == 0) c.errShown = c.errVar;
+        else if (c.dcd && old > 0) c.errShown = old;
+        const float yp = std::norm(y);
+        c.fastPw += kSqlA * (yp - c.fastPw);
+        if (c.dcd) c.dcdPw += 0.02f * (yp - c.dcdPw); else c.dcdPw = c.fastPw;
+        const bool gone = kPskSquelch && c.dcd && c.fastPw < kSqlT * c.dcdPw;
         if (!c.dcd && c.q > 0.5f) c.dcd = true;
-        else if (c.dcd && c.q < 0.25f) {
+        else if (c.dcd && (c.q < 0.25f || gone)) {
             c.dcd = false;
+            c.q = std::min(c.q, 0.2f);
             c.lineOpen = false;
             c.vrx.reset();
         }
@@ -401,7 +425,7 @@ struct PskReceiver::Impl {
             // Gardner: (previous - this) x the sample between them; > 0 when the samples come too early
             const float ge = std::real((c.lastSym - y) * std::conj(mid)) / std::max(1e-30f, c.pw);
             c.lastSym = y;
-            if (pskQpsk(mode)) {
+            if (pskQpsk(mode) || kPskIsiBpsk) {
                 // the matched filter leaves 1/6 of each neighbour in a symbol (the PSK31 pulse is two symbols long): harmless for BPSK, where
                 // it only changes the amplitude, but it turns QPSK phases, so take it out (one symbol late)
                 c.sym2 = c.sym1; c.sym1 = y;
@@ -431,21 +455,30 @@ struct PskReceiver::Impl {
         for (size_t i = 0; i < n; i++) {
             const cf32 v = x[i];
             nBase++;
-            for (Chan& c : chans) {
-                const std::complex<double> m = std::complex<double>(v.real(), v.imag()) * c.rot;
-                c.rot *= c.step;
-                if (++c.rotCount >= 4096) { c.rot /= std::abs(c.rot); c.rotCount = 0; }
-                const cf32 mf((float)m.real(), (float)m.imag());
-                c.tri[c.triPos] = mf; c.tri[c.triPos + kTri] = mf;
-                if (++c.triPos >= kTri) c.triPos = 0;
-                if (++c.phase < kR) continue;
-                c.phase = 0;
-                const cf32* w = &c.tri[c.triPos];
-                cf32 d(0, 0);
-                for (int j = 0; j < kTri; j++) d += w[j] * triW[j];
-                sample1k(c, d);
-            }
+            for (Chan& c : chans) chanSample(c, v);
+            hist[histPos] = v;
+            if (++histPos >= hist.size()) histPos = 0;
         }
+    }
+    void chanSample(Chan& c, cf32 v) {
+        const std::complex<double> m = std::complex<double>(v.real(), v.imag()) * c.rot;
+        c.rot *= c.step;
+        if (++c.rotCount >= 4096) { c.rot /= std::abs(c.rot); c.rotCount = 0; }
+        const cf32 mf((float)m.real(), (float)m.imag());
+        c.tri[c.triPos] = mf; c.tri[c.triPos + kTri] = mf;
+        if (++c.triPos >= kTri) c.triPos = 0;
+        if (++c.phase < kR) return;
+        c.phase = 0;
+        const cf32* w = &c.tri[c.triPos];
+        cf32 d(0, 0);
+        for (int j = 0; j < kTri; j++) d += w[j] * triW[j];
+        sample1k(c, d);
+    }
+    // a signal found in the spectrum: the last seconds of the band go through its new receiver first, so that it locks during the idle
+    // reversals before the text instead of losing the first words
+    void replay(Chan& c) {
+        if (!kPskReplay || hist.empty()) return;
+        for (size_t k = 0; k < hist.size(); k++) chanSample(c, hist[(histPos + k) % hist.size()]);
     }
 
     void report() {
@@ -469,7 +502,7 @@ struct PskReceiver::Impl {
         for (const Chan& c : chans) {
             PskSignal s;
             s.id = c.id; s.offsetHz = c.f; s.afcHz = c.f - c.f0; s.manual = c.manual;
-            s.snrDb = (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errVar)))); s.quality = std::max(0.f, c.q); s.dcd = c.dcd;
+            s.snrDb = (float)std::max(-5.0, std::min(40.0, 10 * std::log10(1.0 / std::max(1e-4f, c.errShown)))); s.quality = std::max(0.f, c.q); s.dcd = c.dcd;
             s.lastActiveSec = c.lastActive; s.firstSec = c.firstSec;
             s.chars = c.chars; s.text = c.text; s.lines = c.lines; s.calls = c.calls;
             ok += c.chars; bad += c.bad;

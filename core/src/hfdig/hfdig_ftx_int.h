@@ -41,6 +41,10 @@ void encode174(const uint8_t* bits77, uint8_t* cw174);
 // Belief propagation (sum-product). llr > 0 means 1. Returns the number of parity checks still wrong (0 = a codeword).
 int ldpcDecode(const float* llr, int iters, uint8_t* cw174);
 bool checkCrc(const uint8_t* cw174);
+// Ordered-statistics decoding (order 1, plus order 2 on the nPair least reliable basis bits) when belief propagation fails: true when the nearest
+// codeword passes the CRC. dist and margin are fractions of the total |llr| (the nearest codeword's distance, and how much farther the next one is).
+struct OsdStats { int hardErrors = 0; double dist = 0, margin = 0; };
+bool osdDecode(const float* llr, int nPair, uint8_t* cw174, OsdStats* st);
 
 // ---------------------------------------------------------------- 77-bit messages (hfdig_ftx_msg.cpp)
 // The callsigns heard, by their 22-, 12- and 10-bit hashes, to show <hashed> calls by name.
