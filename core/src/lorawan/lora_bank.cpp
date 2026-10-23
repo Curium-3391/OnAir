@@ -57,7 +57,7 @@ struct Bank::Impl {
                 st.preambles = ds.preambles; st.frames = ds.frames; st.crcBad = ds.crcBad; st.headerBad = ds.headerBad; st.syncBad = ds.syncBad;
                 d.seen = ds;
                 for (auto& f : frames) {
-                    const double t = ((double)nProc + f.startSample * c.ch->decim() - c.ch->delayIn()) / rate;
+                    const double t = (f.startSample * c.ch->decim() - c.ch->delayIn()) / rate;   // channels start with the bank: sample 0
                     bool dup = false;
                     for (const auto& r : recent)
                         if (r.chan == c.index && (r.sf != d.sf || r.inv != d.inverted) && r.payload == f.payload && std::fabs(r.sec - t) < 0.25) dup = true;   // another setting locked the same frame
@@ -117,7 +117,7 @@ void Bank::configure(double inputRate, const std::vector<Channel>& chans) {
                 lora::Params p;
                 p.sf = sf; p.bwHz = c.bwHz; p.syncWord = (uint8_t)sw; p.preamble = c.preamble;
                 p.ldro = lora::autoLdro(sf, c.bwHz);
-                p.cfoTrack = c.cfoTrack;
+                p.cfoTrack = c.cfoTrack; p.carrierHz = c.carrierHz;
                 Impl::Dec d;
                 d.dm = std::make_unique<lora::Demod>(p, ch->ch->outRate());
                 d.dm->reset(0);

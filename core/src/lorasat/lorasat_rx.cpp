@@ -110,7 +110,7 @@ struct LoraSatReceiver::Impl {
             lorabank::Channel c;
             c.offsetHz = offset + cfg.offsetHz; c.bwHz = bw; c.filterBwHz = bw + 2 * tel.dopplerMaxHz;
             c.sfs = sfs; c.syncs = syncs; c.cfoTrack = cfg.track ? 1.0 : 0.0; c.preamble = cfg.preamble;
-            c.marginHz = 10e3;
+            c.marginHz = 10e3; c.carrierHz = mhz * 1e6;
             chans.push_back(c);
             tel.filterHz = std::max(tel.filterHz, c.filterBwHz);
         }

@@ -517,7 +517,9 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
     if (p.cfoTrack > 0) {
         // a carrier that drifts (Doppler rate): what the preamble showed as a clock drift is a frequency ramp, which the loop in
         // dataSymbol() follows; the symbol clock stays at the nominal rate
-        cfoRate = -slope;
+        double clk = 0;   // the part of the ramp that is the stretched symbol clock (chips per symbol): the timing loop's, not the carrier's
+        if (p.carrierHz > 0) clk = -1.0 * (cfoBins * p.bwHz / N) / p.carrierHz * N;
+        cfoRate = -(slope - clk);
         cfoBins += (1.75 + sfdExtraSymbols(sf)) * cfoRate;   // the estimate is valid half a symbol into the down-chirps
         cfoStartBins = cfoBins;
         drift = 0;

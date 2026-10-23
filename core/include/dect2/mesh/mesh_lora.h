@@ -24,6 +24,7 @@ struct Params {
     bool crc = true;
     bool implicitHdr = false;    // no header: the length (implicitLen), coding rate (cr) and CRC (crc) are agreed beforehand (plain LoRa links)
     int implicitLen = 0;
+    double carrierHz = 0;        // cfoTrack > 0: the carrier frequency when known (a Doppler shift stretches the symbol clock by the same fraction)
     double cfoTrack = 0;         // 0: the carrier offset is measured once per frame (every plain LoRa link); > 0: followed through the frame at this loop gain (satellites: Doppler rate)
 };
 

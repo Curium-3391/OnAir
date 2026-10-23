@@ -19,6 +19,7 @@ struct Channel {
     std::vector<int> syncs;          // sync words searched (0x34 LoRaWAN public, 0x12 private)
     bool normalIq = true;            // decode the normal chirps
     bool invertedIq = false;         // and the inverted ones (LoRaWAN downlinks)
+    double carrierHz = 0;            // satellites: the nominal carrier frequency (the symbol clock stretches with the Doppler shift), 0 unknown
     double cfoTrack = 0;             // > 0: follow a drifting carrier through the frame (satellites), see lora::Params::cfoTrack
     int preamble = 8;                // symbols (only places the frame start)
     double marginHz = 25e3;          // room for the carrier offset the channel must still pass inside the captured band
