@@ -919,7 +919,7 @@ void wfDisplayPopup(App& a) {
         if (a.wfPerMode) setWaterfallMap(a, a.wf.map); else savePrefs(a);
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The colour map chosen in a mode comes back the next time that mode is chosen"));
-    if (ImGui::TreeNode(tr("Custom gradient"))) { customGradientEditor(a); ImGui::TreePop(); }
+    if (ImGui::TreeNode(trw("Custom gradient"))) { customGradientEditor(a); ImGui::TreePop(); }
     ImGui::Separator();
     ImGui::TextDisabled("%s", tr("Detail (columns across the band)"));
     {
