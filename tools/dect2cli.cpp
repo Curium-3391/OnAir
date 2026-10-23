@@ -580,6 +580,13 @@ int main(int argc, char** argv) {
         if (os.udpOpen) printf("udp: %llu datagrams, dropped %llu\n", (unsigned long long)os.udpDatagrams, (unsigned long long)os.udpDropped);
     }
     e.stop();
+    {   // where the CPU went (common/cpu_meter.h): seconds of CPU per account and the whole process
+        std::string line = "cpu:";
+        char b[96];
+        for (const auto& u : e.cpuUsage()) { snprintf(b, sizeof b, " %s %.2f s", u.name.c_str(), u.seconds); line += b; }
+        snprintf(b, sizeof b, " | process %.2f s", (double)cpu::processNs() * 1e-9);
+        printf("%s\n", (line + b).c_str());
+    }
     if (!wavPath.empty()) {
         if (FILE* f = fopen(wavPath.c_str(), "wb")) {
             const uint32_t bytes = (uint32_t)(wav.size() * 2), rate = 48000, br = rate * 4;
