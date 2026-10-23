@@ -185,7 +185,10 @@ bool ldpcDecodeRm(const float* llr, int k, uint8_t* info, int maxIter, float alp
     for (int j = k; j < kLdpcK; j++) full[j] = 60.f;   // known zeros
     for (int j = 0; j < kRmCoded - k; j++) full[kLdpcK + j] = llr[k + j];
     uint8_t all[kLdpcK];
-    bool ok = ldpcDecode(full, all, maxIter, alpha, nullptr);
+    // layered schedule (alpha 0.9) since 3.0: about 0.25 dB better at 1 % FER than the flooding one with alpha 0.8 and half the iterations
+    // (docs/KAAL-NEXT.md); the alpha argument is kept for the interface but the layered decoder's own value is used
+    (void)alpha;
+    bool ok = ldpcDecodeLayered(full, all, maxIter, 0.9f, nullptr, nullptr);
     for (int j = k; j < kLdpcK; j++) if (all[j]) ok = false;   // a shortened bit decoded as one: wrong hypothesis
     for (int j = 0; j < k; j++) info[j] = all[j];
     return ok;

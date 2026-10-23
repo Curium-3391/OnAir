@@ -102,6 +102,7 @@ struct RxStatsV4 {
     uint64_t samplesIn = 0;
     Profile lastProfile[kSlots] = {kIdle, kIdle, kIdle, kIdle};
     int iterativeSaves = 0;        // slot words that decoded only after the decision-directed re-estimation
+    uint64_t equalised = 0;        // superframes that went through the multipath equaliser
 };
 
 class FrameRx {
@@ -114,6 +115,7 @@ public:
     void reset();
     void setIterative(bool on);    // decision-directed re-estimation after a failed decode (default on)
     void setDdTracking(bool on);   // decision-directed phase smoothing over the data symbols (default on)
+    void setEqualiser(bool on);    // MMSE equaliser from the chirp channel estimate when there is multipath (default on)
     void feed(const cf* x, size_t n);
     bool popSuperframe(RxSuperframe& out);
     bool pollText(std::string& text);

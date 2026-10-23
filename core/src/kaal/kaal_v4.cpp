@@ -535,6 +535,7 @@ struct FrameRx::Impl {
         ctrlPos = -1; ctrlHave = 0; ctrlValid = false; ctrlAge = 0; ctrlText.clear(); ctrlTextNext = 0;
         for (auto& p : lastGood) p = kIdle;
         dmsg.clear(); dlen = 0; dactive = false;
+        hInit = false;
         outSf.clear(); texts.clear(); beacons.clear(); calls.clear();
         st = RxStatsV4{};
         if (resampling) rs.reset();
@@ -735,6 +736,10 @@ struct FrameRx::Impl {
             zn[k] /= g;
             if (known[k]) { nsum += std::norm(zn[k] - ref[k]); ncount++; }
         }
+        if (equalise(zn, ref, nsum / std::max(1, ncount))) {
+            nsum = 0; ncount = 0;
+            for (int k = 0; k < kZ; k++) if (known[k]) { nsum += std::norm(zn[k] - ref[k]); ncount++; }
+        }
         const float nvNow = (float)std::max(1e-5, nsum / std::max(1, ncount));
         nv = sfSinceLock < 2 ? nvNow : 0.75f * nv + 0.25f * nvNow;
         // loops: carrier, timing, clock
@@ -779,6 +784,80 @@ struct FrameRx::Impl {
         outSf.push_back(r);
         if (outSf.size() > 64) outSf.pop_front();
         sfSinceLock++;
+        return true;
+    }
+
+    // Multipath: symbol-spaced channel h[-2..2] by least squares on the two chirps (contiguous known symbols), averaged over superframes;
+    // when the off-centre taps hold more than 1/50 of the energy, a 13-tap MMSE linear equaliser built from it is applied to the superframe.
+    static constexpr int kHL = 2, kEqM = 6;
+    cf hAvg[2 * kHL + 1] = {};
+    bool hInit = false;
+    bool eqOn = true;
+    bool equalise(cf* zn, const cf* ref, double nvNow) {
+        if (!eqOn) return false;
+        constexpr int L = 2 * kHL + 1;
+        cf A[L][L] = {}, bvec[L] = {};
+        auto addRow = [&](int k) {
+            cf s[L];
+            for (int l = 0; l < L; l++) s[l] = ref[k - (l - kHL)];
+            for (int i = 0; i < L; i++) {
+                bvec[i] += std::conj(s[i]) * zn[k];
+                for (int j = 0; j < L; j++) A[i][j] += std::conj(s[i]) * s[j];
+            }
+        };
+        for (int k = kHL; k < 2 * kChirp - kHL; k++) addRow(k);
+        for (int k = kSfSyms + kHL; k < kSfSyms + kChirp - kHL; k++) addRow(k);
+        cf h[L];
+        if (!solve<L>(A, bvec, h)) return false;
+        if (!hInit) { for (int l = 0; l < L; l++) hAvg[l] = h[l]; hInit = true; }
+        else for (int l = 0; l < L; l++) hAvg[l] = 0.85f * hAvg[l] + 0.15f * h[l];
+        float eo = 0;
+        for (int l = 0; l < L; l++) if (l != kHL) eo += std::norm(hAvg[l]);
+        if (eo < 0.02f * std::norm(hAvg[kHL])) return false;
+        // MMSE: w = (H H^H + nv I)^-1 H e, H the (2M+1) x (2M+1+2kHL) convolution matrix of hAvg
+        constexpr int N = 2 * kEqM + 1, S = N + 2 * kHL;
+        cf H[N][S] = {};
+        for (int r = 0; r < N; r++) for (int l = 0; l < L; l++) H[r][r + l] = hAvg[2 * kHL - l];   // z[k+r-M] = sum_l h[l] s[k+r-M-l]
+        cf R[N][N], c[N], w[N];
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                cf acc(0, 0);
+                for (int q = 0; q < S; q++) acc += H[i][q] * std::conj(H[j][q]);
+                R[i][j] = acc + (i == j ? cf((float)std::max(1e-4, nvNow), 0) : cf(0, 0));
+            }
+            c[i] = H[i][kEqM + kHL];
+        }
+        if (!solve<N>(R, c, w)) return false;
+        cf out[kSfSyms + kChirp];
+        constexpr int nz = kSfSyms + kChirp;
+        float g = 0;
+        for (int i = 0; i < N; i++) g += (std::conj(w[i]) * c[i]).real();
+        for (int k = 0; k < nz; k++) {
+            cf acc(0, 0);
+            for (int i = 0; i < N; i++) { const int j = k + i - kEqM; if (j >= 0 && j < nz) acc += std::conj(w[i]) * zn[j]; }
+            out[k] = g > 1e-6f ? acc / g : acc;
+        }
+        std::copy(out, out + nz, zn);
+        st.equalised++;
+        return true;
+    }
+    template <int N> static bool solve(cf (&A)[N][N], cf (&b)[N], cf (&x)[N]) {   // Gaussian elimination with partial pivoting (A, b are destroyed)
+        for (int c = 0; c < N; c++) {
+            int p = c;
+            for (int r = c + 1; r < N; r++) if (std::abs(A[r][c]) > std::abs(A[p][c])) p = r;
+            if (std::abs(A[p][c]) < 1e-9f) return false;
+            if (p != c) { for (int j = 0; j < N; j++) std::swap(A[p][j], A[c][j]); std::swap(b[p], b[c]); }
+            for (int r = c + 1; r < N; r++) {
+                const cf f = A[r][c] / A[c][c];
+                for (int j = c; j < N; j++) A[r][j] -= f * A[c][j];
+                b[r] -= f * b[c];
+            }
+        }
+        for (int r = N - 1; r >= 0; r--) {
+            cf acc = b[r];
+            for (int j = r + 1; j < N; j++) acc -= A[r][j] * x[j];
+            x[r] = acc / A[r][r];
+        }
         return true;
     }
 
@@ -957,6 +1036,7 @@ void FrameRx::configure(double inRate) {
 void FrameRx::reset() { p_->resetAll(); }
 void FrameRx::setIterative(bool on) { p_->iterative = on; }
 void FrameRx::setDdTracking(bool on) { p_->ddTrack = on; }
+void FrameRx::setEqualiser(bool on) { p_->eqOn = on; }
 void FrameRx::feed(const cf* x, size_t n) {
     if (p_->resampling) {
         p_->rsOut.clear();

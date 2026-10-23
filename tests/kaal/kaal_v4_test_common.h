@@ -155,11 +155,12 @@ struct Score {
     int saves = 0;
 };
 inline Score runRx(const std::vector<cf>& sig, const Sent& sent, int settleSf = 0, bool iterative = true, bool dd = true,
-                   double inRate = kFs) {
+                   double inRate = kFs, bool eq = true) {
     FrameRx rx;
     rx.configure(inRate);
     rx.setIterative(iterative);
     rx.setDdTracking(dd);
+    rx.setEqualiser(eq);
     // feed in uneven chunks
     size_t pos = 0, ch = 777;
     std::vector<RxSuperframe> got;
