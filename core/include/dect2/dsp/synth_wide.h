@@ -15,7 +15,7 @@
 // radios' oscillators are free-running: the phase relation between slices wanders (phase noise, residual ppm). The per-hop tracking removes most of
 // it when the overlap holds a signal both radios hear (a broadcast multiplex does; empty noise does not). Suits: spectrum/waterfall, FM/AM/NFM,
 // narrow digital voice, scanning, anything inside one slice or tolerating a slowly varying seam. Wide OFDM across seams (DVB-T) is NOT measured: it is expected to be limited by the
-// free-running radios' phase (see docs/SYNTH-WIDEBAND.md for what has actually been measured; do not read it as a promise).
+// free-running radios' phase (no measurement exists yet; docs/SYNTH-WIDEBAND.md, where present, lists only what was measured).
 // Not for: direction finding/beamforming (needs a true shared clock and calibration: KrakenSDR), GNSS.
 #pragma once
 #include "dect2/common/ring.h"
