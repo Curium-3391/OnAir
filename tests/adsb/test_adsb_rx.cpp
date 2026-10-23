@@ -3,6 +3,8 @@
 // SNR figures are pulse power over noise power in 2 MHz, which is what the generator's snr setting means; the receiver's own SNR (telemetry) is the pulse
 // power over the noise power per sample and so depends on the sample rate.
 #include "dect2/adsb/adsb_sim.h"
+#include "dect2/adsb/adsb_demod.h"
+#include "dect2/adsb/adsb_gen.h"
 #include "../common/jobs.h"
 #include <algorithm>
 #include <chrono>
@@ -30,6 +32,16 @@ static std::atomic<int> fails{0};
 #ifndef SANITIZED
 #define SANITIZED 0
 #endif
+
+
+// ADSB_DET=sum,minPulse,data,worthDb: the preamble detector for a comparison run (ADSB_DET=0: the older test)
+static void testDet(AdsbReceiver& rx) {
+    if (getenv("ADSB_COH")) rx.setCoherent(atoi(getenv("ADSB_COH")) != 0);
+    if (!getenv("ADSB_DET")) return;
+    float a = 4, b = 0, c = 1.8f, w = 5;
+    sscanf(getenv("ADSB_DET"), "%f,%f,%f,%f", &a, &b, &c, &w);
+    rx.setDetector(a, b, c, w);
+}
 
 struct Lcg {
     uint32_t x;
@@ -72,6 +84,7 @@ static std::vector<AdsbTx> spaced(int n, double snrDb, uint32_t seed, bool withR
         }
         t.amp = (float)(0.1 * std::pow(10.0, (snrDb - 30.0) / 20.0));
         t.cfoHz = ((int)(r.next() % 400) - 200) * 1e3;
+        if (getenv("ADSB_CFO")) t.cfoHz = atof(getenv("ADSB_CFO"));
         t.phase = (float)(r.uni() * 6.2832);
         v.push_back(t);
     }
@@ -84,7 +97,7 @@ static AdsbSimResult run(AdsbSimConfig c, int n, double snr, uint32_t seed = 1) 
     c.custom = spaced(n, snr, seed);
     c.snrDb = 30;
     c.seconds = n * 1e-3 + 0.01;
-    AdsbReceiver rx;
+    AdsbReceiver rx; testDet(rx);
     rx.setLogCallback([](const std::string&) {});
     return adsbSimulate(c, rx);
 }
@@ -148,7 +161,7 @@ static void testPhase2Msps() {
     testjobs::Jobs jobs;
     for (int ph = 0; ph < nph; ph++) jobs.add([&, ph] {
         AdsbSimConfig c; c.rate = 2e6; c.custom = sets[ph]; c.snrDb = 30; c.seconds = per * 1e-3 + 0.01; c.quantise = false;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         results[ph] = adsbSimulate(c, rx);
     });
@@ -223,7 +236,7 @@ static void testLevels() {
         c.custom = spaced(300, 34, 11);
         c.snrDb = 30; c.seconds = 0.31;
         c.gainStepAtSec = 0.15; c.gainStepDb = step;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         int before = 0, nb = 0, soon = 0, ns = 0, later = 0, nl = 0;
@@ -247,7 +260,7 @@ static void testLevels() {
     });
     jobs.run();
     // calls with no samples, and the rate set twice
-    AdsbReceiver rx;
+    AdsbReceiver rx; testDet(rx);
     rx.configure(4e6);
     rx.feed(nullptr, 0);
     cf32 one(0.1f, 0.f);
@@ -270,8 +283,9 @@ static void testStrongCw() {
 static void testSensitivity() {
     // detection against signal-to-noise ratio (float samples, so that 8 bit rounding does not enter); the numbers are the receiver's, kept as limits
     struct P { double rate; double snr; double minPct; };
-    const P pts[] = {{4e6, 10, 10}, {4e6, 12, 80}, {4e6, 14, 99}, {4e6, 16, 99.5}, {10e6, 12, 65}, {10e6, 14, 95}, {10e6, 16, 99.5}, {2.4e6, 14, 93}, {2.4e6, 16, 99}, {20e6, 14, 95}, {20e6, 16, 99},
-                         {2e6, 20, 93}, {2e6, 24, 98}, {2e6, 28, 99.5}};   // 2 Msps needs about 5 dB more than 4 Msps
+    // 3.0 (looser preamble test with a data check, coherent slicer, sequence estimation): about 2 to 2.5 dB better than before at every rate
+    const P pts[] = {{4e6, 8, 30}, {4e6, 10, 85}, {4e6, 12, 99}, {4e6, 14, 99.5}, {10e6, 10, 85}, {10e6, 12, 99}, {10e6, 16, 99.5}, {2.4e6, 11, 82}, {2.4e6, 13, 98},
+                         {2.4e6, 16, 99.5}, {20e6, 12, 97}, {20e6, 16, 99.5}, {2e6, 16, 92}, {2e6, 20, 98}, {2e6, 24, 99.5}};   // 2 Msps needs about 5 dB more than 4 Msps
     testjobs::Jobs jobs;
     for (const P& p : pts) jobs.add([&p] {
         AdsbSimConfig c; c.rate = p.rate; c.quantise = false;
@@ -291,7 +305,7 @@ static void testNoiseOnly() {
     testjobs::Jobs jobs;
     for (double rate : rates) for (int q = 0; q < 2; q++) jobs.add([=] {
         AdsbSimConfig c; c.rate = rate; c.seconds = 10; c.aircraft = 0; c.snrDb = 30; c.quantise = q == 1;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         const double perSec = (double)r.tel.preambles / 10.0;
@@ -323,7 +337,7 @@ static void testGarble() {
             b.phase = (float)(r.uni() * 6.28); b.cfoHz = ((int)(r.next() % 400) - 200) * 1e3;
             c.custom = {a, b};
             c.snrDb = 30; c.seconds = 0.004;
-            AdsbReceiver rx;
+            AdsbReceiver rx; testDet(rx);
             rx.setLogCallback([](const std::string&) {});
             AdsbSimResult res = adsbSimulate(c, rx);
             total++; strongOk += res.sent[0].decoded; phantoms += (int)res.phantom;
@@ -347,7 +361,7 @@ static void testGarble() {
         b.frame = adsb::encodeVelocity(0x4A3001 + k, 5, 450, 90, 0, false, 0);
         b.amp = 0.2f; b.phase = (float)(r.uni() * 6.28);
         c.custom = {a, b}; c.snrDb = 30; c.seconds = 0.004;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult res = adsbSimulate(c, rx);
         total++; ok += res.sent[1].decoded;
@@ -408,7 +422,7 @@ static void testInterference() {
         std::vector<AdsbTx> im = impulses(0.0, n * 1e-3 + 0.01, 3000, 24, 55);
         c.custom.insert(c.custom.end(), im.begin(), im.end());
         c.snrDb = 30; c.seconds = n * 1e-3 + 0.01;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         size_t alone = 0, aloneOk = 0, hit = 0, hitOk = 0;
@@ -426,7 +440,7 @@ static void testInterference() {
         std::vector<AdsbTx> ac = modeAC(0.0, n * 1e-3 + 0.01, perSec, 24, 77);
         c.custom.insert(c.custom.end(), ac.begin(), ac.end());
         c.snrDb = 30; c.seconds = n * 1e-3 + 0.01;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         size_t alone = 0, aloneOk = 0, hit = 0, hitOk = 0;
@@ -444,7 +458,7 @@ static void testDropoutAndReset() {
     c.custom = spaced(n, 26, 5);
     c.snrDb = 30; c.seconds = n * 1e-3 + 0.01;
     c.gapAtSec = 0.1005; c.gapMs = 5.0;       // a stretch of zeros: the radio dropped data
-    AdsbReceiver rx;
+    AdsbReceiver rx; testDet(rx);
     rx.setLogCallback([](const std::string&) {});
     AdsbSimResult r = adsbSimulate(c, rx);
     int before = 0, nBefore = 0, after = 0, nAfter = 0, inside = 0, nInside = 0, soon = 0, nSoon = 0;
@@ -464,7 +478,7 @@ static void testDropoutAndReset() {
     AdsbSimConfig d; d.rate = 4e6;
     d.custom = spaced(n, 26, 6); d.snrDb = 30; d.seconds = n * 1e-3 + 0.01;
     d.resetAtSec = 0.2005;
-    AdsbReceiver rx2;
+    AdsbReceiver rx2; testDet(rx2);
     rx2.setLogCallback([](const std::string&) {});
     AdsbSimResult r2 = adsbSimulate(d, rx2);
     int a2 = 0, na2 = 0, b2 = 0, nb2 = 0;
@@ -480,7 +494,7 @@ static void testDropoutAndReset() {
     // a reset in the middle of a frame loses that frame and nothing else
     AdsbSimConfig d2 = d;
     d2.resetAtSec = 0.20005;
-    AdsbReceiver rx2b;
+    AdsbReceiver rx2b; testDet(rx2b);
     rx2b.setLogCallback([](const std::string&) {});
     AdsbSimResult r2b = adsbSimulate(d2, rx2b);
     int a3 = 0, na3 = 0, b3 = 0, nb3 = 0;
@@ -490,7 +504,7 @@ static void testDropoutAndReset() {
     }
     CHECK(a3 >= na3 - 1 && b3 >= nb3 - 1 && r2b.phantom == 0, "reset inside a frame: %d/%d before, %d/%d after, %zu phantoms", a3, na3, b3, nb3, r2b.phantom);
     // telemetry numbers grow across a reset
-    AdsbReceiver rx3;
+    AdsbReceiver rx3; testDet(rx3);
     rx3.configure(4e6);
     std::vector<cf32> noise(40000);
     Lcg g(3);
@@ -507,7 +521,7 @@ static void testDropoutAndReset() {
     AdsbTelemetry t;
     CHECK(!rx3.telemetry(t, lastSeq), "a report for a number that was already seen");
     // too low a rate
-    AdsbReceiver slow;
+    AdsbReceiver slow; testDet(slow);
     slow.configure(1.5e6);
     CHECK(!slow.ready(), "ready at 1.5 Msps");
     slow.feed(noise.data(), noise.size());
@@ -518,7 +532,7 @@ static void testAirspace() {
     testjobs::Jobs jobs;
     for (double rate : {4e6, 2.4e6, 10e6}) jobs.add([=] {
         AdsbSimConfig c; c.rate = rate; c.seconds = 20; c.snrDb = 30; c.aircraft = 12; c.seed = 3; c.setRef = true;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         size_t alone = 0, aloneOk = 0, ovl = 0, ovlOk = 0;
@@ -559,7 +573,7 @@ static void testSpeed() {
     // seconds of signal per second of CPU in feed(), on the busy default airspace
     for (double rate : {2e6, 4e6, 10e6, 20e6}) {
         AdsbSimConfig c; c.rate = rate; c.seconds = rate > 8e6 ? 8 : 15; c.snrDb = 30; c.aircraft = 40; c.seed = 5;
-        AdsbReceiver rx;
+        AdsbReceiver rx; testDet(rx);
         rx.setLogCallback([](const std::string&) {});
         AdsbSimResult r = adsbSimulate(c, rx);
         const double rtf = r.signalSec / std::max(r.cpuSec, 1e-9);
@@ -575,7 +589,7 @@ static void testBadSamples() {
     std::vector<AdsbTx> tx = spaced(n, 28, 12);
     AdsbMixer mix(rate, 0);
     for (auto& t : tx) mix.add(t);
-    AdsbReceiver rx;
+    AdsbReceiver rx; testDet(rx);
     rx.setLogCallback([](const std::string&) {});
     rx.configure(rate);
     std::set<std::string> got;
@@ -614,7 +628,7 @@ static void testBadSamples() {
 static void testThreads() {
     // telemetry(), the setters and reset() from another thread while feed() runs (run under the thread sanitiser for the real check)
     AdsbSimConfig c; c.rate = 4e6; c.seconds = 6; c.aircraft = 20; c.snrDb = 30; c.seed = 9;
-    AdsbReceiver rx;
+    AdsbReceiver rx; testDet(rx);
     rx.setLogCallback([](const std::string&) {});
     std::atomic<bool> stop{false};
     std::atomic<int> reports{0};
@@ -639,10 +653,133 @@ static void testThreads() {
     CHECK(reports.load() > 10, "reports %d", reports.load());
 }
 
+// Measurement only (not part of the default run): percent decoded against SNR for the rates the radios use, with the phantom count.
+// test_adsb_rx sweep [frames]
+static void testSweep(int n) {
+    const double rates[] = {2e6, 2.4e6, 4e6, 6e6, 8e6, 10e6};
+    const double snrs[] = {8, 10, 11, 12, 13, 14, 16, 18, 20, 24};
+    struct Cell { double pct; size_t ph; double pre; };
+    std::vector<Cell> cells(sizeof rates / sizeof rates[0] * (sizeof snrs / sizeof snrs[0]));
+    testjobs::Jobs jobs;
+    for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++)
+        for (size_t j = 0; j < sizeof snrs / sizeof snrs[0]; j++) jobs.add([&, i, j] {
+            AdsbSimConfig c; c.rate = rates[i]; c.quantise = false;
+            if (getenv("ADSB_FIX")) c.fixBits = atoi(getenv("ADSB_FIX"));
+            c.custom = spaced(n, snrs[j], 2); c.snrDb = 30; c.seconds = n * 1e-3 + 0.01;
+            AdsbReceiver rx; testDet(rx);
+            rx.setLogCallback([](const std::string&) {});
+            if (getenv("ADSB_KP")) rx.setThresholds((float)atof(getenv("ADSB_KP")), getenv("ADSB_KG") ? (float)atof(getenv("ADSB_KG")) : 2.0f);
+                AdsbSimResult r = adsbSimulate(c, rx);
+            cells[i * (sizeof snrs / sizeof snrs[0]) + j] = {100.0 * r.decoded / r.sent.size(), r.phantom, 100.0 * (double)r.tel.preambles / r.sent.size()};
+        });
+    jobs.run();
+    jprintf("SNR dB");
+    for (double r : rates) jprintf(" | %4.1f Msps", r / 1e6);
+    jprintf("\n");
+    size_t ph = 0;
+    for (size_t j = 0; j < sizeof snrs / sizeof snrs[0]; j++) {
+        jprintf("%6.0f", snrs[j]);
+        for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++) {
+            const Cell& c = cells[i * (sizeof snrs / sizeof snrs[0]) + j];
+            jprintf(" | %5.1f (%3.0f)", c.pct, c.pre);
+            ph += c.ph;
+        }
+        jprintf("\n");
+    }
+    jprintf("phantoms in all cells: %zu (in brackets: preambles passed per 100 frames sent)\n", ph);
+}
+
+
+// Measurement only: where the frames are lost. The demodulator alone, with a perfect check (a slice that equals a sent frame is good), so that the
+// bit errors of the first slice and the frames that never got a preamble can be counted. test_adsb_rx ber <rate> <snr> [frames]
+static void testBer(double rate, double snr, int n) {
+    std::vector<AdsbTx> tx = spaced(n, snr, 2);
+    AdsbMixer mix(rate);
+    for (auto& t : tx) mix.add(t);
+    AdsbNoise noise(rate, 0, 30, 0.1, 2 * 7919 + 13);
+    AdsbDemod d;
+    d.configure(rate);
+    if (getenv("ADSB_KP")) d.setThresholds((float)atof(getenv("ADSB_KP")), 2.0f);
+    if (getenv("ADSB_DET")) { float a = 4, b = 0, c2 = 1.8f, w = 5; sscanf(getenv("ADSB_DET"), "%f,%f,%f,%f", &a, &b, &c2, &w); d.setDetector(a, b, c2, w); }
+    if (getenv("ADSB_COH")) d.setCoherent(atoi(getenv("ADSB_COH")));
+    std::vector<int> firstErr(tx.size(), -1), bestErr(tx.size(), 999);
+    std::vector<char> got(tx.size(), 0);
+    std::vector<int> nth(tx.size(), 0), errAt[3];
+    for (auto& v : errAt) v.assign(tx.size(), -1);
+    uint64_t slices = 0;
+    d.setSink([&](AdsbRaw& r, bool) {
+        slices++;
+        // the nearest sent frame within 1 us
+        size_t lo = 0, hi = tx.size();
+        while (lo < hi) { size_t m = (lo + hi) / 2; if (tx[m].t < r.timeSec - 1e-6) lo = m + 1; else hi = m; }
+        if (lo >= tx.size() || std::fabs(tx[lo].t - r.timeSec) > 1e-6) return false;
+        const int bits = tx[lo].frame.bits;
+        int e = 0;
+        for (int i = 0; i < bits / 8; i++) e += __builtin_popcount((unsigned)(r.bytes[i] ^ tx[lo].frame.b[i]));
+        if (firstErr[lo] < 0) firstErr[lo] = e;
+        if (nth[lo] < 3) errAt[nth[lo]][lo] = e;
+        if (getenv("ADSB_DBG") && e >= 4) {
+            std::string pos;
+            for (int i = 0; i < bits; i++) if (((r.bytes[i >> 3] ^ tx[lo].frame.b[i >> 3]) >> (7 - (i & 7))) & 1) pos += std::to_string(i) + " ";
+            fprintf(stderr, "ERR slice %d t=%.6f bits %d: %s\n", nth[lo], tx[lo].t, bits, pos.c_str());
+        }
+        nth[lo]++;
+        bestErr[lo] = std::min(bestErr[lo], e);
+        if (e == 0) { got[lo] = 1; return true; }
+        return false;
+    });
+    const size_t total = (size_t)((n * 1e-3 + 0.01) * rate);
+    std::vector<cf32> buf(65536);
+    for (size_t done = 0; done < total;) {
+        const size_t k = std::min(buf.size(), total - done);
+        mix.render(buf.data(), k);
+        noise.add(buf.data(), k);
+        d.feed(buf.data(), k);
+        done += k;
+    }
+    int nopre = 0, h1[5] = {0}, hb[5] = {0}, ok = 0;
+    for (size_t i = 0; i < tx.size(); i++) {
+        if (firstErr[i] < 0) { nopre++; continue; }
+        h1[std::min(firstErr[i], 4)]++;
+        hb[std::min(bestErr[i], 4)]++;
+        ok += got[i];
+    }
+    jprintf("%.1f Msps %.1f dB: %zu frames, no preamble %d; first slice errors 0/1/2/3/4+: %d %d %d %d %d; best slice: %d %d %d %d %d; good %d\n", rate / 1e6, snr, tx.size(), nopre,
+            h1[0], h1[1], h1[2], h1[3], h1[4], hb[0], hb[1], hb[2], hb[3], hb[4], ok);
+    jprintf("  coarse candidates %llu, preambles %llu, data rejects %llu, slices %llu\n", (unsigned long long)d.candidates(), (unsigned long long)d.preambles(),
+            (unsigned long long)d.dataRejects(), (unsigned long long)slices);
+    for (int q = 0; q < 3; q++) {
+        int hq[5] = {0};
+        for (size_t i = 0; i < tx.size(); i++) if (errAt[q][i] >= 0) hq[std::min(errAt[q][i], 4)]++;
+        jprintf("  slice %d of a frame, errors 0/1/2/3/4+: %d %d %d %d %d\n", q + 1, hq[0], hq[1], hq[2], hq[3], hq[4]);
+    }
+}
+
+// Measurement only: false messages in a crowded, weak airspace (many failed candidates). test_adsb_rx stress <rate Msps> <snr> <seconds> [aircraft]
+static void testStress(double rate, double snr, double seconds, int aircraft) {
+    AdsbSimConfig c; c.rate = rate; c.seconds = seconds; c.aircraft = aircraft; c.snrDb = snr; c.seed = 11; c.setRef = true;
+    AdsbReceiver rx; testDet(rx);
+    rx.setLogCallback([](const std::string&) {});
+    const auto t0 = std::chrono::steady_clock::now();
+    AdsbSimResult r = adsbSimulate(c, rx);
+    const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    size_t alone = 0, aloneGot = 0, over = 0, overGot = 0;
+    for (auto& f : r.sent) { if (f.overlapped) { over++; overGot += f.decoded; } else { alone++; aloneGot += f.decoded; } }
+    jprintf("%.1f Msps, %.0f dB at 50 NM, %d aircraft, %.0f s: %zu sent, %zu decoded (%.2f %%; alone %zu/%zu, overlapped %zu/%zu), %.1f msg/s, phantoms %zu, aircraft %u, %.1f s wall, cpu %.2f s\n",
+            rate / 1e6, snr, aircraft, seconds, r.sent.size(), r.decoded, 100.0 * r.decoded / std::max<size_t>(1, r.sent.size()), aloneGot, alone, overGot, over,
+            r.decoded / seconds, r.phantom, (unsigned)r.tel.aircraftCount, wall, r.cpuSec);
+    for (size_t i = 0; i < r.phantoms.size() && i < 5; i++) jprintf("  phantom %s\n", r.phantoms[i].c_str());
+}
+
 int main(int argc, char** argv) {
     if (argc > 1) {   // one part only (the thread sanitiser run): test_adsb_rx threads
         const std::string a = argv[1];
-        if (a == "threads") testThreads();
+        if (a == "ber") testBer(atof(argv[2]) * 1e6, atof(argv[3]), argc > 4 ? atoi(argv[4]) : 2000);
+        else if (a == "stress") testStress(atof(argv[2]) * 1e6, atof(argv[3]), atof(argv[4]), argc > 5 ? atoi(argv[5]) : 100);
+        else if (a == "sweep") testSweep(argc > 2 ? atoi(argv[2]) : 600);
+        else if (a == "noise") testNoiseOnly();
+        else if (a == "sens") testSensitivity();
+        else if (a == "threads") testThreads();
         else if (a == "chunks") testChunks();
         else if (a == "airspace") testAirspace();
         else { jprintf("unknown part '%s'\n", a.c_str()); return 2; }

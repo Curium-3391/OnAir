@@ -29,6 +29,7 @@ static void usage() {
             "  adsbtool gen out.cs8 [--rate 2e6] [--seconds 10] [--snr 30] [--aircraft 12] [--seed 1] [--cfo 0] [--sro 0] [--mult 1] [--filter 0]\n"
             "                       [--noreplies] [--emergency] [--ref lat lon] [--format cs8|cu8|cf32]\n"
             "  adsbtool rx recording.cs8 [--rate 2e6] [--format cs8|cu8|cf32] [--fix 0|1|2] [--ref lat lon] [--messages] [--table]\n"
+            "                       [--older-demod]\n"
             "  adsbtool sim [--rate 2e6] [--seconds 10] [--snr 30] [--aircraft 12] [--seed 1] [--filter 0] [--cfo 0] [--sro 0] [--dc 0] [--mult 1] [--noquant] [--fix 1]\n"
             "  adsbtool sweep [--rate 2e6] [--filter 0] [--from 6] [--to 20] [--step 1] [--frames 1000] [--noquant] [--fix 1] [--cfo 0] [--sro 0] [--short]\n"
             "  adsbtool decode HEX [HEX ...]\n");
@@ -105,11 +106,12 @@ static int rxMain(int argc, char** argv) {
     std::string path, fmt;
     double rate = 0;
     int fix = 1;
-    bool messages = false, table = true, haveRef = false;
+    bool messages = false, table = true, haveRef = false, older = false;
     double refLat = 0, refLon = 0;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--rate" && i + 1 < argc) rate = atof(argv[++i]);
+        else if (a == "--older-demod") older = true;   // the preamble test and power slicer of before 3.0, for comparisons
         else if (a == "--format" && i + 1 < argc) fmt = argv[++i];
         else if (a == "--fix" && i + 1 < argc) fix = atoi(argv[++i]);
         else if (a == "--messages") messages = true;
@@ -128,6 +130,7 @@ static int rxMain(int argc, char** argv) {
     rx.configure(rate);
     if (!rx.ready()) { fprintf(stderr, "the sample rate %.3f Msps is below the 2 Msps this receiver needs\n", rate / 1e6); return 1; }
     rx.setCorrection(fix);
+    if (older) { rx.setDetector(0, 0, 0, 0); rx.setCoherent(false); }
     if (haveRef) rx.setReference(refLat, refLon);
     if (messages) rx.setFrameCallback([](const AdsbFrame& fr) {
         printf("%9.4f  %s  %06X  %6.1f dBFS%s  %s\n", fr.timeSec, adsb::toHex(fr.bytes, fr.bits).c_str(), fr.icao, fr.levelDbfs, fr.corrected ? "  fixed" : "       ", adsbDescribe(fr.msg).c_str());

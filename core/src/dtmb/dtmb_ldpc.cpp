@@ -1,5 +1,6 @@
 // DTMB LDPC codes, BCH, 4QAM-NR decoding (see dtmb_ldpc.h).
 #include "dect2/dtmb/dtmb_ldpc.h"
+#include "dect2/dsp/minsum_corr.h"
 #include "dect2/dsp/simd.h"
 #include <array>
 #include <bit>
@@ -208,7 +209,7 @@ LdpcCode::Decoder::Decoder(const LdpcCode& code) : code_(code) {
 
 // The decoder body is compiled twice on x86-64 (baseline and AVX2 + FMA, picked at run time, see dect2/dsp/simd.h): the planar 128 lane loops below
 // are written to be vectorised by the compiler.
-DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const float* llr, uint8_t* info, int maxIter, float alpha) {
+DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const float* llr, uint8_t* info, int maxIter, float alpha, bool boxCorr) {
     const int c = code_.c_, e = code_.e_;
     constexpr int Z = kLdpcZ;
     // The a posteriori values are clipped far above their useful range. A tight clip (40 was tried) breaks the layered update, which subtracts
@@ -275,7 +276,7 @@ DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const floa
         emitInfo();
         return res;
     }
-    float min1[128], min2[128];
+    float min1[128], min2[128], c1[128];
     uint32_t sg[128];
     static const float zeros[128] = {};
     constexpr float kHuge = std::numeric_limits<float>::max();
@@ -314,6 +315,9 @@ DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const floa
                     sg[i] ^= std::bit_cast<uint32_t>(q) & 0x80000000u;
                 }
             }
+            // the two-minimum correction (dect2/dsp/minsum_corr.h): the edges not holding the smallest input get c1
+            if (boxCorr) for (int i = 0; i < 128; i++) c1[i] = boxMin1(min1[i], min2[i]);
+            else for (int i = 0; i < 128; i++) c1[i] = min1[i];
             // Pass 2: new check messages (the edge holding the minimum gets the second minimum; with a tie both values are equal) and totals.
             // The messages of the first iteration start from zero (r_ is not cleared), hence the two instances.
             auto pass2 = [&](auto firstIter) {
@@ -322,7 +326,7 @@ DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const floa
                     float* __restrict rn = &r_[(size_t)(eBase + b) * 128];
                     for (int i = 0; i < 128; i++) {
                         const float q = qb[i] - (firstIter ? 0.f : rn[i]), a = std::fabs(q);
-                        const float m = (a == min1[i] ? min2[i] : min1[i]) * alpha;
+                        const float m = (a == min1[i] ? min2[i] : c1[i]) * alpha;
                         const uint32_t sign = sg[i] ^ (std::bit_cast<uint32_t>(q) & 0x80000000u);
                         const float v = std::bit_cast<float>(std::bit_cast<uint32_t>(m) | sign);
                         rn[i] = v;
@@ -357,13 +361,13 @@ DECT2_SIMD_MEMBER_BODY LdpcCode::Result LdpcCode::Decoder::decodeBody(const floa
     return res;
 }
 
-DECT2_AVX2_TARGET LdpcCode::Result LdpcCode::Decoder::decodeAvx2(const float* llr, uint8_t* info, int maxIter, float alpha) { return decodeBody(llr, info, maxIter, alpha); }
+DECT2_AVX2_TARGET LdpcCode::Result LdpcCode::Decoder::decodeAvx2(const float* llr, uint8_t* info, int maxIter, float alpha, bool boxCorr) { return decodeBody(llr, info, maxIter, alpha, boxCorr); }
 
-LdpcCode::Result LdpcCode::Decoder::decode(const float* llr, uint8_t* info, int maxIter, float alpha) {
+LdpcCode::Result LdpcCode::Decoder::decode(const float* llr, uint8_t* info, int maxIter, float alpha, bool boxCorr) {
 #ifdef DECT2_X86_DISPATCH
-    if (cpuHasAvx2()) return decodeAvx2(llr, info, maxIter, alpha);
+    if (cpuHasAvx2()) return decodeAvx2(llr, info, maxIter, alpha, boxCorr);
 #endif
-    return decodeBody(llr, info, maxIter, alpha);
+    return decodeBody(llr, info, maxIter, alpha, boxCorr);
 }
 
 const LdpcCode& ldpcCode(Rate r) {

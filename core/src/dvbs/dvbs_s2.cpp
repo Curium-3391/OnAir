@@ -185,17 +185,41 @@ const LdpcCode& s2Ldpc(int rate, bool shortFrame) {
     return *c;
 }
 
-float s2LdpcAlpha(int rate) {
-    // measured with tools of the kind of tests/test_dvbs_s2fec.cpp: for every MODCOD the factor with the fewest failed frames and iterations at
-    // 0.5 dB above the Es/N0 of table 13 (the low rates want a weak correction, 3/5 is the touchy one)
-    static const float a[kS2Rates] = {0.92f, 0.90f, 0.90f, 0.88f, 0.88f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f};
-    if (const S2xModcod* m = s2xModcod(rate)) {
-        if (!m->table) return a[m->s2rate];
-        // S2X codes: the steps of the S2 ones by code rate
-        const double r = s2RateValue(rate);
-        return r < 0.30 ? 0.92f : r < 0.45 ? 0.90f : r < 0.62 ? 0.88f : 0.85f;
-    }
-    return rate >= 0 && rate < kS2Rates ? a[rate] : 0.85f;
+float s2LdpcAlpha(int mod, int rate, bool shortFrame) {
+    // For the decoder with the two-minimum correction (LdpcCode::decodeFast with boxCorr, what the receiver runs). Measured per MODCOD on an ideal
+    // channel (random code words, the bit interleaver and mapper, AWGN, the max-log demapper, layered decoding, 50 iterations, the same noisy
+    // frames for every factor 0.76 .. 0.94): the fewest failed frames, smoothed over neighbouring factors, 0.2 and 0.05 dB below the Es/N0 of
+    // table 13 (short frames 0.35 / 0.2 dB below table 13 + 0.25; S2X 0.1 below and 0.05 above table 20). Most MODCODs want 0.84..0.88; QPSK 3/5
+    // wants 0.78, the low rates 0.90..0.94. With plain normalised min-sum the factor mattered far more (QPSK 3/5 0.75, 32APSK 4/5 0.76, the S2X
+    // codes 0.72..0.80) and the old per-rate table cost 0.1 to 0.5 dB.
+    // Rows QPSK, 8PSK, 16APSK, 32APSK; columns 1/4 .. 9/10 (0: not a MODCOD, the QPSK value is used).
+    static const float n[4][kS2Rates] = {
+        {0.94f, 0.94f, 0.90f, 0.86f, 0.78f, 0.90f, 0.86f, 0.86f, 0.90f, 0.86f, 0.86f},
+        {0, 0, 0, 0, 0.88f, 0.86f, 0.86f, 0, 0.82f, 0.86f, 0.86f},
+        {0, 0, 0, 0, 0, 0.88f, 0.86f, 0.86f, 0.84f, 0.84f, 0.84f},
+        {0, 0, 0, 0, 0, 0, 0.84f, 0.78f, 0.80f, 0.86f, 0.86f}};
+    static const float s[4][kS2Rates] = {
+        {0.94f, 0.94f, 0.90f, 0.86f, 0.78f, 0.92f, 0.86f, 0.86f, 0.90f, 0.86f, 0},
+        {0, 0, 0, 0, 0.88f, 0.88f, 0.86f, 0, 0.86f, 0.84f, 0},
+        {0, 0, 0, 0, 0, 0.86f, 0.88f, 0.86f, 0.88f, 0.86f, 0},
+        {0, 0, 0, 0, 0, 0, 0.90f, 0.90f, 0.88f, 0.86f, 0}};
+    // S2X MODCODs in the order of table 17a (the rate index minus kS2Rates): 38 normal frame ones, then 17 short frame ones
+    static const float x[kS2xModcods] = {
+        0.92f, 0.88f, 0.84f, 0.84f, 0.78f, 0.80f, 0.86f, 0.86f,                                                   // QPSK, 8APSK, 8PSK
+        0.88f, 0.82f, 0.84f, 0.88f, 0.82f, 0.88f, 0.84f, 0.86f, 0.86f, 0.86f, 0.80f, 0.78f, 0.78f,                // 16APSK
+        0.86f, 0.82f, 0.82f, 0.76f,                                                                               // 32APSK
+        0.82f, 0.82f, 0.86f, 0.82f, 0.84f,                                                                        // 64APSK
+        0.84f, 0.78f,                                                                                             // 128APSK
+        0.90f, 0.86f, 0.84f, 0.80f, 0.86f, 0.86f,                                                                 // 256APSK
+        0.94f, 0.92f, 0.92f, 0.82f, 0.80f, 0.86f,                                                                 // short: QPSK
+        0.92f, 0.88f, 0.86f, 0.82f,                                                                               // 8PSK
+        0.90f, 0.86f, 0.86f, 0.86f, 0.86f,                                                                        // 16APSK
+        0.86f, 0.86f};                                                                                            // 32APSK
+    if (s2IsS2x(rate)) return x[rate - kS2Rates];
+    if (rate < 0 || rate >= kS2Rates) return 0.85f;
+    const float (&t)[4][kS2Rates] = shortFrame ? s : n;
+    const float v = mod >= 0 && mod < 4 ? t[mod][rate] : 0.f;
+    return v > 0 ? v : (t[0][rate] > 0 ? t[0][rate] : 0.85f);
 }
 
 const BchCode& s2Bch(int rate, bool shortFrame) {
