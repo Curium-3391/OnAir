@@ -11,7 +11,7 @@ build/
 build-prof/
 recordings/
 build-windows*/
-release/
+/release/
 build-packages-arm/
 assets/
 
