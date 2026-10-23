@@ -547,7 +547,7 @@ struct ArgosReceiver::Impl {
         if (now - lastDopSec >= 0.5) {
             lastDopSec = now;
             struct timespec ts {};
-            timespec_get(&ts, TIME_UTC);
+            clock_gettime(CLOCK_REALTIME, &ts);   // timespec_get is missing in the Android NDK at API 28
             tel.doppler.push_back({(double)ts.tv_sec + ts.tv_nsec * 1e-9, hz});
             if (tel.doppler.size() > kArgosDopplerMax) tel.doppler.erase(tel.doppler.begin());
         }
