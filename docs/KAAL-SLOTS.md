@@ -31,8 +31,8 @@ Suggested targets for the codec agent: a 6.0 kbit/s main profile (default V60), 
 3.2 kbit/s for the robust (QPSK) slot if a low-rate mode is planned. Any subset is fine; a profile the codec does not offer is simply not
 selectable in the TX panel.
 
-Expected channel need (design targets from the code rates; the measured values are in KAAL-NEXT.md section 6): V48 lowest Es/N0, V60 about
-1.5 dB more, V80 about 3 dB more than V48; V32R about 5 dB less than V60.
+Channel need, measured (KAAL-NEXT.md section 6): V32R needs the lowest Es/N0, V48 1.7 dB more, V60 1.3 dB more than V48, and V80 2 dB
+more than V60.
 
 ## 3. Slot types the PHY also carries (not codec business, for completeness)
 
@@ -52,11 +52,15 @@ with 1 or 4 talkers (same power, same PAPR, same sync), so a receiver can always
 
 | active voice slots (V60) | voice | data capacity left (D68 slots + control channel) |
 |---|---|---|
-| 0 | - | 4 x 6.8 + 0.68 = 27.9 kbit/s |
-| 1 | 6.0 kbit/s | 3 x 6.8 + 0.68 = 21.1 kbit/s |
+| 0 | - | 4 x 6.8 + 0.66 = 27.9 kbit/s |
+| 1 | 6.0 kbit/s | 3 x 6.8 + 0.66 = 21.1 kbit/s |
 | 2 | 2 x 6.0 | 14.3 kbit/s |
 | 3 | 3 x 6.0 | 7.5 kbit/s |
-| 4 | 4 x 6.0 | 0.68 kbit/s (control channel only: beacon, IDs, text) |
+| 4 | 4 x 6.0 | 0.66 kbit/s (control channel only: beacon, IDs, text) |
+
+Measured 1 % payload-loss points (AWGN, docs/KAAL-NEXT.md 6.1): V32R 5.0 dB, V48 6.7 dB, V60 8.0 dB, V80 10.0 dB Es/N0.
+The codec registers itself with `registerSlotCodec()` (kaal_slots.h: SlotVoiceEncoder / SlotVoiceDecoder, 640 samples per payload);
+the TX generator and the live receiver use it as soon as it is registered.
 
 ## 5. Timing and latency
 

@@ -133,3 +133,10 @@ HF digital > Monitor bands: tick band x mode (160 m .. 6 m x FT8/FT4/FT2/WSPR); 
 
 ## 2026-10-21: OnAir 0.2.9 released
 Tag v0.2.9 (9e6b74a6), merged into main (7fe4c99d with the wide-bank test fix). 9 assets + SHA256SUMS: macOS arm64/x86_64 dmg, Linux amd64/arm64 deb + portable tar (GitHub), Windows zip + setup (cross-built locally, /tmp/win029), Android apk (same signing key as 0.2.8, versionCode 4). Release-build fixes found on the first run: <memory> in sgb_rx.h and rtl_group.h (GCC 11), gmtime_s in the Ham view for Windows. DMR voice verified live by the owner (codec notice popup in the panel and wide-bank auto-play were the two bugs). 36 merged agent branches deleted from pub (SHAs in scratchpad/DELETED-BRANCHES-2026-10-21.txt). Website deployed with the 0.2.9 changelog and mirror links. Known open: DAB site positions for Germany (#249), real-signal checks of NXDN/dPMR/D-STAR/P25 voice, KrakenSDR/TCI/xHE-AAC/Cospas SGB/multi-band on real hardware.
+
+## 2026-10-23 KAAL frame version 4 (kaal-phy-030)
+KAAL v4 puts four TDMA voice slots in the 20 kHz channel: 16 ksym/s, a 40 ms superframe with a 1 ms up + 1 ms down chirp sync, a QPSK control channel and 4 x 144-symbol slots. Slot budgets for the codec are 8.0 / 6.0 / 4.8 / 3.2 kbit/s (docs/KAAL-SLOTS.md; kaal_slots.h with registerSlotCodec).
+Receiver: chirp-pair acquisition (timing and carrier in one step, +-4 kHz), pilot/sync tracking, an MMSE equaliser from the chirps, DD phase smoothing, iterative re-estimation from the LDPC soft output, and layered LDPC. v3 words now use the layered decoder too: 1 % FER 0.5 / 0.85 dB lower.
+Measured: V60 at 1 % PER needs 8.0 dB Es/N0; mean lock time 0.12 s; text goes from 10 B/s (v3 beacon slice) to 3168 B/s with all slots free, and 64 B/s with all four voice slots busy.
+Wiring: TX generator kaal.frame=4 (TX and IQ file); the live receiver runs v4 beside v3; new panel options. Tests: test_kaal_v4, test_kaal_v4_impair (long), test_kaal_v4_live.
+Not done: v4 voice codec (other agent), over-the-air test, slot interleaving for fast fading, multi-transmitter TDMA. Details in docs/KAAL-NEXT.md.
