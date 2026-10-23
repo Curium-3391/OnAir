@@ -92,6 +92,23 @@ void reanalyse(App& a, const RecordingListing& r, int pick) {
 
 } // namespace
 
+// A recording by path as the IQ file source (the recordings manager's Open). A sample range (first < end) plays only that part: the file source
+// starts at the first sample and stops at the end one.
+bool recordingOpenPath(App& a, const std::string& path, uint64_t firstSample, uint64_t endSample) {
+    RecordingListing r;
+    r.path = path;
+    const size_t sl = path.find_last_of("/\\");
+    r.fileName = sl == std::string::npos ? path : path.substr(sl + 1);
+    if (!openAsSource(a, r)) return false;
+    if (endSample > firstSample) {
+        const uint64_t bps = a.file.format == FileFormat::CF32 ? 8 : (a.file.format == FileFormat::CS8 || a.file.format == FileFormat::CU8) ? 2 : 4;
+        const uint64_t base = a.file.offsetBytes;
+        a.file.offsetBytes = base + firstSample * bps;
+        a.file.endBytes = base + endSample * bps;
+    }
+    return true;
+}
+
 // The button in the diagnostics row, and its window while it is open.
 void recordingLibraryUi(App& a) {
     const std::string dir = plat::dataDir() + "/recordings";

@@ -238,6 +238,8 @@ void sidebar(App& a) {
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(tipText));
         };
         tool("Passes", a.passesOpen, "Satellite passes and automatic tuning");
+        tool("Scheduler...", a.schedulerOpen, "Timed jobs and satellite passes: tune, record, then put everything back");
+        tool("Recordings...", a.recmgrOpen, "Every recording in one list: search, play, trim, convert, tag, delete with undo");
         tool("Direction finder", a.dfOpen, N_("Bearing and position of a transmitter from an antenna array such as the KrakenSDR"));
         tool("Interference hunter", a.rfiOpen, N_("Watch a band for new interference, tell what kind it is, and walk to find it with a loud / quiet meter"));
         tool("Passive radar", a.passiveRadarOpen, N_("Aircraft from the echoes of a broadcast transmitter, with two coherent channels"));
@@ -528,6 +530,10 @@ static void viewMenu(App& a) {
         if (ImGui::MenuItem(tr("Transcripts ..."), nullptr, tx::windowOpen())) tx::windowOpen() = !tx::windowOpen();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("What is said on the airband and other voice channels, as text: live captions, search, export. Off until you turn it on."));
         if (ImGui::MenuItem(tr("Passes"), nullptr, &a.passesOpen)) {}
+        ImGui::MenuItem(tr("Scheduler..."), nullptr, &a.schedulerOpen);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Timed jobs and satellite passes: tune the radio, record audio, IQ or the log, then put everything back"));
+        ImGui::MenuItem(tr("Recordings..."), nullptr, &a.recmgrOpen);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Every recording in one list: search, play, trim, convert, tag, delete with undo, and a size budget per folder"));
         ImGui::MenuItem(tr("SatNOGS transmitters"), nullptr, &a.satnogsOpen);
         ImGui::MenuItem(tr("Direction finder"), nullptr, &a.dfOpen);
         ImGui::MenuItem(tr("Interference hunter"), nullptr, &a.rfiOpen);
