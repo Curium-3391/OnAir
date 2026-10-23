@@ -316,14 +316,10 @@ struct DvbcReceiver::Impl {
     DVBC_HOT
     void onSymbol() {
         const cf32* win = &u[upos];
-        // four partial sums per component (seven deep instead of fourteen): the equaliser output is on the symbol-to-symbol chain through the
-        // tap update, so the depth of this sum is what the receiver thread waits on. (A different order of the same additions: the values
-        // move in the last bits, the decoded stream does not.)
-        static_assert(kTaps % 4 == 0, "four partial sums");
-        float zr_[4] = {0, 0, 0, 0}, zi_[4] = {0, 0, 0, 0};
-        for (int j = 0; j < kTaps; j += 4)
-            for (int q = 0; q < 4; q++) { zr_[q] += w[j + q].real() * win[j + q].real() - w[j + q].imag() * win[j + q].imag(); zi_[q] += w[j + q].real() * win[j + q].imag() + w[j + q].imag() * win[j + q].real(); }
-        const cf32 z((zr_[0] + zr_[1]) + (zr_[2] + zr_[3]), (zi_[0] + zi_[1]) + (zi_[2] + zi_[3]));
+        float zr_[2] = {0, 0}, zi_[2] = {0, 0};
+        for (int j = 0; j < kTaps; j += 2)
+            for (int q = 0; q < 2; q++) { zr_[q] += w[j + q].real() * win[j + q].real() - w[j + q].imag() * win[j + q].imag(); zi_[q] += w[j + q].real() * win[j + q].imag() + w[j + q].imag() * win[j + q].real(); }
+        const cf32 z(zr_[0] + zr_[1], zi_[0] + zi_[1]);
         syms++; stageSyms++;
         const float mu = stageSyms < 120000 ? 4e-4f : stageSyms < 250000 ? 1e-4f : 3e-5f;
         if (stage == Cma || stage == Freq) {
