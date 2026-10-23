@@ -34,3 +34,6 @@ Run `onair-server --lan` on the Pi and open the printed address in a browser on 
 - Use a fast SD card or an SSD for recordings, and a heatsink or fan: sustained decoding throttles an uncooled Pi.
 - If audio is silent on the desktop, pick the output in the Pi OS sound menu (PipeWire/ALSA).
 - If the window is black or slow, the GUI needs OpenGL: run it on the desktop session (not over plain SSH), or use the headless server.
+- The Pi 4 and 5 GPU (V3D) offers OpenGL 3.1 and textures of at most 4096 pixels. OnAir falls back to OpenGL 3.1 / 3.0 on its own (#283)
+  and keeps pictures wider than the GPU takes (the 8192-column waterfall) at 4096, keeping the strongest signal of each pair of
+  columns (#284). `DECT2_MAX_TEXTURE=4096` sets the same limit on another computer, to try it.

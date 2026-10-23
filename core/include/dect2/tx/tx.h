@@ -104,6 +104,11 @@ double txOccupiedBandwidthHz(const std::vector<float>& db, double rateHz);
 std::string txRangeInfo(const DeviceInfo& d, double hz);
 // Why a radio cannot be used to transmit ("" when it can): receive-only radios, sound cards, files
 std::string txUnavailableReason(const DeviceInfo& d);
+// The radio's name for the TX window: once per device (a USRP's several receive inputs are one radio), without "(native, experimental)"
+std::string txRadioLabel(const DeviceInfo& d);
+// Indexes into the device list: the radios the TX window offers (one per device), and the receive-only ones (one per radio) it hides behind a count
+std::vector<int> txRadioChoices(const std::vector<DeviceInfo>& devs);
+std::vector<int> txReceiveOnlyRadios(const std::vector<DeviceInfo>& devs);
 // A sink that takes samples at the pace of `rateHz` and sends them nowhere: the "Test (dry run, no RF)" path. No radio is claimed or opened.
 std::unique_ptr<TxSink> makeNullTxSink();
 

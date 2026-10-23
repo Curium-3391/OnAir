@@ -327,7 +327,7 @@ int main() {
                     s2BitDeinterleaveLlr(llr.data(), d.nldpc, mo, r, dl.data());
                     std::vector<uint8_t> hard;
                     int iters = 0;
-                    const bool ok = s2Ldpc(r, sh).decodeFast(dl, 50, hard, &iters, s2LdpcAlpha(r));
+                    const bool ok = s2Ldpc(r, sh).decodeFast(dl, 50, hard, &iters, s2LdpcAlpha(mo, r, sh), true);
                     std::vector<uint8_t> out;
                     const int fixed = ok ? s2BchDecode(hard.data(), r, sh, out) : -1;
                     totalMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -336,11 +336,11 @@ int main() {
                         std::vector<uint8_t> h8;
                         int i8 = 0;
                         auto a0 = std::chrono::steady_clock::now();
-                        const bool ok8 = s2Ldpc(r, sh).decodeFast8(dl, 50, h8, &i8, s2LdpcAlpha(r));
+                        const bool ok8 = s2Ldpc(r, sh).decodeFast8(dl, 50, h8, &i8, s2LdpcAlpha(mo, r, sh), true);
                         ms8 += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a0).count();
                         a0 = std::chrono::steady_clock::now();
                         std::vector<uint8_t> hf; int jf = 0;
-                        s2Ldpc(r, sh).decodeFast(dl, 50, hf, &jf, s2LdpcAlpha(r));
+                        s2Ldpc(r, sh).decodeFast(dl, 50, hf, &jf, s2LdpcAlpha(mo, r, sh), true);
                         msF += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a0).count();
                         std::vector<uint8_t> o8;
                         const int f8 = ok8 ? s2BchDecode(h8.data(), r, sh, o8) : -1;
@@ -359,6 +359,41 @@ int main() {
                 }
         printf("8-bit LDPC: %d failed of %d, mean iterations %.1f (float %.1f), %.2f ms per frame (float %.2f)\n", bad8, frames, it8Sum / frames, itSum / frames, ms8 / frames, msF / frames);
         printf("round trip: %d frames, %d failed, mean LDPC iterations %.1f, %.1f ms per frame (demap + decode)\n", frames, bad, itSum / frames, totalMs / frames);
+    }
+
+    // ---- close to the threshold: 0.15 dB above table 13 / 20 the receiver's decoder (two-minimum correction, the factor of s2LdpcAlpha) gets the
+    // MODCODs where the old per-rate normalised min-sum failed almost every frame (QPSK 3/5, 8PSK 3/5, 32APSK 4/5, S2X 8PSK 23/36)
+    {
+        struct C { int mod, rate; bool sh; };
+        const int x2336 = s2RateFromName(k8psk, "23/36", false);
+        dect2::normal_distribution<float> nd(0.f, 1.f);
+        for (C c : {C{kQpsk, 4, false}, C{k8psk, 4, false}, C{k32apsk, 7, false}, C{kQpsk, 4, true}, C{k8psk, x2336, false}}) {
+            if (c.rate < 0) { CHECK(false, "S2X 8PSK 23/36 not found"); continue; }
+            const LdpcCode& code = s2Ldpc(c.rate, c.sh);
+            const S2Dims d = s2Dims(c.mod, c.rate, c.sh);
+            const double es = s2QefEsN0(c.mod, c.rate, c.sh) + 0.15;
+            const float sigma2 = (float)(0.5 * std::pow(10.0, -es / 10.0));
+            int good = 0, itSum = 0;
+            const int nfr = 12;
+            for (int f = 0; f < nfr; f++) {
+                std::vector<uint8_t> bits((size_t)code.n()), il, hard;
+                for (int i = 0; i < code.k(); i++) bits[(size_t)i] = rng() & 1;
+                code.encode(bits);
+                s2BitInterleave(bits, c.mod, c.rate, il);
+                std::vector<cf32> sym((size_t)d.xfecSymbols);
+                s2MapBits(il.data(), d.nldpc, c.mod, c.rate, sym.data());
+                for (auto& s : sym) s += cf32{nd(rng), nd(rng)} * std::sqrt(sigma2);
+                std::vector<float> llr((size_t)d.nldpc), dl((size_t)d.nldpc);
+                s2Demap(sym.data(), d.xfecSymbols, c.mod, c.rate, sigma2, llr.data());
+                s2BitDeinterleaveLlr(llr.data(), d.nldpc, c.mod, c.rate, dl.data());
+                int it = 0;
+                const bool ok = code.decodeFast(dl, 50, hard, &it, s2LdpcAlpha(c.mod, c.rate, c.sh), true);
+                good += ok && hard == bits;
+                itSum += it;
+            }
+            printf("threshold: %s %s %s at %.2f dB: %d of %d frames, %.1f iterations\n", c.sh ? "short" : "normal", s2ModName(c.mod), s2RateName(c.rate), es, good, nfr, (double)itSum / nfr);
+            CHECK(good >= nfr - 1, "%s %s %s 0.15 dB above the table: %d of %d frames", c.sh ? "short" : "normal", s2ModName(c.mod), s2RateName(c.rate), good, nfr);
+        }
     }
     printf(fails ? "dvbs s2fec: FAILED\n" : "dvbs s2fec: ok\n");
     return fails ? 1 : 0;
