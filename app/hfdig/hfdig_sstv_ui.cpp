@@ -1,6 +1,8 @@
 // HF digital, the SSTV view of the main tab (called by hfdig_ui.cpp): the picture being received (scaled to fit, aspect kept) with a
 // progress bar and the mode and slant under it; beside it (under it in a narrow pane) the last finished pictures as thumbnails to click,
 // Save (PNG) and Clear, and "Save every picture" (PNG files in <data folder>/sstv/, named by the time and the mode).
+#include "../panels/picsave_ui.h"
+#include "../state/picsave.h"
 #include "app.h"
 #include "panels/gallery.h"
 #include "panels/enhance_ui.h"
@@ -85,10 +87,13 @@ void savePng(const HfdigSstvImage& im) {
 }
 
 // a finished picture, where the user picks (the save icon on its thumbnail)
-void savePngAs(const HfdigSstvImage& im) {
+void savePngAs(const HfdigSstvImage& im) {   // into the "Save pictures to" folder (<folder>/SSTV/<date>-<time>-SSTV.png), said in words
     if (im.width <= 0 || im.rgb.size() < (size_t)im.width * im.height * 3) return;
-    const std::string path = saveFileDialog(fileFor(im).c_str());
-    if (!path.empty()) writeSstvPng(im, path);
+    std::vector<uint8_t> rgba((size_t)im.width * im.height * 4);
+    for (size_t i = 0; i < (size_t)im.width * im.height; i++) {
+        rgba[i * 4] = im.rgb[i * 3]; rgba[i * 4 + 1] = im.rgb[i * 3 + 1]; rgba[i * 4 + 2] = im.rgb[i * 3 + 2]; rgba[i * 4 + 3] = 255;
+    }
+    picui::saveRgba("SSTV", time(nullptr), rgba.data(), im.width, im.height);
 }
 
 void writeSstvPng(const HfdigSstvImage& im, const std::string& path) {
@@ -238,7 +243,8 @@ void side(App& a, float width, bool wrap) {
             const ImVec2 after = ImGui::GetCursorScreenPos();
             const float ih = ImGui::GetFrameHeight();
             ImGui::SetCursorScreenPos(ImVec2(p.x + th - ih - 2 * gUi, p.y + 2 * gUi));
-            if (iconFlat(Ic::Save, "Save this picture as PNG...")) savePngAs(*it.im);
+            const std::string saveTip = picsave::tooltipText(picui::folder(), "SSTV");   // what and where
+            if (iconFlat(Ic::Save, saveTip.c_str())) savePngAs(*it.im);
             ImGui::SetCursorScreenPos(after);
             ImGui::Dummy(ImVec2(0, 0));   // an item at the restored position (ImGui wants one after a cursor move)
         }
@@ -247,6 +253,7 @@ void side(App& a, float width, bool wrap) {
         col++;
     }
     if (wrap) flowEnd();
+    picui::statusLine();
 }
 
 } // namespace

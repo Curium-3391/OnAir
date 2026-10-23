@@ -537,6 +537,9 @@ if(DECT2_BUILD_APP)
   list(APPEND APP_SOURCES app/ui/synth_group_ui.cpp)
   list(APPEND APP_SOURCES app/state/tune_worker.cpp)   # the radio retune off the UI thread, newest request wins
   list(APPEND APP_SOURCES app/scan/fast_scan_ui.cpp)
+  list(APPEND APP_SOURCES app/ui/meter_ui.cpp app/platform/proc_cpu.cpp app/panels/picsave_ui.cpp)
+  add_executable(test_picsave tests/app/test_picsave.cpp)   # picture save paths, names, collisions, delete with undo (app/state/picsave.h)
+  add_test(NAME picsave COMMAND test_picsave)
   list(APPEND APP_SOURCES app/map/contact_lines.cpp)   # contact lines on the QSO-mode maps
   foreach(m ${DECT2_MODES})   # app/<mode>/*.cpp: the screens of a mode added after FM
     file(GLOB DECT2_MODE_UI CONFIGURE_DEPENDS app/${m}/*.cpp)

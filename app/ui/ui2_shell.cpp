@@ -26,6 +26,7 @@
 #include "../panels/backup_ui.h"
 #include "../gfx/render_caps.h"
 
+void clearAllButtonAt(App& a, bool sameLine);   // update_ui.cpp: Clear all, without its own SameLine
 using namespace ui2;
 
 namespace ui2 {
@@ -599,51 +600,49 @@ static void viewMenu(App& a) {
     }
 }
 
-// the right end of the menu bar: credit, Support, the update button and Clear all (their widths set where the credit may sit)
+// the right end of the menu bar: credit, Credits, Support, the update button and Clear all. One row of chips: the same height, border and
+// background, one gap between them, centred in the bar. Placed from the width the row had last frame (it follows the update button's label).
+static float gBarRestW = 0;
 static void menuBarRight(App& a) {
-        const ImGuiStyle& ist = ImGui::GetStyle();
-        const float btnPad = 2.f * ist.FramePadding.x + ist.FrameBorderSize;
-        char verLbl[64];
-        snprintf(verLbl, sizeof verLbl, "v%s", ONAIR_VERSION);
-        float updW = ImGui::CalcTextSize(verLbl).x + btnPad;
-        updW = std::max(updW, ImGui::CalcTextSize(tr("restart to update")).x + btnPad);
-        updW = std::max(updW, ImGui::CalcTextSize(tr("downloading 100%")).x + btnPad);
-        updW = std::max(updW, ImGui::CalcTextSize(tr("checking…")).x + btnPad);
-        updW = std::max(updW, ImGui::CalcTextSize(tr("preparing…")).x + btnPad);
-        char updLbl[80];
-        snprintf(updLbl, sizeof updLbl, tr("update %s"), ONAIR_VERSION);
-        updW = std::max(updW, ImGui::CalcTextSize(updLbl).x + btnPad);
-        const float clearW = ImGui::CalcTextSize(tr("Clear all##clearall")).x + btnPad;
-        const float supportW = ImGui::CalcTextSize(tr("Support")).x + btnPad;
-        const float creditsW = ImGui::CalcTextSize(tr("Credits")).x + btnPad;
-        const float rightReserve = updW + 6.f * gUi + clearW + 12.f * gUi + supportW + 4.f * gUi + creditsW + 4.f * gUi;
-        const char* credit = tr("by: Kristijonas Adomaitis, made with help from the community");
-        const float cw = ImGui::CalcTextSize(credit).x + btnPad;
-        const float xBtn = ImGui::GetWindowWidth() - rightReserve;   // Credits and Support sit just left of the version label
-        const float xBy = xBtn - cw - 12.f * gUi;
-        const float minX = ImGui::GetCursorPosX() + 20 * gUi;
-        if (xBy > minX) {   // the 'by' text goes first when the menu bar is narrow
-            ImGui::SameLine(xBy);
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 1, 1, 0.04f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.08f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.08f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.68f, 0.75f, 1));
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
-            if (ImGui::SmallButton(credit)) { a.creditsOpen = true; a.creditsTab = 0; }
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor(4);
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Thank you to everyone who reported bugs, sent recordings and opened pull requests."));
-        }
-        if (xBtn > minX) {
-            ImGui::SameLine(xBtn);
-            if (ImGui::SmallButton(tr("Credits"))) { a.creditsOpen = true; a.creditsTab = 0; }
-            ImGui::SameLine();
-            supportButton();
-        }
-        // the version/update button and Clear all sit right of Credits and Support: starting it at xBtn drew the two over each other
-        ImGui::SameLine(ImGui::GetWindowWidth() - (updW + 6.f * gUi + clearW + 12.f * gUi));
-        updateButton(a);
-        clearAllButton(a);
+    const ImGuiStyle& ist = ImGui::GetStyle();
+    const float g = 6.f * gUi, margin = 8.f * gUi, W = ImGui::GetWindowWidth();
+    const char* credit = tr("by: Kristijonas Adomaitis, made with help from the community");
+    const float cw = ImGui::CalcTextSize(credit).x + 2.f * ist.FramePadding.x;
+    const float lineH = ImGui::GetTextLineHeight();
+    const float y = std::max(0.f, (ImGui::GetWindowHeight() - lineH) * 0.5f);
+    const float minX = ImGui::GetCursorPosX() + 20 * gUi;
+    const float xRest = gBarRestW > 0 ? W - margin - gBarRestW : W - margin - 400 * gUi;
+    const bool showBy = gBarRestW > 0 && xRest - g - cw > minX;   // the 'by' text goes first when the menu bar is narrow
+    if (gBarRestW > 0 && xRest < minX) return;
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 1, 1, 0.04f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.09f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.12f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1, 1, 1, 0.12f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
+    const ImVec4 dimText(0.62f, 0.68f, 0.75f, 1);
+    if (showBy) {
+        ImGui::SameLine(xRest - g - cw); ImGui::SetCursorPosY(y);
+        ImGui::PushStyleColor(ImGuiCol_Text, dimText);
+        if (ImGui::SmallButton(credit)) { a.creditsOpen = true; a.creditsTab = 0; }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Thank you to everyone who reported bugs, sent recordings and opened pull requests."));
+        ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
+    } else { ImGui::SameLine(xRest); ImGui::SetCursorPosY(y); }
+    ImGui::PushStyleColor(ImGuiCol_Text, dimText);
+    if (ImGui::SmallButton(tr("Credits"))) { a.creditsOpen = true; a.creditsTab = 0; }
+    ImGui::PopStyleColor();
+    const float x0 = ImGui::GetItemRectMin().x;
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
+    ImGui::PushStyleColor(ImGuiCol_Text, dimText);
+    supportButton();
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
+    updateButton(a);
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
+    clearAllButtonAt(a, false);
+    gBarRestW = ImGui::GetItemRectMax().x - x0;
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
 }
 
 float menuBar(App& a) {

@@ -19,6 +19,8 @@
 #include <sstream>
 #include "dect2/marine/marine_wefax_stations.h"
 #include "wefax_gallery.h"
+#include "../panels/picsave_ui.h"
+#include "../state/picsave.h"
 #include "dect2/engine/updater.h"
 #include <algorithm>
 #include <cmath>
@@ -1341,17 +1343,21 @@ void list(App& a) {
             localtime_r(&tt, &tmv);
 #endif
             strftime(tb, sizeof tb, "%H:%M", &tmv);
-            if (iconFlat(Ic::Save, "Save this picture as PNG")) {
-                char nm[64]; strftime(nm, sizeof nm, "weather-fax-%Y%m%d-%H%M.png", &tmv);
-                const std::string r = saveFaxImage(f.im, nm);
-                if (!r.empty()) S.listMsg = r;
+            const std::string saveTip = picsave::tooltipText(picui::folder(), "weather-fax");   // what and where
+            if (iconFlat(Ic::Save, saveTip.c_str())) {
+                if (f.im.width > 0 && f.im.height > 0) {
+                    std::vector<uint8_t> rgba((size_t)f.im.width * f.im.height * 4);
+                    for (size_t k = 0; k < f.im.pix.size() && k * 4 + 3 < rgba.size(); k++) { rgba[k * 4] = rgba[k * 4 + 1] = rgba[k * 4 + 2] = f.im.pix[k]; rgba[k * 4 + 3] = 255; }
+                    picui::saveRgba("weather-fax", (time_t)f.wall, rgba.data(), f.im.width, f.im.height);
+                }
             }
             ImGui::SameLine(0, 6 * gUi);
             ImGui::AlignTextToFramePadding();
             if (ImGui::Selectable((std::string(tb) + "  " + std::to_string((int)std::lround(f.khz)) + " kHz  " + std::to_string(f.im.width) + " x " + std::to_string(f.im.height)).c_str(), false)) { S.view = 2; S.follow = false; }
             ImGui::PopID();
         }
-        if (!S.listMsg.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", S.listMsg.c_str()); ImGui::PopTextWrapPos(); }
+        picui::statusLine();
+        if (!S.faxes.empty()) picui::settingRow();
         if (!S.faxes.empty()) rows.push_back({0, -1, 0});   // not "nothing decoded yet"
     }
     if (rows.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled(t.serviceActive == 3 ? "receiving a fax: see the Fax view" : "nothing decoded yet"); ImGui::PopTextWrapPos(); }

@@ -1,6 +1,7 @@
 // The auto-gain loop's glue to the app: it configures SmartAgc (core/src/source/agc.cpp) for the radio and mode in use, feeds it the ADC statistics,
 // the spectrum and the decoder's SNR, applies what it decides, and offers the gear button with the "Let AGC turn the amp on/off by itself" switch.
 // The amp is off by default for everyone and the AGC never touches it unless the user allowed that for this radio (docs/auto-gain.md).
+#include "../ui/panel_layout.h"
 #include "../app.h"
 #include <cmath>
 
@@ -110,9 +111,13 @@ bool agcStep(App& a, GainSetting& g) {
 
 void agcAmpWarning(const App& a) {   // on a row of its own: the caller starts it
     if (!a.tune.ampOn) return;
-    ImGui::PushTextWrapPos(0);
-    ImGui::TextColored(pal::warnAmber(), "(!) %s", tr("The amp can fry itself on strong signals while on"));
-    ImGui::PopTextWrapPos();
+    // a small warning mark and one short line; the whole story is in the tooltip
+    panel::warnIcon();
+    const bool hov1 = ImGui::IsItemHovered();
+    ImGui::SameLine(0, 4 * gUi);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(pal::warnAmber(), "%s", tr("can be damaged by strong signals"));
+    if (hov1 || ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The amp can fry itself on strong signals while it is on. Leave it off unless the antenna is weak and nothing strong is near."));
 }
 
 void agcGear(App& a) {
