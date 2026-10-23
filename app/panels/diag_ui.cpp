@@ -640,19 +640,19 @@ void radioMessagesUi(App& a, bool vertical) {
     // the three groups of the Source panel: Radio (above, with its status), Record, Listen; one left edge, a second column for the formats
     panel::subHeading(tr("Record"));
     recordUi(a, 1);              // [dot] Record IQ     [8-bit]
-    flowBreak();
+    flowEnd();
     recordUi(a, 2);              // SigMF  Rewind  Library
     flowNext(6 * gUi);
     timeMachineUi(a);
     flowNext(6 * gUi);
     recordingLibraryUi(a);
-    flowBreak();
+    flowEnd();
     audioRecordUi(a, 1);         // [dot] Record audio  [WAV]
     flowNext(6 * gUi);
     clipsui::button(a);
-    flowBreak();
+    flowEnd();
     panel::subHeading(tr("Listen"));
     audioRecordUi(a, 2);         // Only audio  Split  Keep going
-    flowBreak();
+    flowEnd();
     audioMonitorUi(a);           // Monitor audio  [demod]  volume  Audio...
 }

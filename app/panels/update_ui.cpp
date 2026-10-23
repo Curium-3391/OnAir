@@ -208,8 +208,10 @@ void updateButton(App& a) {
 }
 
 // "Clear all" next to the version: empties the decoded lists of every mode, on every open receiver, after a question
-void clearAllButton(App& a) {
-    ImGui::SameLine(0, 6 * gUi);
+void clearAllButtonAt(App& a, bool sameLine);
+void clearAllButton(App& a) { clearAllButtonAt(a, true); }
+void clearAllButtonAt(App& a, bool sameLine) {
+    if (sameLine) ImGui::SameLine(0, 6 * gUi);
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.6f, 0.45f, 1));
     if (ImGui::SmallButton(tr("Clear all##clearall"))) ImGui::OpenPopup("##clearallask");
     ImGui::PopStyleColor();

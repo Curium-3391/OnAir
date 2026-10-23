@@ -25,6 +25,7 @@
 #include "../panels/backup_ui.h"
 #include "../gfx/render_caps.h"
 
+void clearAllButtonAt(App& a, bool sameLine);   // update_ui.cpp: Clear all, without its own SameLine
 using namespace ui2;
 
 namespace ui2 {
@@ -626,19 +627,20 @@ static void menuBarRight(App& a) {
         if (ImGui::SmallButton(credit)) { a.creditsOpen = true; a.creditsTab = 0; }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Thank you to everyone who reported bugs, sent recordings and opened pull requests."));
-        ImGui::SameLine(0, g);
+        ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
     } else { ImGui::SameLine(xRest); ImGui::SetCursorPosY(y); }
     ImGui::PushStyleColor(ImGuiCol_Text, dimText);
     if (ImGui::SmallButton(tr("Credits"))) { a.creditsOpen = true; a.creditsTab = 0; }
     ImGui::PopStyleColor();
     const float x0 = ImGui::GetItemRectMin().x;
-    ImGui::SameLine(0, g);
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
     ImGui::PushStyleColor(ImGuiCol_Text, dimText);
     supportButton();
     ImGui::PopStyleColor();
-    ImGui::SameLine(0, g);
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
     updateButton(a);
-    clearAllButton(a);   // sits one gap (6 px) after the version
+    ImGui::SameLine(0, g); ImGui::SetCursorPosY(y);
+    clearAllButtonAt(a, false);
     gBarRestW = ImGui::GetItemRectMax().x - x0;
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
