@@ -3,6 +3,7 @@
 #include "dect2/common/thread_name.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/source/source.h"
+#include "soapy_logic.h"
 #include "dect2/net/netradio.h"
 #include "dect2/common/ring.h"
 #include <SoapySDR/Device.hpp>
@@ -259,9 +260,9 @@ std::vector<RadioSetting> gainStageSettings(SoapySDR::Device* dev) {
             if (!(r.maximum() > r.minimum())) continue;
             RadioSetting x;
             x.type = RadioSetting::Number; x.key = kGainPrefix + n;
-            x.label = "Gain stage " + n;
+            x.label = soapylogic::stageName(n).label;
             x.help = "One gain element of the radio's driver (" + n + "), in dB. Set by hand it overrides what the gain slider gives this stage; the other stages still follow the slider. Takes effect on the next gain change or retune.";
-            x.minV = r.minimum(); x.maxV = r.maximum(); x.step = r.step() > 0 ? r.step() : 0; x.unit = "dB";
+            x.minV = r.minimum(); x.maxV = r.maximum(); x.step = r.step() > 0 ? r.step() : 0; x.unit = soapylogic::stageName(n).unit;
             double now = r.minimum();
             try { now = dev->getGain(SOAPY_SDR_RX, 0, n); } catch (...) {}
             char b[32]; snprintf(b, sizeof b, "%g", now);
@@ -373,6 +374,7 @@ public:
             err = std::string("SoapySDR: ") + e.what();
             const std::string h = soapyRemoteFailureHelp(args_);
             if (!h.empty()) err = h + " (" + e.what() + ")";
+            else { const std::string b = soapylogic::busyHint(e.what()); if (!b.empty()) err = b + " (" + e.what() + ")"; }
             close();
             return false;
         }
@@ -407,6 +409,7 @@ public:
 
     double sampleRate() const override { return rate_; }
     bool realtimeHardware() const override { return true; }
+    std::string statusNote() const override { return soapylogic::streamStatus(overflows_, 0, 0); }
 
 private:
     void close() {
@@ -429,15 +432,13 @@ private:
         const int ch = 0;
         if (!live || std::fabs(s.sampleRate - requestedRate_) > 1.0) {
             const auto ranges = dev_->getSampleRateRange(SOAPY_SDR_RX, ch);
-            const double r = ranges.empty() ? s.sampleRate : rateAtLeast(ranges, s.sampleRate);
-            dev_->setSampleRate(SOAPY_SDR_RX, ch, r);
+            std::vector<soapylogic::Span> table;
+            for (const auto& x : ranges) table.push_back({x.minimum(), x.maximum(), x.step()});
+            const auto pick = soapylogic::chooseRate(table, s.sampleRate);
+            dev_->setSampleRate(SOAPY_SDR_RX, ch, ranges.empty() ? s.sampleRate : pick.hz);
             rate_ = dev_->getSampleRate(SOAPY_SDR_RX, ch);
             requestedRate_ = s.sampleRate;
-            if (rate_ < s.sampleRate * 0.97) {
-                char b[160];
-                snprintf(b, sizeof b, "this radio only offers %.2f Msps, %.2f Msps were requested for this channel width", rate_ / 1e6, s.sampleRate / 1e6);
-                err = b;   // reported to the user; the receiver may still work for narrower channels
-            }
+            if (!pick.note.empty() && rate_ < s.sampleRate * 0.97) err = pick.note;   // reported to the user; the receiver may still work for narrower channels
             // analogue filter: as wide as the signal, within what the radio offers
             try {
                 const auto bws = dev_->getBandwidthRange(SOAPY_SDR_RX, ch);
@@ -767,6 +768,14 @@ std::vector<DeviceInfo> listSoapyDevices(std::string& err) {
                     out.push_back(e);
                 }
             }
+        }
+        {   // two radios of one model share a label: tell them apart (the serial is what selects them, the name is only shown)
+            std::vector<std::string> labels;
+            for (const auto& d : out) labels.push_back(d.soapyArgs.find(kAntennaTag) == std::string::npos ? d.name : std::string());
+            std::map<std::string, int> count;
+            for (const auto& l : labels) if (!l.empty()) count[l]++;
+            std::vector<std::string> uniq = soapylogic::uniqueLabels(labels);
+            for (size_t i = 0; i < out.size(); i++) if (!labels[i].empty() && count[labels[i]] > 1) out[i].name = out[i].serial.empty() ? uniq[i] : uniq[i] + " [" + out[i].serial + "]";
         }
         fprintf(stderr, "SoapySDR %s: %zu radio(s) besides HackRF\n", SoapySDR::getAPIVersion().c_str(), out.size());
         fflush(stderr);

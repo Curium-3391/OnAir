@@ -165,6 +165,7 @@ public:
     virtual bool retune(const TuneSettings& s, std::string& err) = 0; // live changes
     virtual double sampleRate() const = 0;
     virtual bool realtimeHardware() const { return false; }
+    virtual std::string statusNote() const { return {}; }   // stream trouble for the status line (overflow counts ...); empty while clean
 };
 
 // ---- transmit ---------------------------------------------------------------------------------------------------------------------------
