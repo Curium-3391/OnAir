@@ -5,6 +5,8 @@
 // Plug-in frame formats (the bytes handed to onair_speech_decode, 8 kHz PCM, 160 samples per call, as for TETRA):
 //   ambe2, ambe : 12 bytes = the four de-interleaved code words C0..C3 of mbelib, 24 bits each, row by row, most significant bit first
 //   imbe        : 23 bytes = the eight code words c0..c7 of mbelib, 23 bits each, row by row, most significant bit first (184 bits)
+//   tetrapol    : 16 bytes = the 120 RP-CELP bits of one 20 ms voice frame, most significant bit first, then a flag byte (bit 0: damaged
+//                 frame); see tetrapol/tetrapol_voice.h
 #pragma once
 #include "dect2/codec/speech_codec.h"
 #include <functional>

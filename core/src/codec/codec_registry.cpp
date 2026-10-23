@@ -17,10 +17,11 @@ const std::vector<CodecInfo>& codecTable() {
         {"imbe",  "IMBE (7200x4400)",   CodecKind::Patented, "P25 phase 1, ProVoice / EDACS", "plug-in onair-codec-imbe, or libmbe in the codecs folder"},
         {"ysf",   "AMBE+2 (Yaesu)",     CodecKind::Patented, "Yaesu System Fusion (C4FM)", "plug-in onair-codec-ysf"},
         {"tetra", "TETRA ACELP",        CodecKind::Patented, "TETRA", "plug-in onair-codec-tetra (unencrypted calls only)"},
+        {"tetrapol", "TETRAPOL RP-CELP", CodecKind::Patented, "TETRAPOL", "plug-in onair-codec-tetrapol (clear calls only)"},
         {"",      "Codec 2",            CodecKind::Open,     "M17, FreeDV 700D / 700E / 1600", "built in (libcodec2 comes with OnAir)"},
         {"",      "RADE",               CodecKind::Open,     "FreeDV RADE", "optional librade"},
         {"",      "KA codecs",          CodecKind::Open,     "KAAL, KAPP, KAFT, KAVB, KAIT, KAWS", "built in"},
-        {"",      "TETRAPOL, DECT and satellite voice", CodecKind::Unsupported, "TETRAPOL, DECT, Iridium, Inmarsat, other satellite voice", "no voice decoder in OnAir (signalling and data only)"},
+        {"",      "DECT and satellite voice", CodecKind::Unsupported, "DECT, Iridium, Inmarsat, other satellite voice", "no voice decoder in OnAir (signalling and data only)"},
     };
     return t;
 }
@@ -34,6 +35,7 @@ const CodecInfo* findCodec(const std::string& id) {
 size_t pluginFrameBytes(const std::string& id) {
     if (id == "ambe2" || id == "ambe") return 12;
     if (id == "imbe") return 23;
+    if (id == "tetrapol") return 16;
     return 0;
 }
 

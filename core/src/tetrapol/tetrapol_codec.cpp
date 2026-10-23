@@ -1,211 +1,246 @@
-// TETRAPOL PAS 0001-2 UHF data frames (tetrapol_codec.h). Inner coding of the 20 ms / 160-bit GMSK frame:
-// header 0x46, CRC-5, rate-1/2 K=5 convolutional code, 152-bit interleave, optional LFSR scramble.
+// TETRAPOL physical frames, PAS 0001-2 clause 6 (tetrapol_codec.h): voice and data frames of the 8 kbit/s GMSK channel.
 #include "dect2/tetrapol/tetrapol_codec.h"
-#include <algorithm>
 #include <cstring>
-#include "dect2/common/bits.h"
 
 namespace dect2 {
 namespace tetrapol {
 
 namespace {
 
-constexpr uint8_t kCrcPoly = 0x12;   // x^5 + x^2
-constexpr int kInfo = 68;            // 66 payload + 2 ASB
-constexpr int kCoded = 73;           // + CRC-5
-constexpr int kConvIn = 76;          // + 3 tail zeros → 152 coded bits
-constexpr unsigned kG0 = 0x19, kG1 = 0x17;   // K=5
+constexpr int kPart1 = 26;   // protected information bits common to both frame types (d + 25)
+constexpr int kPart2 = 50;   // second protected part of a data frame
 
-uint8_t crc5(const uint8_t* b, int n) {
-    uint8_t r = 0;
+// PAS 0001-2 6.1.3.1 / 6.2.3.1 (VHF, voice and data alike): k = 19 * p[j % 8] + (3 * (j / 8)) % 19
+int vhfIndex(int j) {
+    static const int p[8] = {0, 4, 2, 6, 1, 5, 3, 7};
+    return 19 * p[j % 8] + (3 * (j / 8)) % 19;
+}
+
+// PAS 0001-2 6.1.4.1: UHF voice frame interleaving
+const uint8_t kUhfVoice[kDataBits] = {
+    1, 77, 38, 114, 20, 96, 59, 135,   3, 79, 41, 117, 23, 99, 62, 138,   5, 81, 44, 120, 26, 102, 65, 141,
+    8, 84, 47, 123, 29, 105, 68, 144,  11, 87, 50, 126, 32, 108, 71, 147, 14, 90, 53, 129, 35, 111, 74, 150,
+    17, 93, 56, 132, 37, 113, 73, 4,   0, 76, 40, 119, 19, 95, 58, 137,   151, 80, 42, 115, 24, 100, 60, 133,
+    12, 88, 48, 121, 30, 106, 66, 139, 18, 91, 51, 124, 28, 104, 67, 146, 10, 89, 52, 131, 34, 110, 70, 149,
+    13, 97, 57, 130, 36, 112, 75, 148, 6, 82, 39, 116, 16, 92, 55, 134,   2, 78, 43, 122, 22, 98, 61, 140,
+    9, 85, 45, 118, 27, 103, 63, 136,  15, 83, 46, 125, 25, 101, 64, 143, 7, 86, 49, 128, 31, 107, 69, 142,
+    21, 94, 54, 127, 33, 109, 72, 145,
+};
+// PAS 0001-2 6.2.4.1: UHF data frame interleaving
+const uint8_t kUhfData[kDataBits] = {
+    1, 77, 38, 114, 20, 96, 59, 135,   3, 79, 41, 117, 23, 99, 62, 138,   5, 81, 44, 120, 26, 102, 65, 141,
+    8, 84, 47, 123, 29, 105, 68, 144,  11, 87, 50, 126, 32, 108, 71, 147, 14, 90, 53, 129, 35, 111, 74, 150,
+    17, 93, 56, 132, 37, 112, 76, 148, 2, 88, 40, 115, 19, 97, 58, 133,   4, 75, 43, 118, 22, 100, 61, 136,
+    7, 85, 46, 121, 25, 103, 64, 139,  10, 82, 49, 124, 28, 106, 67, 142, 13, 91, 52, 127, 31, 109, 73, 145,
+    16, 94, 55, 130, 34, 113, 70, 151, 0, 80, 39, 116, 21, 95, 57, 134,   6, 78, 42, 119, 24, 98, 60, 137,
+    9, 83, 45, 122, 27, 101, 63, 140,  12, 86, 48, 125, 30, 104, 66, 143, 15, 89, 51, 128, 33, 107, 69, 146,
+    18, 92, 54, 131, 36, 110, 72, 149,
+};
+
+// PAS 0001-2 6.1.4.2 / 6.2.4.2 (UHF): bit j is precoded with bit j - 2 at these positions, with bit j - 1 elsewhere
+int precodeLag(int j) {
+    if (j >= 7 && j <= 76 && (j - 7) % 3 == 0) return 2;
+    if (j >= 83 && j <= 149 && (j - 83) % 3 == 0) return 2;
+    return 1;
+}
+
+const uint8_t* scrambleTable() {
+    static uint8_t s[127];
+    static bool done = false;
+    if (!done) {
+        for (int k = 0; k < 7; k++) s[k] = 1;
+        for (int k = 7; k < 127; k++) s[k] = (uint8_t)(s[k - 1] ^ s[k - 7]);
+        done = true;
+    }
+    return s;
+}
+
+// The circular rate-1/2 code of the protected parts (PAS 0001-2 6.1.2 / 6.2.2)
+void convEncode(const uint8_t* u, int n, uint8_t* c) {
     for (int i = 0; i < n; i++) {
-        const uint8_t m = (uint8_t)(b[i] ^ (r >> 4));
-        r = (uint8_t)((r << 1) & 0x1f);
-        if (m) r ^= kCrcPoly;
-    }
-    return (uint8_t)(r & 0x1f);
-}
-
-int permute(int i) { return (int)(((unsigned)i * 13u) % (unsigned)kDataBits); }
-
-void interleave(const uint8_t in[kDataBits], uint8_t out[kDataBits]) {
-    for (int i = 0; i < kDataBits; i++) out[permute(i)] = in[i];
-}
-void deinterleave(const uint8_t in[kDataBits], uint8_t out[kDataBits]) {
-    for (int i = 0; i < kDataBits; i++) out[i] = in[permute(i)];
-}
-
-void scramble(uint8_t* bits, int n, int seed) {
-    if (seed <= 0) return;
-    unsigned s = (unsigned)seed & 127u;
-    if (!s) return;
-    for (int i = 0; i < n; i++) {
-        const unsigned t = ((s >> 6) ^ s) & 1u;
-        bits[i] = (uint8_t)(bits[i] ^ (uint8_t)t);
-        s = ((s << 1) | t) & 127u;
+        const uint8_t a = u[i], b = u[(i - 1 + n) % n], d = u[(i - 2 + n) % n];
+        c[2 * i] = (uint8_t)(a ^ b ^ d);
+        c[2 * i + 1] = (uint8_t)(a ^ d);
     }
 }
 
-unsigned convOut(unsigned st, unsigned bit) {
-    const unsigned x = ((st << 1) | bit) & 0x1f;
-    unsigned p0 = 0, p1 = 0, a = x, b = x;
-    for (int k = 0; k < 5; k++) { if ((kG0 >> k) & 1) p0 ^= (a & 1); a >>= 1; }
-    for (int k = 0; k < 5; k++) { if ((kG1 >> k) & 1) p1 ^= (b & 1); b >>= 1; }
-    return (p0 << 1) | p1;
-}
-
-void convEnc(const uint8_t in[kConvIn], uint8_t out[kDataBits]) {
-    unsigned st = 0;
-    for (int i = 0; i < kConvIn; i++) {
-        const unsigned o = convOut(st, in[i]);
-        out[2 * i] = (uint8_t)(o >> 1);
-        out[2 * i + 1] = (uint8_t)(o & 1);
-        st = ((st << 1) | in[i]) & 0x0f;
-    }
-}
-
-// 16-state Viterbi for the K=5 code (input bit is the new LSB of the shift register after the step)
-int convDec(const uint8_t in[kDataBits], uint8_t out[kConvIn]) {
-    int met[16], nmet[16];
-    int prev[kConvIn][16];
-    for (int s = 0; s < 16; s++) met[s] = s ? -100000 : 0;
-    for (int i = 0; i < kConvIn; i++) {
-        for (int s = 0; s < 16; s++) nmet[s] = -100000;
-        const int y0 = in[2 * i], y1 = in[2 * i + 1];
-        for (int s = 0; s < 16; s++) {
-            if (met[s] < -50000) continue;
-            for (int b = 0; b < 2; b++) {
-                const unsigned o = convOut((unsigned)s, (unsigned)b);
-                const int ns = ((s << 1) | b) & 0x0f;
-                const int m = met[s] + ((int)(o >> 1) == y0) + ((int)(o & 1) == y1);
-                if (m > nmet[ns]) { nmet[ns] = m; prev[i][ns] = (s << 1) | b; }
+// Tail-biting Viterbi (4 states, every start state tried; the path must end where it started). Returns the coded bits in error.
+int convDecode(const uint8_t* c, int n, uint8_t* u) {
+    int bestErr = 1 << 30;
+    uint8_t path[64][4];
+    uint8_t best[64];
+    for (int s0 = 0; s0 < 4; s0++) {   // state = (u[i-1] << 1) | u[i-2]
+        int met[4];
+        for (int s = 0; s < 4; s++) met[s] = s == s0 ? 0 : (1 << 20);
+        for (int i = 0; i < n; i++) {
+            int nm[4] = {1 << 21, 1 << 21, 1 << 21, 1 << 21};
+            for (int s = 0; s < 4; s++) {
+                if (met[s] >= (1 << 20)) continue;
+                const int p1 = (s >> 1) & 1, p2 = s & 1;
+                for (int b = 0; b < 2; b++) {
+                    const int o0 = b ^ p1 ^ p2, o1 = b ^ p2;
+                    const int m = met[s] + (o0 != c[2 * i]) + (o1 != c[2 * i + 1]);
+                    const int ns = (b << 1) | p1;
+                    if (m < nm[ns]) { nm[ns] = m; path[i][ns] = (uint8_t)s; }
+                }
             }
+            for (int s = 0; s < 4; s++) met[s] = nm[s];
         }
-        for (int s = 0; s < 16; s++) met[s] = nmet[s];
+        if (met[s0] >= bestErr) continue;
+        bestErr = met[s0];
+        int s = s0;
+        for (int i = n - 1; i >= 0; i--) {
+            best[i] = (uint8_t)((s >> 1) & 1);
+            s = path[i][s];
+        }
     }
-    int st = 0;
-    for (int s = 1; s < 16; s++) if (met[s] > met[st]) st = s;
-    const int score = met[st];
-    for (int i = kConvIn - 1; i >= 0; i--) {
-        const int p = prev[i][st];
-        out[i] = (uint8_t)(p & 1);
-        st = p >> 1;
-    }
-    return score;
+    memcpy(u, best, (size_t)n);
+    return bestErr;
 }
 
-void putBits(uint8_t* dst, int& p, int v, int n) { bits::putMsbAdv(dst, p, (uint64_t)(uint32_t)v, n); }
-int getBits(const uint8_t* src, int& p, int n) { return (int)bits::getMsbAdvRaw(src, p, n); }
+void scramble(uint8_t* x, int scr) {
+    if (scr <= 0) return;
+    const uint8_t* s = scrambleTable();
+    for (int k = 0; k < kDataBits; k++) x[k] ^= s[(k + scr) % 127];
+}
+
+void precode(uint8_t* x) {
+    for (int j = 1; j < kDataBits; j++) x[j] ^= x[j - precodeLag(j)];
+}
+void unprecode(uint8_t* x) {
+    for (int j = kDataBits - 1; j > 0; j--) x[j] ^= x[j - precodeLag(j)];
+}
+
+void finishFrame(const uint8_t coded[kDataBits], int band, int type, int scr, uint8_t bits160[kFrameBits]) {
+    uint8_t x[kDataBits];
+    for (int j = 0; j < kDataBits; j++) x[interleaveIndex(j, band, type)] = coded[j];
+    if (band == kUhf) precode(x);
+    scramble(x, scr);
+    for (int i = 0; i < kHdrBits; i++) bits160[i] = (uint8_t)((kFrameHdr >> i) & 1);
+    memcpy(bits160 + kHdrBits, x, (size_t)kDataBits);
+}
 
 } // namespace
 
-void packSysinfo(uint8_t payload[kPayloadBits], int country, int systemId, int bn, int cell, int la, int channel, int band) {
-    memset(payload, 0, (size_t)kPayloadBits);
-    int p = 0;
-    putBits(payload, p, kCodopSysinfo, 8);
-    putBits(payload, p, country & 255, 8);
-    putBits(payload, p, systemId & 255, 8);
-    putBits(payload, p, bn & 15, 4);
-    putBits(payload, p, cell & 4095, 12);
-    putBits(payload, p, la & 4095, 12);
-    putBits(payload, p, channel & 255, 8);
-    putBits(payload, p, band & 3, 2);
+uint8_t scrambleBit(int k, int scr) { return scr <= 0 ? 0 : scrambleTable()[(k + scr) % 127]; }
+
+int interleaveIndex(int j, int band, int type) {
+    if (band != kUhf) return vhfIndex(j);
+    return type == kVoice ? kUhfVoice[j] : kUhfData[j];
 }
 
-bool parseSysinfo(const uint8_t payload[kPayloadBits], int& country, int& systemId, int& bn, int& cell, int& la, int& channel, int& band) {
-    int p = 0;
-    if (getBits(payload, p, 8) != kCodopSysinfo) return false;
-    country = getBits(payload, p, 8);
-    systemId = getBits(payload, p, 8);
-    bn = getBits(payload, p, 4);
-    cell = getBits(payload, p, 12);
-    la = getBits(payload, p, 12);
-    channel = getBits(payload, p, 8);
-    band = getBits(payload, p, 2);
-    return true;
-}
-
-uint8_t undiffBits(uint8_t* bits, int n, uint8_t prev) {
+void crc5(const uint8_t* b, int n, uint8_t r[5]) {
+    memset(r, 0, 5);
     for (int i = 0; i < n; i++) {
-        const uint8_t d = bits[i] & 1;
-        bits[i] = (uint8_t)(d ^ prev);
-        prev = bits[i];
+        const uint8_t inv = (uint8_t)((b[i] ^ r[0]) & 1);
+        r[0] = r[1]; r[1] = r[2]; r[2] = (uint8_t)(r[3] ^ inv); r[3] = r[4]; r[4] = inv;
+    }
+}
+
+void crc3(const uint8_t* b, int n, uint8_t r[3]) {
+    memset(r, 0, 3);
+    for (int i = 0; i < n; i++) {
+        const uint8_t inv = (uint8_t)((b[i] ^ r[0]) & 1);
+        r[0] = r[1]; r[1] = (uint8_t)(r[2] ^ inv); r[2] = inv;
+    }
+    for (int i = 0; i < 3; i++) r[i] ^= 1;
+}
+
+void encodeDataFrame(const DataFrame& in, int band, uint8_t bits160[kFrameBits]) {
+    uint8_t u[kPart1 + kPart2] = {};
+    u[0] = 1;
+    for (int i = 0; i < kPayloadBits; i++) u[1 + i] = in.payload[i] & 1;
+    u[67] = in.asb[0] & 1;
+    u[68] = in.asb[1] & 1;
+    crc5(u, 69, u + 69);   // u[74], u[75] stay zero
+    uint8_t coded[kDataBits];
+    convEncode(u, kPart1, coded);
+    convEncode(u + kPart1, kPart2, coded + 2 * kPart1);
+    finishFrame(coded, band, kData, in.scramble, bits160);
+}
+
+void encodeVoiceFrame(const VoiceFrame& in, int band, uint8_t bits160[kFrameBits]) {
+    uint8_t u[kPart1] = {};
+    u[0] = 0;
+    for (int i = 0; i < 20; i++) u[1 + i] = in.codec[i] & 1;
+    u[21] = in.asb[0] & 1;
+    u[22] = in.asb[1] & 1;
+    crc3(u, 23, u + 23);
+    uint8_t coded[kDataBits];
+    convEncode(u, kPart1, coded);
+    for (int i = 0; i < 100; i++) coded[2 * kPart1 + i] = in.codec[20 + i] & 1;
+    finishFrame(coded, band, kVoice, in.scramble, bits160);
+}
+
+bool decodeFrame(const uint8_t bits152[kDataBits], int band, int scr, Frame& out, int forceType) {
+    out = Frame();
+    uint8_t x[kDataBits];
+    memcpy(x, bits152, (size_t)kDataBits);
+    scramble(x, scr);
+    if (band == kUhf) unprecode(x);
+    // the first 52 positions are interleaved alike in both frame types (the two tables agree there)
+    uint8_t c[kDataBits];
+    for (int j = 0; j < 2 * kPart1; j++) c[j] = x[interleaveIndex(j, band, kData)];
+    uint8_t u[kPart1 + kPart2] = {};
+    const int e1 = convDecode(c, kPart1, u);
+    const int type = forceType >= 0 ? forceType : u[0];
+    if (u[0] != type) return false;
+    out.type = type;
+    for (int j = 2 * kPart1; j < kDataBits; j++) c[j] = x[interleaveIndex(j, band, type)];
+    if (type == kVoice) {
+        VoiceFrame& v = out.voice;
+        v.scramble = scr;
+        v.metric = e1;
+        for (int i = 0; i < 20; i++) v.codec[i] = u[1 + i];
+        for (int i = 0; i < 100; i++) v.codec[20 + i] = c[2 * kPart1 + i];
+        v.asb[0] = u[21];
+        v.asb[1] = u[22];
+        uint8_t r[3];
+        crc3(u, 23, r);
+        v.ok = !memcmp(r, u + 23, 3);
+        out.ok = v.ok;
+        out.metric = e1;
+        return out.ok;
+    }
+    const int e2 = convDecode(c + 2 * kPart1, kPart2, u + kPart1);
+    DataFrame& d = out.data;
+    d.scramble = scr;
+    d.metric = e1 + e2;
+    for (int i = 0; i < kPayloadBits; i++) d.payload[i] = u[1 + i];
+    d.asb[0] = u[67];
+    d.asb[1] = u[68];
+    uint8_t r[5];
+    crc5(u, 69, r);
+    d.ok = !memcmp(r, u + 69, 5) && !u[74] && !u[75];
+    out.ok = d.ok;
+    out.metric = d.metric;
+    return out.ok;
+}
+
+uint8_t diffEncode(uint8_t* bits, int n, uint8_t prev) {
+    for (int i = 0; i < n; i++) {
+        const uint8_t x = bits[i] & 1;
+        bits[i] = (uint8_t)(x ^ prev);
+        prev = x;
     }
     return prev;
 }
-uint8_t diffBits(uint8_t* bits, int n, uint8_t prev) {
-    for (int i = 0; i < n; i++) {
-        const uint8_t o = bits[i] & 1;
-        bits[i] = (uint8_t)(o ^ prev);
-        prev = o;
+
+void frameBits152(const uint8_t raw160[kFrameBits], bool invert, uint8_t out152[kDataBits]) {
+    uint8_t prev = 0;   // x[7]: the last header bit is 0
+    const uint8_t f = invert ? 1 : 0;
+    for (int i = 0; i < kDataBits; i++) {
+        prev = (uint8_t)(((raw160[kHdrBits + i] ^ f) & 1) ^ prev);
+        out152[i] = prev;
     }
-    return prev;
 }
 
-void encodeDataFrame(const DataFrame& in, uint8_t bits160[kFrameBits]) {
-    uint8_t info[kConvIn] = {};
-    memcpy(info, in.payload, (size_t)kPayloadBits);
-    info[kPayloadBits] = in.asb[0] & 1;
-    info[kPayloadBits + 1] = in.asb[1] & 1;
-    const uint8_t c = crc5(info, kInfo);
-    for (int i = 0; i < 5; i++) info[kInfo + i] = (uint8_t)((c >> (4 - i)) & 1);
-    uint8_t coded[kDataBits] = {}, intl[kDataBits] = {};
-    convEnc(info, coded);
-    interleave(coded, intl);
-    scramble(intl, kDataBits, in.scramble);
-    for (int i = 0; i < 8; i++) bits160[i] = (uint8_t)((kFrameHdr >> (7 - i)) & 1);
-    memcpy(bits160 + 8, intl, (size_t)kDataBits);
-}
-
-bool decodeDataFrame(const uint8_t bits152[kDataBits], int scr, DataFrame& out) {
-    out = DataFrame();
-    out.scramble = scr;
-    uint8_t work[kDataBits];
-    memcpy(work, bits152, (size_t)kDataBits);
-    scramble(work, kDataBits, scr);
-    uint8_t coded[kDataBits] = {}, info[kConvIn] = {};
-    deinterleave(work, coded);
-    out.metric = convDec(coded, info);
-    const uint8_t got = crc5(info, kInfo);
-    uint8_t want = 0;
-    for (int i = 0; i < 5; i++) want = (uint8_t)((want << 1) | info[kInfo + i]);
-    if (got != want) return false;
-    memcpy(out.payload, info, (size_t)kPayloadBits);
-    out.asb[0] = info[kPayloadBits];
-    out.asb[1] = info[kPayloadBits + 1];
-    out.ok = true;
-    return true;
-}
-
-bool decodeFrame(const uint8_t bits160[kFrameBits], int scr, DataFrame& out) {
-    uint8_t h = 0;
-    for (int i = 0; i < 8; i++) h = (uint8_t)((h << 1) | (bits160[i] & 1));
-    if (h != kFrameHdr) { out = DataFrame(); return false; }
-    return decodeDataFrame(bits160 + 8, scr, out);
-}
-
-bool huntFrame(const uint8_t* bits, int n, int scrambleHint, int& off, DataFrame& out) {
-    off = -1;
-    if (n < kFrameBits) return false;
-    const int s0 = scrambleHint >= 0 ? scrambleHint : 0;
-    const int s1 = scrambleHint >= 0 ? scrambleHint : kScrMax;
-    DataFrame best;
-    int bestOff = -1;
-    for (int o = 0; o <= n - kFrameBits; o++) {
-        uint8_t h = 0;
-        for (int i = 0; i < 8; i++) h = (uint8_t)((h << 1) | (bits[o + i] & 1));
-        if (h != kFrameHdr) continue;
-        for (int s = s0; s <= s1; s++) {
-            DataFrame f;
-            if (!decodeFrame(bits + o, s, f) || f.metric < 120) continue;
-            if (bestOff < 0 || f.metric > best.metric) { best = f; bestOff = o; }
-        }
-        if (bestOff >= 0 && scrambleHint >= 0) break;   // known scramble: first header with a CRC is enough
-    }
-    if (bestOff < 0) return false;
-    off = bestOff;
-    out = best;
-    return true;
+int syncErrors(const uint8_t* raw, bool invert) {
+    static const uint8_t pat[7] = {1, 0, 1, 0, 0, 1, 1};   // 0x46 after the differential, bits 1..7
+    const uint8_t f = invert ? 1 : 0;
+    int e = 0;
+    for (int i = 0; i < 7; i++) e += ((raw[1 + i] ^ f) & 1) != pat[i];
+    return e;
 }
 
 } // namespace tetrapol
