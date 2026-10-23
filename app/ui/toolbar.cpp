@@ -309,6 +309,7 @@ static void toolbarStartStop(App& a, bool running) {
     memoryToolbarButton(a);   // the quick list of the memories (app/memory)
     flowNext(8 * gUi);
     presetsapp::toolbarButton(a);   // per-mode presets (app/state/presets_app.cpp)
+    memoryQuickBar(a);        // the starred memories in one row
 }
 
 // the LDPC decoder backend: CPU, GPU or Auto (DVB-T2 and ATSC 3.0)

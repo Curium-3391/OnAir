@@ -143,7 +143,8 @@ void table(App& a, MemoryBank& b, float h) {
     dect2::MemoryQuery q;
     q.text = u.query; q.favouritesOnly = u.starsOnly;
     const MemorySort sort = (MemorySort)u.sort;
-    const std::vector<size_t> v = b.view(q, sort, u.desc, true);
+    std::vector<size_t> v = b.view(q, sort, u.desc, true);
+    v.erase(std::remove_if(v.begin(), v.end(), [&](size_t i) { return !memui::memoryListEnabled(b.all()[i].group); }), v.end());   // lists switched off in "My lists"
     int dragFrom = -1, dragTo = -1;
     std::vector<std::string> order;   // groups in the order they appear
     if (u.grouped) {
@@ -195,30 +196,10 @@ void table(App& a, MemoryBank& b, float h) {
 }
 
 void importExport(MemoryBank& b) {
-    if (ImGui::Button(tr("Import..."))) {
-        const std::string p = openFileDialog();
-        if (!p.empty()) {
-            const dect2::MemoryLoadReport r = b.importFile(p, dect2::DupPolicy::Skip);
-            if (!r.ok) say(std::string(tr("Import failed: ")) + r.error, true);
-            else {
-                char bf[160]; snprintf(bf, sizeof bf, tr("Imported %zu memories, %zu skipped (duplicates or lines without a frequency)."), r.loaded, r.skipped);
-                say(bf);
-                memoryChanged();
-            }
-            for (const std::string& l : r.log) fprintf(stderr, "memories import: %s\n", l.c_str());
-        }
-    }
-    if (ImGui::IsItemHovered()) wrapTooltip(380 * gUi, tr("Reads a memories CSV or JSON file, a plain list of 'frequency,name' lines (MHz), or an SDR++ Frequency Manager export. Memories already stored on the same frequency and mode are skipped."));
+    memui::importButton(b);   // memory_lists_ui.cpp: opens a preview of what a file holds before anything is added
     ImGui::SameLine();
-    if (ImGui::Button(tr("Export CSV..."))) {
-        const std::string p = saveFileDialog("onair-memories.csv");
-        if (!p.empty()) { std::string err; say(b.exportFile(p, true, &err) ? std::string(tr("Exported to ")) + p : err, !err.empty()); }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(tr("Export JSON..."))) {
-        const std::string p = saveFileDialog("onair-memories.json");
-        if (!p.empty()) { std::string err; say(b.exportFile(p, false, &err) ? std::string(tr("Exported to ")) + p : err, !err.empty()); }
-    }
+    memui::exportAs(b);
+    memui::importPopup(b);
 }
 
 // the memory scan: the Scanner steps through the flagged memories (frequency, mode and dwell) and stops on activity; it is the one that knows
@@ -299,6 +280,8 @@ void panelBody(App& a, bool inWindow) {
     // the bottom line
     importExport(b);
     ImGui::SameLine(); scanButton(a, b);
+    memui::listsSection(b);
+    memui::statusLine();
     ImGui::SameLine(0, 12 * gUi); ImGui::TextDisabled(tr("%zu memories"), b.size());
     if (!u.msg.empty() && ImGui::GetTime() - u.msgT < 12) { ImGui::PushTextWrapPos(0); ImGui::TextColored(u.msgBad ? pal::badRed() : pal::okGreen(), "%s", u.msg.c_str()); ImGui::PopTextWrapPos(); }
     if (const uint64_t id = memui::editDialogs()) { u.sel = id; u.query[0] = 0; }

@@ -192,7 +192,41 @@ void testWriterThreadAndTap() {
 }
 }  // namespace
 
+void testSearchFeatures() {
+    // tokenising: case, separators, prefix marker, non-ASCII letters, hostile characters
+    auto tk = tokenize("  A6-EDA gate* \"x\"  Caf\xC3\xA9 ");
+    CHECK(tk.size() == 5 && tk[0].word == "a6" && tk[1].word == "eda" && tk[2].word == "gate" && tk[2].prefix && tk[3].word == "x" && tk[4].word == "caf\xC3\xA9" && !tk[4].prefix, "tokenize");
+    CHECK(tokenize("*** ...").empty(), "no tokens from punctuation");
+
+    Db db;
+    CHECK(db.open(":memory:"), "open");
+    Record a, b, c;
+    a.type = "acars.message"; a.mode = "ACARS"; a.time = kT0; a.freqHz = 131.725e6; a.ident = "FIRE"; a.text = "routine"; a.source = "/rec/morning.sigmf-data";
+    b.type = "pager.message"; b.mode = "POCSAG"; b.time = kT0 + 10; b.freqHz = 152e6; b.ident = "1234"; b.text = "fire fire fire at the depot"; b.source = "";
+    c.type = "acars.message"; c.mode = "ACARS"; c.time = kT0 + 20; c.freqHz = 131.55e6; c.ident = "X"; c.text = "a fire was reported once"; c.source = "/rec/evening.sigmf-data";
+    CHECK(db.add(a) && db.add(b) && db.add(c), "add three");
+    Filter f;
+    f.text = "fire"; f.relevance = true;
+    auto v = db.query(f);
+    CHECK(v.size() == 3 && v[0].ident == "FIRE", "relevance: a hit in the identity ranks first");
+    f.relevance = false;
+    v = db.query(f);
+    CHECK(v.size() == 3 && v[0].ident == "X", "default order is newest first");
+    f = Filter(); f.freqLo = 130e6; f.freqHi = 140e6;
+    CHECK(db.count(f) == 2, "frequency range");
+    f.freqLo = 131.6e6;
+    CHECK(db.count(f) == 1 && db.query(f)[0].ident == "FIRE", "narrower frequency range");
+    f = Filter(); f.source = "MORNING";
+    v = db.query(f);
+    CHECK(v.size() == 1 && v[0].source == "/rec/morning.sigmf-data", "source filter, case-insensitive, and the source comes back");
+    f = Filter(); f.text = "fire"; f.mode = "ACARS"; f.since = kT0 + 5; f.freqHi = 140e6;
+    CHECK(db.count(f) == 1, "text + mode + time + frequency together");
+    f = Filter(); f.text = "fir*"; f.relevance = true;
+    CHECK(db.count(f) == 3, "prefix with relevance");
+}
+
 int main() {
+    testSearchFeatures();
     testBasic();
     testRefusals();
     testLimits();

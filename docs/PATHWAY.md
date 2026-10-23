@@ -229,3 +229,6 @@ Setup wizard rebuilt in six steps: welcome + language, "What do you want to do?"
 ## 2026-10-22 presets-030
 Per-mode presets: pure core module (schema v1, import/export, validation, store, built-ins) with test_presets, app adapter and toolbar Presets drop-down, per-mode default on mode entry, docs/PRESETS.md. audio.* keys are defined; the audio popup joins through registerProvider once audio-030 is merged. App code was only syntax-checked, not built.
 
+## 2026-10-22 Search, shareable lists, export (search-lists-030)
+Messages window: frequency range, source-file filter, best-match ordering, Rebuild index; palette (Ctrl+K) shows matching decoded messages as type Search; msgdb gets a src column (migrated), bm25 ranking, low-priority writer, new families qso/mesh/dab/epg. core/src/channels/memory_formats.cpp: CHIRP, SDR++, SDR# XML, plain CSV read/write, import preview with merge rules, ListSet (My lists, quick-tune bar), built-in lists from data/frequencies. core/src/export/exporters.cpp: pure KML/GPX/GeoJSON/CSV/JSON/TXT/ADIF writers + ExportSink; GeoJSON added to every Save results panel.
+

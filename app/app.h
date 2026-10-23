@@ -830,6 +830,7 @@ void freqdbKnownCombo(App& a, float width);         // freqdb_ui.cpp: the Tuner 
 void memoryTabItem(App& a);                        // memory_ui.cpp: the "Memory" tab when View > Memory as a tab is on (inside the main tab bar)
 int memorySelfTest(App& a);                        // memory_selftest.cpp: --memory-selftest, the recall checked on a hidden run (exit code = failures)
 void memoryDev(int what);                          // memory_ui.cpp: --memdev (screenshots)
+void memoryQuickBar(App& a);                       // memory_lists_ui.cpp: the starred memories of the switched-on lists as one row of buttons (every mode)
 void memoryToolbarButton(App& a);                  // memory_ui.cpp: the same quick list as a small "M" button with a pop-up (the classic toolbar)
 void memoryMenu(App& a);                           // memory_ui.cpp: the "M" menu of the menu bar: open, store, the favourites and the ten most recent
 double generalListenHz(const App& a);
@@ -973,6 +974,8 @@ void remoteApiTick(App& a);          // every frame: runs the commands the API q
 void remoteApiSection(App& a);       // the settings panel (in the Data feeds window)
 void shareTick(App& a);             // feeds_ui.cpp: carries out the frequency / gain commands of the clients of "Share my radio" (when allowed)
 void watchlistWindow(App& a);   // app/watchlist/watchlist_ui.cpp: the Watchlists window (View > Watchlists); also starts the alerts
+void msgdbSearchFor(App& a, const std::string& text);   // opens the Messages window filtered to the text (the palette's search results)
+std::vector<std::pair<std::string, std::string>> msgdbQuickSearch(const std::string& text, size_t n);   // best n matches: {label, text}
 void msgdbWindow(App& a);   // msgdb_ui.cpp: the Messages window (View > Messages); also starts the database and its feed
 void protolabWindow(App& a);   // protolab_ui.cpp: the Protocol lab window (View > Protocol lab)
 void pluginFrame(App& a);          // plugin/plugin_app.cpp, every frame: discovery at the first call, starts and stops the running plugin mode, ticks the host

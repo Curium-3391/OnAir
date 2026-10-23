@@ -8,6 +8,16 @@
 #include <cstring>
 #include <ctime>
 #include <map>
+#ifdef _WIN32
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <pthread.h>
+#include <pthread/qos.h>
+#elif defined(__linux__)
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 namespace dect2::msgdb {
 
@@ -15,7 +25,7 @@ namespace {
 using automation::Event;
 using automation::Value;
 
-const char* kKept[] = {"adsb", "acars", "vdl2", "hfdl", "pager", "ais", "aprs", "sonde", "lora", "ble", "rid", "dsc"};
+const char* kKept[] = {"adsb", "acars", "vdl2", "hfdl", "pager", "ais", "aprs", "sonde", "lora", "ble", "rid", "dsc", "qso", "mesh", "dab", "epg"};
 
 std::string family(const std::string& type) { return type.substr(0, type.find('.')); }
 
@@ -91,30 +101,36 @@ bool looksLikeCall(const std::string& s) {
     return d && l;
 }
 
+// Words of a query: ASCII letters/digits and every byte of a multi-byte UTF-8 character are word characters, anything else separates.
+std::vector<Token> tokenizeQuery(const std::string& in) {
+    std::vector<Token> out;
+    std::string cur;
+    auto flush = [&](bool star) {
+        if (!cur.empty()) { Token t; t.word = cur; t.prefix = star; out.push_back(t); cur.clear(); }
+    };
+    for (size_t i = 0; i < in.size(); i++) {
+        const unsigned char c = (unsigned char)in[i];
+        if (isalnum(c) || c >= 0x80) cur += (char)(c < 0x80 ? tolower(c) : c);
+        else if (c == '*' && !cur.empty()) { flush(true); }
+        else flush(false);
+    }
+    flush(false);
+    return out;
+}
+
 // FTS5 query from user text: every word quoted (so punctuation is safe), a trailing * kept as a prefix match, words ANDed
 std::string ftsQuery(const std::string& in) {
     std::string out;
-    size_t i = 0;
-    while (i < in.size()) {
-        while (i < in.size() && isspace((unsigned char)in[i])) i++;
-        size_t j = i;
-        while (j < in.size() && !isspace((unsigned char)in[j])) j++;
-        if (j > i) {
-            std::string w = in.substr(i, j - i);
-            const bool prefix = w.back() == '*';
-            std::string clean;
-            for (char c : w) if (c != '"' && c != '*') clean += c;
-            if (!clean.empty()) {
-                if (!out.empty()) out += ' ';
-                out += '"' + clean + '"';
-                if (prefix) out += '*';
-            }
-        }
-        i = j;
+    for (const Token& t : tokenizeQuery(in)) {
+        if (!out.empty()) out += ' ';
+        out += '"' + t.word + '"';
+        if (t.prefix) out += '*';
     }
     return out;
 }
 }  // namespace
+
+std::vector<Token> tokenize(const std::string& query) { return tokenizeQuery(query); }
 
 bool wantsType(const std::string& type) {
     const std::string f = family(type);
@@ -142,6 +158,7 @@ bool fromEvent(const Event& ev, Record& r) {
         std::fabs(la->second.n) <= 90 && std::fabs(lo->second.n) <= 180 && !(la->second.n == 0 && lo->second.n == 0)) {
         r.lat = la->second.n; r.lon = lo->second.n; r.hasPos = true;
     }
+    r.source = first(ev, {"file", "source_file", "recording", "iq_file"});
     for (const auto& kv : ev.f) {
         std::string v = kv.second.text();
         for (char& c : v) if (c == '\n' || c == '\r') c = ' ';
@@ -170,7 +187,7 @@ struct Db::Impl {
 
     bool insert(const Record& r) {
         sqlite3_stmt* st = nullptr;
-        if (sqlite3_prepare_v2(db, "INSERT INTO msgs(t,type,mode,freq,ident,txt,lat,lon,extra) VALUES(?,?,?,?,?,?,?,?,?)", -1, &st, nullptr) != SQLITE_OK) return false;
+        if (sqlite3_prepare_v2(db, "INSERT INTO msgs(t,type,mode,freq,ident,txt,lat,lon,extra,src) VALUES(?,?,?,?,?,?,?,?,?,?)", -1, &st, nullptr) != SQLITE_OK) return false;
         sqlite3_bind_double(st, 1, r.time);
         sqlite3_bind_text(st, 2, r.type.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(st, 3, r.mode.c_str(), -1, SQLITE_TRANSIENT);
@@ -180,6 +197,7 @@ struct Db::Impl {
         if (r.hasPos) { sqlite3_bind_double(st, 7, r.lat); sqlite3_bind_double(st, 8, r.lon); }
         else { sqlite3_bind_null(st, 7); sqlite3_bind_null(st, 8); }
         sqlite3_bind_text(st, 9, r.extra.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(st, 10, r.source.c_str(), -1, SQLITE_TRANSIENT);
         const bool ok = sqlite3_step(st) == SQLITE_DONE;
         sqlite3_finalize(st);
         return ok;
@@ -191,7 +209,11 @@ struct Db::Impl {
         std::string w;
         auto andw = [&](const std::string& c) { w += w.empty() ? " WHERE " : " AND "; w += c; };
         const std::string fq = ftsQuery(f.text);
-        if (!fq.empty()) { andw("m.id IN (SELECT rowid FROM msgs_fts WHERE msgs_fts MATCH ?)"); b.push_back({false, 0, fq}); }
+        if (!fq.empty() && f.relevance) { sql += " JOIN (SELECT rowid AS rid, bm25(msgs_fts,8.0,3.0,1.0,2.0) AS rk FROM msgs_fts WHERE msgs_fts MATCH ?) r ON r.rid = m.id"; b.push_back({false, 0, fq}); }
+        else if (!fq.empty()) { andw("m.id IN (SELECT rowid FROM msgs_fts WHERE msgs_fts MATCH ?)"); b.push_back({false, 0, fq}); }
+        if (f.freqLo > 0) { andw("m.freq >= ?"); b.push_back({true, f.freqLo, ""}); }
+        if (f.freqHi > 0) { andw("m.freq > 0 AND m.freq <= ?"); b.push_back({true, f.freqHi, ""}); }
+        if (!f.source.empty()) { andw("instr(lower(m.src), ?) > 0"); b.push_back({false, 0, lower(f.source)}); }
         if (!f.mode.empty()) { andw("m.mode = ?"); b.push_back({false, 0, f.mode}); }
         if (!f.type.empty()) { andw("m.type = ?"); b.push_back({false, 0, f.type}); }
         if (!f.ident.empty()) { andw("instr(lower(m.ident), ?) > 0"); b.push_back({false, 0, lower(f.ident)}); }
@@ -219,7 +241,8 @@ struct Db::Impl {
         std::string sql;
         std::vector<Bind> b;
         where(f, sql, b);
-        std::string q = "SELECT m.id,m.t,m.type,m.mode,m.freq,m.ident,m.txt,m.lat,m.lon,m.extra" + sql + (f.oldestFirst ? " ORDER BY m.t ASC, m.id ASC" : " ORDER BY m.t DESC, m.id DESC");
+        std::string q = "SELECT m.id,m.t,m.type,m.mode,m.freq,m.ident,m.txt,m.lat,m.lon,m.extra,m.src" + sql +
+                        (!ftsQuery(f.text).empty() && f.relevance ? " ORDER BY r.rk ASC, m.t DESC, m.id DESC" : f.oldestFirst ? " ORDER BY m.t ASC, m.id ASC" : " ORDER BY m.t DESC, m.id DESC");
         if (!noLimit) q += " LIMIT " + std::to_string(std::max(1, std::min(f.limit, 100000))) + " OFFSET " + std::to_string(std::max(0, f.offset));
         sqlite3_stmt* st = nullptr;
         if (sqlite3_prepare_v2(db, q.c_str(), -1, &st, nullptr) != SQLITE_OK) return out;
@@ -232,7 +255,7 @@ struct Db::Impl {
             r.freqHz = sqlite3_column_double(st, 4);
             r.ident = col(st, 5); r.text = col(st, 6);
             if (sqlite3_column_type(st, 7) != SQLITE_NULL) { r.hasPos = true; r.lat = sqlite3_column_double(st, 7); r.lon = sqlite3_column_double(st, 8); }
-            r.extra = col(st, 9);
+            r.extra = col(st, 9); r.source = col(st, 10);
             out.push_back(std::move(r));
         }
         sqlite3_finalize(st);
@@ -272,7 +295,19 @@ struct Db::Impl {
         return gone;
     }
 
+    // indexing is background work: the writer thread runs below the decoders
+    static void lowPriority() {
+#ifdef _WIN32
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+        pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#elif defined(__linux__)
+        setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), 10);
+#endif
+    }
+
     void writer() {
+        lowPriority();
         for (;;) {
             std::deque<Event> batch;
             {
@@ -322,13 +357,22 @@ bool Db::open(const std::string& path, std::string* err) {
     if (path != ":memory:") { p_->exec("PRAGMA journal_mode=WAL"); p_->exec("PRAGMA synchronous=NORMAL"); }
     const char* schema =
         "CREATE TABLE IF NOT EXISTS msgs(id INTEGER PRIMARY KEY, t REAL NOT NULL, type TEXT NOT NULL, mode TEXT NOT NULL DEFAULT '', freq REAL NOT NULL DEFAULT 0,"
-        " ident TEXT NOT NULL DEFAULT '', txt TEXT NOT NULL DEFAULT '', lat REAL, lon REAL, extra TEXT NOT NULL DEFAULT '');"
+        " ident TEXT NOT NULL DEFAULT '', txt TEXT NOT NULL DEFAULT '', lat REAL, lon REAL, extra TEXT NOT NULL DEFAULT '', src TEXT NOT NULL DEFAULT '');"
         "CREATE INDEX IF NOT EXISTS msgs_t ON msgs(t);"
         "CREATE INDEX IF NOT EXISTS msgs_mode_t ON msgs(mode, t);"
         "CREATE VIRTUAL TABLE IF NOT EXISTS msgs_fts USING fts5(ident, txt, extra, mode, content='msgs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');"
         "CREATE TRIGGER IF NOT EXISTS msgs_ai AFTER INSERT ON msgs BEGIN INSERT INTO msgs_fts(rowid,ident,txt,extra,mode) VALUES(new.id,new.ident,new.txt,new.extra,new.mode); END;"
         "CREATE TRIGGER IF NOT EXISTS msgs_ad AFTER DELETE ON msgs BEGIN INSERT INTO msgs_fts(msgs_fts,rowid,ident,txt,extra,mode) VALUES('delete',old.id,old.ident,old.txt,old.extra,old.mode); END;";
     char* em = nullptr;
+    {   // a file from before the source column: add it (the full-text index does not cover it)
+        sqlite3_stmt* st = nullptr;
+        bool hasTable = false, hasSrc = false;
+        if (sqlite3_prepare_v2(db, "PRAGMA table_info(msgs)", -1, &st, nullptr) == SQLITE_OK) {
+            while (sqlite3_step(st) == SQLITE_ROW) { hasTable = true; const unsigned char* n = sqlite3_column_text(st, 1); if (n && std::string((const char*)n) == "src") hasSrc = true; }
+        }
+        sqlite3_finalize(st);
+        if (hasTable && !hasSrc) p_->exec("ALTER TABLE msgs ADD COLUMN src TEXT NOT NULL DEFAULT ''");
+    }
     if (sqlite3_exec(db, schema, nullptr, nullptr, &em) != SQLITE_OK) {
         if (err) *err = em ? em : "schema";
         sqlite3_free(em);
@@ -388,6 +432,13 @@ void Db::clear() {
     p_->exec("DELETE FROM msgs");
     p_->exec("INSERT INTO msgs_fts(msgs_fts) VALUES('rebuild')");
     p_->exec("PRAGMA incremental_vacuum");
+}
+
+void Db::rebuildIndex() {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (!p_->db) return;
+    p_->exec("INSERT INTO msgs_fts(msgs_fts) VALUES('rebuild')");
+    p_->exec("INSERT INTO msgs_fts(msgs_fts) VALUES('optimize')");
 }
 
 std::vector<Record> Db::query(const Filter& f) const { std::lock_guard<std::mutex> lk(p_->mu); return p_->select(f, false); }

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <initializer_list>
+#include "dect2/export/exporters.h"
 
 namespace resexp {
 
@@ -239,12 +240,36 @@ std::string toGpx(const Table& t) {
     return o + "</gpx>\n";
 }
 
+std::string toGeoJson(const Table& t) {
+    std::vector<dect2::xport::GeoPoint> v;
+    for (const Pt& p : points(t)) {
+        dect2::xport::GeoPoint g;
+        g.name = p.name; g.desc = p.desc; g.lat = atof(p.lat.c_str()); g.lon = atof(p.lon.c_str());
+        if (!p.ele.empty()) { g.hasAlt = true; g.altM = atof(p.ele.c_str()); }
+        v.push_back(g);
+    }
+    // times: the Pt strings are ISO already; the writer wants unix seconds, so carry them over from the table's epoch column
+    size_t k = 0;
+    const int cLat = colOf(t, {"lat", "latitude"}), cLon = colOf(t, {"lon", "lng", "longitude"});
+    for (size_t r = 0; r < t.rows.size() && k < v.size(); r++) {
+        const std::string la = cell(t, r, cLat), lo = cell(t, r, cLon);
+        if (la.empty() || lo.empty()) continue;
+        char* e1; char* e2;
+        const double a = strtod(la.c_str(), &e1), b = strtod(lo.c_str(), &e2);
+        if (*e1 || *e2 || a < -90 || a > 90 || b < -180 || b > 180) continue;
+        if (r < t.epoch.size() && t.epoch[r] > 0) v[k].time = t.epoch[r];
+        k++;
+    }
+    return dect2::xport::toGeoJson(v);
+}
+
 std::string render(const Table& t, Fmt f) {
     switch (f) {
         case Fmt::Json: return toJson(t);
         case Fmt::Adif: return toAdif(t);
         case Fmt::Kml: return toKml(t);
         case Fmt::Gpx: return toGpx(t);
+        case Fmt::GeoJson: return toGeoJson(t);
         default: return toCsv(t);
     }
 }
@@ -263,12 +288,13 @@ Fmt fmtFromPath(const std::string& p) {
     if (e == ".adi" || e == ".adif") return Fmt::Adif;
     if (e == ".kml") return Fmt::Kml;
     if (e == ".gpx") return Fmt::Gpx;
+    if (e == ".geojson") return Fmt::GeoJson;
     if (e == ".json") return Fmt::Json;
     return Fmt::Csv;
 }
 
 const char* fmtExt(Fmt f) {
-    switch (f) { case Fmt::Json: return ".json"; case Fmt::Adif: return ".adi"; case Fmt::Kml: return ".kml"; case Fmt::Gpx: return ".gpx"; default: return ".csv"; }
+    switch (f) { case Fmt::Json: return ".json"; case Fmt::Adif: return ".adi"; case Fmt::Kml: return ".kml"; case Fmt::Gpx: return ".gpx"; case Fmt::GeoJson: return ".geojson"; default: return ".csv"; }
 }
 
 }  // namespace resexp
