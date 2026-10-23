@@ -18,6 +18,7 @@
 #include "dect2/engine/overload_hint.h"
 #include "../platform/discord_rpc.h"
 #include "../panels/report_problem.h"
+#include "../gfx/render_caps.h"
 
 using namespace ui2;
 

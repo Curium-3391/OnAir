@@ -30,6 +30,7 @@ namespace fs = std::filesystem;
 struct Tile {
     int state = 0;   // 0 wanted, 1 downloading, 2 file ready (to be decoded), 3 on the screen, 4 failed
     gfx::Image* img = nullptr;
+    std::vector<uint32_t> px;   // state 2: the picture already decoded by the worker (only the upload is left for the frame)
     double failedAt = 0;
     int lastUsed = 0;   // the frame it was last drawn in
 };
@@ -179,8 +180,17 @@ void run() {
             if (!ok) fs::remove(fsPath(part), ec);
             else if (++fetches % 50 == 0) enforceCaps();   // and every 50 downloads
         } else dect2::touchTile(found(z, x, y));
+        // decoded here, not in the frame: OnAir's own PNG decoder (Linux, Windows) takes milliseconds a tile, and a pan or zoom asks
+        // for dozens (docs/PERF-LINUX.md)
+        std::vector<uint32_t> px;
+        if (ok) {
+            int w = 0, h = 0;
+            const std::string path = found(z, x, y);
+            if (path.empty() || !plat::decodeImage(path, w, h, px) || w != 256 || h != 256) px.clear();
+        }
         std::lock_guard<std::mutex> lk(mu);
         tiles[k].state = ok ? 2 : 4;
+        tiles[k].px = std::move(px);
         tiles[k].failedAt = glfwGetTime();
     }
 }
@@ -223,7 +233,7 @@ void dropStale(int frame) {   // with mu held
 }
 
 // the picture of a tile if it is ready (decoding at most a few per frame); queue it otherwise
-int decodedThisFrame = 0;
+int decodedThisFrame = 0, uploadedThisFrame = 0;
 ImTextureID tileTexture(int z, int x, int y, bool online, bool& failed) {
     const uint64_t k = key(z, x, y);
     failed = false;
@@ -243,7 +253,14 @@ ImTextureID tileTexture(int z, int x, int y, bool online, bool& failed) {
     }
     Tile& t = it->second;
     t.lastUsed = ImGui::GetFrameCount();
-    if (t.state == 2 && decodedThisFrame < 6) {
+    if (t.state == 2 && !t.px.empty() && gGfx && uploadedThisFrame < 24) {   // decoded by the worker: only the texture upload (256 KB)
+        uploadedThisFrame++;
+        t.img = gGfx->createImage(256, 256, 0xFF000000u);
+        t.img->update(0, 0, 256, 256, t.px.data());
+        std::vector<uint32_t>().swap(t.px);
+        t.state = 3;
+        nImages++;
+    } else if (t.state == 2 && t.px.empty() && decodedThisFrame < 6) {   // found on disk without the worker (offline)
         decodedThisFrame++;
         int w = 0, h = 0;
         std::vector<uint32_t> px;
@@ -377,7 +394,7 @@ unsigned legible(unsigned c) { return mapcol::legibleOn(c, scheme().sea); }
 bool draw(View& v, ImVec2 size) {
     init();
     if (onlineMap) start();
-    decodedThisFrame = 0;
+    decodedThisFrame = 0; uploadedThisFrame = 0;
     v.zoom = std::max(kMinZoom, std::min(kMaxZoom, v.zoom));
     v.lat = std::max(-84.0, std::min(84.0, v.lat));
     ImDrawList* dl = ImGui::GetWindowDrawList();

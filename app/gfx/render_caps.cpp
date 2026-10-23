@@ -4,6 +4,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#if defined(__linux__)
+#include <dirent.h>
+#include <sys/resource.h>
+#endif
 
 namespace rcaps {
 namespace {
@@ -29,9 +33,36 @@ int choice() {
 }
 }   // namespace
 
+#if defined(__linux__)
+// Mesa's llvmpipe draws on its own threads (one per processor, made with the context), at the same priority as the sample path: Linux
+// gives an unprivileged program no way to raise the receiver threads above 0 (setThreadPriority's nice -5 fails), but it may lower
+// others. The rasterizer threads get nice 5, as the background decoders have, so a busy frame waits rather than the radio's samples.
+static int lowerRasterizerThreads() {
+    int n = 0;
+    DIR* d = opendir("/proc/self/task");
+    if (!d) return 0;
+    while (dirent* e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        char path[64], comm[32] = "";
+        snprintf(path, sizeof path, "/proc/self/task/%s/comm", e->d_name);
+        if (FILE* f = fopen(path, "r")) { if (!fgets(comm, sizeof comm, f)) comm[0] = 0; fclose(f); }
+        if (strncmp(comm, "llvmpipe", 8) == 0 || strncmp(comm, "lp_", 3) == 0 || strncmp(comm, "softpipe", 8) == 0)
+            if (setpriority(PRIO_PROCESS, (id_t)atoi(e->d_name), 5) == 0) n++;
+    }
+    closedir(d);
+    return n;
+}
+#endif
+
 void detect(const char* glRenderer) {
     gRenderer = glRenderer ? glRenderer : "";
     gSoftware = isSoftwareRenderer(glRenderer);
+#if defined(__linux__)
+    if (gSoftware && !getenv("ONAIR_KEEP_RASTER_PRIORITY")) {
+        const int n = lowerRasterizerThreads();
+        if (n) fprintf(stderr, "renderer: %d rasterizer threads at nice 5 (ONAIR_KEEP_RASTER_PRIORITY=1 keeps them at 0)\n", n);
+    }
+#endif
     fprintf(stderr, "renderer: %s%s\n", gRenderer.empty() ? "(unknown)" : gRenderer.c_str(),
             gSoftware ? " (software: every frame is drawn by the processor; View > Low-power drawing, or ONAIR_LOW_POWER_DRAW=1)" : "");
 }
