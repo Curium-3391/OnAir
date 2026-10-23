@@ -193,6 +193,22 @@ double zwValue(const uint8_t* p, int size, bool& ok);
 void zwField(IsmReading& R, const char* name, int value, const std::string& text);
 void zwPayload(IsmReading& R, const uint8_t* p, unsigned n);
 void decZwave(Bits& B, Out& out, int rate);
+void decAcurite606(Bits& B, Out& out);
+void decAcurite609(Bits& B, Out& out);
+void decPrologue(Bits& B, Out& out);
+void decKedsum(Bits& B, Out& out);
+void decGtWt02(Bits& B, Out& out);
+void decBresser3ch(Bits& B, Out& out);
+void decWh2(Bits& B, Out& out);
+void decTp11(Bits& B, Out& out);
+void decTp12(Bits& B, Out& out);
+void decFt004b(Bits& B, Out& out);
+void decErtScm(Bits& B, Out& out);
+void decErtIdm(Bits& B, Out& out);
+void decSolightTe44(Bits& B, Out& out);
+void decHoneywell(Bits& B, Out& out);
+void decKerui(Bits& B, Out& out);
+void decSpringfield(Bits& B, Out& out);
 
 } // namespace ism_detail
 using namespace ism_detail;

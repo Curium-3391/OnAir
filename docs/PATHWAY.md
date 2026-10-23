@@ -387,3 +387,5 @@ Thresholds on generated signals: TC8PSK 9 dB, QPSK 1/2 3 dB, BPSK 1/2 1 dB.
 Still guessed (docs/ISDBS.md lists them): details of the TMCC field order, where dummy slots sit inside a group, PRBS clocking over skipped bytes, the burst PN.
 
 **No real signal tested.** Only the standalone test_isdbs was built and run. The app/engine build was not run and CI was not dispatched.
+## 2026-10-23 ISM sensors: 315 / 345 / 390 MHz buttons and 16 more decoders (ism-315-030)
+Band buttons for 315, 345 and 390 MHz in the ISM panel (app/ism/ism_ui.cpp, mode table, ism_rx.h, README). Sixteen more rtl_433-derived device decoders in core/src/ism/ism_dec_more.cpp (acurite 606TX/609TXC, prologue, kedsum, gt_wt_02, bresser_3ch, fineoffset WH2, thermopro TP11/TP12, ft004b, ert_scm, ert_idm and others), registered in ism_proto.cpp, with tests/ism/test_ism_more.cpp. STATE: NONE of this was compiled or tested. The decoders and the new test were written without a build, so they may not compile, and no decoder has been checked against a real or recorded signal. rtl_433 is credited in THIRD_PARTY.md and in the file header. Next: build, run test_ism_more, fix what fails.
