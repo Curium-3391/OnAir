@@ -550,7 +550,7 @@ bool DmrReceiver::telemetry(DmrTelemetry& out, uint64_t lastSeq) {
 }
 void DmrReceiver::clearResults() {
     std::lock_guard<std::mutex> lk(p_->mu);
-    p_->tel.callLog.clear(); p_->tel.messages.clear(); p_->tel.calls = 0;
+    p_->tel.callLog.clear(); p_->tel.messages.clear(); p_->tel.locations.clear(); p_->tel.calls = 0;
     p_->reqCalls.clear(); p_->reqMsgs.clear(); p_->reqCount = 0; p_->logReq = true;
     p_->tel.seq = ++p_->telSeq;
 }
