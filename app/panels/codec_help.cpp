@@ -9,6 +9,7 @@
 #include "dect2/dstar/dstar_ambe.h"
 #include "dect2/nxdn/nxdn_ambe.h"
 #include "dect2/p25/p25_imbe.h"
+#include "dect2/codec/codec_guard.h"
 #include "dect2/engine/updater.h"
 #include "../codec/speech_codec_ui.h"
 #include <filesystem>
@@ -23,7 +24,7 @@ constexpr const char* kDocUrl = "https://github.com/adswill/OnAir/blob/main/docs
 constexpr const char* kMbeMac =
     "Build it yourself from github.com/lwvmobile/mbelib (patent notice: check your local law):\n"
     "  brew install cmake git\n  git clone https://github.com/lwvmobile/mbelib\n  cd mbelib && mkdir build && cd build\n"
-    "  cmake .. && make\nThen copy libmbe.dylib into the codecs folder below.";
+    "  cmake .. && make\nThen copy libmbe.dylib into the codecs folder below.\nmbelib-neo (libmbe-neo, github.com/arancormonk/mbelib-neo) works too, under its own name: do not rename it to libmbe.";
 constexpr const char* kMbeWin =
     "Build it yourself from github.com/lwvmobile/mbelib (patent notice: check your local law). In MSYS2 MINGW64:\n"
     "  pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake make\n"
@@ -31,11 +32,11 @@ constexpr const char* kMbeWin =
     "  cmake .. -G \"MSYS Makefiles\" -DBUILD_SHARED_LIBS=ON && make\n"
     "Copy the .dll it makes (libmbe.dll) into the codecs folder below. It may also need libgcc_s_seh-1.dll and libwinpthread-1.dll "
     "from C:\\msys64\\mingw64\\bin next to it. Use 64-bit if OnAir is 64-bit.\n"
-    "Do not use codec2.dll for this: codec2 is not used by DMR, P25, NXDN or dPMR.";
+    "Do not use codec2.dll for this: codec2 is not used by DMR, P25, NXDN or dPMR.\nmbelib-neo (libmbe-neo, github.com/arancormonk/mbelib-neo) works too, under its own name: do not rename it to libmbe.";
 constexpr const char* kMbeLinux =
     "Build it yourself from github.com/lwvmobile/mbelib (patent notice: check your local law):\n"
     "  sudo apt install git cmake build-essential\n  git clone https://github.com/lwvmobile/mbelib\n  cd mbelib && mkdir build && cd build\n"
-    "  cmake .. && make && sudo make install && sudo ldconfig\n(or copy libmbe.so.1 into the codecs folder below)";
+    "  cmake .. && make && sudo make install && sudo ldconfig\n(or copy libmbe.so.1 into the codecs folder below)\nmbelib-neo (libmbe-neo, github.com/arancormonk/mbelib-neo) works too, under its own name: do not rename it to libmbe.";
 
 struct Text {
     const char* title;
@@ -265,6 +266,8 @@ void codecHelpButton(CodecHelp c, const char* label) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30);
         ImGui::TextUnformatted(t.title);
         ImGui::Separator();
+        // a codec that crashed or hung this run (codec_guard.h): said first; Look again tries it once more
+        if (const std::string gm = dect2::codec::guardAllMessages(); !gm.empty()) { ImGui::TextColored(pal::warnAmber(), "%s", gm.c_str()); ImGui::Separator(); }
         {   // the AMBE / IMBE family: the shared plug-in install helper first
             const char* pid = pluginIdFor(c);
             if (pid) { appcodec::codecInstallHelper(pid); ImGui::Separator(); }

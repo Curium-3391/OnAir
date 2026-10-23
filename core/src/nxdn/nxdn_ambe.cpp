@@ -17,7 +17,7 @@ bool nxdnAmbeRescan() { return gMbe.rescan(); }
 
 struct NxdnAmbe::Impl {
     const mbe::Api<FrameFn>* a = nullptr;
-    mbe::State s;
+    std::shared_ptr<mbe::State> s = std::make_shared<mbe::State>();
     std::unique_ptr<codec::SpeechCodec> plug;   // the user's codec plug-in "ambe2" (docs/CODECS.md); preferred over mbelib
 };
 
@@ -26,15 +26,15 @@ NxdnAmbe::NxdnAmbe() : p_(std::make_unique<Impl>()) {
     if (p_->plug) return;
     const mbe::Api<FrameFn>& a = gMbe.api();
     if (!a.ok) return;
+    if (!mbe::initState(a, p_->s)) return;   // on the codec guard: a library that crashes is disabled, OnAir goes on
     p_->a = &a;
-    a.init(p_->s.cur.data(), p_->s.prev.data(), p_->s.enh.data());
 }
 NxdnAmbe::~NxdnAmbe() = default;
 bool NxdnAmbe::ok() const { return p_->plug || p_->a != nullptr; }
 
 void NxdnAmbe::decode(const uint8_t bits[72], int16_t pcm[160]) {
     if (!p_->a && !p_->plug) { memset(pcm, 0, 160 * sizeof(int16_t)); return; }
-    char fr[4][24], d[49] = {}, err[64] = {};
+    char fr[4][24];
     nxdn::ambeFrame(bits, fr);
     if (p_->plug) {
         const std::vector<int16_t> v = p_->plug->decode(codec::packCodeWords(&fr[0][0], 4, 24));
@@ -42,10 +42,7 @@ void NxdnAmbe::decode(const uint8_t bits[72], int16_t pcm[160]) {
         for (size_t i = 0; i < v.size() && i < 160; i++) pcm[i] = v[i];
         return;
     }
-    int e1 = 0, e2 = 0;
-    short out[160] = {};
-    p_->a->frame(out, &e1, &e2, err, fr, d, p_->s.cur.data(), p_->s.prev.data(), p_->s.enh.data(), 3);
-    for (int i = 0; i < 160; i++) pcm[i] = out[i];
+    mbe::decodeFrame(*p_->a, p_->s, &fr[0][0], 4 * 24, pcm);   // guarded: never on the caller's stack, a crash or hang disables the library
 }
 
 } // namespace dect2

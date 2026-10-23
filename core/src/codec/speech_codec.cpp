@@ -1,7 +1,10 @@
 // Loader for user-installed speech codecs (see core/include/dect2/codec/speech_codec.h and docs/CODECS.md).
 #include "dect2/codec/speech_codec.h"
+#include "dect2/codec/codec_guard.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <system_error>
 
@@ -70,26 +73,38 @@ void* symbol(void* lib, const char* name) {
 #endif
 }
 
-// Decoder over a plug-in: owns the library handle and the codec state.
+// Decoder over a plug-in: owns the library handle and the codec state. Every call into the plug-in goes through the codec guard
+// (codec_guard.h): a plug-in built for another library version (mbelib-neo for an mbelib wrapper) that crashes or hangs is disabled
+// and OnAir goes on. Its state and library are then never touched again (not closed: that would call into it).
 class PluginCodec final : public SpeechCodec {
 public:
-    PluginCodec(Api api, void* state, void* lib) : api_(api), state_(state), lib_(lib), rate_(api.rate()) {}
+    PluginCodec(Api api, void* state, void* lib, std::string id, int rate) : api_(api), state_(state), lib_(lib), id_(std::move(id)), rate_(rate) {}
     ~PluginCodec() override {
-        if (state_) api_.close(state_);
-        closeLibrary(lib_);
+        if (guardDisabled(id_)) return;   // it crashed or hangs: leave it alone
+        Api a = api_;
+        void* s = state_;
+        if (s) runGuarded(id_, [a, s] { a.close(s); });
+        if (!guardDisabled(id_)) closeLibrary(lib_);
     }
     int sampleRate() const override { return rate_; }
     std::vector<int16_t> decode(const std::vector<uint8_t>& coded) override {
-        std::vector<int16_t> pcm(kMaxSamplesPerFrame);
-        const int n = api_.decode(state_, coded.data(), coded.size(), pcm.data(), pcm.size());
-        if (n <= 0) return {};
-        pcm.resize(static_cast<size_t>(n));
-        return pcm;
+        // the buffers belong to the call (a hung call may outlive this decoder); the PCM buffer is larger than the plug-in is told
+        struct Call { std::vector<uint8_t> in; std::vector<int16_t> pcm; int n = 0; };
+        auto c = std::make_shared<Call>();
+        c->in = coded;
+        c->pcm.assign(kMaxSamplesPerFrame + 4096, 0);
+        Api a = api_;
+        void* s = state_;
+        if (runGuarded(id_, [a, s, c] { c->n = a.decode(s, c->in.data(), c->in.size(), c->pcm.data(), kMaxSamplesPerFrame); }) != GuardResult::Ok) return {};
+        if (c->n <= 0) return {};
+        c->pcm.resize(std::min(static_cast<size_t>(c->n), kMaxSamplesPerFrame));   // a count larger than the buffer is not believed
+        return c->pcm;
     }
 private:
     Api api_;
     void* state_;
     void* lib_;
+    std::string id_;
     int rate_;
 };
 
@@ -111,9 +126,28 @@ std::unique_ptr<SpeechCodec> openSharedLibrary(const std::string& path, std::str
         err = "it does not export the codec functions (missing:" + miss + ")";
         return nullptr;
     }
-    void* state = a.open();
-    if (!state) { closeLibrary(lib); err = "its decoder would not start"; return nullptr; }
-    return std::make_unique<PluginCodec>(a, state, lib);
+    // optional handshake: a plug-in that exports onair_speech_abi() must answer the version this OnAir speaks (kSpeechAbi). Plug-ins
+    // built before it was added do not export it and load as before.
+    if (auto abi = reinterpret_cast<int (*)()>(symbol(lib, "onair_speech_abi"))) {
+        const int v = abi();
+        if (v != kSpeechAbi) {
+            closeLibrary(lib);
+            err = "it was built for codec interface version " + std::to_string(v) + ", this OnAir uses version " + std::to_string(kSpeechAbi) + ": build it again from docs/CODECS.md";
+            return nullptr;
+        }
+    }
+    // the plug-in's id from its file name (onair-codec-<id>.<ext>): the codec guard keeps it apart from the other codecs
+    std::string id = std::filesystem::path(path).stem().string();
+    if (id.rfind("onair-codec-", 0) == 0) id = id.substr(12);
+    struct Start { void* state = nullptr; int rate = 0; };
+    auto st = std::make_shared<Start>();   // owned by the call: one that hangs may finish after this function returned
+    if (runGuarded(id, [a, st] { st->state = a.open(); st->rate = st->state ? a.rate() : 0; }) != GuardResult::Ok) {
+        err = guardMessage(id);   // crashed or hangs while starting: left loaded and alone
+        return nullptr;
+    }
+    if (!st->state) { closeLibrary(lib); err = "its decoder would not start"; return nullptr; }
+    const int rate = st->rate >= 4000 && st->rate <= 96000 ? st->rate : 8000;   // a rate no speech codec has is not believed
+    return std::make_unique<PluginCodec>(a, st->state, lib, id, rate);
 }
 
 bool validId(const std::string& id) {

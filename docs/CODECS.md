@@ -117,6 +117,25 @@ cmake .. && make && sudo make install && sudo ldconfig
 Then open the mode and look at its **?** button: it says `mbelib found: <path>`. Encrypted P25/NXDN/DMR calls are only reported as
 encrypted; OnAir never decrypts. DMR voice is played through mbelib or through the `ambe2` plug-in (see below).
 
+### mbelib-neo
+
+mbelib-neo (<https://github.com/arancormonk/mbelib-neo>, library `libmbe-neo`) is a newer fork. It keeps the function names of
+mbelib 1.3 but **changed the arguments of the frame functions** (`mbe_processAmbe3600x2450Frame` and the others take an
+`mbe_process_result*` instead of the two error counters, the error text and the quality number) and its `mbe_parms` is about twice as
+large. OnAir tells the two apart when it loads the library (only mbelib-neo has `mbe_versionString`) and calls each the way it expects,
+so `libmbe-neo.so.2` / `libmbe-neo.2.dylib` / `libmbe-neo.dll` in a codecs folder works as it is (the **?** window says which one it
+found). Build it the same way as above from its own repository; do not rename it to `libmbe`.
+
+A **plug-in** (`onair-codec-ambe2` ...) built with the old `mbelib.h` but run with `libmbe-neo`, or the other way round, corrupts
+memory. Before 3.0 that froze the spectrum and closed OnAir. Now every call into a voice codec runs on a separate codec thread under a
+guard: a codec that crashes or does not answer within 1.5 s is disabled for the rest of the run, OnAir shows *"The voice codec ... was
+disabled"* once, the calls and data stay on screen without sound, and **Look again** tries it once more. The reference wrapper
+`tools/codec-plugin-example/mbelib_wrapper.c` builds for either library (`-DMBELIB_NEO -lmbe-neo` for mbelib-neo) and refuses to start
+when it finds itself loaded with the other one.
+
+Plug-ins may export `int onair_speech_abi(void)` returning `1`: OnAir refuses a plug-in that answers another number, with a message
+that says so, instead of calling it.
+
 ## codec2 (FreeDV, M17)
 
 codec2 is open software (LGPL-2.1) and **comes with OnAir**: FreeDV and M17 speech works after you download OnAir, with nothing to install.

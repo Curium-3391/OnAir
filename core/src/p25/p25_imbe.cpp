@@ -16,7 +16,7 @@ bool p25ImbeRescan() { return gMbe.rescan(); }
 
 struct P25Imbe::Impl {
     const mbe::Api<FrameFn>* a = nullptr;
-    mbe::State s;
+    std::shared_ptr<mbe::State> s = std::make_shared<mbe::State>();
     std::unique_ptr<codec::SpeechCodec> plug;   // the user's codec plug-in "imbe" (docs/CODECS.md); preferred over mbelib
 };
 
@@ -25,8 +25,8 @@ P25Imbe::P25Imbe() : p_(std::make_unique<Impl>()) {
     if (p_->plug) return;
     const mbe::Api<FrameFn>& a = gMbe.api();
     if (!a.ok) return;
+    if (!mbe::initState(a, p_->s)) return;   // on the codec guard: a library that crashes is disabled, OnAir goes on
     p_->a = &a;
-    a.init(p_->s.cur.data(), p_->s.prev.data(), p_->s.enh.data());
 }
 P25Imbe::~P25Imbe() = default;
 bool P25Imbe::ok() const { return p_->plug || p_->a != nullptr; }
@@ -39,12 +39,9 @@ void P25Imbe::decode(const char frIn[8][23], int16_t pcm[160]) {
         for (size_t i = 0; i < v.size() && i < 160; i++) pcm[i] = v[i];
         return;
     }
-    char fr[8][23], d[88] = {}, err[64] = {};
+    char fr[8][23];
     memcpy(fr, frIn, sizeof fr);
-    int e1 = 0, e2 = 0;
-    short out[160] = {};
-    p_->a->frame(out, &e1, &e2, err, fr, d, p_->s.cur.data(), p_->s.prev.data(), p_->s.enh.data(), 3);
-    for (int i = 0; i < 160; i++) pcm[i] = out[i];
+    mbe::decodeFrame(*p_->a, p_->s, &fr[0][0], 8 * 23, pcm);   // guarded: never on the caller's stack, a crash or hang disables the library
 }
 
 } // namespace dect2
