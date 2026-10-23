@@ -170,7 +170,7 @@ if(ONAIR_RUST_RING)
   target_compile_definitions(dect2core PUBLIC DECT2_RUST_RING)   # ring.h is included by the app and the tests too: every user must see the same IqRing
 endif()
 onair_rust_use(dect2core)   # links the Rust library onair_rs
-target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_choice.cpp core/src/geo/passes.cpp core/src/dsp/imgproc.cpp core/src/dsp/wxstudio.cpp core/src/dsp/wx_vectors.cpp core/src/engine/sig_ident.cpp core/src/geo/maidenhead.cpp core/src/geo/maplayers.cpp core/src/geo/tilecache.cpp core/src/mesh/mesh_report.cpp core/src/df/df.cpp core/src/df/source.cpp core/src/df/position.cpp core/src/df/rfcam.cpp core/src/df/group.cpp core/src/df/rtl_group.cpp core/src/geo/pass_sched.cpp core/src/geo/doppler_fit.cpp core/src/engine/sig_known.cpp core/src/radar/passive.cpp core/src/rfi/rfi.cpp core/src/map/contact_graph.cpp)
+target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_choice.cpp core/src/geo/passes.cpp core/src/dsp/imgproc.cpp core/src/dsp/wxstudio.cpp core/src/dsp/wx_vectors.cpp core/src/engine/sig_ident.cpp core/src/geo/maidenhead.cpp core/src/geo/maplayers.cpp core/src/geo/tilecache.cpp core/src/mesh/mesh_report.cpp core/src/df/df.cpp core/src/df/beam.cpp core/src/df/source.cpp core/src/df/position.cpp core/src/df/rfcam.cpp core/src/df/group.cpp core/src/df/rtl_group.cpp core/src/geo/pass_sched.cpp core/src/geo/doppler_fit.cpp core/src/engine/sig_known.cpp core/src/radar/passive.cpp core/src/rfi/rfi.cpp core/src/map/contact_graph.cpp)
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
@@ -1005,6 +1005,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_df_position tests/df/test_df_position.cpp)
   target_link_libraries(test_df_position PRIVATE dect2core)
   add_test(NAME df_position COMMAND test_df_position)
+  add_executable(test_df_beam tests/df/test_df_beam.cpp)
+  target_link_libraries(test_df_beam PRIVATE dect2core)
+  add_test(NAME df_beam COMMAND test_df_beam)
   add_executable(test_rfi tests/rfi/test_rfi.cpp)
   target_link_libraries(test_rfi PRIVATE dect2core)
   add_test(NAME rfi COMMAND test_rfi)
