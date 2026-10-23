@@ -4,6 +4,7 @@
 #include "dect2/bandplan/bandplan.h"
 #include "dect2/channels/freq_db.h"
 #include "dect2/packs/packs.h"
+#include <algorithm>
 
 namespace dect2::datasets {
 
@@ -48,6 +49,10 @@ std::vector<Descriptor> inventory() {
     // the downloadable packs (View > Data packs): source and licence only
     for (const packs::Pack& p : packs::builtinCatalog()) {
         if (p.id.compare(0, 6, "tiles-") == 0) continue;
+        // a pack with the id of a bundled dataset (the "airports" pack: the full OurAirports files) is a newer copy of that dataset, not a second
+        // entry: one id, one row (a second "airports" row hid the bundled table from datasets::find and the test)
+        auto same = std::find_if(v.begin(), v.end(), [&](const Descriptor& b) { return b.id == p.id; });
+        if (same != v.end()) { same->note += " A newer copy can be downloaded in View > Data packs."; continue; }
         Descriptor d;
         d.id = p.id; d.name = p.title; d.source = p.source; d.licence = p.licence; d.attribution = p.attribution;
         d.version = "download"; d.downloadable = true; d.replaceable = false; d.note = "Downloaded on your click in View > Data packs.";
