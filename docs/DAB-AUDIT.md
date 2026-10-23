@@ -124,3 +124,89 @@ measured sample clock error in ppm). The lost-sample counter was already shown (
   re-acquisition (which keeps state) never carries over to another channel.
 
 Not verified on a real radio.
+
+# Decoding sensitivity and lock time (dec-dab-030)
+
+Goal: lock faster and decode at a lower SNR. Measured with `tests/dab/test_dab_sens.cpp` (ctest `dab_sens`, label slow, about 2 minutes on four
+cores): the generator's ensemble through a channel model written in the test (white noise, TU6 / RA4 delay profiles with Rayleigh fading and
+Doppler, a 0 dB echo), into the real receiver. **Threshold** = the lowest SNR (over 2.048 MHz; C/N in the 1.536 MHz of the signal is 1.25 dB
+higher) at which at least 90 % of the FIBs pass their CRC (FIC) and at least 90 % of the DAB+ access units of the 48 kbit/s EEP-3A service decode,
+6 s per point after 1.5 s of lock, 0.5 dB steps (AWGN rows: 0.125 dB steps, 12 s per point, `DAB_SENS_STEP=0.125 DAB_SENS_SECONDS=12`).
+**Time to lock** = from a cold start at a random point of the transmission, 15 starts per SNR. `DECT2_DAB_BASELINE=1` runs the old decoding
+in the same binary; that is how the "before" column was measured.
+
+| condition | FIC before -> after | DAB+ before -> after |
+|---|---|---|
+| AWGN | 2.4 -> **1.6 dB** | 3.8 -> **2.9 dB** |
+| AWGN, carrier +-5 kHz | 2.4 -> 1.6 dB | 3.8 -> 2.9 dB |
+| AWGN, sample clock +-50 ppm | 2.4 -> 1.6 dB | 3.8 -> 2.9 / 3.0 dB |
+| TU6, Doppler 10 Hz | 7.0 -> **5.5 dB** | 7.5 -> 7.5 dB |
+| TU6, Doppler 60 Hz | 10.5 -> 10.5 dB | 8.5 -> 8.5 dB |
+| RA4, Doppler 30 Hz | 11.5 -> 11.0 dB | 8.0 -> 8.0 dB |
+| SFN, two paths of 0 dB, 146 us | 3.5 -> **2.5 dB** | 5.5 -> **5.0 dB** |
+
+| time to lock, AWGN (median / p90) | sync | first FIB, service list | first DAB+ audio before -> after |
+|---|---|---|---|
+| 4 dB | 0.16 / 0.19 s | 0.16 / 0.19 s | 0.62 / 0.66 -> **0.52 / 0.56 s** |
+| 10 dB | 0.16 / 0.18 s | 0.16 / 0.18 s | 0.61 / 0.66 -> **0.47 / 0.54 s** |
+| 20 dB | 0.14 / 0.18 s | 0.14 / 0.18 s | 0.59 / 0.66 -> **0.46 / 0.51 s** |
+
+Band III scan: a channel without DAB is left after 0.7 s of input with no null symbol in it (it was 2.2 s each), so a scan with a few ensembles
+takes about 40 s instead of about 80 s. DAB at 0 dB SNR never reads as "nothing there" (`test_dab_search`).
+
+What changed (`core/src/dab/dab_rx.cpp`):
+
+1. **Soft bits from a channel estimate instead of plain differential detection.** The product of two noisy symbols costs about 3 dB. The channel
+   is estimated at the phase reference symbol, then from every symbol with the decided symbols taken out, and cleaned in the delay domain: only
+   the impulse response taps that stand out of the noise in the phase reference (12 times the median tap power, widened by two samples) are kept,
+   which removes the noise and most decision errors from the estimate. The soft bits of each DQPSK symbol come from both received symbols,
+   log-MAP over the unknown absolute phase of the first one (M(d) = log sum_s exp(2/sigma^2 Re(conj(s) (conj(H_l-1) y_l-1 + conj(H_l) y_l
+   conj(d)))), the noise measured per symbol): coherent detection when the estimate is good, differential when it is poor, and blind to a 90
+   degree slip of the estimate. Decisions use a straight-line prediction of the channel. A frame whose estimate changes fast (Doppler above about
+   40 Hz) goes back to plain differential detection; the panel says which ("Detection: coherent / differential"). Log-MAP against max-log: under
+   0.1 dB.
+2. **DAB+ audio starts from 10 of the 16 CIFs** of time interleaving (the missing ones erased); a logical frame that does not decode is caught by
+   Reed-Solomon and the CRCs. MP2 waits for all 16 (no check on its audio bits).
+3. The scan's "no DAB here" (`DabTelemetry::quietMs`).
+
+Tried and left out: **Reed-Solomon erasures for DAB+** from Viterbi reliabilities (a full errors-and-erasures decoder; the bytes ranked by the
+survivor's decision margin, then by re-encoding disagreement). It repaired about half of the code words that failed at the threshold, but a
+superframe needs all 6 of its code words and the threshold moved by less than the 0.125 dB step. Not kept.
+
+Checked and left as they were: the Viterbi decoder already keeps the whole path (no truncated traceback) with 8-bit soft inputs; sync and the
+service list come with the first frame after the null symbol (0.15 s: about one frame plus the search window, little left to win); the FIC has
+no time interleaving, so its thresholds in fading (RA4, TU6 60 Hz) are set by the fades themselves. Caching the ensemble across retunes would not
+start the audio sooner (the sub-channel table arrives in the first FIC). `dab_audit` passes unchanged (Doppler 100 Hz: the same as before, those
+frames go differential).
+
+Limits: synthetic signals only, not verified on a real radio. No competitor (welle.io, Qt-DAB, AbracaDABra, DABlin) publishes a threshold or a lock
+time to compare with; these are the first such figures we know of. Packet mode FEC (FIG 0/14 FEC scheme 1, EN 300 401 5.3.5) is shown in the
+analyser but not applied: it was written without the standard at hand and its layout could not be checked.
+
+# DAB (MP2) services: garbled audio report from 0.2.9 (dec-dab-030)
+
+Report: a user recording of a DAB (not DAB+) service on 11B, "only with UEP services": no dropouts but about 70 hard sample steps per second,
+a DC offset of -0.06, nothing above about 10 kHz. UEP is only used by MP2 (DAB) services.
+
+New test `tests/dab/test_dab_uep.cpp` (ctest `dab_uep`, label slow, 20 s): MP2 services through the generator and the whole receiver for every
+one of the 64 UEP profiles (32 to 384 kbit/s, levels 1 to 5, mono where Layer II allows only mono), EEP A and B levels, mono and stereo, 48 kHz
+and 24 kHz; every logical frame decoded must be the transmitter's to the bit, and the audio the tone (no DC, no step larger than the tone's own,
+not more audio than the frames carry). All 64 UEP profiles and the EEP cases pass: depuncturing, time de-interleaving, Viterbi and energy
+dispersal of UEP are right (the profile table was also compared again, row by row, with the standard's table 8 as we know it; the generator
+shares those tables, so the round trip alone could not have caught a wrong row).
+
+What was wrong: **MP2 at 24 kHz** (MPEG-2 half sampling rate, allowed by EN 300 401 for DAB audio and used for low-rate speech and community
+services, typically the low-bit-rate UEP ones). Such a frame is 48 ms long and spans two logical frames; every 24 ms logical frame went to the
+decoder as if it were a whole frame. The first half decoded with the rest of the frame missing (garbage in the upper part of every frame), the
+second half failed and was concealed by repeating the last 40 ms: 1.5 times as much audio as sent, garbled, with clicks at every splice and a
+band limit of 12 kHz, which matches the report. Now the MP2 frames are cut out of the byte stream by their headers (a damaged header: the bytes
+are skipped and every logical frame's worth of them concealed), so the decoder always gets whole frames; at 48 kHz nothing changes (one frame
+per logical frame, the same bytes as before). The generator makes 24 kHz MP2 and mono MP2 for the test.
+
+Also: **scrambled services** (conditional access, FIG 0/2 CAId and the component's CA flag) were played as noise. The flags are now read
+(`DabService::caId`, `DabComponent::ca`); a scrambled station is not played and the panel says "Audio: scrambled (conditional access): cannot be
+played" (`DabTelemetry::scrambled`). Samples that are not numbers (NaN, infinity) are now zeroed on input (the channel estimate would spread
+them; `dab_realworld` failed on x86-64 Linux for that).
+
+Not verified with the user's signal: the recording is the decoded audio, not IQ, so whether that service is 24 kHz MP2 is inferred from the
+symptoms (nothing above 12 kHz, garbling without dropouts). An IQ recording of the ensemble would confirm it.

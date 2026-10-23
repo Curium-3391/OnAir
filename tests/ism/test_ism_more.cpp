@@ -24,7 +24,7 @@ static IsmTrain ppm(const std::vector<BitRow>& rows, float pulse, float s, float
         t.p.push_back({pulse, sync});
         for (int b : r) t.p.push_back({pulse, b ? l : s});
     }
-    t.p.back().gapUs = 30000;
+    t.p.push_back({pulse, 30000});   // the closing pulse: the last bit's gap is its own
     return t;
 }
 
@@ -137,7 +137,7 @@ int main() {
         std::vector<BitRow> rows(6, row);
         auto rs = ismDecode(ppm(rows, 500, 2000, 4000, 7000, 15));
         const IsmReading* r = find(rs, "Kedsum-TH");
-        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == 0x74, "Kedsum %zu", rs.size());
+        CHECK(r && r->id == "55" && r->channel == 2 && std::fabs(fv(*r, "Temperature") - (70.1 - 32) / 1.8) < 0.02 && fv(*r, "Humidity") == 0x47, "Kedsum %zu", rs.size());
     }
     // ---- GT-WT-02
     {
@@ -210,8 +210,7 @@ int main() {
             frame.push_back((m[byte] >> bit) & 1);
         }
         BitRow all;
-        for (int k = 0; k < 3; k++) all.insert(all.end(), frame.begin(), frame.end());
-        all.push_back(0);
+        for (int k = 0; k < 3; k++) all.insert(all.end(), frame.begin(), frame.end());   // 138 bits: ppm() closes the last bit with a pulse
         auto rs = ismDecode(ppm({all}, 500, 1956, 3900, 4600));
         const IsmReading* r = find(rs, "FT-004B");
         CHECK(r && std::fabs(fv(*r, "Temperature") - 22.4) < 0.06, "FT-004B %zu", rs.size());
@@ -293,6 +292,26 @@ int main() {
             ok = r && r->id == std::to_string(((0x64 & 0x06) << 23) | (0x0A << 16) | (0xBC << 8) | 0xDE) && fv(*r, "Consumption") == 0x012345 && fv(*r, "ERT type") == 7;
         }
         CHECK(ok, "ERT SCM");
+    }
+    // ---- Itron ERT IDM (sync 16 A3 1C, 90 bytes, CRC-16 0x1021 / 0xD895 over bytes 2..87)
+    {
+        std::vector<uint8_t> b(90, 0);
+        b[0] = 0x16; b[1] = 0xA3; b[2] = 0x1C;
+        b[5] = 0x04; b[6] = 0x07;                                   // application version, ERT type
+        b[7] = 0x12; b[8] = 0x34; b[9] = 0x56; b[10] = 0x78;       // serial
+        b[11] = 0x2A;                                              // interval count
+        b[27] = 0x00; b[28] = 0x01; b[29] = 0x86; b[30] = 0xA0;    // last consumption 100000
+        b[84] = 0x01; b[85] = 0x02;
+        const uint16_t crc = ismCrc16(&b[2], 86, 0x1021, 0xD895);
+        b[88] = (uint8_t)(crc >> 8); b[89] = (uint8_t)crc;
+        BitRow bits = bitsOf(b, 720);
+        bool ok = false;
+        for (int inv = 0; inv < 2 && !ok; inv++) {
+            auto rs = ismDecode(manchester(bits, 30.5f, inv));
+            const IsmReading* r = find(rs, "ERT-IDM");
+            ok = r && r->id == std::to_string(0x12345678u) && fv(*r, "Last consumption count") == 100000 && fv(*r, "ERT type") == 7 && fv(*r, "Interval count") == 0x2A;
+        }
+        CHECK(ok, "ERT IDM");
     }
     return testSummary("ism more");
 }

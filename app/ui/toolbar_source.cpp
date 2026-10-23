@@ -119,6 +119,19 @@ static void chooseSampleRate(App& a, double hz) {
         a.mpd.reset(); a.quality.reset();
     }
 }
+bool lowerSampleRate(App& a, double& prevChoiceHz, double& newHz) {
+    if (!a.engine.running() || a.devIdx < 0 || a.devIdx >= (int)a.devices.size() || !a.devices[a.devIdx].isRadio()) return false;
+    const DeviceInfo& d = a.devices[a.devIdx];
+    const double cur = a.engine.radioRate();
+    double best = 0;
+    for (const RateEntry& e : rateEntries(rateLimitsOf(d), modeMinSampleRate(a))) if (e.getHz < cur - 1 && e.getHz > best) best = e.getHz;
+    if (best <= 0) return false;
+    prevChoiceHz = a.chosenRateHz; newHz = best;
+    chooseSampleRate(a, best);
+    return true;
+}
+void restoreSampleRate(App& a, double choiceHz) { chooseSampleRate(a, choiceHz); }
+
 void sampleRateControl(App& a) {
     const DeviceInfo& d = a.devices[a.devIdx];
     const bool run = a.engine.running();

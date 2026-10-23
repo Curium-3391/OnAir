@@ -826,15 +826,63 @@ std::string txRangeInfo(const DeviceInfo& d, double hz) {
     return b;
 }
 
+std::string txRadioLabel(const DeviceInfo& d) {
+    std::string n = !d.txName.empty() ? d.txName : d.name;
+    for (const char* suf : {" (native, experimental)", " (native)"}) {
+        const std::string t = suf;
+        if (n.size() > t.size() && n.compare(n.size() - t.size(), t.size(), suf) == 0) n.erase(n.size() - t.size());
+    }
+    return n;
+}
+
 std::string txUnavailableReason(const DeviceInfo& d) {
     if (d.canTransmit) return "";
+    const std::string n = txRadioLabel(d);
     switch (d.kind) {
     case DeviceInfo::Synthetic: return "the test signal is not a radio";
     case DeviceInfo::File: return "a recording is not a radio";
     case DeviceInfo::Audio: return "a sound card is not a radio";
-    case DeviceInfo::Hamlib: return d.name + " is controlled through CAT only: OnAir has no transmit path for it";
-    default: return d.name + " is receive-only in OnAir (its driver has no transmit channel, or this build lacks it)";
+    case DeviceInfo::Hamlib: return n + " is controlled through CAT only: OnAir has no transmit path for it";
+    default: break;
     }
+    const std::string& b = d.board;
+    if (b == "rtlsdr" || b == "rtltcp") return "RTL-SDR dongles can only receive";
+    if (b == "airspy" || b == "airspyhf") return n + " cannot transmit: Airspy radios are receive-only";
+    if (b == "sdrplay") return n + " cannot transmit: SDRplay radios are receive-only";
+    if (b == "usrp") return n + " cannot transmit in this build: the installed UHD has no transmit functions (UHD 3.15 or newer is needed)";
+    if (b == "bladerf" || b == "lime") return n + " cannot transmit through its native driver here: it is receive-only in OnAir; install its SoapySDR module to transmit";
+    if (d.kind == DeviceInfo::HackRF) return n + " cannot transmit in this build: no transmit path for this driver";
+    return n + " cannot transmit in this build: it is receive-only in OnAir (no transmit channel was found)";
+}
+
+std::vector<int> txRadioChoices(const std::vector<DeviceInfo>& devs) {
+    std::vector<int> v;
+    std::vector<std::string> seen;
+    for (int i = 0; i < (int)devs.size(); i++) {
+        const DeviceInfo& d = devs[(size_t)i];
+        if (!d.isRadio() || !d.canTransmit) continue;
+        if (!d.txName.empty()) {   // several receive entries of one device: listed once
+            const std::string key = d.txName + "|" + d.nativeArgs.substr(0, d.nativeArgs.find('#'));
+            if (std::find(seen.begin(), seen.end(), key) != seen.end()) continue;
+            seen.push_back(key);
+        }
+        v.push_back(i);
+    }
+    return v;
+}
+
+std::vector<int> txReceiveOnlyRadios(const std::vector<DeviceInfo>& devs) {
+    std::vector<int> v;
+    std::vector<std::string> seen;
+    for (int i = 0; i < (int)devs.size(); i++) {
+        const DeviceInfo& d = devs[(size_t)i];
+        if (!d.isRadio() || d.canTransmit) continue;
+        const std::string key = txRadioLabel(d);   // the RX inputs of one radio are one radio
+        if (std::find(seen.begin(), seen.end(), key) != seen.end()) continue;
+        seen.push_back(key);
+        v.push_back(i);
+    }
+    return v;
 }
 
 namespace {
