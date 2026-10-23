@@ -113,6 +113,8 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--tour") { app.wizOpen = true; app.wizStep = i + 1 < argc && argv[i + 1][0] != '-' ? atoi(argv[++i]) : -1; }   // dev: open the tour (at this step)
         if (std::string(argv[i]) == "--credits") app.creditsOpen = true;   // dev: the Credits window open (screenshots)
         if (std::string(argv[i]) == "--mute") { app.muted = true; app.volume = 0; }
+        if (std::string(argv[i]) == "--specdemo") app.specDemo = true;   // dev: a synthetic spectrum (FM, OFDM, SSB) without a radio, for screenshots of the looks
+        if (std::string(argv[i]) == "--look" && i + 1 < argc) specLookSet(app, atoi(argv[++i]), false);   // dev: the spectrum look (0 OnAir, 1 SDR++, 2 SDRoxide), not saved
         if (std::string(argv[i]) == "--wbfile" && i + 1 < argc) {   // dev: the Signal workbench opens this recording (--wbrate for a raw file, --wbtab, --wbsel, --wbkind, --wbbaud, --wbrun)
             double rate = 0; int tab = 0;
             for (int k = 1; k + 1 < argc; k++) { if (std::string(argv[k]) == "--wbrate") rate = atof(argv[k + 1]); if (std::string(argv[k]) == "--wbtab") tab = atoi(argv[k + 1]); }

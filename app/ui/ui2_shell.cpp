@@ -211,6 +211,8 @@ void sidebar(App& a) {
         wfAutoButton(a);
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Look")); ImGui::SameLine(col);
+        specLookCombo(a, std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Colours")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
         if (ImGui::BeginCombo("##wfmap", tr(Waterfall::mapName(a.wf.effMap())))) {   // also in the Waterfall popup on the plot
             for (int i = 0; i < Waterfall::NumMaps; i++)

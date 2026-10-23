@@ -3,6 +3,7 @@
 #include "plot_util.h"
 #include "plot_batch.h"
 #include "spec_axis.h"
+#include "spec_look.h"
 #include "../ui/touch.h"
 #include "imgui_internal.h"
 #include <algorithm>
@@ -68,7 +69,10 @@ struct Ctx {
     bool inSubplot = false;
     bool noXLabel = false;   // too short for the x axis label: it is left out
     bool noYTicks = false;   // too narrow for the y tick labels: left out
+    Look look;               // SetNextPlotLook (off: the usual look)
+    bool lookStrip = false;  // the x labels are on the look's strip
 };
+Look gNextLook;
 Ctx C;
 Subplots S;
 Style gStyle;
@@ -125,9 +129,23 @@ std::string formatTick(int a, double v, double step) {
 }
 
 struct Tick { double v; std::string label; };
+// the look's label font and size, and the width of a digit in it
+ImFont* lookFont() { return C.look.font ? C.look.font : ImGui::GetFont(); }
+float lookFontSize() { return C.look.fontSize > 0 ? C.look.fontSize : ImGui::GetFontSize(); }
+float lookCharPx() { return lookFont()->CalcTextSizeA(lookFontSize(), FLT_MAX, 0, "0").x; }
+bool lookFreqAxis(int a) { return C.look.on && a == 0 && C.ax[0].fmt == "%freq" && C.ax[0].tickPos.empty() && C.ax[0].scale == Scale_Linear; }
+// the frequency ticks of a look (majors and minors): the same for every plot of the same width, range and look
+std::vector<slook::Tick> lookTicks() {
+    const float cp = lookCharPx(), sc = gStyle.Scale;
+    return slook::freqTicks(C.lo[0], C.hi[0], C.plot.GetWidth(), cp, std::max(28.f * sc, 3.f * cp), C.look.labelMode, C.look.ref, 6.0 * sc);
+}
 std::vector<Tick> makeTicks(int a, double pixels, double minPixelsPerTick) {
     std::vector<Tick> out;
     const AxisSetup& A = C.ax[a];
+    if (lookFreqAxis(a)) {
+        for (const auto& t : lookTicks()) if (t.major) out.push_back({t.mhz, t.label});
+        return out;
+    }
     if (!A.tickPos.empty()) {
         for (size_t i = 0; i < A.tickPos.size(); i++) out.push_back({A.tickPos[i], i < A.tickLab.size() ? A.tickLab[i] : std::string()});
         return out;
@@ -190,10 +208,12 @@ void finishSetup() {
     }
 
     // margins: the room for the tick labels and the x label
-    const bool xLab = !(C.ax[0].flags & (AxisFlags_NoTickLabels | AxisFlags_Inside)), yLab = !(C.ax[1].flags & (AxisFlags_NoTickLabels | AxisFlags_Inside));
+    C.lookStrip = C.look.on && C.look.strip && !(C.ax[0].flags & AxisFlags_NoTickLabels);
+    const bool xLab = !C.lookStrip && !(C.ax[0].flags & (AxisFlags_NoTickLabels | AxisFlags_Inside)), yLab = !(C.ax[1].flags & (AxisFlags_NoTickLabels | AxisFlags_Inside));
     const float edge = (C.flags & Flags_Flush) ? 0.f : pad;
     float bottom = edge, left = edge, right = edge, top = edge;
     if (xLab) bottom += th + tickLen * 0.5f;
+    if (C.lookStrip) bottom += LookStripHeight(C.look);
     if (!C.ax[0].label.empty()) bottom += th + pad * 0.5f;
     if (!C.ax[0].label.empty() && (C.frame.GetHeight() - bottom - top < 3.5f * th || ImGui::CalcTextSize(C.ax[0].label.c_str()).x > C.frame.GetWidth())) { bottom -= th + pad * 0.5f; C.noXLabel = true; }   // a short (or narrow) plot keeps its room for the trace
     if (yLab) {
@@ -298,10 +318,14 @@ void finishSetup() {
     if (hov) C.hovered = true;
 
     // background and grid, then the items inside a clip rectangle
-    C.dl->AddRectFilled(C.plot.Min, C.plot.Max, ImGui::ColorConvertFloat4ToU32(gStyle.PlotBg));
-    const ImU32 grid = ImGui::ColorConvertFloat4ToU32(gStyle.Grid);
+    if (C.look.on) {   // a vertical gradient
+        const ImU32 t = ImGui::ColorConvertFloat4ToU32(C.look.bgTop), b = ImGui::ColorConvertFloat4ToU32(C.look.bgBottom);
+        C.dl->AddRectFilledMultiColor(C.plot.Min, C.plot.Max, t, t, b, b);
+    } else C.dl->AddRectFilled(C.plot.Min, C.plot.Max, ImGui::ColorConvertFloat4ToU32(gStyle.PlotBg));
+    const ImU32 grid = ImGui::ColorConvertFloat4ToU32(C.look.on ? C.look.grid : gStyle.Grid);
     for (int a = 0; a < 2; a++) {
         if (C.ax[a].flags & AxisFlags_NoGridLines) continue;
+        if (C.look.on && a == 1 && !C.look.gridH) continue;
         const auto ticks = a == 0 ? makeTicks(0, C.plot.GetWidth(), 70 * sc) : makeTicks(1, C.plot.GetHeight(), th * 3.0);
         for (const auto& t : ticks) {
             if (a == 0) { const float x = std::floor(px(t.v)) + 0.5f; if (x >= C.plot.Min.x && x <= C.plot.Max.x) C.dl->AddLine(ImVec2(x, C.plot.Min.y), ImVec2(x, C.plot.Max.y), grid); }
@@ -367,11 +391,18 @@ struct PlotStats {
 
 Style& GetStyle() { return gStyle; }
 
+void SetNextPlotLook(const Look& l) { gNextLook = l; }
+float LookStripHeight(const Look& l) {
+    const float fs = l.fontSize > 0 ? l.fontSize : ImGui::GetFontSize();
+    return std::ceil(fs * 1.75f);
+}
+
 bool BeginPlot(const char* id, ImVec2 size, int flags) {
-    if (C.active) return false;
+    if (C.active) { gNextLook.on = false; return false; }
     ImGuiWindow* w = ImGui::GetCurrentWindow();
-    if (w->SkipItems) return false;
+    if (w->SkipItems) { gNextLook.on = false; return false; }
     C = Ctx();
+    C.look = gNextLook; gNextLook.on = false;
     C.id = ImGui::GetID(id);
     C.flags = flags;
     C.dl = ImGui::GetWindowDrawList();
@@ -587,6 +618,16 @@ void PlotText(const char* text, double x, double y, ImVec2 off) {
     C.dl->AddText(p, ImGui::ColorConvertFloat4ToU32(gStyle.Text), text);
 }
 
+void PlotVBandGradient(double x0, double x1, ImVec4 top, ImVec4 bottom) {
+    if (!C.active) return;
+    finishSetup();
+    if (!std::isfinite(x0 + x1)) return;
+    float a = px(std::min(x0, x1)), b = px(std::max(x0, x1));
+    if (b - a < 1) { const float m = 0.5f * (a + b); a = m - 0.5f; b = m + 0.5f; }
+    const ImU32 t = ImGui::ColorConvertFloat4ToU32(top), u = ImGui::ColorConvertFloat4ToU32(bottom);
+    C.dl->AddRectFilledMultiColor(ImVec2(a, C.plot.Min.y), ImVec2(b, C.plot.Max.y), t, t, u, u);
+}
+
 void PlotVBand(const char*, double x0, double x1, const Spec& s) {
     if (!C.active) return;
     finishSetup();
@@ -622,12 +663,46 @@ void EndPlot() {
     if (!C.active) return;
     struct Timed { ~Timed() { gPlotStats.end(); } } timed;
     finishSetup();
+    if (C.look.on && (C.look.overV.w > 0 || C.look.overH.w > 0)) {   // the grid over the items (the waterfall's picture)
+        if (C.look.overV.w > 0) {
+            const ImU32 g = ImGui::ColorConvertFloat4ToU32(C.look.overV);
+            for (const auto& t : makeTicks(0, C.plot.GetWidth(), 70 * gStyle.Scale)) {
+                const float x = std::floor(px(t.v)) + 0.5f;
+                if (x >= C.plot.Min.x && x <= C.plot.Max.x) C.dl->AddLine(ImVec2(x, C.plot.Min.y), ImVec2(x, C.plot.Max.y), g);
+            }
+        }
+        if (C.look.overH.w > 0) {
+            const ImU32 g = ImGui::ColorConvertFloat4ToU32(C.look.overH);
+            for (const auto& t : makeTicks(1, C.plot.GetHeight(), ImGui::GetTextLineHeight() * 3.0)) {
+                const float y = std::floor(py(t.v)) + 0.5f;
+                if (y > C.plot.Min.y + 1 && y < C.plot.Max.y - 1) C.dl->AddLine(ImVec2(C.plot.Min.x, y), ImVec2(C.plot.Max.x, y), g);
+            }
+        }
+    }
     C.dl->PopClipRect();
     const float sc = gStyle.Scale, th = ImGui::GetTextLineHeight(), tickLen = gStyle.TickLen * sc, pad = gStyle.Pad * sc;
     const ImU32 txt = ImGui::ColorConvertFloat4ToU32(gStyle.Text);
     // tick marks and labels outside the plot area
+    if (C.lookStrip) {   // the look's strip: minor and major ticks at its top, the labels big and centred under their ticks
+        const float y0 = C.plot.Max.y, h = LookStripHeight(C.look), x0 = C.frame.Min.x, x1 = C.frame.Max.x;
+        C.dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + h), ImGui::ColorConvertFloat4ToU32(C.look.stripBg));
+        ImFont* font = lookFont();
+        const float fs = lookFontSize();
+        const ImVec4 lc = C.look.label;
+        const ImU32 lab = ImGui::ColorConvertFloat4ToU32(lc), maj = ImGui::ColorConvertFloat4ToU32(ImVec4(lc.x, lc.y, lc.z, lc.w * 0.55f)),
+                    mnr = ImGui::ColorConvertFloat4ToU32(ImVec4(lc.x, lc.y, lc.z, lc.w * 0.28f));
+        for (const auto& t : lookTicks()) {
+            const float x = std::floor(px(t.mhz)) + 0.5f;
+            if (x < C.plot.Min.x || x > C.plot.Max.x) continue;
+            C.dl->AddLine(ImVec2(x, y0), ImVec2(x, y0 + (t.major ? 5.f : 2.5f) * sc), t.major ? maj : mnr);
+            if (!t.major || t.label.empty()) continue;
+            const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, t.label.c_str());
+            if (x - ts.x * 0.5f < x0 + 2 * sc || x + ts.x * 0.5f > x1 - 2 * sc) continue;   // never clipped by the panel
+            C.dl->AddText(font, fs, ImVec2(std::round(x - ts.x * 0.5f), std::round(y0 + (h - ts.y) * 0.5f + 1.5f * sc)), lab, t.label.c_str());
+        }
+    }
     for (int a = 0; a < 2; a++) {
-        if ((C.ax[a].flags & AxisFlags_NoTickLabels) || (a == 1 && C.noYTicks)) continue;
+        if ((C.ax[a].flags & AxisFlags_NoTickLabels) || (a == 1 && C.noYTicks) || (a == 0 && C.lookStrip)) continue;
         const auto ticks = a == 0 ? makeTicks(0, C.plot.GetWidth(), 70 * sc) : makeTicks(1, C.plot.GetHeight(), th * 3.0);
         float lastEnd = -FLT_MAX;   // a narrow plot: an x label that would touch the one before it is left out (the tick stays)
         for (const auto& t : ticks) {
@@ -653,7 +728,8 @@ void EndPlot() {
     if ((C.ax[0].flags | C.ax[1].flags) & AxisFlags_Inside) {
         ImFont* font = ImGui::GetFont();
         const float fs = ImGui::GetFontSize() * 0.85f, lh = fs, m = 4 * sc;
-        const ImU32 faint = ImGui::ColorConvertFloat4ToU32(ImVec4(gStyle.Text.x, gStyle.Text.y, gStyle.Text.z, 0.65f));
+        const ImVec4 tc = C.look.on ? C.look.label : gStyle.Text;
+        const ImU32 faint = ImGui::ColorConvertFloat4ToU32(ImVec4(tc.x, tc.y, tc.z, C.look.on ? 0.62f : 0.65f));
         const bool xIn = (C.ax[0].flags & AxisFlags_Inside) && !(C.ax[0].flags & AxisFlags_NoTickLabels);
         if (xIn) {
             float lastEnd = C.plot.Min.x;
@@ -692,7 +768,7 @@ void EndPlot() {
         }
     }
     // the position of the mouse
-    if (C.hovered && !(C.flags & Flags_NoMouseText)) {
+    if (C.hovered && !(C.flags & Flags_NoMouseText) && !C.look.on) {
         const Point m = GetPlotMousePos();
         char b[64];
         snprintf(b, sizeof b, "%.4g, %.4g", m.x * C.ax[0].unit, m.y * C.ax[1].unit);
