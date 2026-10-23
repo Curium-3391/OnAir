@@ -973,6 +973,7 @@ struct DvbtReceiver::Impl {
         t.dvbt.fecSync = fs.syncLocked; t.dvbt.packets = fs.packets; t.dvbt.rsClean = fs.rsClean; t.dvbt.rsCorrected = fs.rsCorrected; t.dvbt.rsFailed = fs.rsFailed;
         t.dvbt.viterbiMargin = fs.viterbiMargin; t.dvbt.punctPhase = fs.punctPhase; t.dvbt.secSinceTps = secSinceTps;
         t.dvbt.symbolIdx = tpsOk ? (int)((absSym - frameStartAbs) % 68) : -1;
+        t.dvbt.fecDropped = fecDrops.load();
         t.blocksOk = fs.rsClean + fs.rsCorrected; t.blocksBad = fs.rsFailed;
         t.plpValid = tpsOk; t.plpFrames = fs.packets;
         t.plpMerDb = snrDb;
