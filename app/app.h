@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "gfx/plot.h"
+#include "gfx/tune_stat.h"
 #include "gfx/autolabel_logic.h"
 #include "i18n/i18n.h"
 #include "state/fm_saved.h"
@@ -578,7 +579,7 @@ struct App {
     float specLine = 1.2f;     // thickness of the spectrum trace
     bool specFill = true, specGrid = true, specPeaks = false, specReadout = true, specDbm = false;   // fill under the line, grid, peak markers, level at the cursor, dBm instead of dBFS
     // The spectrum look (gfx/spec_look.h: 0 OnAir, 1 SDR++ look, 2 SDRoxide look) and the choices around it
-    int specLook = 0;
+    int specLook = 1;
     int specAxisLabels = -1;   // the frequency labels: -1 as the look has them, 0 frequencies, 1 offsets from the tuned frequency
     float specLabelSize = 1.f; // the axis label size, times the look's
     int specSmoothTrace = -1;  // mild smoothing passes over the trace: -1 as the look has it, else 0..4
@@ -1056,6 +1057,10 @@ void txTick(App& a);               // every frame: gives the radio back when a t
 void txShutdown();                 // stops a running transmission (the radio goes quiet before it returns); the program's end
 bool txActive();
 void savePrefs(const App& a);
+void savePrefsSoon(const App& a);   // a tuning event: the save follows 0.6 s after the last one, not on the UI thread's mouse path
+void savePrefsTick();               // each frame
+void savePrefsFlush();              // at exit
+tunestat::Stats& tuneStats();
 int adcBitsFor(const DeviceInfo& d, double rateHz);
 void ingestSpectrum(App& a);
 void ingestRx(App& a);

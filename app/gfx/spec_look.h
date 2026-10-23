@@ -60,17 +60,17 @@ constexpr int kTraceCyan = 3, kTraceLightBlue = 8;
 inline const LookSet& lookSet(int l) {
     static const LookSet k[NumLooks] = {
         // OnAir: what the plots always were (the fields below are not read while classic)
-        {"OnAir", true, {}, {}, {}, true, 0, 0, 0, 1.2f, true, 0.18f, 0.03f, 0, InterpLinear, {}, {}, {}, 1, {}, 1, {}, 0, false, {}, {}, 1, false,
+        {"OnAir classic", true, {}, {}, {}, true, 0, 0, 0, 1.2f, true, 0.18f, 0.03f, 0, InterpLinear, {}, {}, {}, 1, {}, 1, {}, 0, false, {}, {}, 1, false,
          LabelsAbsolute, -1, false, false, {}, {}, {}},
         // SDR++: black, a light grid both ways, a cyan trace over a translucent fill, the VFO a light block with a red bandwidth edge and a
         // yellow centre, kHz offsets on a black strip, the smooth blue-cyan-yellow-orange waterfall
-        {"SDR++ look", false, {0, 0, 0, 1}, {0, 0, 0, 1}, {0.78f, 0.80f, 0.82f, 0.17f}, true, 0.10f, 0.f, kTraceCyan, 1.3f, true, 0.42f, 0.20f, 0,
+        {"SDR++ style", false, {0, 0, 0, 1}, {0, 0, 0, 1}, {0.78f, 0.80f, 0.82f, 0.17f}, true, 0.10f, 0.f, kTraceCyan, 1.3f, true, 0.42f, 0.20f, 0,
          InterpLinear, {1, 1, 1, 0.17f}, {1, 1, 1, 0.17f}, {1.f, 0.16f, 0.16f, 0.95f}, 1.f, {1.f, 0.90f, 0.10f, 0.95f}, 1.f, {1, 1, 1, 0.07f}, 0.55f,
          true, {0, 0, 0, 1}, {0.96f, 0.96f, 0.96f, 1}, 1.05f, false, LabelsOffset, kMapSdrppSmooth, true, true,
          {0.06f, 0.06f, 0.07f, 0.92f}, {0.5f, 0.5f, 0.52f, 0.8f}, {0.95f, 0.95f, 0.95f, 1}},
         // SDRoxide: navy to grey, faint vertical lines only, a thin light-blue smoothed trace without fill, a warm red-brown passband with a
         // red centre and soft edges, big white mono labels on a dark strip, the deep-blue waterfall with cyan/green lines
-        {"SDRoxide look", false, {0.09f, 0.15f, 0.26f, 1}, {0.24f, 0.26f, 0.29f, 1}, {0.80f, 0.86f, 0.92f, 0.09f}, false, 0.10f, 0.07f, kTraceLightBlue, 1.4f,
+        {"Crisp", false, {0.09f, 0.15f, 0.26f, 1}, {0.24f, 0.26f, 0.29f, 1}, {0.80f, 0.86f, 0.92f, 0.09f}, false, 0.10f, 0.07f, kTraceLightBlue, 1.4f,
          false, 0.f, 0.f, 1, InterpCubic, {0.55f, 0.24f, 0.17f, 0.20f}, {0.82f, 0.36f, 0.20f, 0.40f}, {0.96f, 0.86f, 0.80f, 0.35f}, 1.f,
          {1.f, 0.27f, 0.25f, 0.92f}, 1.2f, {0.85f, 0.40f, 0.25f, 0.08f}, 0.75f, true, {0.055f, 0.06f, 0.075f, 1}, {0.97f, 0.97f, 0.97f, 1}, 1.2f, true,
          LabelsAbsolute, kMapOxide, true, true, {0.02f, 0.03f, 0.05f, 0.86f}, {0.75f, 0.80f, 0.86f, 0.55f}, {0.96f, 0.97f, 0.98f, 1}},

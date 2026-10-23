@@ -131,7 +131,7 @@ int main() {
         check(v.update(lv.data(), W, H, 0, H - 1, H, lut, 1, 1000, 1002, 800, 1, full, dirty) && full, "mode change rebuilds");
     }
     {   // the looks and their maps
-        check(lookSet(OnAir).classic && !lookSet(SdrPP).classic && !lookSet(SdrOxide).classic && std::string(lookSet(99).name) == "OnAir", "looks");
+        check(lookSet(OnAir).classic && !lookSet(SdrPP).classic && !lookSet(SdrOxide).classic && std::string(lookSet(99).name) == "OnAir classic", "looks");
         check(lookSet(SdrPP).fill && !lookSet(SdrOxide).fill && lookSet(SdrPP).strip && lookSet(SdrOxide).monoLabels, "look traits");
         check(lookSet(SdrPP).wfMap == cmap::SdrppSmooth && lookSet(SdrOxide).wfMap == cmap::OxideBlue && kMapSdrppSmooth == cmap::SdrppSmooth && kMapOxide == cmap::OxideBlue, "look maps");
         check(kTraceLightBlue < cmap::kNumTracePresets && std::string(cmap::kTracePresets[kTraceLightBlue].name) == "Light blue" && std::string(cmap::kTracePresets[kTraceCyan].name) == "Cyan", "look trace presets");

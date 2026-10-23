@@ -5,6 +5,7 @@
 #include "state_internal.h"
 #include <climits>
 #include <cstring>
+#include <chrono>
 
 namespace {
 
@@ -108,7 +109,7 @@ const std::vector<PrefKey>& keyTable() {
         real("specAvg", AT(a.specAvgSec), 0, 5), num("specFft", AT(a.specFft), 0, 0, 262144, true), real("specLine", AT(a.specLine), 0.6, 3),
         flagB("specFill", AT(a.specFill), true, false, true), flagB("specGrid", AT(a.specGrid), false, false, true), flagB("specPeaks", AT(a.specPeaks), false, false, true), flagB("specLabels", AT(a.specLabels), true, false, true), num("specLabelMask", AT(a.specLabelMask), 63, 0, 63, true),
         flagB("specReadout", AT(a.specReadout), false, false, true), flagB("specDbm", AT(a.specDbm), false, false, true),
-        num("specLook", AT(a.specLook), 0, 0, slook::NumLooks - 1, true), num("specAxisLabels", AT(a.specAxisLabels), -1, -1, 1, true),
+        num("specLook", AT(a.specLook), 1, 0, slook::NumLooks - 1, true), num("specAxisLabels", AT(a.specAxisLabels), -1, -1, 1, true),
         real("specLabelSize", AT(a.specLabelSize), 0.7, 1.6), num("specSmoothTrace", AT(a.specSmoothTrace), -1, -1, 4, true),
         flagB("specNfMarker", AT(a.specNfMarker), false, false, true), flagB("specSmoothZoom", AT(a.specSmoothZoom), true, false, true),
         num("specSnapHz", AT(a.specSnapHz), 0, 0, 1000000, true), flagB("wfLowPass", AT(a.wfLowPass), false, false, true),
@@ -388,7 +389,27 @@ void loadPrefs(App& a) {
     tvHdLoad(a);
 }
 
+// Tuning events (a click, a drag, the wheel, a step button) used to rewrite the whole settings file at once, on the UI thread, every time:
+// a held drag meant dozens of file writes a second between the mouse and the retune. savePrefsSoon() only notes that a save is due; the
+// frame loop (savePrefsTick) writes it after the tuning has been still for kSoonDelay, and at exit (savePrefsFlush) at the latest.
+static const App* gSoonApp = nullptr;
+static double gSoonDue = 0;
+static constexpr double kSoonDelay = 0.6;
+static double nowSec() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+static tunestat::Stats gTuneStats;
+tunestat::Stats& tuneStats() { return gTuneStats; }
+void savePrefsSoon(const App& a) {
+    if (gSoonApp && gSoonApp != &a) savePrefs(*gSoonApp);
+    gSoonApp = &a; gSoonDue = nowSec() + kSoonDelay;
+    gTuneStats.savesDeferred++;
+}
+void savePrefsTick() { if (gSoonApp && nowSec() >= gSoonDue) { const App* p = gSoonApp; gSoonApp = nullptr; savePrefs(*p); } }
+void savePrefsFlush() { if (gSoonApp) { const App* p = gSoonApp; gSoonApp = nullptr; savePrefs(*p); } }
+
 void savePrefs(const App& a) {
+    if (&a == gSoonApp) gSoonApp = nullptr;   // this write covers it
+    const double t0 = nowSec();
+    struct Timer { double t0; ~Timer() { const double ms = (nowSec() - t0) * 1000; gTuneStats.saves++; gTuneStats.saveMsSum += ms; if (ms > gTuneStats.saveMsMax) gTuneStats.saveMsMax = ms; } } timer{t0};
     plat::Prefs& d = plat::prefs();
     if (a.rxId == 1) {
         d.setS("netRadios", netRadiosToString(a.netRadios));
