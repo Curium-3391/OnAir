@@ -58,7 +58,8 @@ struct RigctlServer::Impl {
         sockRecvTimeout(s, 200);
         apipol::RateLimiter lim(50, 100);
         apipol::RigctlSession sess;
-        { std::lock_guard<std::mutex> lk(mu); sess.token = cfg.token; sess.required = cfg.allowLan;   // loopback: the HTTP guard protects; open to the LAN: changes need \auth <token> }
+        // loopback: the HTTP guard protects; open to the LAN: changes need "\auth <token>" first
+        { std::lock_guard<std::mutex> lk(mu); sess.token = cfg.token; sess.required = cfg.allowLan; }
         std::string buf;
         double lastData = steadySec();
         bool bye = false;
