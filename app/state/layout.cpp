@@ -13,6 +13,7 @@ std::string dirPath() { return plat::dataDir() + "/layouts"; }
 }  // namespace
 
 void layoutTick(App& a, bool enabled) {
+    dockRegisterIni();   // the dock layout (ui2_dock.cpp) is kept in the same file
     ImGuiIO& io = ImGui::GetIO();
     if (!enabled) { io.IniFilename = nullptr; gCur.clear(); return; }
     std::string subId;

@@ -76,4 +76,9 @@ void bodyDock(App& a, float bodyH, ImVec2 disp);
 void bodyPanel(App& a, float bodyH, ImVec2 disp);
 extern const ImVec4 kPanelChassis;
 
+// ui2_dock.cpp (View > Docking)
+void dockBody(App& a, float bodyH);   // the body with docking on: the status line and the dock space
+void dockPanes(App& a);               // the built-in panels as windows, after the root window
+void dockMenu(App& a);                // View > Docking
+
 }  // namespace ui2

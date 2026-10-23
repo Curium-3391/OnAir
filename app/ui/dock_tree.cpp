@@ -144,7 +144,7 @@ bool remove(Node& root, const std::string& name) {
     return true;
 }
 
-bool dock(Node& root, const std::string& target, Zone z, const std::string& name, float share) {
+bool dockAt(Node& root, const std::string& target, Zone z, const std::string& name, float share) {
     if (name.empty() || z == Zone::None || name == target) return false;
     if (contains(root, name)) {   // moving: a centre drop onto its own leaf is no move at all
         const Node* own = leafOf(root, name);

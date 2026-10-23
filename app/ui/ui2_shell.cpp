@@ -376,6 +376,7 @@ static void viewMenu(App& a) {
         if (!a.touchUi && ImGui::MenuItem(tr("Reset layout"))) layoutReset();   // forgets the saved window positions of every mode
         if (ImGui::MenuItem(tr("Touch interface"), nullptr, &a.touchUi)) savePrefs(a);   // the same flag as the side panel: big targets, bottom dock (ui/touch.h)
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("For tablets and touch screens: big buttons, an on-screen keypad for the frequency, a full-screen mode picker."));
+        dockMenu(a);   // View > Docking (ui2_dock.cpp)
         if (ImGui::MenuItem(tr("Reset layout"))) { a.splitSide = a.splitRight = a.splitBottom = a.splitDock = a.splitBot2 = 0; savePrefs(a); }
         if (ImGui::MenuItem(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Put the panels back to their automatic sizes (drag the bars between panels to resize them)"));

@@ -249,7 +249,8 @@ void drawShell2(App& a, ImVec2 disp) {
         ImGui::PopStyleVar();
         txPanel(a);
         ImGui::EndChild();
-    } else switch (a.uiVariant) {
+    } else if (dockActive(a)) dockBody(a, bodyH);   // View > Docking: the panels are windows in a dock space
+    else switch (a.uiVariant) {
     case 1: bodyScope(a, bodyH, disp); break;
     case 2: bodyTiles(a, bodyH, disp); break;
     case 3: bodyFace(a, bodyH, disp); break;
@@ -261,4 +262,5 @@ void drawShell2(App& a, ImVec2 disp) {
     }
     bottomBar(a, disp);
     ImGui::End();
+    if (dockActive(a) && !hamViewFlag() && !txViewFlag()) dockPanes(a);
 }

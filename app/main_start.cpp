@@ -157,6 +157,8 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--hc") app.highContrast = true;   // dev: View > Theme > High contrast
         if (std::string(argv[i]) == "--variant" && i + 1 < argc) app.uiVariant = std::max(0, std::min(7, atoi(argv[++i])));
         if (std::string(argv[i]) == "--classic") app.newUi = false;
+        if (std::string(argv[i]) == "--dock") app.dockOn = true;   // dev: View > Docking on
+        if (std::string(argv[i]) == "--docktree" && i + 1 < argc) { app.dockOn = true; dockDevTree(argv[++i]); }   // dev: a dock layout in its text form (ui/dock_tree.h)
         if (std::string(argv[i]) == "--rate" && i + 1 < argc) app.file.sampleRate = atof(argv[++i]) * 1e6;
         if (std::string(argv[i]) == "--freq" && i + 1 < argc) app.freqMhz = atof(argv[++i]);
         if (std::string(argv[i]) == "--station" && i + 1 < argc) app.dabStation = atoi(argv[++i]);

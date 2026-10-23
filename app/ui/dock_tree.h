@@ -33,7 +33,7 @@ bool remove(Node& root, const std::string& name);                       // undoc
 // Dock `name` next to the leaf holding `target` (Centre: as a tab of it). An empty target or a target that is not docked docks
 // against the whole tree (an edge of the dock space). `share` is the new window's part of the split. Docking a window
 // already in the tree moves it. Docking a window onto itself does nothing. Returns false when nothing changed.
-bool dock(Node& root, const std::string& target, Zone z, const std::string& name, float share = 0.5f);
+bool dockAt(Node& root, const std::string& target, Zone z, const std::string& name, float share = 0.5f);
 bool setActive(Node& root, const std::string& name);                    // shows that tab of its leaf
 std::string cycleTab(const Node& root, const std::string& name, int dir, const std::function<bool(const std::string&)>& alive = {});   // the next / previous tab in the leaf (wraps)
 

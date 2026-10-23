@@ -114,6 +114,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagB("bwAuto", AT(a.bwAuto), false, true, true)),
         // ---- shared by all receivers (written by receiver 1)
         shared(flagB("newUi", AT(a.newUi), true, true)),
+        shared(flagB("dockOn", AT(a.dockOn), false, true)),
         shared(scaled("splitSide", AT(a.splitSide), 1, 0, 1, 0, false)), shared(scaled("splitRight", AT(a.splitRight), 1, 0, 1, 0, false)),
         shared(scaled("splitBottom", AT(a.splitBottom), 1, 0, 1, 0, false)), shared(scaled("splitDock", AT(a.splitDock), 1, 0, 1, 0, false)),
         shared(scaled("splitBot2", AT(a.splitBot2), 1, 0, 1, 0, false)),
