@@ -4,7 +4,7 @@
 // 64 threads (one per state) keeps the metrics in group-shared memory and builds each step's 64 decision bits with InterlockedOr: one barrier per
 // step (two on the steps that renormalise). The HLSL is compiled when the program starts (d3dcompiler_47.dll), the libraries are loaded at run
 // time, the software rasteriser is refused, and a self-test against the CPU decoder must give the same bits and path metric or the GPU decoder
-// stays off (the CPU decoder is used). DECT2_NOGPU=1 keeps it off.
+// stays off (the CPU decoder is used). EXPERIMENTAL: off unless DECT2_GPU_VITERBI_D3D11=1 (not yet run on a Windows GPU). DECT2_NOGPU=1 keeps it off.
 #include "dect2/dsp/gpu_viterbi.h"
 #include "dect2/dvbt/dvbt.h"
 
@@ -209,6 +209,7 @@ struct GpuViterbi::Impl {
 GpuViterbi::GpuViterbi() : p_(new Impl) {
     Impl& d = *p_;
     if (getenv("DECT2_NOGPU")) return;
+    if (!getenv("DECT2_GPU_VITERBI_D3D11")) return;   // experimental: not yet run on a Windows GPU, off unless asked for
     d.hD3d = LoadLibraryA("d3d11.dll");
     d.hComp = LoadLibraryA("d3dcompiler_47.dll");
     if (!d.hD3d || !d.hComp) return;

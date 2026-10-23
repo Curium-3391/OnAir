@@ -222,7 +222,7 @@ Rx makeRx(const Case& c, std::function<void(const uint8_t*, size_t)> ts) {
     }
     case 2: {
         auto rx = std::make_shared<DvbtReceiver>();
-        rx->setComputeMode(gGpu ? 2 : 0);   // the CPU Viterbi unless --gpu
+        rx->setComputeMode(gGpu ? 1 : 0);   // the CPU Viterbi unless --gpu (DVB-T: GPU only when chosen)
         rx->configure(rate, c.bwMhz);
         if (gPipelined) rx->setPipelined(true, true);
         rx->setPacketCallback(tsCb);

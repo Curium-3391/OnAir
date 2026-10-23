@@ -30,7 +30,7 @@ public:
     void takePackets(std::vector<uint8_t>& out);
     const FecStats& stats() const { return st_; }
     const Params& params() const { return p_; }
-    // Where the Viterbi runs: 0 CPU, 1 GPU when there is one, 2 automatic (the GPU when there is one). The GPU decoder (GpuViterbi, Metal)
+    // Where the Viterbi runs: 0 CPU, 1 GPU when there is one (experimental for DVB-T), 2 automatic (the CPU for DVB-T for now). The GPU decoder (GpuViterbi, Metal)
     // gives the exact 16-bit decoder's bits; the CPU uses the 8-bit two-run decoder where it has NEON. DECT2_NOGPU=1 keeps it on the CPU.
     void setComputeMode(int m) { computeMode_ = m; }
 

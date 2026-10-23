@@ -334,7 +334,7 @@ static void toolbarCompute(App& a, bool vertical, bool running) {
         }
         if (ImGui::IsItemHovered()) {
             const char* gpuName = GpuLdpc::instance().deviceName();
-            ImGui::SetTooltip("Use the GPU for decoding (Auto, recommended): the DVB-T2 / ATSC 3.0 LDPC and the DVB-T Viterbi.\n"
+            ImGui::SetTooltip("Use the GPU for decoding (Auto, recommended): the DVB-T2 / ATSC 3.0 LDPC; the DVB-T Viterbi only with GPU (experimental).\n"
                 "Now: %s on the %s.\n"
 #ifdef __APPLE__
                 "CPU: NEON on all cores. GPU: Metal compute.\n"

@@ -83,7 +83,7 @@ void FecDecoder::process(bool) {
     // tests/fec/test_viterbi8_ber.cpp); the exact decoder elsewhere keeps the mean of 22 within +-127.
     // the GPU decodes with the exact decoder's arithmetic (its soft values: the 16-bit scaling); the CPU with the 8-bit one where it has it
     static const bool noGpu = getenv("DECT2_NOGPU") != nullptr;
-    const bool gpu = computeMode_ != 0 && !noGpu && GpuViterbi::instance().available();
+    const bool gpu = computeMode_ == 1 && !noGpu && GpuViterbi::instance().available();   // experimental for DVB-T: only when GPU is chosen (Auto stays on the CPU)
     const bool fast8 = !gpu && fecp::viterbi8x2Available();
     auto viterbi = [&](const std::vector<int8_t>& in, std::vector<uint8_t>& out, long* m) {
         if (gpu && GpuViterbi::instance().decode(in, out, m)) { st_.viterbiOnGpu = true; return; }
