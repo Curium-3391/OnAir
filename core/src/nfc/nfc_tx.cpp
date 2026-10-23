@@ -21,14 +21,24 @@ void readerFrame(std::vector<float>& env, const std::vector<uint8_t>& bytes, int
     const size_t base = env.size();
     const size_t total = (size_t)std::llround((double)seq.size() * sp);
     for (size_t i = 0; i < total; i++) env.push_back(amp);
-    const size_t pw = (size_t)std::max(2.0, sp * 0.3);
+    const double pw = std::max(2.0, sp * 0.3);
+    // The pause edges are raised-cosine slopes centred on the pause's ends (1 us down, 1.5 us up), so that its width at half depth stays 0.3 etu
+    // (2.8 us) and the bottom stays at zero for about 1.6 us: inside ISO/IEC 14443-2 Type A (t1 2-3 us, t2 >= 0.5 us, rise t3 <= 1.5 us). Hard
+    // steps put the reader's sidebands at -30 dBc more than three occupied bandwidths away.
+    const double fall = std::max(1.0, 1.0e-6 * fs), rise = std::max(1.0, 1.5e-6 * fs);
+    auto slope = [](double x) { return x <= 0 ? 0.0 : x >= 1 ? 1.0 : 0.5 - 0.5 * std::cos(3.14159265358979 * x); };   // 0 -> 1 over x in [0, 1]
     for (size_t k = 0; k < seq.size(); k++) {
         double c = 0;
         if (seq[k] == 1) c = (k + 0.75) * sp;        // X: pause in 2nd half
         else if (seq[k] == 2) c = (k + 0.25) * sp;   // Z: pause in 1st half
         else continue;
-        const size_t start = base + (size_t)std::llround(c);
-        for (size_t i = 0; i < pw; i++) if (start + i < env.size()) env[start + i] = 0.f;
+        const double a = (double)base + std::round(c), b = a + pw;   // the pause's ends at half depth
+        const size_t i0 = (size_t)std::max(0.0, std::floor(a - fall / 2)), i1 = (size_t)std::ceil(b + rise / 2);
+        for (size_t i = i0; i <= i1 && i < env.size(); i++) {
+            const double t = (double)i;
+            const double g = std::max(slope((a + fall / 2 - t) / fall), slope((t - (b - rise / 2)) / rise));   // 1 outside, 0 in the middle
+            env[i] = std::min(env[i], (float)(amp * g));
+        }
     }
 }
 
