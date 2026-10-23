@@ -5,6 +5,7 @@
 #include "dect2/loraraw/loraraw_rx.h"
 #include "dect2/loraraw/loraraw_tel.h"
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -43,7 +44,42 @@ static double scheduleSec(const std::vector<LoraRawGenFrame>& v) {
     return s;
 }
 
-int main() {
+// Measurement only: frames decoded against SNR (in 125 kHz) for SF7 - SF12, around Semtech's demodulator limits (SF7 -7.5 dB ... SF12 -20 dB).
+// test_loraraw_rx sweep [frames] [rate]
+static void sweep(int n, double rate) {
+    printf("SF | limit | auto: L+4 L+2 L L-2 | fixed SF: L+4 L+2 L L-2 (percent of %d frames, CRC good)\n", n);
+    for (int sf = 7; sf <= 12; sf++) {
+        const double L = -7.5 - 2.5 * (sf - 7);
+        printf("%2d | %5.1f |", sf, L);
+        for (int fixed = 0; fixed < 2; fixed++) {
+            for (double d : {4.0, 2.0, 0.0, -2.0}) {
+                LoraRawGenConfig c;
+                c.rate = rate; c.snrDb = L + d; c.loop = false; c.seed = (uint32_t)(sf * 31 + (int)(d * 7) + 100);
+                uint32_t x = c.seed * 2654435761u + 1;
+                for (int i = 0; i < n; i++) {
+                    LoraRawGenFrame f;
+                    f.p.sf = sf; f.p.bwHz = 125e3; f.p.cr = 5; f.p.preamble = 8; f.p.syncWord = 0x12; f.p.crc = true;
+                    f.p.ldro = sf >= 11;   // RadioLib: symbols of 16 ms or more
+                    f.payload.resize(16);
+                    for (auto& b : f.payload) { x ^= x << 13; x ^= x >> 17; x ^= x << 5; b = (uint8_t)x; }
+                    f.gapSec = 0.05 + (double)(1 << sf) / 125e3 * 4;
+                    f.cfoHz = (double)((int)(x % 4001) - 2000);
+                    c.frames.push_back(f);
+                }
+                LoraRawSettings st;
+                if (fixed) { st.autoSf = false; st.sf = sf; st.autoBw = false; st.bwKhz = 125; }
+                const LoraRawTelemetry t = run(c, st, scheduleSec(c.frames) + 0.2);
+                printf(" %5.1f", 100.0 * (double)t.blocksOk / n);
+                fflush(stdout);
+            }
+            printf(" |");
+        }
+        printf("\n");
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "sweep") { sweep(argc > 2 ? atoi(argv[2]) : 30, argc > 3 ? atof(argv[3]) : 500e3); return 0; }
     LoraRawSettings autoSet;   // Auto SF, Auto BW, sync 0x12
     {   // the whole scene, clean
         LoraRawGenConfig c;

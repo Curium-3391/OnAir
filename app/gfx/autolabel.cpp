@@ -87,7 +87,7 @@ void learn(const App& a) {
 uint64_t revision(const App& a) {
     using autolabel::mix;
     uint64_t h = 1469598103934665603ull;
-    h = mix(h, a.bandPlan); h = mix(h, a.uiLang);
+    h = mix(h, a.bandPlan); h = mix(h, a.uiLang); h = mix(h, modeKeyOf(a));
     for (const auto& r : a.fmScan.results) { h = mix(h, (uint64_t)std::llround(r.mhz * 1000)); h = mix(h, r.name); }
     for (const auto& r : a.dabScan.results) { h = mix(h, (uint64_t)std::llround(r.mhz * 1000)); h = mix(h, r.label); h = mix(h, r.name); }
     for (const auto& s : a.fmSaved) { h = mix(h, (uint64_t)std::llround(s.mhz * 1000)); h = mix(h, s.name); }
@@ -104,6 +104,14 @@ void rebuild(App& a) {
     std::vector<Label> v;
     bandPlanLabelSource(a, v);
     freqdbLabelSource(v);
+    // The frequency database lists every TV standard's channels (DVB-T/T2, DTMB, ATSC, ISDB-T share 470-862 MHz): with a TV mode open
+    // only that standard's channel names are shown, so a DTMB receiver is not labelled DVB-T (#178)
+    {
+        auto tvKey = [](const std::string& m) { return m == "dvb" || m == "dtmb" || m == "atsc" || m == "atsc3" || m == "isdbt"; };
+        const std::string cur = modeKeyOf(a);
+        if (tvKey(cur))
+            v.erase(std::remove_if(v.begin(), v.end(), [&](const Label& l) { return l.src == FreqDb && tvKey(l.mode) && l.mode != cur; }), v.end());
+    }
     for (Label& l : v) gStore.add(std::move(l));
     for (const auto& r : a.fmScan.results) {
         if (!r.found || autolabel::trimmed(r.name).empty()) continue;

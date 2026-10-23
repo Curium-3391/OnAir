@@ -175,7 +175,7 @@ int main() {
             s2BitDeinterleaveLlr(llr.data(), d.nldpc, mod, r, dl.data());
             std::vector<uint8_t> hard, out;
             int iters = 0;
-            const bool ok = code.decodeFast(dl, 50, hard, &iters, s2LdpcAlpha(r));
+            const bool ok = code.decodeFast(dl, 50, hard, &iters, s2LdpcAlpha(mod, r, sh), true);
             const int fixed = ok ? s2BchDecode(hard.data(), r, sh, out) : -1;
             CHECK(ok && fixed >= 0 && out == bb, "%s: frame at %.2f dB did not decode (LDPC %s after %d iterations)", name(mod, r, sh).c_str(), esn0, ok ? "ok" : "failed", iters);
         }

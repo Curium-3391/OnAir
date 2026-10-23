@@ -35,15 +35,19 @@ void Engine::feedSpectrum(const cf32* x, size_t n) {
     {
         std::lock_guard<std::mutex> lk(specQMu_);
         if (specQ_.size() >= 6) return;   // the display is statistical: when the spectrum thread is behind, skip a piece
-        specQ_.emplace_back(x, x + n);
+        if (specFree_.empty()) specQ_.emplace_back(x, x + n);
+        else { specQ_.push_back(std::move(specFree_.back())); specFree_.pop_back(); specQ_.back().assign(x, x + n); }
     }
     specQCv_.notify_one();
 }
 
 void Engine::spectrumLoop() {
     setThreadName("onair-spectrum");   // a copy of each block, dropped when behind: never slows the decoder
+    setThreadPriority(ThreadPriority::High);   // the display stays smooth (macOS: a performance core)
+    cpu::bindThread(cpuSpec_.load());
     std::vector<cf32> chunk;
     for (;;) {
+        cpu::tick();
         {
             std::unique_lock<std::mutex> lk(specQMu_);
             specQCv_.wait(lk, [this] { return specStop_ || !specQ_.empty(); });
@@ -63,12 +67,18 @@ void Engine::spectrumLoop() {
         }
         analyzer_.feed(chunk.data(), chunk.size());
         tSpec_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count();
+        {   // the block's storage goes back for the next one
+            std::lock_guard<std::mutex> lk(specQMu_);
+            if (specFree_.size() < 8) specFree_.push_back(std::move(chunk));
+        }
+        chunk = std::vector<cf32>();
     }
 }
 
 void Engine::analysisLoop() {
     setThreadName("onair-analysis");
     setThreadPriority(ThreadPriority::Realtime); // the sample path must never wait for decoders or the UI
+    cpu::bindThread(cpuFront_.load());           // ingest() charges the receiver's part to the decoder account
     std::vector<cf32> buf(1 << 16);
     auto next = std::chrono::steady_clock::now();
     SpectrumFrame f;

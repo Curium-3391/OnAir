@@ -63,3 +63,75 @@ The user guides and notes that live in the repository. The same text is on the [
 | [watchlists.md](watchlists.md) | Watchlists and alerts | View > Watchlists. |
 | [wmbus.md](wmbus.md) | Wireless M-Bus (EN 13757-4) | The mode **Wireless M-Bus (meters)** (IoT & sensors group) lists the utility meters (water, heat, gas, electricity, heat cost allocators) that send their |
 | [zwave.md](zwave.md) | Z-Wave (ITU-T G.9959) | A receive-only monitor for Z-Wave home automation networks on the sub-GHz bands. |
+
+## Added in 3.0 (not in the table above yet)
+
+| File | Topic |
+|---|---|
+| [ANTENNA.md](ANTENNA.md) | Antenna designer |
+| [AUDIO.md](AUDIO.md) | Audio control |
+| [AUTOGAIN.md](AUTOGAIN.md) | Auto gain |
+| [BACKUP.md](BACKUP.md) | Backup and restore (Tools > Backup and restore) |
+| [DAB-AUDIT.md](DAB-AUDIT.md) | DAB / DAB+ receiver audit: audio continuity (0.3.0) |
+| [DRM-AUDIT.md](DRM-AUDIT.md) | DRM receiver audit: smooth audio (0.3.0) |
+| [DSC.md](DSC.md) | Marine DSC (ITU-R M.493) |
+| [DXPATROL.md](DXPATROL.md) | DXpatrol SDR |
+| [GUI-AUDIT.md](GUI-AUDIT.md) | GUI audit (0.3.0, branch gui-audit-030) |
+| [HAM_PLAN.md](HAM_PLAN.md) | Ham operation plan (goals section 7) |
+| [HORUS.md](HORUS.md) | Horus balloons (Project Horus telemetry) |
+| [I18N.md](I18N.md) | Interface translations |
+| [IDENTIFIER.md](IDENTIFIER.md) | Signal identifier |
+| [IMAGE-ENHANCE.md](IMAGE-ENHANCE.md) | Image enhancement |
+| [IQ-FORMATS.md](IQ-FORMATS.md) | IQ file formats |
+| [ISDBS.md](ISDBS.md) | ISDB-S (BS satellite television, Japan) |
+| [KAAL-CODEC.md](KAAL-CODEC.md) | KAAL voice codec 4 (KV4) |
+| [KAAL-ENHANCE.md](KAAL-ENHANCE.md) | KAAL voice codec 4: decoder-side speech enhancer |
+| [KAAL-NEXT.md](KAAL-NEXT.md) | KAAL next (frame version 4): four voice slots, fast chirp sync, better receiver |
+| [KAAL-SLOTS.md](KAAL-SLOTS.md) | KAAL v4 voice slots: interface and bit budgets for the codec |
+| [KEYS.md](KEYS.md) | Voice decryption keys |
+| [LAN-SWARM.md](LAN-SWARM.md) | LAN swarm |
+| [LORA_SATELLITES.md](LORA_SATELLITES.md) | LoRa satellites (mode "LoRa satellites", family 201) and LoRaWAN (all channels, family 200) |
+| [MODE-NUMBERS.md](MODE-NUMBERS.md) | Mode numbers |
+| [NETWORK_RADIOS.md](NETWORK_RADIOS.md) | Network radios: where they are saved, and recovering from a hang |
+| [NFC.md](NFC.md) | NFC / RFID at 13.56 MHz |
+| [NIXOS.md](NIXOS.md) | OnAir on NixOS and Nix |
+| [ONAIR-DIRECTORY.md](ONAIR-DIRECTORY.md) | OnAir Web directory |
+| [ONAIR-WEB-PROTOCOL.md](ONAIR-WEB-PROTOCOL.md) | OnAir Web protocol, version 1 |
+| [ONAIR-WEB.md](ONAIR-WEB.md) | OnAir Web: share your radio with many listeners |
+| [PACKET.md](PACKET.md) | APRS / Packet (AX.25) |
+| [PAGER_CCIR.md](PAGER_CCIR.md) | CCIR paging in OnAir |
+| [PERFORMANCE-DSP.md](PERFORMANCE-DSP.md) | Signal-processing cost (0.3.0 work, branch perf-dsp-030) |
+| [PERFORMANCE-DVB.md](PERFORMANCE-DVB.md) | DVB family performance |
+| [PERFORMANCE-POWER.md](PERFORMANCE-POWER.md) | Idle and background power use |
+| [PERFORMANCE.md](PERFORMANCE.md) | Performance and power (0.3.0 work, branch perf-ui-030) |
+| [PRESETS.md](PRESETS.md) | Per-mode presets |
+| [RELEASE_PIPELINE_PLAN.md](RELEASE_PIPELINE_PLAN.md) | Release pipeline plan (goal: "release <version>" to public in 2 hours or less) |
+| [REMOTE-API.md](REMOTE-API.md) | Remote control API |
+| [ROS.md](ROS.md) | ROS: what is publicly known, and what OnAir does with it |
+| [RTLSDR-V4L.md](RTLSDR-V4L.md) | RTL-SDR Blog V4 Lite (V4L) |
+| [SATELLITE_AIS.md](SATELLITE_AIS.md) | Long-range and satellite AIS |
+| [SIGNAL-LAB.md](SIGNAL-LAB.md) | Signal Lab |
+| [SYNTH-WIDEBAND.md](SYNTH-WIDEBAND.md) | Synthetic wideband: several narrow radios as one wide radio |
+| [TX-OPTIMISATION.md](TX-OPTIMISATION.md) | TX optimisation (0.3.0) |
+| [ardop.md](ardop.md) | ARDOP (monitor) |
+| [argos.md](argos.md) | Argos |
+| [bletrk.md](bletrk.md) | BLE tracker detector |
+| [cquam.md](cquam.md) | AM stereo (C-QUAM) |
+| [dab-transmitters.md](dab-transmitters.md) | DAB transmitter lists (Map tab) |
+| [direction-finding.md](direction-finding.md) | Direction finding (KrakenSDR / KerberosSDR style arrays) |
+| [dvbs-decsat-parity.md](dvbs-decsat-parity.md) | DVB-S/S2 in OnAir against DecSAT |
+| [dvbs.md](dvbs.md) | DVB-S, DVB-S2 and DVB-S2X in OnAir |
+| [fast-scan.md](fast-scan.md) | Fast scan (Scanner view > Fast scan) |
+| [fsq.md](fsq.md) | FSQ (Fast Simple QSO) |
+| [goes-dcs.md](goes-dcs.md) | GOES / Meteosat DCS |
+| [ifkp.md](ifkp.md) | IFKP (Incremental Frequency Keying Plus) |
+| [marine-vhf.md](marine-vhf.md) | Marine VHF (channels 1 to 88, 156 to 162 MHz) |
+| [modeac.md](modeac.md) | Mode A/C |
+| [propagation.md](propagation.md) | Propagation (Tools > Propagation) |
+| [qo100-auto.md](qo100-auto.md) | QO-100 narrowband: presets, auto decoder, conversation manager |
+| [railway.md](railway.md) | LBJ, KLW and TDCS railway reception |
+| [satbeacon.md](satbeacon.md) | TV sat beacon decoder |
+| [sigfox.md](sigfox.md) | Sigfox |
+| [voice-inversion.md](voice-inversion.md) | Voice inversion |
+
+The release text is [CHANGELOG-3.0.md](CHANGELOG-3.0.md) (generated by `tools/release/gen_changelog.py`); the new strings for the translation pass are in [I18N-NEW-STRINGS-3.0.md](I18N-NEW-STRINGS-3.0.md).
