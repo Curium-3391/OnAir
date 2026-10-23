@@ -11,7 +11,7 @@ using dect2::testpar::CaseOut;
 // every case runs on its own thread and prints through `out`, so that the log keeps the order of the cases
 #define CHECK(c, ...) do { if (!(c)) out.fail(__LINE__, __VA_ARGS__); } while (0)
 
-// GNSS_SWEEP_TOPS="30,28" GNSS_SWEEP_SECS=60: other skies for a measurement (only printed, the checks are those of the three below)
+// GNSS_SWEEP_TOPS="30,28" GNSS_SWEEP_SECS=60 (GNSS_SWEEP_SEED, GNSS_SWEEP_HINT): other skies for a measurement (only printed, the checks are those of the three below)
 static double tops[8] = {40.0, 36.0, 32.0};
 static int nTops = 3;
 static double secs = 34;
@@ -24,6 +24,7 @@ static void runCase(int k, CaseOut& out) {
         GnssSim sim(cfg, 4e6);
         Options o;
         o.rate = 4e6; o.secs = secs;
+        if (getenv("GNSS_SWEEP_HINT")) o.setup = [](GnssReceiver& rx) { rx.setFrequencyHint(0, true); };   // the radio's frequency error remembered
         Run r = run(sim, o);
         const GnssTelemetry& t = r.tel;
         double lowestTracked = 99, highestMissed = 0;
