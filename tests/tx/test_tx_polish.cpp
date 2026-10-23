@@ -281,6 +281,38 @@ static void dryRunChecks() {
     printf("  dry run ok\n");
 }
 
+// capability classification and message text (no hardware)
+static void usrpClassChecks() {
+    auto usrp = [](const char* label, const char* nativeArgs, bool tx) {
+        DeviceInfo d; d.kind = DeviceInfo::Native; d.board = "usrp"; d.serial = "000000001"; d.nativeArgs = nativeArgs;
+        d.name = std::string("USRP B210 000000001 ") + label + " (native, experimental)";
+        d.txName = "USRP B210 000000001 (native, experimental)"; d.canTransmit = tx;
+        return d;
+    };
+    DeviceInfo rtl; rtl.kind = DeviceInfo::Native; rtl.board = "rtlsdr"; rtl.name = "RTL2838UHIDIR 10115420 (native, experimental)";
+    std::vector<DeviceInfo> devs = {rtl, usrp("RF A RX2", "type=b200", true), usrp("RF A TX/RX", "type=b200#0#TX/RX", true), usrp("RF B RX2", "type=b200#1#RX2", true)};
+    const std::vector<int> ch = txRadioChoices(devs);
+    CHECK(ch.size() == 1 && ch[0] == 1, "a USRP with several RX inputs is offered once for TX");
+    CHECK(txRadioLabel(devs[1]) == "USRP B210 000000001", "TX label: %s", txRadioLabel(devs[1]).c_str());
+    const std::vector<int> ro = txReceiveOnlyRadios(devs);
+    CHECK(ro.size() == 1 && ro[0] == 0, "only the RTL-SDR is hidden as receive-only");
+    const std::string r = txUnavailableReason(rtl);
+    CHECK(r == "RTL-SDR dongles can only receive", "rtl text: %s", r.c_str());
+    for (auto& d : devs) d.canTransmit = false;   // a UHD build without TX functions
+    const std::string u = txUnavailableReason(devs[1]);
+    CHECK(u.find("USRP B210 000000001 cannot transmit in this build: ") == 0 && u.find("UHD") != std::string::npos, "usrp text: %s", u.c_str());
+    size_t first = u.find("USRP B210"), second = u.find("USRP B210", first + 1);
+    CHECK(second == std::string::npos, "the name is printed once: %s", u.c_str());
+    CHECK(txUnavailableReason(devs[1]).find("(native") == std::string::npos, "no '(native, experimental)' in the sentence");
+    DeviceInfo ah; ah.kind = DeviceInfo::Native; ah.board = "airspyhf"; ah.name = "Airspy HF+ Discovery (native, experimental)";
+    CHECK(txUnavailableReason(ah).find("receive-only") != std::string::npos && txUnavailableReason(ah).find("Airspy HF+ Discovery") == 0, "airspyhf: %s", txUnavailableReason(ah).c_str());
+    // the sink: a build/UHD without the library gives no sink
+    DeviceInfo tx = usrp("RF A RX2", "type=b200", true);
+    std::unique_ptr<TxSink> sink = makeTxSink(tx);
+    CHECK(sink != nullptr, "a USRP that canTransmit has a sink");
+    if (sink) { std::string e; TxTune t; t.centerHz = 433e6; t.sampleRate = 1e6; CHECK(!sink->open(t, e) && !e.empty(), "no UHD here: open says why: %s", e.c_str()); }
+}
+
 static void infoChecks() {
     DeviceInfo d;
     d.name = "TestSDR"; d.kind = DeviceInfo::Soapy; d.minFreqHz = 70e6; d.maxFreqHz = 6e9;
@@ -344,6 +376,7 @@ int main() {
     audioFileChecks();
     dryRunChecks();
     infoChecks();
+    usrpClassChecks();
     printf(fails ? "tx polish tests FAILED (%d)\n" : "tx polish tests passed\n", fails);
     return fails ? 1 : 0;
 }
