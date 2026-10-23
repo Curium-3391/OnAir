@@ -20,6 +20,7 @@
 #endif
 #include "main_internal.h"
 #include "state/workspace.h"
+#include "gfx/render_caps.h"
 
 // the startup guard (a start that keeps crashing), the first-start tour and setup, the radio list and the results of the last run
 void startApp(App& app, int argc, char** argv) {
@@ -91,7 +92,8 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         if (std::string(argv[i]) == "--tx") txDevOpen(app, i + 1 < argc && argv[i + 1][0] != '-' ? argv[i + 1] : nullptr, false);   // dev: TX view, optionally on a signal id
         if (std::string(argv[i]) == "--txdry" && i + 1 < argc) txDevOpen(app, argv[++i], true);   // dev: TX view with the test (no RF) running on a signal id
         if (std::string(argv[i]) == "--stress") o.stress = true;   // dev: retune frequency and gain every second, like moving the controls
-        if (std::string(argv[i]) == "--shot" && i + 1 < argc) o.shotPath = argv[++i];
+        if (std::string(argv[i]) == "--shot" && i + 1 < argc) { o.shotPath = argv[++i]; rcaps::setUnpaced(true); }
+        if (std::string(argv[i]) == "--low-power-draw") rcaps::forceLowPower(true);   // as ONAIR_LOW_POWER_DRAW=1: lower frame rate, simple ADS-B map
         if (std::string(argv[i]) == "--shotdelay" && i + 1 < argc) o.shotAfter = atof(argv[++i]);
         if (std::string(argv[i]) == "--voiceinv") voiceInversionDevOpen();   // dev: the Voice inversion pop-up open
         if (std::string(argv[i]) == "--audioclean") audioCleanupDevOpen(i + 1 < argc && std::string(argv[i + 1]) == "adv");   // dev: the Audio cleanup pop-up open (adv: Advanced)

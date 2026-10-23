@@ -22,6 +22,7 @@
 #include "../platform/discord_rpc.h"
 #include "../panels/report_problem.h"
 #include "../panels/backup_ui.h"
+#include "../gfx/render_caps.h"
 
 using namespace ui2;
 
@@ -520,6 +521,7 @@ static void viewMenu(App& a) {
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("While the window is minimised or hidden: the spectrum and telemetry update a few times a second and scans wait. Decoding and audio go on."));
             ImGui::EndMenu();
         }
+        rcaps::viewMenuItem();   // Low-power drawing (gfx/render_caps.h)
         {   // opt-in Discord Rich Presence
             const bool have = *discord::appId() != 0;
             ImGui::BeginDisabled(!have);

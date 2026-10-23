@@ -4,6 +4,8 @@
 #include "adsb_internal.h"
 #include "map/pos_predict.h"
 #include "adsb_acars.h"
+#include "trail_draw.h"
+#include "gfx/render_caps.h"
 
 using namespace adsbui;
 
@@ -73,9 +75,13 @@ void radar(App& a, ImVec2 size) {
             if (!ac.hasPos) continue;
             const bool sel = ac.icao == S.sel;
             const ImU32 col = ac.emergency ? ImGui::ColorConvertFloat4ToU32(pal::badRed()) : sel ? IM_COL32(255, 255, 255, 255) : ImGui::ColorConvertFloat4ToU32(pal::accent());
-            ImVec2 prev;
-            bool first = true;
-            for (const auto& tp : ac.track) { const ImVec2 q = pt(tp.lat, tp.lon); if (!first) dl->AddLine(prev, q, IM_COL32(70, 74, 78, 255)); prev = q; first = false; }
+            if (!rcaps::lowPowerDraw() && ac.track.size() >= 2) {   // the trail, thinned and clipped as on the map (trail_draw.h)
+                static std::vector<trails::Pt> pts;
+                pts.resize(ac.track.size());
+                for (size_t i = 0; i < ac.track.size(); i++) { const ImVec2 q = pt(ac.track[i].lat, ac.track[i].lon); pts[i] = {q.x, q.y}; }
+                trails::forEachSegment(pts.data(), pts.size(), 1.5f * gUi, {p0.x, p0.y, p0.x + size.x, p0.y + size.y},
+                                       [&](size_t a, size_t b) { dl->AddLine(ImVec2(pts[a].x, pts[a].y), ImVec2(pts[b].x, pts[b].y), IM_COL32(70, 74, 78, 255)); });
+            }
             const ImVec2 q = pt(ac.lat, ac.lon);
             if (std::fabs(q.x - c.x) > R * 1.1f || std::fabs(q.y - c.y) > R * 1.1f) continue;
             { float hdg = 0.f; if (planeHeadingDeg(ac, hdg)) { const float h = hdg * (float)M_PI / 180.f; dl->AddLine(q, ImVec2(q.x + std::sin(h) * 10 * gUi, q.y - std::cos(h) * 10 * gUi), col, 1.5f); } }
@@ -133,7 +139,10 @@ bool positionLooksWrong(const AdsbTelemetry& t, double& lat, double& lon, double
 }
 
 // the aircraft trails first (so the icons sit on top), then the path a couple of minutes ahead at the last speed
-static void drawTrails(ImDrawList* dl, const AdsbTelemetry& t) {
+// Points closer than 1.5 px to the last one drawn are skipped and segments wholly off one side of the view are not drawn (trail_draw.h).
+static void drawTrails(ImDrawList* dl, const AdsbTelemetry& t, ImVec2 p0, ImVec2 size) {
+    const trails::Rect clip{p0.x, p0.y, p0.x + size.x, p0.y + size.y};
+    static std::vector<trails::Pt> pts;   // the projected track, reused (UI thread only)
     for (const auto& ac : t.aircraft) {   // trails first, so the icons sit on top
         if (!ac.hasPos || ac.track.size() < 2) continue;
         const ImU32 trail = adsbmap::acColour(adsbmap::AcSrc::Adsb, ac.posAgeSec, 0.55f);
@@ -145,19 +154,22 @@ static void drawTrails(ImDrawList* dl, const AdsbTelemetry& t) {
             const dect2::adsbd::Rgb c = dect2::adsbd::altRgb(tp.hasAlt, tp.altFt(), tp.ground);
             return IM_COL32(c.r, c.g, c.b, 140);
         };
-        ImVec2 prev = adsbmap::project(ac.track[0].lat, ac.track[0].lon);
-        for (size_t i = 1; i < ac.track.size(); i++) {
-            const ImVec2 q = adsbmap::project(ac.track[i].lat, ac.track[i].lon);
-            if (std::fabs(ac.track[i].lat - ac.track[i - 1].lat) < 2 && std::fabs(ac.track[i].lon - ac.track[i - 1].lon) < 2) dl->AddLine(prev, q, seg(ac.track[i]), w);   // a jump is a bad fix, not a flight
-            prev = q;
-        }
-        if (std::fabs(ac.track.back().lat - ac.lat) < 2 && std::fabs(ac.track.back().lon - ac.lon) < 2) dl->AddLine(prev, adsbmap::project(ac.lat, ac.lon), alt ? altColour(ac, 0.55f) : trail, w);
+        pts.resize(ac.track.size());
+        for (size_t i = 0; i < ac.track.size(); i++) { const ImVec2 q = adsbmap::project(ac.track[i].lat, ac.track[i].lon); pts[i] = {q.x, q.y}; }
+        trails::forEachSegment(pts.data(), pts.size(), 1.5f * gUi, clip, [&](size_t a, size_t b) {
+            if (std::fabs(ac.track[b].lat - ac.track[a].lat) < 2 && std::fabs(ac.track[b].lon - ac.track[a].lon) < 2)   // a jump is a bad fix, not a flight
+                dl->AddLine(ImVec2(pts[a].x, pts[a].y), ImVec2(pts[b].x, pts[b].y), seg(ac.track[b]), w);
+        });
+        const ImVec2 now = adsbmap::project(ac.lat, ac.lon);
+        if (std::fabs(ac.track.back().lat - ac.lat) < 2 && std::fabs(ac.track.back().lon - ac.lon) < 2 && !trails::sameSideOutside(pts.back(), {now.x, now.y}, clip))
+            dl->AddLine(ImVec2(pts.back().x, pts.back().y), now, alt ? altColour(ac, 0.55f) : trail, w);
     }
     for (const auto& ac : t.aircraft) {   // a couple of minutes ahead at the last speed, like the path on the flight-tracking sites
         if (!ac.hasPos || !ac.hasHeading || !ac.hasSpeed || ac.speedKt < 30 || ac.ground) continue;
         double la = 0, lo = 0;
         adsbmap::aheadNm(ac.lat, ac.lon, ac.headingDeg, ac.speedKt * (2.0 / 60.0), la, lo);
-        dl->AddLine(adsbmap::project(ac.lat, ac.lon), adsbmap::project(la, lo), adsbmap::acColour(adsbmap::AcSrc::Adsb, ac.posAgeSec, 0.35f), 1.2f);
+        const ImVec2 a = adsbmap::project(ac.lat, ac.lon), b = adsbmap::project(la, lo);
+        if (!trails::sameSideOutside({a.x, a.y}, {b.x, b.y}, clip)) dl->AddLine(a, b, adsbmap::acColour(adsbmap::AcSrc::Adsb, ac.posAgeSec, 0.35f), 1.2f);
     }
 }
 
@@ -205,6 +217,7 @@ static void drawWinds(ImDrawList* dl, const AdsbTelemetry& t) {
 // the aircraft icons with their label boxes; the one nearest a click (within 16 px) becomes `hit`
 static void drawAircraft(ImDrawList* dl, const AdsbTelemetry& t, ImVec2 p0, ImVec2 size, ImVec2 click, bool clicked, float& best, const AdsbAircraft*& hit) {
     const double nowT = ImGui::GetTime();
+    const bool lite = rcaps::lowPowerDraw();   // low-power drawing: a triangle per aircraft, the label box only for the selected one
     for (const auto& ac : t.aircraft) {
         if (!ac.hasPos) continue;
         dect2::track::PosEstimate pe;
@@ -214,10 +227,18 @@ static void drawAircraft(ImDrawList* dl, const AdsbTelemetry& t, ImVec2 p0, ImVe
         const bool sel = ac.icao == S.sel;
         const bool stale = ac.posAgeSec > adsbmap::acStaleSec(adsbmap::AcSrc::Adsb);
         const ImU32 fill = ac.emergency ? ImGui::ColorConvertFloat4ToU32(pal::badRed()) : (S.disp.altColour && !stale) ? altColour(ac) : adsbmap::acColour(adsbmap::AcSrc::Adsb, ac.posAgeSec);
-        { float hdg = 0.f; drawPlane(dl, q, planeHeadingDeg(ac, hdg) ? hdg : 0.f, (sel ? 14.f : 12.f) * gUi, fill, sel); }
-        if (est) { pospred::drawPredictionMarks(dl, pe, q, fill, gPred.ellipses); pospred::hoverTooltip(pe, q); }
-        if (acarslog::count(ac.icao) > 0) dl->AddCircleFilled(ImVec2(q.x + 8 * gUi, q.y - 8 * gUi), 3.f * gUi, IM_COL32(245, 160, 40, 255));   // it has sent ACARS messages
-        if (S.map.zoom >= 6 || sel) {
+        {
+            float hdg = 0.f;
+            const float hd = planeHeadingDeg(ac, hdg) ? hdg : 0.f, r = (sel ? 14.f : 12.f) * gUi;
+            if (lite && !sel) {
+                const float h = hd * (float)M_PI / 180.f, s = std::sin(h), c = std::cos(h);
+                auto rot = [&](float x, float y) { return ImVec2(q.x + (x * c - y * s) * r, q.y + (x * s + y * c) * r); };
+                dl->AddTriangleFilled(rot(0, -1), rot(0.7f, 0.8f), rot(-0.7f, 0.8f), fill);
+            } else drawPlane(dl, q, hd, r, fill, sel);
+        }
+        if (est && !lite) { pospred::drawPredictionMarks(dl, pe, q, fill, gPred.ellipses); pospred::hoverTooltip(pe, q); }
+        if (!lite && acarslog::count(ac.icao) > 0) dl->AddCircleFilled(ImVec2(q.x + 8 * gUi, q.y - 8 * gUi), 3.f * gUi, IM_COL32(245, 160, 40, 255));   // it has sent ACARS messages
+        if (lite ? sel : (S.map.zoom >= 6 || sel)) {
             char l1[48]; snprintf(l1, sizeof l1, "%s", ac.callsign.empty() ? icaoText(ac.icao).c_str() : ac.callsign.c_str());
             char l2[48] = "", l3[48] = "";
             if (ac.ground) snprintf(l2, sizeof l2, "GND");
@@ -339,8 +360,9 @@ void mapView(App& a, ImVec2 size) {
     if (on && gPred.predict) gPred.feedAdsb(t.aircraft, ImGui::GetTime());
     if (on && S.jamLayer) drawJam(dl, p0, size);
     if (on) {
-        drawTrails(dl, t);
-        if (S.winds) drawWinds(dl, t);
+        const bool lite = rcaps::lowPowerDraw();   // low-power drawing: no trails, paths ahead or wind arrows (gfx/render_caps.h)
+        if (!lite) drawTrails(dl, t, p0, size);
+        if (S.winds && !lite) drawWinds(dl, t);
         drawAircraft(dl, t, p0, size, click, clicked, best, hit);
     }
     if (clicked) S.sel = hit ? hit->icao : 0xFFFFFFFFu;
