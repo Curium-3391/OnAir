@@ -69,6 +69,50 @@ void LdpcCode::encode(std::vector<uint8_t>& bits) const {
     for (int j = 1; j < m_; j++) bits[k_ + j] ^= bits[k_ + j - 1];
 }
 
+bool LdpcCode::decodeBp(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters) const {
+    const int E = chkStart_[m_];
+    std::vector<double> R(E, 0.0), L(llr.begin(), llr.end()), q;
+    hard.assign(n_, 0);
+    int it = 0;
+    bool ok = false;
+    for (; it < maxIter; it++) {
+        for (int j = 0; j < m_; j++) {
+            const int s = chkStart_[j], t = chkStart_[j + 1];
+            q.resize((size_t)(t - s));
+            // tanh rule with the product of all others obtained from the total product (zeros handled apart)
+            double prod = 1.0; int zeros = 0, zi = -1;
+            for (int e = s; e < t; e++) {
+                const double v = L[(size_t)chkVar_[e]] - R[(size_t)e];
+                q[(size_t)(e - s)] = v;
+                double th = std::tanh(0.5 * std::max(-40.0, std::min(40.0, v)));
+                if (std::fabs(th) < 1e-12) { zeros++; zi = e; continue; }
+                prod *= th;
+            }
+            for (int e = s; e < t; e++) {
+                const double v = q[(size_t)(e - s)];
+                double other;
+                if (zeros > 1) other = 0;
+                else if (zeros == 1) other = e == zi ? prod : 0;
+                else other = prod / std::tanh(0.5 * std::max(-40.0, std::min(40.0, v)));
+                other = std::max(-0.999999999999, std::min(0.999999999999, other));
+                const double r = 2.0 * std::atanh(other);
+                R[(size_t)e] = r;
+                L[(size_t)chkVar_[e]] = v + r;
+            }
+        }
+        for (int i = 0; i < n_; i++) hard[(size_t)i] = L[(size_t)i] < 0;
+        ok = true;
+        for (int j = 0; j < m_ && ok; j++) {
+            int p = 0;
+            for (int e = chkStart_[j]; e < chkStart_[j + 1]; e++) p ^= hard[(size_t)chkVar_[e]];
+            if (p) ok = false;
+        }
+        if (ok) { it++; break; }
+    }
+    if (iters) *iters = it;
+    return ok;
+}
+
 bool LdpcCode::decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters) const {
     const int E = chkStart_[m_];
     std::vector<float> c2v(E, 0.f), v2c(E, 0.f), total(n_);

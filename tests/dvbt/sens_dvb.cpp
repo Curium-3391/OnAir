@@ -227,8 +227,9 @@ static Trial runT2(const Opt& o, double cn, uint32_t seed) {
         still = n1 == n0 ? still + 1 : 0;
     }
     if (getenv("SENS_VERBOSE")) {
-        int blocks = 0, ok = 0;
-        { std::lock_guard<std::mutex> lk(mu); for (auto& r : res) { blocks += r.blocks; ok += r.blocksOk; } }
+        int blocks = 0, ok = 0; double mer = 0, pre = 0; int nm = 0;
+        { std::lock_guard<std::mutex> lk(mu); for (auto& r : res) { blocks += r.blocks; ok += r.blocksOk; if (r.blocksOk) { mer += r.merDb; pre += r.preBer; nm++; } fprintf(stderr, " [f%d %d/%d]", r.t2Frame, r.blocksOk, r.blocks); } fprintf(stderr, "\n"); }
+        if (nm) fprintf(stderr, "  T2 data MER %.2f dB, pre-LDPC BER %.4f\n", mer / nm, pre / nm);
         fprintf(stderr, "  T2 state %d L1-pre %llu/%llu L1-post %llu/%llu results %zu blocks %d ok %d snr %.1f\n", tel.state, (unsigned long long)tel.l1preGood,
                 (unsigned long long)(tel.l1preGood + tel.l1preBad), (unsigned long long)tel.l1postGood, (unsigned long long)(tel.l1postGood + tel.l1postBad), res.size(), blocks, ok, tel.dataSnrDb);
     }

@@ -138,9 +138,16 @@ bool delaySpan(const std::vector<cf32>& H, int N, int searchLo, int searchHi, in
     std::vector<float> pw(N);
     double peak = 0;
     for (int n = 0; n < N; n++) { pw[n] = re[n] * re[n] + im[n] * im[n]; peak = std::max(peak, (double)pw[n]); }
-    std::vector<float> tmp = pw;
-    std::nth_element(tmp.begin(), tmp.begin() + N / 2, tmp.end());
-    double floorP = tmp[N / 2] * 1.5; // median of noise-only taps, approx mean
+    // The noise floor from the taps of the search range only: an estimate interpolated from a pilot grid holds noise only inside its delay
+    // window (N / S wide), the rest of the N taps are nearly empty. Their median, taken over all N, sat far below the noise in the window, so
+    // at a low SNR every noise tap counted as a path, the span came out as the whole window and the estimate was never narrowed (DVB-T2
+    // L1 at 4 dB: its cells 3 dB noisier than the channel).
+    std::vector<float> tmp;
+    tmp.reserve((size_t)std::max(1, searchHi - searchLo + 1));
+    for (int t = searchLo; t <= searchHi; t++) tmp.push_back(pw[(size_t)((((t + centre) % N) + N) % N)]);
+    if (tmp.size() < 16) tmp = pw;
+    std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
+    double floorP = tmp[tmp.size() / 2] * 1.5; // median of noise-only taps, approx mean
     double thr = std::max(floorP * 12.0, peak * 3e-4);
     if (peak < floorP * 30.0) return false;
     bool any = false;

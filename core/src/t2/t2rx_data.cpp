@@ -338,6 +338,76 @@ void T2Receiver::Impl::runDataStage() {
         fb[n] = cf32((float)b0.real(), (float)b0.imag());
         flbar[n] = (float)lbar;
     }
+    // A moving receiver: the channel is not a straight line over the frame (at 20 Hz Doppler a path turns by a whole radian in 60 ms). How far
+    // the pilots stray from the frame's line, against their noise (from the second differences, varN), says how short the pieces must be: the
+    // misfit of a line falls with the fourth power of its length, so each piece is cut to leave a quarter of the noise. Each piece gets its own
+    // weighted line from the pilots within one piece length of its centre (so neighbouring pieces overlap and the noise is still averaged).
+    int nSeg = 1, segLen = L - firstData;
+    std::vector<std::vector<cf32>> sa, sb;   // per piece: the line's value at its centre and its slope, per grid point
+    std::vector<int> segC;
+    // weighted line per piece from the pilots within one piece length of its centre; returns the pilots' misfit against the pieces
+    auto fitSegs = [&](int ns, int sl) {
+        sa.assign((size_t)ns, std::vector<cf32>(M)); sb.assign((size_t)ns, std::vector<cf32>(M)); segC.assign((size_t)ns, 0);
+        for (int sg = 0; sg < ns; sg++) {
+            const int l0 = firstData + sg * sl, l1 = std::min(L, l0 + sl);
+            segC[(size_t)sg] = (int)std::lround(0.5 * (l0 + l1 - 1));
+            const double W = sl + 0.5 * dy;   // half-width of the window of pilots used
+            for (int n = 0; n < M; n++) {
+                double sw = 0, st = 0, stt = 0; cd sv = 0, stv = 0;
+                for (auto& o : obs[n]) {
+                    if (o.type == kCellP2Pilot || o.l < firstData) continue;
+                    const double t = o.l - segC[(size_t)sg];
+                    if (std::fabs(t) >= W) continue;
+                    const double w = (o.type == kCellContinual ? cpAmp2 : amp2) * (1.0 - std::fabs(t) / W);
+                    const cd v(o.v.real(), o.v.imag());
+                    sw += w; st += w * t; stt += w * t * t; sv += w * v; stv += w * t * v;
+                }
+                if (sw <= 0) { sa[(size_t)sg][n] = fa[n] + fb[n] * ((float)segC[(size_t)sg] - flbar[n]); sb[(size_t)sg][n] = fb[n]; continue; }
+                const double det = sw * stt - st * st;
+                cd a, b;
+                if (det > 1e-9 * sw * sw) { b = (sw * stv - st * sv) / det; a = (sv - b * st) / sw; }
+                else { b = cd(fb[n].real(), fb[n].imag()); a = sv / sw - b * (st / sw); }
+                sa[(size_t)sg][n] = cf32((float)a.real(), (float)a.imag()); sb[(size_t)sg][n] = cf32((float)b.real(), (float)b.imag());
+            }
+        }
+        double r = 0; long c = 0;
+        for (int n = 0; n < M; n++)
+            for (auto& o : obs[n]) {
+                if (o.type == kCellP2Pilot || o.l < firstData) continue;
+                const int sg = std::min(ns - 1, std::max(0, (o.l - firstData) / sl));
+                r += std::norm(o.v - (sa[(size_t)sg][n] + sb[(size_t)sg][n] * (float)(o.l - segC[(size_t)sg]))); c++;
+            }
+        return c ? r / (double)c : 0.0;
+    };
+    if (!getenv("DECT2_T2_CE_OLD")) {
+        double rs = 0, nv = 0; long rc = 0; int nvc = 0;
+        for (int n = 0; n < M; n++) {
+            if (varN[n] > 0) { nv += varN[n]; nvc++; }
+            for (auto& o : obs[n]) {
+                if (o.type == kCellP2Pilot || o.l < firstData) continue;
+                rs += std::norm(o.v - (fa[n] + fb[n] * ((float)o.l - flbar[n]))); rc++;
+            }
+        }
+        if (rc > 0 && nvc > 0) {
+            rs /= (double)rc; nv /= nvc;
+            if (rs > 2.0 * nv) {
+                const int span = L - firstData;
+                const int minLen = std::max(2 * dy, 4);
+                segLen = std::max(minLen, std::min(span, (int)std::floor(span * std::pow(0.25 * nv / (rs - nv), 0.25))));
+                // a channel that turns by several radians over the frame does not follow the fourth-power rule: cut again until the
+                // pieces fit (at most three times)
+                for (int it = 0; it < 4; it++) {
+                    nSeg = (span + segLen - 1) / segLen;
+                    if (nSeg < 2) { nSeg = 1; segLen = span; break; }
+                    const double r2 = fitSegs(nSeg, segLen);
+                    if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] channel over the frame: misfit of one line %.2f x noise, of %d pieces of %d symbols %.2f\n", rs / nv, nSeg, segLen, r2 / nv);
+                    if (r2 <= 1.5 * nv || segLen <= minLen || it == 3) break;
+                    segLen = std::max(minLen, (int)std::floor(segLen * std::pow(0.25 * nv / std::max(1e-12, r2 - nv), 0.25)));
+                }
+            }
+        }
+    }
+    auto segOf = [&](int l) { return nSeg > 1 ? std::min(nSeg - 1, std::max(0, (l - firstData) / segLen)) : 0; };
     // Noise power of every data symbol: residual of the pilots against the fitted channel. Interference that comes and goes
     // (a few frames of raised noise, a burst) hits some symbols harder than the frame average that sigma2 describes; scaling the
     // cell noise variance per symbol keeps the LDPC input honest (over-confident wrong bits are far worse than weak ones).
@@ -347,7 +417,8 @@ void T2Receiver::Impl::runDataStage() {
         for (int n = 0; n < M; n++)
             for (auto& o : obs[n]) {
                 if (o.type == kCellP2Pilot || o.l < firstData) continue;
-                const cf32 fit = fa[n] + fb[n] * ((float)o.l - flbar[n]);
+                const int sg = segOf(o.l);
+                const cf32 fit = nSeg > 1 ? sa[(size_t)sg][n] + sb[(size_t)sg][n] * (float)(o.l - segC[(size_t)sg]) : fa[n] + fb[n] * ((float)o.l - flbar[n]);
                 rp[(size_t)o.l] += std::norm(o.v - fit); rc[(size_t)o.l]++;
             }
         double tot = 0; long cnt = 0;
@@ -371,12 +442,20 @@ void T2Receiver::Impl::runDataStage() {
     // frame, on the grid at the middle data symbol and on the slopes, instead of once per symbol: H(l) = H(lc) + (l - lc) * Hslope.
     const int lc = firstData + (L - firstData) / 2;
     std::vector<cf32> Hmid, Hslope;
+    std::vector<std::vector<cf32>> segMid((size_t)nSeg), segSlope((size_t)nSeg);
     {
         const double tau0 = (double)back + (chDelayKnown ? chDelayCentre : G / 2.0);
         const double cut = chDelayKnown ? std::min(1.0, chDelayHalf / ((double)N / (2.0 * dx))) : 1.0;
-        for (int n = 0; n < M; n++) grid[n] = fa[n] + fb[n] * ((float)lc - flbar[n]);
-        interp.run(grid, dx, K, N, tau0, Hmid, cut);
-        interp.run(fb, dx, K, N, tau0, Hslope, cut);
+        if (nSeg > 1) {
+            for (int sg = 0; sg < nSeg; sg++) {
+                interp.run(sa[(size_t)sg], dx, K, N, tau0, segMid[(size_t)sg], cut);
+                interp.run(sb[(size_t)sg], dx, K, N, tau0, segSlope[(size_t)sg], cut);
+            }
+        } else {
+            for (int n = 0; n < M; n++) grid[n] = fa[n] + fb[n] * ((float)lc - flbar[n]);
+            interp.run(grid, dx, K, N, tau0, Hmid, cut);
+            interp.run(fb, dx, K, N, tau0, Hslope, cut);
+        }
     }
     // the equalised cells are only kept for the display, which thins them to about 6000: store every step-th one
     size_t totalData = 0;
@@ -385,8 +464,15 @@ void T2Receiver::Impl::runDataStage() {
     size_t dispIdx = 0;
     H.resize(K);
     for (int l = firstData; l < L; l++) {
-        const float dl = (float)(l - lc);
-        for (int kk = 0; kk < K; kk++) H[kk] = Hmid[kk] + dl * Hslope[kk];
+        if (nSeg > 1) {
+            const int sg = segOf(l);
+            const float dl = (float)(l - segC[(size_t)sg]);
+            const std::vector<cf32>& hm = segMid[(size_t)sg]; const std::vector<cf32>& hs = segSlope[(size_t)sg];
+            for (int kk = 0; kk < K; kk++) H[kk] = hm[kk] + dl * hs[kk];
+        } else {
+            const float dl = (float)(l - lc);
+            for (int kk = 0; kk < K; kk++) H[kk] = Hmid[kk] + dl * Hslope[kk];
+        }
         for (int kk = 0; kk < K; kk++)
             if (types[l][kk] == kCellData) { if (dispIdx++ % dispStep == 0) all.push_back(frameCells[l][off + kk] / H[kk]); }
         if (wantPlp) {
