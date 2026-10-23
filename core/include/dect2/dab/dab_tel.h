@@ -26,6 +26,7 @@ struct DabComponent {
     int subId = -1;
     int scid = -1;        // packet mode (tmid 3): the service component identifier (FIG 0/2), -1 otherwise
     bool primary = true;
+    bool ca = false;      // FIG 0/2 CA flag: access control applies, the component is scrambled (not played: it would be noise)
     bool dmb() const { return tmid == 1 && dscty == 24; }
 };
 
@@ -39,6 +40,7 @@ struct DabService {
     uint32_t sid = 0;
     std::string label;
     std::vector<DabComponent> comps;
+    int caId = 0;         // FIG 0/2 CAId: the access control system of the service, 0 = none
     std::string dls;      // dynamic label ("now playing"), when the station sends one
     std::vector<DabDlpTag> dlPlus;   // the DL Plus tags of the label of the selected service, when it sends them
     bool dlpRunning = false;         // DL Plus: the item (programme) is running
@@ -177,6 +179,9 @@ struct DabTelemetry {
     int tiiFrames = 0;                  // null symbols analysed since the lock
     // the robustness of the reception (docs/DAB-AUDIT.md)
     double sroPpm = 0;                  // sample clock error measured (ppm; the tuner's crystal is off by about as much)
+    double quietMs = 0;                 // input searched without any null symbol in it, since the tuning or the last null seen (the scan moves on when it grows)
+    bool scrambled = false;             // the selected station is scrambled (conditional access, FIG 0/2): it is not played
+    bool coherent = false;              // the last frame was demodulated with the channel estimate (false: plain differential, a fast-changing channel)
     uint64_t syncLosses = 0;            // frames where the sync was lost (a fade longer than 1.15 s, lost samples)
     uint64_t relocks = 0;               // of them found again by the quick search, the decoding kept going
     uint64_t erasedCifs = 0;            // CIFs lost on the way, put into the de-interleaver as erasures

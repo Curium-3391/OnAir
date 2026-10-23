@@ -1,4 +1,5 @@
 #include "dect2/common/thread_name.h"
+#include "dect2/dsp/sample_convert.h"
 #include "dect2/engine/mode_synth.h"
 #include "dect2/common/stable_random.h"
 #include "dect2/source/hamlib_rig.h"
@@ -364,36 +365,35 @@ protected:
         };
         size_t got = rd();
         if (got == 0 && loop_) { fseek(f_, (long)off_, SEEK_SET); pos_ = off_; got = rd(); }
-        // the 8-bit formats in loops of their own (the same arithmetic; the format switch per sample kept the compiler from vectorising
-        // the conversion, a few percent of the whole app at 10 Msps)
-        if (fmt_ == FileFormat::CS8) {
-            const int8_t* s = reinterpret_cast<const int8_t*>(raw_.data());
-            float* o = reinterpret_cast<float*>(dst);
-            for (size_t i = 0; i < 2 * got; i++) o[i] = s[i] / 128.0f;
-            return got;
-        }
-        if (fmt_ == FileFormat::CU8) {
-            const uint8_t* s = raw_.data();
-            float* o = reinterpret_cast<float*>(dst);
-            for (size_t i = 0; i < 2 * got; i++) o[i] = (s[i] - 127.5f) / 127.5f;
-            return got;
-        }
-        for (size_t i = 0; i < got; i++) {
-            switch (fmt_) {
-            case FileFormat::CS8: dst[i] = cf32((int8_t)raw_[2*i] / 128.0f, (int8_t)raw_[2*i+1] / 128.0f); break;
-            case FileFormat::CU8: dst[i] = cf32((raw_[2*i] - 127.5f) / 127.5f, (raw_[2*i+1] - 127.5f) / 127.5f); break;
-            case FileFormat::CF32: {
-                uint32_t u[2]; memcpy(u, &raw_[8*i], 8);
-                if (be_) for (auto& x : u) x = ((x >> 24) | ((x >> 8) & 0xFF00u) | ((x << 8) & 0xFF0000u) | (x << 24));
+        // one loop per format (the format switch per sample kept the loops from vectorising); the same arithmetic as before: x / 128 and
+        // x / 32768 are exact as multiplications, the cu8 / cu16 divisions are kept as divisions
+        const uint8_t* r = raw_.data();
+        switch (fmt_) {
+        case FileFormat::CS8: convertCs8(reinterpret_cast<const int8_t*>(r), got, dst); break;
+        case FileFormat::CU8: convertCu8(r, got, dst, 127.5f, 127.5f); break;
+        case FileFormat::CF32:
+            if (!be_) { memcpy(dst, r, got * 8); break; }
+            for (size_t i = 0; i < got; i++) {
+                uint32_t u[2]; memcpy(u, &r[8 * i], 8);
+                for (auto& x : u) x = ((x >> 24) | ((x >> 8) & 0xFF00u) | ((x << 8) & 0xFF0000u) | (x << 24));
                 float v[2]; memcpy(v, u, 8); dst[i] = cf32(v[0], v[1]);
-            } break;
-            case FileFormat::CI16: case FileFormat::CU16: {
-                uint16_t u[2]; memcpy(u, &raw_[4*i], 4);
+            }
+            break;
+        case FileFormat::CI16: case FileFormat::CU16:
+            if (fmt_ == FileFormat::CI16 && !be_) {
+                std::vector<int16_t>& s = s16_;
+                s.resize(got * 2);
+                memcpy(s.data(), r, got * 4);
+                convertCs16(s.data(), got, dst, 1.0f / 32768);
+                break;
+            }
+            for (size_t i = 0; i < got; i++) {
+                uint16_t u[2]; memcpy(u, &r[4 * i], 4);
                 if (be_) for (auto& x : u) x = (uint16_t)((x >> 8) | (x << 8));
                 if (fmt_ == FileFormat::CI16) dst[i] = cf32((int16_t)u[0] / 32768.0f, (int16_t)u[1] / 32768.0f);
                 else dst[i] = cf32((u[0] - 32767.5f) / 32767.5f, (u[1] - 32767.5f) / 32767.5f);
-            } break;
             }
+            break;
         }
         return got;
     }
@@ -407,6 +407,7 @@ private:
     bool be_ = false;
     FILE* f_ = nullptr;
     std::vector<uint8_t> raw_;
+    std::vector<int16_t> s16_;   // ci16 samples, aligned for the conversion
 };
 
 // ---------------------------------------------------------------- synthetic DVB-T2-like signal (and the test signals of the other modes, see mode_synth.h)

@@ -248,12 +248,13 @@ struct Transmitter::Impl {
         ctx->sample_fmt = AV_SAMPLE_FMT_S16;
         ctx->sample_rate = sv.sampleRate;
         ctx->bit_rate = (int64_t)sv.bitrate * 1000;
-        av_channel_layout_default(&ctx->ch_layout, 2);
+        const int nch = sv.channels == 1 ? 1 : 2;
+        av_channel_layout_default(&ctx->ch_layout, nch);
         if (avcodec_open2(ctx, codec, nullptr) < 0) { avcodec_free_context(&ctx); return false; }
         const int fl = ctx->frame_size;                   // 1152
         AVFrame* fr = av_frame_alloc();
         fr->nb_samples = fl; fr->format = AV_SAMPLE_FMT_S16; fr->sample_rate = sv.sampleRate;
-        av_channel_layout_default(&fr->ch_layout, 2);
+        av_channel_layout_default(&fr->ch_layout, nch);
         av_frame_get_buffer(fr, 0);
         AVPacket* pk = av_packet_alloc();
         const int loopFrames = loopSamples(sv) / fl;      // 500
@@ -262,7 +263,7 @@ struct Transmitter::Impl {
         for (int t = 0; t < 2 * loopFrames; t++) {
             av_frame_make_writable(fr);
             int16_t* d = (int16_t*)fr->data[0];
-            for (int i = 0; i < fl; i++) for (int c = 0; c < 2; c++) d[i * 2 + c] = (int16_t)std::lround(testSound(sv, c, (int64_t)t * fl + i) * 32767.0);
+            for (int i = 0; i < fl; i++) for (int c = 0; c < nch; c++) d[i * nch + c] = (int16_t)std::lround(testSound(sv, c, (int64_t)t * fl + i) * 32767.0);
             fr->pts = (int64_t)t * fl;
             if (avcodec_send_frame(ctx, fr) < 0) break;
             while (avcodec_receive_packet(ctx, pk) == 0) { out.emplace_back(pk->data, pk->data + pk->size); av_packet_unref(pk); }
@@ -272,10 +273,12 @@ struct Transmitter::Impl {
         // the packets lag the input by the encoder delay; take loopFrames consecutive ones from the second pass
         s.mp2.assign(out.end() - loopFrames, out.end());
         s.frames.clear();
+        // at 48 kHz an MP2 frame is one logical frame (24 ms); at 24 kHz (MPEG-2 half sampling rate) it is 48 ms and spans two of them
+        const int per = sv.sampleRate == 24000 ? 2 : 1;
         for (auto& p : s.mp2) {
-            if ((int)p.size() != sv.bitrate * 3) return false;
+            if ((int)p.size() != sv.bitrate * 3 * per) return false;
             if (p.size() >= 2) { p[p.size() - 2] = 0; p[p.size() - 1] = 0; }       // F-PAD: no X-PAD
-            s.frames.push_back(p);
+            for (int h = 0; h < per; h++) s.frames.emplace_back(p.begin() + (long)h * sv.bitrate * 3, p.begin() + (long)(h + 1) * sv.bitrate * 3);
         }
         return true;
     }
@@ -362,9 +365,9 @@ struct Transmitter::Impl {
             for (size_t k = i; k < std::min(audio.size(), i + 5); k++) {
                 const TxService& sv = *audio[k];
                 put16(b, sv.sid);
-                b.push_back(0x01);                                                  // local flag 0, 1 service component
+                b.push_back((uint8_t)(sv.ca ? 0x11 : 0x01));                        // local flag 0, CAId (1 with access control), 1 service component
                 b.push_back((uint8_t)(sv.dabPlus ? 63 : 0));                        // TMID 0 (MSC stream audio), ASCTy
-                b.push_back((uint8_t)((sv.subId << 2) | 0x02));                     // SubChId, primary, no conditional access
+                b.push_back((uint8_t)((sv.subId << 2) | 0x02 | (sv.ca ? 1 : 0)));   // SubChId, primary, CA flag
             }
             out.push_back(fig(0, b));
         }
