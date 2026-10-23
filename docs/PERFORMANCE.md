@@ -31,7 +31,7 @@ run under `nice -n 19` while other builds ran, so the CPU figures are upper boun
 The policy moved out of `paceFrame()` into a pure function with a test (tests/app/test_frame_pace.cpp checks every state combination
 never redraws faster than before). New inputs: the window is covered (macOS `occlusionState`: other windows over it, another Space,
 the screen off or locked) and the computer runs on its battery (IOKit power source; Windows `GetSystemPowerStatus`; Linux
-`/sys/class/power_supply`), with View > Save power on battery (on by default).
+`/sys/class/power_supply`), with View > Power > Low power mode (automatic by default; in 3.0 this one setting also drives dect2/power, see docs/PERFORMANCE-POWER.md).
 
 | window state | before fps | after fps |
 |---|---|---|

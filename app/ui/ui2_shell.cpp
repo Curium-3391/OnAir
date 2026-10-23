@@ -499,13 +499,16 @@ static void viewMenu(App& a) {
         typographyChoice(true);
         if (ImGui::BeginMenu(tr("Language"))) { languageMenuItems(a); ImGui::EndMenu(); }
         ImGui::Separator();
-        if (ImGui::MenuItem(tr("Reduce CPU when hidden"), nullptr, &a.reduceCpuHidden)) savePrefs(a);
-        if (ImGui::MenuItem(tr("Save power on battery"), nullptr, &a.batterySaver)) savePrefs(a);
         if (ImGui::MenuItem(tr("Performance overlay"), nullptr, &a.perfOverlay)) savePrefs(a);
-        if (ImGui::BeginMenu(tr("Power"))) {   // dect2/power/power.h: battery life
+        if (ImGui::BeginMenu(tr("Power"))) {   // battery life: dect2/power/power.h (update rates, background work) and app/ui/frame_pace.h (redraws)
             static const char* lp[3] = {N_("Low power mode: off"), N_("Low power mode: automatic (on battery or hot)"), N_("Low power mode: always")};
-            for (int i = 0; i < 3; i++) if (ImGui::MenuItem(tr(lp[i]), nullptr, a.powerLowMode == i)) { a.powerLowMode = i; savePrefs(a); }
+            for (int i = 0; i < 3; i++) {
+                if (ImGui::MenuItem(tr(lp[i]), nullptr, a.powerLowMode == i)) { a.powerLowMode = i; savePrefs(a); }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("While it applies: the spectrum and telemetry update less often, the window redraws at 30 fps when you type and at 10 fps behind other windows. A playing TV picture keeps its frame rate."));
+            }
             ImGui::Separator();
+            if (ImGui::MenuItem(tr("Reduce CPU when hidden"), nullptr, &a.reduceCpuHidden)) savePrefs(a);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("No drawing while the window is minimised or hidden. Decoding goes on."));
             static const char* sh[3] = {N_("Save power when hidden: off"), N_("Save power when hidden: on battery"), N_("Save power when hidden: always")};
             for (int i = 0; i < 3; i++) if (ImGui::MenuItem(tr(sh[i]), nullptr, a.powerHidden == i)) { a.powerHidden = i; savePrefs(a); }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("While the window is minimised or hidden: the spectrum and telemetry update a few times a second and scans wait. Decoding and audio go on."));

@@ -459,10 +459,11 @@ struct App {
     int mtvGrid = 0;          // 0 find out, 1 the capture is centred on a channel, 2 between two channels
     std::vector<MultiService> mtvSvc;   // every service of every channel (refreshed with ts)
     bool atvWide = false;     // analog TV: system E chosen (14 MHz channel, 10 MHz of video): the radio runs at 20 Msps
-    int powerLowMode = 1;     // View > Power > Low power mode: 0 off, 1 automatic (on battery or when the machine is hot), 2 always (dect2/power/power.h)
-    int powerHidden = 1;      // View > Power > Save power when hidden: 0 off, 1 on battery, 2 always (slower spectrum updates, scanners wait)
-    bool reduceCpuHidden = true;   // View > Reduce CPU when hidden: no drawing while the window is minimised or hidden (decoding goes on)
-    bool batterySaver = true;      // View > Save power on battery: input redraws at 30 fps, a receiver in the background at 10 (video keeps its rate)
+    // View > Power (one menu for both power features of 3.0: dect2/power/power.h and the frame pacing of app/ui/frame_pace.h)
+    int powerLowMode = 1;     // Low power mode: 0 off, 1 automatic (on battery or when the machine is hot), 2 always. While it applies: slower
+                              // spectrum / telemetry, input redraws at 30 fps, a receiver in the background at 10 (video keeps its rate)
+    int powerHidden = 1;      // Save power when hidden: 0 off, 1 on battery, 2 always (slower spectrum updates, scanners wait)
+    bool reduceCpuHidden = true;   // Reduce CPU when hidden: no drawing while the window is minimised or hidden (decoding goes on)
     bool perfOverlay = false;      // View > Performance overlay: frame rate, CPU per thread, wake-ups (ui/perf_overlay.cpp)
     bool discordOn = false, discordFreq = true;   // View > Show in Discord (opt-in Rich Presence, discord_rpc.cpp) and its "Show the frequency"
     bool mapSend = false, mapConsent = false;     // Server > Send data to map server (opt-in; consent once)

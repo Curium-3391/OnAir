@@ -18,7 +18,7 @@ struct State {
     bool running = false;           // a receiver runs: spectrum and waterfall move
     bool liveWaterfall = false;     // running and the waterfall is not paused: a shown window keeps 30 fps, focused or not (#246)
     bool onBattery = false;         // the computer runs on its battery
-    bool batterySaver = true;       // View > Save power on battery
+    bool batterySaver = true;       // View > Power > Low power mode is not off (onBattery then means: it applies now)
 };
 
 inline double shownInterval(const State& s) {

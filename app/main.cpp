@@ -23,6 +23,7 @@
 #include "ui/frame_pace.h"
 #include "ui/perf_overlay.h"
 #include "platform/power.h"
+#include "dect2/power/power.h"
 
 // code runs before the library's (the linker places the program's own objects first), so the check here comes in time.
 #if defined(DECT2_REQUIRES_AVX2) && (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
@@ -83,8 +84,8 @@ static PaceInfo paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double
     ps.video = app.engine.player().selected() >= 0;
     ps.running = anyRunning();
     ps.liveWaterfall = ps.running && !app.wf.paused;   // a shown window with a live waterfall keeps 30 frames a second, focused or not (#246)
-    ps.onBattery = app.batterySaver && ::power::onBattery();
-    ps.batterySaver = app.batterySaver;
+    ps.batterySaver = app.powerLowMode != 0;                                // View > Power > Low power mode (one setting for both)
+    ps.onBattery = ps.batterySaver && dect2::power::lowPower();             // manual on, or automatic with the battery or serious heat
     ::power::setReceiving(ps.running);   // no App Nap while a receiver runs
     const double interval = pace::interval(ps);
     if (interval > 0 && frameNext > t) {
