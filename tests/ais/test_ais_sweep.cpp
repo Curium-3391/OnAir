@@ -13,7 +13,7 @@ static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); printf("\n"); fails++; } } while (0)
 
 struct Point { double snr; int sent, got, bad; };
-static const double kMax90 = 3.5;   // measured 2.5 dB; the limit leaves room for another machine's rounding
+static const double kMax90 = 2.5;   // measured 1.5 dB with the coherent pass (2.6 dB before it); the limit leaves room for another machine's rounding
 
 static Point run(double snrDb, int nBursts, double rate, double cfo, uint32_t seed, double sro = 0) {
     std::mt19937 rng(seed);
