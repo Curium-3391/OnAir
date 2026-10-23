@@ -12,14 +12,16 @@ namespace detail {
 const int kHbEdge[kHbBands + 1] = {36, 41, 47, 54, 61, 69, 80};
 
 // ---------------------------------------------------------------- profiles
+void lsfAllocKlt(int total, int table, int* bits);
+
 namespace {
 const Tier kTiers[] = {
     // minBits20  L  lsf res lag0 lagD gp gc   high band {on, gain, shape, time}       postfilter num/den/ltp
-    {60,  80, 20, 1, 7, 3, 3, 3, {true, 4, 0, 0}, 0.55, 0.72, 0.50},
-    {80,  80, 22, 1, 7, 4, 3, 4, {true, 5, 0, 0}, 0.55, 0.72, 0.50},
-    {110, 80, 24, 2, 8, 4, 3, 4, {true, 5, 1, 0}, 0.55, 0.72, 0.50},
-    {140, 40, 26, 2, 8, 4, 3, 4, {true, 5, 1, 0}, 0.60, 0.75, 0.40},
-    {200, 40, 28, 2, 8, 5, 4, 5, {true, 5, 2, 2}, 0.65, 0.75, 0.30},
+    {60,  80, 20, 1, 7, 3, 3, 3, {true, 4, 0, 2}, 0.55, 0.72, 0.50},
+    {80,  80, 22, 1, 7, 4, 3, 4, {true, 4, 0, 2}, 0.55, 0.72, 0.50},
+    {110, 80, 24, 2, 8, 4, 3, 4, {true, 5, 1, 2}, 0.55, 0.72, 0.50},
+    {140, 40, 26, 2, 8, 4, 3, 4, {true, 5, 1, 2}, 0.60, 0.75, 0.40},
+    {200, 40, 28, 2, 8, 5, 4, 5, {true, 5, 1, 2}, 0.65, 0.75, 0.30},
     {280, 40, 32, 2, 8, 5, 4, 5, {true, 5, 3, 2}, 0.70, 0.75, 0.25},
 };
 constexpr int kNTiers = sizeof(kTiers) / sizeof(kTiers[0]);
@@ -30,12 +32,6 @@ int hbBits(const HbProf& h) {
     return h.gainBits + shape[h.shapeMode & 3] + 4 * h.timeBits;
 }
 
-void lsfAlloc(int total, int* b) {
-    static const int prio[kP] = {1, 2, 0, 3, 4, 5, 6, 7, 8, 9};
-    const int base = total / kP, extra = total % kP;
-    for (int i = 0; i < kP; i++) b[i] = base;
-    for (int i = 0; i < extra; i++) b[prio[i]]++;
-}
 
 Field fieldDef(const Prof& P, FK k, int i) {
     Field f{k, 0, 0, 0};
@@ -46,7 +42,7 @@ Field fieldDef(const Prof& P, FK k, int i) {
         f.b = (uint8_t)(b < rest ? b : rest);
     };
     switch (k) {
-    case FK::Lsf: split(P.lsfBits[i], i < 6 ? 2 : 1, 99); break;
+    case FK::Lsf: split(P.lsfBits[i], i < 3 ? 2 : (i < 6 ? 1 : 0), 99); break;   // KLT order: first components carry most
     case FK::Interp: split(P.interpBits, 99, 0); break;
     case FK::Lag0: split(P.lag0Bits, 5, 99); break;
     case FK::LagD: split(P.lagDBits, 1, 99); break;
@@ -84,6 +80,14 @@ bool makeProf(const Config& c, Prof& P, std::string* why, const Tier* ov) {
     for (int i = 0; i < kNTiers; i++)
         if (B20 >= kTiers[i].minBits20) t = &kTiers[i];
     if (ov) t = ov;
+    static Tier dbgT;   // DEBUG tuning override
+    if (getenv("KVT")) {
+        dbgT = *t;
+        int hbg, hbs, hbt;
+        sscanf(getenv("KVT"), "%d,%d,%d,%d,%d,%d,%d,%d,%d,%lf,%lf,%lf", &dbgT.L, &dbgT.lsfTotal, &dbgT.lagRes, &dbgT.lagDBits, &dbgT.gpBits, &dbgT.gcBits, &hbg, &hbs, &hbt, &dbgT.pfNum, &dbgT.pfDen, &dbgT.pfLtp);
+        dbgT.hb.gainBits = hbg; dbgT.hb.shapeMode = hbs; dbgT.hb.timeBits = hbt;
+        t = &dbgT;
+    }
     P = Prof();
     P.fs = c.sampleRate;
     P.frameMs = c.frameMs;
@@ -92,7 +96,7 @@ bool makeProf(const Config& c, Prof& P, std::string* why, const Tier* ov) {
     P.S = P.N8 / P.L;
     P.halves = c.frameMs / 20;
     P.lsfTotal = t->lsfTotal;
-    lsfAlloc(P.lsfTotal, P.lsfBits);
+    lsfAllocKlt(P.lsfTotal, c.frameMs == 40 ? 1 : 0, P.lsfBits);
     P.interpBits = c.frameMs == 40 ? 2 : 0;
     P.lagRes = t->lagRes;
     P.lag0Bits = t->lagRes == 2 ? 8 : 7;
@@ -213,38 +217,157 @@ void unpackFrame(const Prof& P, const uint8_t* in, uint32_t bad, FrameQ& q, bool
 }
 
 // ---------------------------------------------------------------- LSF quantiser
+// Predictive KLT scalar quantiser: the residual r = lsf - (mean + rho (prev - mean)) is rotated onto the eigenvectors of its covariance
+// and each coefficient, divided by its standard deviation, is quantised with a Gaussian Lloyd-Max quantiser of b_k bits (greedy bit
+// allocation). The encoder then refines the indices by coordinate descent on a spectrally weighted LSF error. Mean, eigenvectors and
+// deviations were measured on synthetic training speech (12 seeds x 4 voices x 6 s, tools/kaalvoice_bench; the repo's real speech
+// sample and other seeds are the held-out check) for rho = 0.6 (20 ms frames) and rho = 0.45 (40 ms frames).
 namespace {
-// Mean LSFs (radians) and the standard deviation of the inter-frame prediction residual, measured on the repo's speech sample and
-// the synthetic test speech (tools/kaalvoice_bench --lsfstats).
-const double kLsfMean[kP] = {0.220, 0.370, 0.560, 0.870, 1.260, 1.530, 1.860, 2.140, 2.440, 2.680};
-const double kLsfSig[kP] = {0.064, 0.095, 0.140, 0.137, 0.140, 0.136, 0.104, 0.095, 0.070, 0.062};
-const double kStepFactor[7] = {0.0, 1.596, 0.996, 0.586, 0.335, 0.188, 0.104};
+const double kLsfMean[kP] = {0.2473, 0.4096, 0.5728, 0.8734, 1.2392, 1.4805, 1.8386, 2.1137, 2.4404, 2.6917};
+const double kKltSd[2][kP] = {{0.27574, 0.14605, 0.10672, 0.07917, 0.06279, 0.05711, 0.04950, 0.04549, 0.04127, 0.02663}, {0.31067, 0.16616, 0.12257, 0.08749, 0.07090, 0.06288, 0.05322, 0.04787, 0.04165, 0.02683}};
+const double kKlt[2][kP][kP] = {{
+    {0.13390, 0.20172, 0.37818, 0.40390, 0.47937, 0.46986, 0.31011, 0.25124, 0.14788, 0.05915},
+    {0.22644, 0.43461, 0.54672, 0.33005, -0.23279, -0.42421, -0.25199, -0.18742, -0.12130, -0.06716},
+    {-0.03511, -0.02648, -0.15772, 0.11567, 0.59045, 0.10426, -0.37485, -0.50688, -0.31326, -0.32364},
+    {-0.35852, -0.44733, -0.10506, 0.73589, -0.07428, -0.22510, 0.06039, -0.11625, 0.16801, 0.13119},
+    {0.03292, -0.08796, -0.07847, 0.01289, 0.39348, -0.54484, -0.08912, 0.67518, -0.16766, -0.20312},
+    {-0.06258, 0.10570, -0.04854, -0.01843, -0.00683, -0.23159, 0.81337, -0.24152, -0.32007, -0.32586},
+    {0.34169, 0.22348, -0.33858, -0.01015, 0.31844, -0.32915, 0.13343, -0.22990, 0.14537, 0.64578},
+    {0.22502, 0.29025, -0.41738, 0.16942, -0.09248, -0.01792, -0.01943, 0.00344, 0.60903, -0.53106},
+    {-0.44017, -0.01498, 0.40020, -0.36828, 0.31032, -0.27234, 0.04059, -0.20338, 0.54221, -0.05256},
+    {0.65946, -0.64521, 0.25425, -0.08988, 0.02705, -0.06647, 0.08266, -0.15127, 0.14305, -0.14412},
+}, {
+    {0.12877, 0.18323, 0.34726, 0.38635, 0.49883, 0.48918, 0.31676, 0.25743, 0.14878, 0.05592},
+    {0.22038, 0.42763, 0.56471, 0.37327, -0.23995, -0.40958, -0.22884, -0.14725, -0.09523, -0.04349},
+    {-0.03577, -0.01474, -0.14561, 0.14922, 0.57087, 0.08033, -0.39340, -0.52947, -0.30876, -0.30373},
+    {-0.37387, -0.41888, -0.12402, 0.71212, -0.12531, -0.15494, 0.12750, -0.19323, 0.21608, 0.14921},
+    {0.00057, -0.16111, -0.10200, 0.10815, 0.39064, -0.55636, -0.13115, 0.65841, -0.12899, -0.14990},
+    {-0.06539, 0.13691, -0.04850, -0.03803, 0.03181, -0.26938, 0.79318, -0.20015, -0.33368, -0.34507},
+    {0.25604, 0.06619, -0.14073, -0.06019, 0.28635, -0.26123, 0.13502, -0.20471, -0.16055, 0.81883},
+    {0.27793, 0.36740, -0.43496, 0.04972, 0.11393, -0.20500, 0.03784, -0.12683, 0.69704, -0.19422},
+    {0.48540, 0.06281, -0.48346, 0.39489, -0.32075, 0.25529, -0.02622, 0.18578, -0.40666, -0.04628},
+    {-0.64118, 0.64797, -0.26161, 0.08277, -0.02307, 0.07040, -0.09798, 0.16822, -0.14754, 0.16904},
+}};
 constexpr double kLsfGap = 0.025;
+constexpr int kMaxQBits = 6;
+// Lloyd-Max distortion of a unit Gaussian for b bits
+const double kLmDist[kMaxQBits + 1] = {1.0, 0.3634, 0.1175, 0.03454, 0.009497, 0.002499, 0.000642};
+
+struct LloydMax {
+    double lv[kMaxQBits + 1][64];
+    LloydMax() {
+        // Lloyd iteration on a fine grid of the Gaussian density (deterministic: only + - * / and kvExp)
+        constexpr int G = 6001;
+        static double x[G], p[G];
+        for (int i = 0; i < G; i++) { x[i] = -6.0 + 12.0 * i / (G - 1); p[i] = kvExp(-0.5 * x[i] * x[i]); }
+        for (int b = 1; b <= kMaxQBits; b++) {
+            const int n = 1 << b;
+            double* l = lv[b];
+            for (int j = 0; j < n; j++) l[j] = -3.0 + 6.0 * (j + 0.5) / n;
+            for (int it = 0; it < 200; it++) {
+                double sw[64] = {}, sx[64] = {};
+                int j = 0;
+                for (int i = 0; i < G; i++) {
+                    while (j < n - 1 && x[i] > 0.5 * (l[j] + l[j + 1])) j++;
+                    sw[j] += p[i];
+                    sx[j] += p[i] * x[i];
+                }
+                for (int k = 0; k < n; k++)
+                    if (sw[k] > 0) l[k] = sx[k] / sw[k];
+            }
+        }
+        lv[0][0] = 0.0;
+    }
+};
+const LloydMax& lloyd() { static const LloydMax t; return t; }
+int lmNearest(int b, double v) {
+    if (b == 0) return 0;
+    const double* l = lloyd().lv[b];
+    const int n = 1 << b;
+    int k = 0;
+    while (k < n - 1 && v > 0.5 * (l[k] + l[k + 1])) k++;
+    return k;
+}
+int tableOf(const Prof& P) { return P.halves == 2 ? 1 : 0; }
+
+void reconstruct(const Prof& P, const int* idx, const double* prev, double* q) {
+    const int t = tableOf(P);
+    for (int i = 0; i < kP; i++) q[i] = kLsfMean[i] + P.lsfRho * (prev[i] - kLsfMean[i]);
+    for (int k = 0; k < kP; k++) {
+        const int b = P.lsfBits[k];
+        if (b == 0) continue;
+        const int n = 1 << b;
+        const int j = idx[k] < 0 ? 0 : (idx[k] >= n ? n - 1 : idx[k]);
+        const double c = lloyd().lv[b][j] * kKltSd[t][k];
+        for (int i = 0; i < kP; i++) q[i] += c * kKlt[t][k][i];
+    }
+}
 }  // namespace
 
 const double* LsfQ::mean() { return kLsfMean; }
 
+void lsfAllocKlt(int total, int table, int* bits) {
+    double d[kP];
+    for (int k = 0; k < kP; k++) { bits[k] = 0; d[k] = kKltSd[table][k] * kKltSd[table][k]; }
+    for (int n = 0; n < total; n++) {
+        int best = -1;
+        double gain = -1;
+        for (int k = 0; k < kP; k++) {
+            if (bits[k] >= kMaxQBits) continue;
+            const double v = kKltSd[table][k] * kKltSd[table][k];
+            const double g = v * (kLmDist[bits[k]] - kLmDist[bits[k] + 1]);
+            if (g > gain) { gain = g; best = k; }
+        }
+        if (best < 0) break;
+        bits[best]++;
+    }
+    (void)d;
+}
+
 void LsfQ::quantise(const Prof& P, const double* lsf, const double* prev, int* idx, double* q) {
+    const int t = tableOf(P);
+    double r[kP];
+    for (int i = 0; i < kP; i++) r[i] = lsf[i] - (kLsfMean[i] + P.lsfRho * (prev[i] - kLsfMean[i]));
+    for (int k = 0; k < kP; k++) {
+        double c = 0;
+        for (int i = 0; i < kP; i++) c += r[i] * kKlt[t][k][i];
+        idx[k] = lmNearest(P.lsfBits[k], c / kKltSd[t][k]);
+    }
+    // weights: close LSF pairs (formant peaks) count more
+    double w[kP];
     for (int i = 0; i < kP; i++) {
-        const int b = P.lsfBits[i], n = 1 << b;
-        const double pred = kLsfMean[i] + P.lsfRho * (prev[i] - kLsfMean[i]);
-        const double step = kLsfSig[i] * kStepFactor[b > 6 ? 6 : b];
-        const double r = (lsf[i] - pred) / step + (n - 1) * 0.5;
-        int k = (int)std::floor(r + 0.5);
-        k = k < 0 ? 0 : (k >= n ? n - 1 : k);
-        idx[i] = k;
+        const double lo = i == 0 ? lsf[0] : lsf[i] - lsf[i - 1];
+        const double hi = i == kP - 1 ? kPi - lsf[i] : lsf[i + 1] - lsf[i];
+        w[i] = 1.0 / (lo > 0.01 ? lo : 0.01) + 1.0 / (hi > 0.01 ? hi : 0.01);
+    }
+    auto err = [&](const int* ix) {
+        double qq[kP], e = 0;
+        reconstruct(P, ix, prev, qq);
+        for (int i = 0; i < kP; i++) e += w[i] * (qq[i] - lsf[i]) * (qq[i] - lsf[i]);
+        return e;
+    };
+    double e = err(idx);
+    for (int pass = 0; pass < 2; pass++) {
+        bool moved = false;
+        for (int k = 0; k < kP; k++) {
+            const int n = 1 << P.lsfBits[k];
+            if (P.lsfBits[k] == 0) continue;
+            for (int dlt = -1; dlt <= 1; dlt += 2) {
+                const int old = idx[k];
+                if (old + dlt < 0 || old + dlt >= n) continue;
+                idx[k] = old + dlt;
+                const double e2 = err(idx);
+                if (e2 < e) { e = e2; moved = true; }
+                else idx[k] = old;
+            }
+        }
+        if (!moved) break;
     }
     dequantise(P, idx, prev, q);
 }
 
 void LsfQ::dequantise(const Prof& P, const int* idx, const double* prev, double* q) {
-    for (int i = 0; i < kP; i++) {
-        const int b = P.lsfBits[i], n = 1 << b;
-        const double pred = kLsfMean[i] + P.lsfRho * (prev[i] - kLsfMean[i]);
-        const double step = kLsfSig[i] * kStepFactor[b > 6 ? 6 : b];
-        int k = idx[i] < 0 ? 0 : (idx[i] >= n ? n - 1 : idx[i]);
-        q[i] = pred + (k - (n - 1) * 0.5) * step;
-    }
+    reconstruct(P, idx, prev, q);
     lsfStabilise(q, kLsfGap);
 }
 
