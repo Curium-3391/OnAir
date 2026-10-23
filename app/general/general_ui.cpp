@@ -38,6 +38,9 @@ struct State {
     float gainDb = 20;
     int deNfm = 0, deWfm = 1;
     float pitch = 700;
+    int amDet = 0;               // AM detector: 0 envelope, 1 synchronous, 2 sync upper sideband, 3 sync lower
+    bool nb = false;             // noise blanker
+    float nbDb = 12;
     double chanOff = 0;          // the channel relative to the dial frequency (a.freqMhz)
     double lastDial = -1;        // a new dial frequency typed elsewhere puts the channel back on it
     int drag = -1, dragPlot = -1;   // the filter edge held (0 low, 1 high) and on which plot
@@ -96,6 +99,8 @@ void load() {
     S.agc = p.getB("genAgc", true); S.gainDb = (float)p.getD("genGain", 20);
     S.deNfm = (int)std::clamp(p.getI("genDeNfm", 0), 0L, 3L); S.deWfm = (int)std::clamp(p.getI("genDeWfm", 1), 0L, 3L);
     S.pitch = (float)std::clamp(p.getD("genPitch", 700), 200.0, 1500.0);
+    S.amDet = (int)std::clamp(p.getI("genAmDet", 0), 0L, 3L);
+    S.nb = p.getB("genNb", false); S.nbDb = (float)std::clamp(p.getD("genNbDb", 12), 6.0, 30.0);
     S.chanOff = p.getD("genOffset", 0);
 }
 void save() {
@@ -109,6 +114,7 @@ void save() {
     p.setB("genSqOn", S.sqOn); p.setB("genSqAuto", S.sqAuto); p.setD("genSqDb", S.sqDb);
     p.setB("genAgc", S.agc); p.setD("genGain", S.gainDb);
     p.setI("genDeNfm", S.deNfm); p.setI("genDeWfm", S.deWfm); p.setD("genPitch", S.pitch); p.setD("genOffset", S.chanOff);
+    p.setI("genAmDet", S.amDet); p.setB("genNb", S.nb); p.setD("genNbDb", S.nbDb);
 }
 
 double listenHz(const App& a) { return a.freqMhz * 1e6 + S.chanOff; }
@@ -295,6 +301,24 @@ void controls(App& a) {
             ImGui::SliderFloat("##gpitch", &S.pitch, 200, 1500, "pitch %.0f Hz");
             if (ImGui::IsItemDeactivatedAfterEdit()) save();
             tip("BFO: the tone a carrier on the channel frequency gives");
+        }
+        if (S.demod == dect2::GenAm) {
+            flowNext(10 * gUi);
+            ImGui::SetNextItemWidth(130 * gUi);
+            if (comboTr("##gamdet", &S.amDet, {N_("Envelope"), N_("Synchronous"), N_("Sync upper only"), N_("Sync lower only")})) save();
+            tip("Envelope: the classic AM detector, best with two stations on one frequency.\nSynchronous: locks onto the carrier; no distortion when the carrier fades on short wave, a little less noise on a weak station.\nUpper / lower only: one sideband, to leave out a station next to it on the other side.");
+        }
+    }
+    if (S.demod != dect2::GenWfm) {
+        flowNext(10 * gUi);
+        if (ImGui::Checkbox("Blanker", &S.nb)) save();
+        tip("Noise blanker: cuts out clicks and pulses (ignition, electric fences, power line noise) before the channel filter. Off for clean signals.");
+        if (S.nb) {
+            flowNext(4 * gUi);
+            ImGui::SetNextItemWidth(110 * gUi);
+            ImGui::SliderFloat("##gnbdb", &S.nbDb, 6, 30, "above %.0f dB");
+            if (ImGui::IsItemDeactivatedAfterEdit()) save();
+            tip("How far above the average a pulse has to be to be cut out. Lower catches weaker pulses but can clip strong speech.");
         }
     }
     flowNext(14 * gUi);
@@ -483,6 +507,8 @@ void tick(App& a) {
     r.setAgc(S.agc, S.gainDb);
     r.setDeemphUs(S.demod == dect2::GenNfm ? kDeemph[S.deNfm] : S.demod == dect2::GenWfm ? kDeemph[S.deWfm] : 0);
     r.setCwPitchHz(S.pitch);
+    r.setAmDetector(S.amDet);
+    r.setNoiseBlanker(S.nb && S.demod != dect2::GenWfm, S.nbDb);
     r.setVolume(a.volume); r.setMuted(a.muted);
     r.setAudioFilters(S.afHp, S.afLp, S.afNotch);
     r.setNoiseRemover(nrOffered(S.demod) && S.nrOn[S.demod], S.nrStr[S.demod] / 100.f);
@@ -499,6 +525,8 @@ void tick(App& a) {
         x.setAgc(S.agc, S.gainDb);
         x.setDeemphUs(S.exDemod[i] == dect2::GenNfm ? kDeemph[S.deNfm] : S.exDemod[i] == dect2::GenWfm ? kDeemph[S.deWfm] : 0);
         x.setCwPitchHz(S.pitch);
+        x.setAmDetector(S.amDet);
+        x.setNoiseBlanker(S.nb && S.exDemod[i] != dect2::GenWfm, S.nbDb);
         x.setAudioFilters(S.afHp, S.afLp, S.afNotch);
         x.setNoiseRemover(nrOffered(S.exDemod[i]) && S.nrOn[S.exDemod[i]], S.nrStr[S.exDemod[i]] / 100.f);
         x.setListenHz(a.freqMhz * 1e6 + S.exOff[i]);
