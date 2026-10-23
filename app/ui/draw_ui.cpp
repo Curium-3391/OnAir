@@ -216,6 +216,7 @@ static void floatingWindows(App& a, ImVec2 disp) {
     a.engine.setWideDecode(a.wideDecode && modeSupportsWideHf(a.family));
     a.engine.setMultiChannel(a.mtvOn && a.family == 0, a.mtvMax, a.mtvGrid);
     feedsWindow(a);
+    swarmWindow(a);
     automationWindow(a);
     protolabWindow(a);
     signallabWindow(a);

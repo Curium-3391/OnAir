@@ -390,3 +390,11 @@ Host-chosen frequency limits for web listeners: `web_allow_range` (allow-list, u
 
 ## 2026-10-23 OnAir Web directory (webonair-dir-030)
 Self-registering public directory of OnAir Web servers. Worker + D1 + static page in web/onair-directory (signed Ed25519 heartbeats, first key per id wins, replay and rate limits, URL/DNS public-address checks, block list, reports, admin by Worker secret, opt-in reachability check on a fixed path only). Server side: server/web/web_directory*.cpp fills the heartbeat hook; off by default, HTTPS only (new TLS client in tls_conn), shows the exact JSON and needs web_directory_ack before sending; `--directory-remove` sends a signed delete. Signing text is shared with the Worker through a test vector (node and C++ tests). Not deployed: owner steps are in docs/ONAIR-DIRECTORY.md.
+
+
+## 2026-10-23 LAN swarm (lan-swarm-030)
+Pure logic only, no sockets yet: core/include/dect2/net/swarm.h + core/src/net/swarm.cpp, tests/net/test_swarm.cpp (ctest swarm). Announce packet (strict text, 512 B, private source + same subnet only, 1 packet/s per source, 4 ids per address, spoof check), node table, merged results with node tags (kind + normalised content within 2 s), combined ADS-B/AIS track board, range splitting by capability and load with gaps reported, hit merging, pairing handshake (12-digit one-time code, HMAC-SHA256 proofs from mesh_crypto, 3 wrong proofs lock, token wrapped under the code), token book, control whitelist (no tx, no keys, no settings), token-bucket rate limit, memory merge (last write wins, tombstones, validation). Not done: UDP multicast sender/listener, TLS pairing channel, UI, wiring to engine/results. Known limit: a LAN sniffer can brute-force the code offline from one recorded exchange, so the real channel should be TLS.
+
+
+## 2026-10-23 LAN swarm part 2
+Pairing secret is now 160 bits (32 base32 chars) so a recorded exchange cannot be guessed offline; offer() refuses anything else. Added swarm_net.cpp (UDP multicast, TTL 1, private interfaces only, POSIX), app/panels/swarm_ui.cpp (View > LAN swarm, opt-in with preview), docs/LAN-SWARM.md with the NEEDS BUILD/TEST list. Nothing built or run in this step (battery rule); only swarm_net.cpp and swarm.cpp passed -fsyntax-only.

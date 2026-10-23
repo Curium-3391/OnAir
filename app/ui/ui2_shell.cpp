@@ -246,6 +246,7 @@ void sidebar(App& a) {
         tool("Passive radar", a.passiveRadarOpen, N_("Aircraft from the echoes of a broadcast transmitter, with two coherent channels"));
         tool("Images", a.galleryOpen, "The pictures the receivers have decoded");
         tool("Data feeds...", a.feedsOpen, "Send decoded data to other programs and services");
+        tool("LAN swarm...", a.swarmOpen, "See and cooperate with other OnAir programs on this network (opt-in)");
         tool("Messages...", a.msgdbOpen, N_("Every decoded message in one searchable database, with filters and export"));
         tool("Protocol lab...", a.protolabOpen, N_("Work out an unknown digital signal: modulation, baud rate, sync word, CRC and fields, with an export"));
         tool("Signal Lab...", a.signallabOpen, N_("Blind analysis of an unknown digital signal from the spectrum or a recording, stage by stage with confidences, a bit viewer and a Mode Builder export"));
@@ -551,6 +552,7 @@ static void viewMenu(App& a) {
         ImGui::MenuItem(tr("Passive radar"), nullptr, &a.passiveRadarOpen);
         ImGui::MenuItem(tr("Images"), nullptr, &a.galleryOpen);
         ImGui::MenuItem(tr("Data feeds..."), nullptr, &a.feedsOpen);
+        ImGui::MenuItem(tr("LAN swarm..."), nullptr, &a.swarmOpen);
         ImGui::MenuItem(tr("Messages..."), nullptr, &a.msgdbOpen);
         ImGui::MenuItem(tr("Protocol lab..."), nullptr, &a.protolabOpen);
         ImGui::MenuItem(tr("Signal Lab..."), nullptr, &a.signallabOpen);
