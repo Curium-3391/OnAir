@@ -18,8 +18,8 @@
   <meta name="twitter:title" content="OnAir Live Map">
   <meta name="twitter:description" content="Live aircraft, ships, radiosondes, satellites and more, received by radio amateurs and hobbyists running OnAir. A free, open community map: stations share only what they decode, and only when they choose to.">
   <link href="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=23">
-  <link rel="stylesheet" href="/mobile.css?v=23" media="(max-width: 860px)">
+  <link rel="stylesheet" href="/styles.css?v=24">
+  <link rel="stylesheet" href="/mobile.css?v=24" media="(max-width: 860px)">
 </head>
 <body>
   <div id="map"></div>
@@ -56,6 +56,16 @@
     <div id="layers" role="group" aria-label="Layers"></div>
     <label class="altopt"><input type="checkbox" id="gpsJam"><span>GPS interference (community)</span></label>
     <div class="altlegend" id="jamLegend" hidden><div id="jamBar" class="jambar"></div><div class="jamnote">Share of aircraft reporting a degraded GPS position per 0.5&deg; cell, last 2 h, cells with 3+ aircraft. An indicator, not proof of jamming.</div></div>
+    <details class="ham" id="hamPanel">
+      <summary>Ham contacts <span class="n" id="hamN">0</span></summary>
+      <div class="hamf">
+        <select id="hamBand" aria-label="Band"></select>
+        <select id="hamMode" aria-label="Mode"></select>
+        <select id="hamAge" aria-label="Time"><option value="">Any time</option><option value="15">15 min</option><option value="60" selected>1 h</option><option value="360">6 h</option><option value="1440">24 h</option></select>
+      </div>
+      <label class="altopt"><input type="checkbox" id="hamLines" checked><span>Lines between stations</span></label>
+      <ul id="hamList" class="hamlist"></ul>
+    </details>
     <div class="ptitle">Key</div>
     <label class="altopt"><input type="checkbox" id="altColor"><span>Colour aircraft by altitude</span></label>
     <div class="altlegend" id="altLegend" hidden><i id="altBar"></i><div><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k ft</span></div></div>
@@ -75,6 +85,7 @@
     </div>
     <div id="list"></div>
     <div class="note" id="hint"><strong>Nothing on the map yet.</strong> In OnAir choose Server, then Send data to map server, and decode something that reports a position. <a href="/?demo=1">Preview with demo data</a></div>
+    <div class="note"><a href="#" data-privacy>Privacy choices</a></div>
     <div class="attrib">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors</div>
   </aside>
 
@@ -89,10 +100,22 @@
     <span class="grow"></span>
     <span id="zoom"></span>
     <span>© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a></span>
+    <span>· <a href="#" data-privacy>Privacy choices</a></span>
     <span class="donate">· <a href="https://ko-fi.com/adswill" rel="noopener noreferrer">Ko-fi</a> — keeps this site running</span>
   </div>
 
+  <div class="consent" id="consent" role="dialog" aria-modal="false" aria-labelledby="consentT" hidden>
+    <strong id="consentT">Aircraft photos</strong>
+    <p>Photos of a selected aircraft come from Planespotters.net and are loaded by your browser, which tells them your IP address. Nothing is requested until you say yes. No tracking or analytics are used on this site.</p>
+    <div class="cbtns">
+      <button type="button" id="consentAccept">Accept</button>
+      <button type="button" id="consentAlways">Always yes</button>
+      <button type="button" id="consentDecline">Decline</button>
+    </div>
+    <div class="cstate"><span id="consentState"></span> <button type="button" id="consentForget" class="linkbtn" hidden>Forget my saved choice</button></div>
+  </div>
+
   <script src="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js"></script>
-  <script type="module" src="/app.js?v=24"></script>
+  <script type="module" src="/app.js?v=25"></script>
 </body>
 </html>

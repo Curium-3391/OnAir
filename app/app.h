@@ -481,6 +481,7 @@ struct App {
     std::string mapStationId;                     // client id for /ingest, generated once
     std::string mapServer;                        // empty: https://map.on-air.dev (a local worker URL for developers)
     bool feedsOpen = false;   // View > Data feeds: the window (feeds_ui.cpp)
+    bool swarmOpen = false;   // View > LAN swarm: the window (swarm_ui.cpp)
     bool watchlistOpen = false;    // View > Watchlists: alerts when listed aircraft, ships, call signs, frequencies or words are heard (watchlist_ui.cpp)
     bool msgdbOpen = false;        // View > Messages: the decoded-message database (msgdb_ui.cpp)
     bool protolabOpen = false;     // View > Protocol lab: reverse-engineering workbench for unknown signals (protolab_ui.cpp)
@@ -1026,6 +1027,7 @@ void pluginManagerWindow(App& a);  // View > Plugins
 void automationWindow(App& a);   // automation_ui.cpp: the Automations window (View > Automations) and, every frame, the engine's actions that touch the receiver
 extern std::string gAutomationShotPath;   // automation_sink.cpp: a screenshot of the program's own window is saved here after the next frame (then cleared)
 void feedsWindow(App& a);          // feeds_ui.cpp: the "Data feeds" window (View > Data feeds)
+void swarmWindow(App& a);          // swarm_ui.cpp: the "LAN swarm" window (View > LAN swarm)
 void rotatorWindow(App& a);        // rotator_ui.cpp: GS-232 rotator connect / status
 void rotatorTick(App& a);          // rotator_ui.cpp: signal-peak azimuth calibration sweep
 void rotatorLoadPrefs();           // rotator_ui.cpp: prefs and optional auto-connect

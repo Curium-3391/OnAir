@@ -13,6 +13,7 @@
 #pragma once
 #include "web_dsp.h"
 #include "web_policy.h"
+#include "web_ranges.h"
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -70,6 +71,10 @@ public:
     HubLimits limits() const;
     WebPolicy& policy() { return policy_; }   // guard with policyMutex() when changing it while running
     std::mutex& policyMutex() { return polMu_; }
+    WebRanges& ranges() { return ranges_; }   // guard with policyMutex() when changing it while running; call rangesChanged() afterwards
+    // After the host's frequency ranges changed: listeners get a "ranges" message, tunings and decoder subscriptions that are no longer allowed are
+    // silenced or dropped (with a forbidden_range error), spectrum rows follow the new ranges. Call without holding policyMutex().
+    void rangesChanged();
     void setLogIp(bool on) { logIp_ = on; }
     void setLog(std::function<void(const std::string&)> f) { log_ = std::move(f); }
     void registerDecoder(DecoderFactory f);
@@ -110,6 +115,8 @@ private:
     HubLimits lim_;
     std::atomic<size_t> qCap_{384 * 1024};   // lim_.queueBytes, read without the lock
     WebPolicy policy_;
+    WebRanges ranges_;                       // under polMu_
+    std::atomic<unsigned> rangeGen_{1};      // bumped by rangesChanged(); sessions refresh their cached view when it differs
     std::mutex polMu_;
     std::atomic<bool> logIp_{false};
     std::function<void(const std::string&)> log_;
@@ -153,6 +160,8 @@ private:
     void enqueue(Session& s, OutMsg m);
     void sendError(Session& s, const std::string& code, const std::string& why);
     void sendState(Session& s);
+    void refreshView(Session& s);                           // under s.m: the session's cached RangeView follows rangeGen_
+    void sendRanges(Session& s);                            // the "ranges" message (under s.m)
     void subscribe(const std::shared_ptr<Session>& s, const ClientMsg& m);
     void unsubscribe(Session& s, const std::string& key);
     void dropSession(int id, const std::string& reason);    // under mu_

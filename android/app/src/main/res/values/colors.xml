@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window colour before Compose draws (DarkPalette.window, Theme.kt), so the start has no black flash. -->
+    <color name="onair_window">#FF2A2B2C</color>
+</resources>

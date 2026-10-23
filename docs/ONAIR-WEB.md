@@ -2,7 +2,7 @@
 
 OnAir Web turns `onair-server` (the headless server, docs/headless-server.md) into a WebSDR / KiwiSDR-style receiver for many people at once. Your SDR captures a wide piece of spectrum; everyone who opens your page gets their **own virtual receiver** inside that capture: their own frequency, mode (AM, NFM, WFM, USB, LSB, CW), passband, squelch, AGC and audio, their own zoomable waterfall, and the results of decoders they subscribe to. One radio, many listeners, nobody tunes anybody else away.
 
-Status: the server core is built and tested with synthetic signals and fake clients (loopback sockets, many simulated sessions). **Not tried with a real radio, real browsers over the internet, a Raspberry Pi, or a real certificate.** The polished browser interface is a separate piece of work: until it is installed the server shows a placeholder page, and any client that speaks docs/ONAIR-WEB-PROTOCOL.md works.
+Status: the server core is built and tested with synthetic signals and fake clients (loopback sockets, many simulated sessions). **Not tried with a real radio, real browsers over the internet, a Raspberry Pi, or a real certificate.** The browser interface is in `web/onair-web/` (vanilla JS, no build step, no internet needed; not yet tried in real browsers against a live server); without it the server shows a placeholder page, and any client that speaks docs/ONAIR-WEB-PROTOCOL.md works.
 
 ## How it works
 
@@ -88,9 +88,10 @@ The radio's centre frequency and rate are what the listeners can tune inside: se
 | `web_name`, `web_location`, `web_antenna` | | shown to listeners |
 | `web_root` | | the browser UI's folder; empty: `web/onair-web` beside the program or `../share/onair/web/onair-web`; none found: the placeholder page |
 | `web_demods` | all six | the demodulators listeners may use, e.g. `am,usb,lsb,cw` for an HF-only server |
+| `web_allow_range`, `web_block_range`, `web_range_preset`, `web_range_action` | | which frequencies listeners may tune and see; see Frequency ranges below |
 | `web_decoders_off` | | data decoders turned off for listeners |
 | `web_decoders_on`, `web_legal_ack` | | voice / pager decoders turned on, and the version of the legal notice the host accepted (set by the admin API; see Safety) |
-| `web_directory`, `web_directory_url`, `web_public_url` | 0 | the server directory heartbeat (extension point, not in this build) |
+| `web_directory`, `web_directory_url`, `web_public_url`, `web_directory_*` | 0 | list this server in a public directory with a signed heartbeat; off by default, shows exactly what is sent first and needs `web_directory_ack` (docs/ONAIR-DIRECTORY.md) |
 
 Failed logins (wrong password or invite, wrong admin token) from one address: after 5 within a minute that address is refused for a minute. Every wrong answer comes after 300 ms.
 
@@ -115,9 +116,58 @@ curl -s -H "Authorization: Bearer $T" -H 'Content-Type: application/json' -d '{"
 | `POST kick` | `{"id":n,"reason":"..."}` |
 | `GET policy`, `POST policy` | the demodulators and decoders listeners may use; `{"demod":"am","on":true}` or `{"decoder":"adsb","on":false}` |
 | `GET legal` | the legal notice text and its version |
+| `GET ranges`, `POST ranges` | the frequency ranges (see Frequency ranges): `{"allow":["144-146MHz,nfm"],"block":["..."],"presets":["ham_hf@open"],"action":"refuse"}`; a key you leave out stays as it is, `{"clear":true}` removes all; nothing changes when a line is bad (400 with the reason); listeners are told at once |
 | `GET invites`, `POST invite`, `POST invite/revoke` | invites (the list shows only a 6-character prefix of each token; the token is shown once, when it is made); revoke by `token` or `prefix` |
 
 Changes made through the admin API are written to the settings file.
+
+## Frequency ranges
+
+The host decides what listeners may tune and see. Without any of the settings below nothing changes (every listener can use the whole capture).
+
+```
+web_allow_range=144-146MHz,nfm                 # allow-list: ONLY inside the allow rules (repeatable)
+web_allow_range=7.000-7.200MHz,usb,lsb,member  # a mode list limits the rule to those modes; a class tag limits it to one kind of listener
+web_allow_range=430-440MHz,note=70 cm, repeaters off-limits at night
+web_block_range=145.8-146MHz                   # block-list: ALWAYS wins, also inside an allow range (repeatable)
+web_range_preset=ham_hf@open                   # a built-in set, optionally for one class (name@class, several: name@open+member)
+web_range_preset=no_cellular_no_public_safety
+web_range_action=refuse                        # refuse (default) or clamp: what a tune request outside the ranges gets
+```
+
+**Rule format.** `<start>-<end>[,mode...][,class...][,note=text]`. Frequencies take `Hz`, `kHz`, `MHz`, `GHz` (any case, `k` `M` `G` alone work); a start without a unit takes the end's unit (`144-146MHz`, `100-200kHz`); numbers with no unit anywhere are Hz. Modes: `am nfm wfm usb lsb cw`. Classes: `open` (no password needed), `member` (knew the password), `invite` (came with an invite token); none given: all classes. `note=` runs to the end of the line and is shown to listeners. Refused (the line is ignored and named at start-up): start above end (reversed), start equal to end (empty), negative, above 1000 GHz, unknown words. Values are rounded to 1 mHz. If every `web_allow_range` line is bad the server says so loudly, because then nobody is restricted.
+
+**What the rules mean.**
+
+* Allow-list: for a class, when at least one allow rule (or allow preset) applies, listeners of that class can tune only inside those rules, and with the listed modes if the rule names modes. A class with no allow rule is not restricted by allow rules (`web_allow_range=144-146MHz,open` limits only open-access listeners). Rules of one class that overlap or touch (within 1 mHz) are merged.
+* Block-list: a block applies to every class unless it has a class tag, and always wins. A block that names modes blocks only listening in those modes.
+* Edge handling: the listener's passband (tuned frequency plus the passband edges) grows by a guard margin on both sides (5 % of the bandwidth, at least 200 Hz, at most 5 kHz, for the filter skirts). That whole span must lie inside ONE merged allowed range (never spread over a gap) and must not touch a block (touching counts). So an NFM channel cannot be tuned closer than about 7 kHz to the edge of an allowed band, and USB at the top edge of an allowed band is refused while LSB there is fine.
+* Capture edge: when any rule is set, the passband must also lie inside the usable 96 % of the capture. A passband running over the capture edge would otherwise pick up the other end of the capture (FFT wrap-around), which may be a blocked range.
+* Enforcement is in the hub, on the server: a `tune` that does not fit is answered with `error` `forbidden_range` (and the nearest allowed frequency in the text), or with `web_range_action=clamp` moved to the nearest allowed frequency (the `state` message tells the new one). A listener that is already tuned somewhere that stops being allowed (the host changed the ranges, the capture moved) gets no receiver at all, so no audio leaves, and one `forbidden_range` error. New listeners start at the nearest allowed frequency to the capture centre.
+* Spectrum and waterfall: rows are masked on the server before they are scaled and sent. Every bin that is not wholly inside a visible range, and one bin on each side of it, is replaced by the noise floor of the visible part (nothing visible: a flat -150 dB). Visible means allowed and not inside a block that names no mode (a block that names modes is about listening, so the spectrum stays). A band narrower than three bins at the listener's zoom therefore shows nothing. FFT leakage between neighbouring bins beyond that one bin is not removed.
+* Decoders: a decoder that works on a frequency (`needs_freq`) is refused when its whole slice (the decoder's sample rate, at least 25 kHz, around the frequency) is not visible to the listener; active subscriptions are dropped when the ranges change. The `host` decoder (the results of the server's own receiver, whose frequency listeners do not control) is passed only to a listener who may see the whole capture; otherwise it is silent for that listener.
+* Listeners are told: `welcome.ranges` (and a `ranges` message when the host changes them) lists the allowed and blocked ranges of the listener's class, the host's notes and the guard margin. The browser page greys out modes and band buttons that are not allowed, darkens what is not visible on the spectrum, draws allowed bands as green strips and blocked ones red, snaps tuning (digits, clicks, typing, scrolling) to the nearest allowed frequency, and shows the host's notes. The page is advisory; the server decides.
+
+**Presets** (`web_range_preset`, comma separated or repeated; `name@class` for one class; `GET ranges` lists them). They are typical band plans, **not authoritative**: allocations differ by country and ITU region, change over time, and may be narrower where you are. You are responsible for what a preset allows or blocks; check the national plan. The tables are in `server/web/web_ranges.cpp` (data only, each range with its note).
+
+| name | kind | contents (typical) |
+| --- | --- | --- |
+| `ham_hf` | allow | amateur HF bands 160 m to 10 m |
+| `ham_vhf_uhf` | allow | 6 m, 4 m, 2 m, 1.25 m, 70 cm, 33 cm, 23 cm |
+| `broadcast_am_fm` | allow | long, medium and shortwave broadcast bands (AM, SSB) and 87.5-108 MHz FM (WFM, NFM) |
+| `airband` | allow | civil aircraft voice 118-137 MHz (AM) |
+| `marine` | allow | marine VHF 156-162.025 MHz (NFM) |
+| `weather_sat` | allow | 137-138 MHz weather satellites, 400.15-406 MHz radiosondes, 1670-1710 MHz |
+| `no_cellular_no_public_safety` | block | TETRA 380-430 MHz, 450-512 MHz public safety / business, 698-960 MHz, 1710-2170 MHz, 2300-2400, 2500-2690 and 3400-3800 MHz cellular. Not complete: VHF public safety (150-174 MHz) overlaps marine and amateur use and is not in it |
+| `all` | allow | everything: lifts the allow-list for the class it is given to (`all@member`) |
+
+Changes through `POST ranges` are written to the settings file (the `web_allow_range`, `web_block_range`, `web_range_preset` and `web_range_action` keys, one line per rule, in plain Hz) and take effect at once. Unit tests of the pure code: `tests/server/test_web_ranges.cpp` and `tests/web/run.js`.
+
+### Frequency ranges: what is not covered
+
+* Block and allow rules are about what listeners can receive from this server. They do not change what the host's own receiver does, and they do not hide that the server exists.
+* The guard margin is a fixed approximation of the filter skirts; a very strong signal just outside an allowed band can still leak a little into the edge of a listener's audio. If that matters, leave a gap in the allow rule.
+* The host decoder is withheld from restricted listeners unless the whole capture is visible to them; there is no per-frequency view of the host's own receiver.
 
 ## Safety and legal defaults
 
@@ -174,10 +224,11 @@ Listeners subscribe to decoders by kind (`welcome.decoders` lists what the serve
 ## The browser UI and the directory (extension points)
 
 * **Browser UI.** Static files in `web/onair-web/` (or `web_root`) are served at `/`: `index.html` and whatever it loads from the same origin (scripts, styles, images, WebAssembly). Only plain file names are served (letters, digits, `.`, `-`, `_`), never dot files or anything outside the folder, at most 16 MB a file. The page talks to `/web/v1/ws` (docs/ONAIR-WEB-PROTOCOL.md) and may read `/web/v1/info` before connecting.
-* **Directory.** `server/web/web_directory.h` is the place for an optional heartbeat that lists the server in a public directory of OnAir Web servers (`web_directory=1`, `web_directory_url`, `web_public_url`). It is off by default and not built in yet; when it is, it may send only the public `/web/v1/info` JSON and the public URL.
+* **Directory.** `server/web/web_directory*.cpp` is the optional heartbeat that lists the server in a public directory of OnAir Web servers (Worker and page in `web/onair-directory/`). It is off by default, HTTPS only, signed with an Ed25519 key made on first start, and sends nothing until the host has read the exact JSON it prints and confirmed it with `web_directory_ack`. It sends name, address, coarse location, coverage and the number of users, never a listener's address or activity. Details: docs/ONAIR-DIRECTORY.md.
 
 ## Not done yet / known limits
 
+* Frequency ranges are UNBUILT and UNVERIFIED (written while the host was on battery): see the NEEDS BUILD/TEST list at the end of this file.
 * Not tried on a real radio, a real browser over the internet, a phone, a Raspberry Pi, or with a real certificate.
 * IPv4 only.
 * No browser UI in this build (the placeholder page); no Opus (no codec library in OnAir: ADPCM and PCM only).
@@ -185,3 +236,20 @@ Listeners subscribe to decoders by kind (`welcome.decoders` lists what the serve
 * No S-meter while a listener has audio off (the receiver of a listener without audio is not run at all, which keeps waterfall-only listeners nearly free).
 * WFM is mono (no stereo decoder, no RDS for web listeners).
 * The admin user list and stats are JSON only (no admin page).
+
+## Browser client (web/onair-web/)
+
+Files: `index.html`, `style.css`, `app.js` (UI and WebSocket), `onair-lib.js` (pure helpers: ADPCM decode, frame parsing, messages, frequency and bin mapping, zoom and pan, palettes, S-meter, result tables) and `onair-worklet.js` (audio jitter buffer, run in an AudioWorklet). Everything is served from the same origin (the server's content security policy allows nothing else). Tune by clicking a digit half, scrolling on the digits, arrow keys (Shift or Page Up/Down for 10 steps), or by clicking the spectrum; drag to pan, wheel or pinch to zoom (the zoomed slice is requested from the server as a finer spectrum span). Keys: 1 to 6 modes, M mute, + and - zoom. An invite link is `http://host:8073/#invite=TOKEN` (the token never reaches the server's logs). The notice banner shows the server's `notice` text from `/web/v1/info` when it sends one, else a generic one. The S-meter scale is relative to full scale (S9 = -66 dBFS), not calibrated.
+
+Tests for the pure code (node built-ins only, not part of CMake): `node tests/web/run.js`.
+
+## NEEDS BUILD/TEST (frequency ranges, branch webonair-ranges-030)
+
+Nothing of the frequency-range work has been compiled or run (one `-fsyntax-only` of `server/web/web_ranges.cpp` before its last small edits). To do, in this order:
+
+1. Build `onair_web`, `onair-server`, and run `test_web_ranges` (new, `tests/server/test_web_ranges.cpp`, registered as ctest `web_ranges`), then the existing `web_proto`, `web_dsp`, `web_hub`, `web_server`, `web_safety` and `node tests/web/run.js` (new test "host frequency ranges"). Expect compile slips in `web_hub.cpp` (the new `refreshView` / `rangesChanged` and the inserts in `handle`, `subscribe`, `configureRx`, the spectrum loop and the decoder poll) and in the tests' hand-computed numbers.
+2. Add hub-level tests (not written): a tune outside the ranges gets `forbidden_range`; `clamp` moves it; a listener whose range is removed through `rangesChanged()` gets silence (no audio frames) and an error; spectrum rows of a restricted listener are flat in the hidden part (feed a tone inside a blocked range and look at the row); host decoder events withheld; per-class views through `admit` with `UserClass::Member`; a `needs_freq` decoder refused outside.
+3. Admin API test in `test_web_server.cpp`: `GET/POST ranges`, a bad line gives 400 and changes nothing, the settings file gets the lines.
+4. A real browser: strips and greyed buttons on the spectrum, snapping by digits / click / typing, the notes box, a ranges change while connected.
+5. Check `onair-web-load` still runs with ranges set (cost of `refreshView` and `maskSpectrumRow` per spectrum row; nothing measured yet).
+6. Possible conflicts with `pub/untested-secfix-web-030` (it changes the mode policy to an allow-list): this branch touches `web_proto.h` (one added error code), `web_hub.h/.cpp` (new members and functions, plus inserted blocks, none of them in the mode-policy lines: in `handle` the block before `if (m.hasFreq)` and one line before `s.rx = r;`), `web_server.cpp` (a new `ranges` admin branch before `legal`), `main.cpp` (two lines), `CMakeLists.txt` (source list and test list). `web_policy.*` and `web_config.*` are not touched.

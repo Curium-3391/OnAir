@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Public OnAir Web servers: receivers you can listen to in a browser. Servers list themselves; nothing about listeners is collected.">
+  <title>OnAir Servers</title>
+  <link rel="icon" href="data:,">
+  <link href="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="name" href="https://on-air.dev">OnAir</a><span class="sep">/</span><span class="cur">Servers</span>
+    <span class="count" id="count" aria-live="polite"></span>
+  </header>
+  <div class="filters">
+    <input id="q" type="search" placeholder="Search name, radio, description" aria-label="Search" maxlength="60" autocomplete="off">
+    <select id="band" aria-label="Band">
+      <option value="">All bands</option>
+      <option value="lf">LF</option><option value="mw">MW</option><option value="hf">HF</option><option value="80m">80 m</option><option value="40m">40 m</option><option value="20m">20 m</option>
+      <option value="vhf">VHF</option><option value="fm">FM broadcast</option><option value="air">Airband</option><option value="marine">Marine VHF</option><option value="2m">2 m</option>
+      <option value="dab">DAB</option><option value="uhf">UHF</option><option value="70cm">70 cm</option><option value="tv">TV</option><option value="l">L band</option>
+    </select>
+    <label class="chk"><input id="free" type="checkbox"> Free slots</label>
+  </div>
+  <main>
+    <section id="list" aria-label="Servers"></section>
+    <div id="map" role="application" aria-label="Map of servers"></div>
+  </main>
+  <footer>Servers list themselves and send only their name, address, coarse location, coverage and user counts. <a href="https://github.com/adswill/OnAir">OnAir</a> &middot; map &copy; OpenStreetMap</footer>
+  <dialog id="rep">
+    <form method="dialog" id="repform">
+      <h2>Report a server</h2>
+      <p id="repname"></p>
+      <label>Reason <select id="repreason"><option value="abuse">Abuse</option><option value="illegal">Illegal content</option><option value="offline">Offline</option><option value="wrong-info">Wrong information</option><option value="other">Other</option></select></label>
+      <label>Details <textarea id="reptext" maxlength="500" rows="3"></textarea></label>
+      <div class="row"><button value="cancel" type="button" id="repcancel">Cancel</button><button value="ok" type="submit">Send report</button></div>
+      <p id="repmsg" role="status"></p>
+    </form>
+  </dialog>
+  <script src="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

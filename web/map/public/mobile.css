@@ -85,3 +85,7 @@ input, select, textarea { font-size: 16px; }   /* iOS zooms into smaller fields 
 .inspect .c-head { touch-action: none; }
 .inspect.dragging { transition: none; user-select: none; -webkit-user-select: none; }
 .c-scroll { touch-action: pan-y; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+.consent { left: 8px; right: 8px; bottom: calc(8px + var(--sab)); max-width: none; }
+.hamlist { max-height: 40vh; }
+.hamf select, .cbtns button { min-height: 40px; }

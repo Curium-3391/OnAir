@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="panel_traffic_aircraft">Aircraft</string>
+    <string name="panel_traffic_vessels">Vessels</string>
+    <string name="panel_messages">Messages</string>
+    <string name="panel_map">Map</string>
+    <string name="panel_walkdf">Walk DF</string>
+    <string name="panel_rds">RDS</string>
+    <string name="panel_tables">Tables</string>
+    <string name="panel_search">Search</string>
+    <string name="panel_nothing">Nothing decoded yet</string>
+    <string name="panel_no_match">Nothing matches the search</string>
+    <string name="panel_count">%1$d of %2$d</string>
+    <string name="panel_emergency">Emergency squawk</string>
+</resources>

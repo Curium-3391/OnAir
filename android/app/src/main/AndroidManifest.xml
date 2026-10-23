@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- USB radios (docs/USB.md): optional, so the app installs on every phone. Each radio gets the system's per-device permission
+         dialog (UsbManager), not a runtime permission; res/xml/usb_device_filter.xml lists the radios. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <!-- The sound-card source records through AudioRecord, only while a session with it runs (audio/SoundCardInput.kt). -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Foreground-service types of a session with a USB radio / the sound-card input (ReceiverService.foregroundType). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- rtl_tcp (localhost or the network) and SpyServer. No storage permission: files come through the system picker. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Walk-around direction finding (ui/panels/walkdf): GPS while a walk runs. Positions stay on the device. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- The receive session (ReceiverService): foreground service that plays the decoded audio, keeps the CPU and Wi-Fi awake. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Its notification (Android 13+ asks; the receiver runs without it too). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+
+    <application
+        android:name=".OnAirApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:extractNativeLibs="true"
+        android:theme="@style/Theme.OnAir">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- onair://tune?freq=100.5M&mode=FM%20broadcast (ui/nav/DeepLink.kt): open the receiver on a frequency and mode -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="onair" android:host="tune" />
+            </intent-filter>
+            <!-- A supported radio plugged in: Android offers OnAir ("always open for this device" grants the permission for good) -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+        </activity>
+
+        <service
+            android:name=".service.ReceiverService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback|connectedDevice|microphone" />
+
+        <!-- Sharing the log and crash log (diag/CrashLog.kt): only cache/share/ is exposed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>
