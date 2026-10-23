@@ -195,7 +195,15 @@ void T2Receiver::Impl::runDataStage() {
             // rotate by exp(-j (cumA + cumB (kk - (K-1)/2))): a phasor stepped along the carriers, re-anchored every 256 (a sin and cos per cell is slow)
             const cd stepR(std::cos(-cumB), std::sin(-cumB));
             cf32* row = &frameCells[l][off];
-            for (int k0 = 0; k0 < K; k0 += 256) {
+            // four blocks side by side (four independent phasor chains instead of one; every cell gets the phasor it got before)
+            int k0 = 0;
+            for (; k0 + 4 * 256 <= K; k0 += 4 * 256) {
+                cd z[4];
+                for (int q = 0; q < 4; q++) { const double ph = -(cumA + cumB * (k0 + 256 * q - (K - 1) / 2.0)); z[q] = cd(std::cos(ph), std::sin(ph)); }
+                for (int j = 0; j < 256; j++)
+                    for (int q = 0; q < 4; q++) { row[k0 + 256 * q + j] *= cf32((float)z[q].real(), (float)z[q].imag()); z[q] *= stepR; }
+            }
+            for (; k0 < K; k0 += 256) {
                 const double ph = -(cumA + cumB * (k0 - (K - 1) / 2.0));
                 cd z(std::cos(ph), std::sin(ph));
                 const int k1 = std::min(K, k0 + 256);
@@ -293,6 +301,7 @@ void T2Receiver::Impl::runDataStage() {
         sigma2 = cn ? sn / cn * amp2 : 0;
     }
     std::vector<cf32> dstream; std::vector<float> dn0;
+    dstream.reserve((size_t)std::max(0, L - firstData) * (size_t)K); dn0.reserve((size_t)std::max(0, L - firstData) * (size_t)K);
     // per carrier, linear between the grid points (never below a tenth of the average: a lucky quiet stretch is no reason for certainty)
     std::vector<float> noiseCar(K, 0.f);
     for (int kk = 0; kk < K; kk++) {
@@ -481,10 +490,13 @@ void T2Receiver::Impl::runDataStage() {
         if (wantPlp) {
             int cD = 0;
             for (int kk = 0; kk < K; kk++) cD += types[l][kk] == kCellData;
-            std::vector<int> Hi;
-            freqInterleaverSeq(fftCode, cD, (l & 1) != 0, Hi);
-            std::vector<cf32> orig(cD);
-            std::vector<float> on0(cD);
+            // straight into the end of the PLP stream (every one of the cD places is written: Hi is a permutation), with the cached
+            // interleaver sequence by reference: no three vectors (a third of a megabyte at 32K) allocated, zeroed and copied per symbol
+            const std::vector<int>& Hi = freqInterleaverSeqRef(fftCode, cD, (l & 1) != 0);
+            const size_t d0 = dstream.size();
+            dstream.resize(d0 + (size_t)cD); dn0.resize(d0 + (size_t)cD);
+            cf32* orig = dstream.data() + d0;
+            float* on0 = dn0.data() + d0;
             int jj = 0;
             for (int kk = 0; kk < K; kk++)
                 if (types[l][kk] == kCellData) {
@@ -496,8 +508,6 @@ void T2Receiver::Impl::runDataStage() {
                     if (erased(l)) orig[Hi[jj]] = cf32(0, 0);
                     jj++;
                 }
-            dstream.insert(dstream.end(), orig.begin(), orig.end());
-            dn0.insert(dn0.end(), on0.begin(), on0.end());
         }
         if (l == firstData + (L - firstData) / 2) { chH = H; chK = K; } // keep a mid-frame channel snapshot for display
     }

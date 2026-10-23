@@ -9,6 +9,9 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+#include <arm_neon.h>
+#endif
 #include "dect2/common/bits.h"
 
 namespace dect2 {
@@ -270,17 +273,45 @@ void demapAxes(const PlpFec& f, const cf32* cells, const float* n0, int nCells, 
         for (int axis = 0; axis < 2; axis++) {
             const float* y = axis ? yQ : yI;
             const float* lev = axis ? levI : levR;
-            float m0[NB][B], m1[NB][B];
-            for (int b = 0; b < NB; b++) for (int l = 0; l < B; l++) { m0[b][l] = 1e30f; m1[b][l] = 1e30f; }
-            for (int i = 0; i < L; i++) {
-                float e[B];
-                for (int l = 0; l < B; l++) { const float d = y[l] - lev[i]; e[l] = d * d; }
-                for (int b = 0; b < NB; b++) {
-                    if ((i >> (NB - 1 - b)) & 1) { for (int l = 0; l < B; l++) m1[b][l] = std::min(m1[b][l], e[l]); }
-                    else { for (int l = 0; l < B; l++) m0[b][l] = std::min(m0[b][l], e[l]); }
+            // The smallest distance per bit and bit value as a tree: the levels whose indices differ only in the lowest bit are merged
+            // (min) after that bit's two minima are taken, then the next bit, ... (36 minimum operations for 16 levels instead of 64). The
+            // minimum of a set does not depend on the order it is taken in, and the final min with 1e30 keeps what the running minimum
+            // from 1e30 gave for every input (a NaN or infinite sample: 1e30), so the values are the same bit for bit.
+            float (*out)[B] = axis ? outI : outR;
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+            // the same tree in NEON registers, four cells per vector: vminq inside the tree gives what std::min gives (in one lane the values
+            // are all finite / infinite, or all NaN), and the final std::min(1e30f, x) is vminnmq (a NaN gives the number, 1e30)
+            static_assert(B == 8, "two vectors of four cells");
+            for (int h = 0; h < 2; h++) {
+                const float32x4_t yv = vld1q_f32(y + 4 * h), wv = vld1q_f32(w + 4 * h), big = vdupq_n_f32(1e30f);
+                float32x4_t cv[L];
+                for (int i = 0; i < L; i++) { const float32x4_t d = vsubq_f32(yv, vdupq_n_f32(lev[i])); cv[i] = vmulq_f32(d, d); }
+                int n = L;
+                for (int b = NB - 1; b >= 0; b--) {
+                    float32x4_t a0 = cv[0], a1 = cv[1];
+                    for (int k = 2; k < n; k += 2) { a0 = vminq_f32(a0, cv[k]); a1 = vminq_f32(a1, cv[k + 1]); }
+                    a0 = vminnmq_f32(big, a0); a1 = vminnmq_f32(big, a1);
+                    vst1q_f32(out[b] + 4 * h, vmulq_f32(wv, vsubq_f32(a1, a0)));
+                    if (b == 0) break;
+                    for (int k = 0; k < n / 2; k++) cv[k] = vminq_f32(cv[2 * k], cv[2 * k + 1]);
+                    n /= 2;
                 }
             }
-            float (*out)[B] = axis ? outI : outR;
+            continue;
+#endif
+            float m0[NB][B], m1[NB][B];
+            float cur[L][B];
+            for (int i = 0; i < L; i++) for (int l = 0; l < B; l++) { const float d = y[l] - lev[i]; cur[i][l] = d * d; }
+            int n = L;
+            for (int b = NB - 1; b >= 0; b--) {
+                for (int l = 0; l < B; l++) { m0[b][l] = cur[0][l]; m1[b][l] = cur[1][l]; }
+                for (int k = 2; k < n; k += 2)
+                    for (int l = 0; l < B; l++) { m0[b][l] = std::min(m0[b][l], cur[k][l]); m1[b][l] = std::min(m1[b][l], cur[k + 1][l]); }
+                for (int l = 0; l < B; l++) { m0[b][l] = std::min(1e30f, m0[b][l]); m1[b][l] = std::min(1e30f, m1[b][l]); }
+                if (b == 0) break;
+                for (int k = 0; k < n / 2; k++) for (int l = 0; l < B; l++) cur[k][l] = std::min(cur[2 * k][l], cur[2 * k + 1][l]);
+                n /= 2;
+            }
             for (int b = 0; b < NB; b++) for (int l = 0; l < B; l++) out[b][l] = w[l] * (m1[b][l] - m0[b][l]);
         }
         for (int l = 0; l < cnt; l++) {
@@ -408,30 +439,50 @@ void ciForward(const PlpFec& f, int blocks, int tiBlocks, const T* in, T* out) {
     }
 }
 
+// The same element moves as before, cheaper: the time de-interleaver buffer is kept with the thread (a frame's worth, megabytes: it was
+// allocated and zeroed for every frame) and is filled column by column (sequential stores, strided loads, in tiles of eight rows), and the
+// cell de-interleaver index (perm + shift) mod cell is one conditional subtraction (both terms are below cell) instead of a division per cell.
 template <class T>
 void ciInverse(const PlpFec& f, int blocks, int tiBlocks, const T* in, T* out) {
     CiParams p = ciParams(f);
     const auto& perm = ciPermutation(f);
     TiLayout tl = tiLayout(blocks, tiBlocks);
-    std::vector<T> ti((size_t)blocks * p.cell);
+    static thread_local std::vector<T> tiBuf;
+    if (tiBuf.size() < (size_t)blocks * p.cell) tiBuf.resize((size_t)blocks * p.cell);
+    T* ti = tiBuf.data();
     if (tiBlocks != 0) {
         int tiIndex = 0;
         for (int s = 0; s < tl.numSmall + tl.numBig; s++) {
             int nb = s < tl.numSmall ? tl.small : tl.big;
             int numCols = 5 * nb, rows = p.cell / 5;
-            for (int k = 0; k < rows; k++) for (int w = 0; w < numCols; w++) ti[tiIndex + rows * w + k] = *in++;
+            // ti[tiIndex + rows * w + k] = in[k * numCols + w] for every row k and column w
+            T* dst = ti + tiIndex;
+            constexpr int KT = 8;
+            int k0 = 0;
+            for (; k0 + KT <= rows; k0 += KT)
+                for (int w = 0; w < numCols; w++) {
+                    T* d = dst + (size_t)rows * w + k0;
+                    const T* sp = in + (size_t)k0 * numCols + w;
+                    for (int kk = 0; kk < KT; kk++) d[kk] = sp[(size_t)kk * numCols];
+                }
+            for (; k0 < rows; k0++) for (int w = 0; w < numCols; w++) dst[(size_t)rows * w + k0] = in[(size_t)k0 * numCols + w];
+            in += (size_t)rows * numCols;
             tiIndex += rows * numCols;
         }
     } else {
-        for (size_t i = 0; i < ti.size(); i++) ti[i] = *in++;
+        std::copy(in, in + (size_t)blocks * p.cell, ti);
     }
+    const int cell = p.cell;
+    const int* pm = perm.data();
     int index = 0;
     for (int s = 0; s < tl.numSmall + tl.numBig; s++) {
         int nb = s < tl.numSmall ? tl.small : tl.big;
         auto sh = ciShifts(p, nb);
         for (int r = 0; r < nb; r++) {
-            for (int w = 0; w < p.cell; w++) *out++ = ti[((perm[w] + sh[r]) % p.cell) + index];
-            index += p.cell;
+            const int shr = sh[r];
+            const T* src = ti + index;
+            for (int w = 0; w < cell; w++) { int j = pm[w] + shr; if (j >= cell) j -= cell; *out++ = src[j]; }
+            index += cell;
         }
     }
 }

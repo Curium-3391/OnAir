@@ -634,9 +634,24 @@ void Viterbi::depuncture(const float* llr, size_t n, int rate, int phase, std::v
         if (pat & 2) pos[np++] = 2 * j + 1;
     }
     const size_t periods = n / ones;
-    soft.assign((periods + 1) * k * 2, 0);
+    soft.assign((periods + 1) * k * 2 + 16, 0);   // (16 bytes of slack: the vector path below stores whole registers)
     int8_t* o = soft.data();
-    for (size_t p = 0; p < periods; p++) {
+    size_t p0 = 0;
+#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+    // G whole periods per table lookup: 16 input bytes -> 16 output bytes, the punctured positions from index 0xFF (zero). The same bytes as
+    // the loop below, a register at a time (G * ones inputs and G * 2k outputs per step, both at most 16).
+    {
+        const int G = std::min(16 / ones, 16 / (2 * k));
+        uint8_t idx[16];
+        for (int i = 0; i < 16; i++) idx[i] = 0xFF;
+        for (int g = 0; g < G; g++) for (int j = 0; j < ones; j++) idx[g * 2 * k + pos[j]] = (uint8_t)(g * ones + j);
+        const uint8x16_t tb = vld1q_u8(idx);
+        // whole groups whose 16-byte load stays inside q
+        for (; p0 + (size_t)G <= periods && p0 * (size_t)ones + 16 <= n; p0 += (size_t)G)
+            vst1q_s8(o + p0 * 2 * (size_t)k, vreinterpretq_s8_u8(vqtbl1q_u8(vreinterpretq_u8_s8(vld1q_s8(q.data() + p0 * (size_t)ones)), tb)));
+    }
+#endif
+    for (size_t p = p0; p < periods; p++) {
         int8_t* op = o + p * 2 * k;
         const int8_t* qp = q.data() + p * ones;
         for (int j = 0; j < ones; j++) op[pos[j]] = qp[j];

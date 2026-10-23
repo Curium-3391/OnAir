@@ -77,7 +77,7 @@ void runningStatus(App& a, const std::string& name) {
         ImGui::TableSetupColumn(tr("Phase track"));
         ImGui::TableHeadersRow();
         for (int p = 0; p < (int)st.seams.size(); p++) {
-            const synth::PairStatus& s = st.seams[(size_t)p];
+            const synthwide::PairStatus& s = st.seams[(size_t)p];
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::Text("%d-%d", p + 1, p + 2);
             ImGui::TableNextColumn();
@@ -164,7 +164,7 @@ void synthGroupWindow(App& a) {
         std::vector<int> free;
         for (int i = 0; i < (int)a.devices.size(); i++)
             if (groupable(a.devices[(size_t)i]) && std::find(a.groupPick.begin(), a.groupPick.end(), i) == a.groupPick.end()) free.push_back(i);
-        ImGui::BeginDisabled(free.empty() || (int)a.groupPick.size() >= synth::kSynthMaxSlices);
+        ImGui::BeginDisabled(free.empty() || (int)a.groupPick.size() >= synthwide::kSynthMaxSlices);
         ImGui::SetNextItemWidth(320 * gUi);
         if (ImGui::BeginCombo("##grpadd", free.empty() ? tr("(no other radio found)") : tr("Add a radio…"))) {
             for (int i : free) if (ImGui::Selectable(a.devices[(size_t)i].name.c_str())) a.groupPick.push_back(i);

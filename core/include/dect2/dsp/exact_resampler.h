@@ -19,6 +19,7 @@ public:
     void reset();
     // Lets the output run slower (factor > 1: every output sample advances that much further in the input) or faster; for tracking a clock error.
     void scaleStep(double factor) { step_ *= factor; }
+    void setStep(double s) { step_ = s; }   // (back to a step read with step(), e.g. the nominal one after a restart)
     double step() const { return step_; }
     // Appends resampled samples to `out`.
     void process(const cf32* in, size_t n, std::vector<cf32>& out);

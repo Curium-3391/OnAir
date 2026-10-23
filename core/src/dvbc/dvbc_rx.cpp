@@ -1,6 +1,7 @@
 // DVB-C receiver: spectrum -> carrier offset and symbol rate, interpolating matched filter + Gardner timing loop (2 samples a symbol),
 // fractionally spaced equaliser (CMA, then decision directed LMS inside a carrier loop), QAM order and spectral inversion tried until the transport
 // stream sync bytes appear, differential decoding of the quadrant, then the DVB-T outer decoder (de-interleaver, Reed-Solomon, energy dispersal).
+#include "dect2/common/stage_prof.h"
 #include "dect2/common/thread_name.h"
 #include "dect2/dvbc/dvbc_rx.h"
 #include "dect2/dvbc/dvbc.h"
@@ -466,7 +467,10 @@ struct DvbcReceiver::Impl {
                 std::vector<uint8_t> pk;
                 {
                     std::lock_guard<std::mutex> bl(bmu);
+                    DECT2_STAGE_VAR(sm, "dvbc.phase-smooth");
                     smooth(smB, j.blk, *j.c);
+                    sm.stop();
+                    DECT2_STAGE("dvbc.decide+rs");
                     for (size_t i = kPhMargin; i < kPhMargin + kPhBlock; i++) smB.cell[i] = j.c->cellOf(smB.phOut[i].real(), smB.phOut[i].imag());
                     for (size_t i = kPhMargin; i < kPhMargin + kPhBlock; i++) lockedDecided(smB.phOut[i], *j.c, smB.cell[i]);
                     outer();
@@ -663,6 +667,7 @@ struct DvbcReceiver::Impl {
             if (lostFlag.load() && stage == Locked) handleLost();
             if (const uint64_t r = resyncs.load(); r != resyncsLogged) { resyncsLogged = r; log("bytes re-aligned without losing the lock"); }
             // mix and filter a chunk
+            DECT2_STAGE_VAR(mixStage, "dvbc.dc+mix");
             const size_t take = std::min<size_t>(n - i, 16384);
             // the mixer is a rotating phasor (renormalised every 256 samples), not a sin/cos per sample
             double pr = std::cos(ncoPh), pi_ = std::sin(ncoPh);
@@ -681,6 +686,8 @@ struct DvbcReceiver::Impl {
             }
             ncoPh = std::atan2(pi_, pr);
             i += take; processed += take;
+            mixStage.stop();
+            DECT2_STAGE("dvbc.timing+equaliser");   // the matched filter / interpolator, timing loop, equaliser and carrier loop, symbol by symbol
             const int L = 2 * K;
             while (stage != Acq && tau + K + 1 < (double)hb.size()) {
                 const double fl = std::floor(tau);

@@ -2,6 +2,7 @@
 #include "dect2/common/xmlmini.h"
 #include "dect2/export/exporters.h"
 #include "../common/test_util.h"
+#include <algorithm>
 #include <clocale>
 #include <cmath>
 #include <filesystem>

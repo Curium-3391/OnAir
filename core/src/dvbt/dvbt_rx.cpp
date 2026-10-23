@@ -39,18 +39,25 @@ struct DvbtReceiver::Impl {
     // symbol it spreads carrier k by k * 80e-6 of a carrier (a third of a carrier at the band edges), which the timing loop, moving only the
     // FFT window, cannot undo. Once the loop has learnt the drift it is handed to this resampler, which corrects the samples themselves.
     // Off (no cost) until the clock is measurably off. Local to this receiver; a shared clock_correct.h can replace it.
+    // Merged (a radio rate that has to be resampled anyway, 10 Msps for 8 MHz): one ExactResampler takes the radio's samples straight to the native
+    // rate and the clock correction only steers its step, instead of the rational resampler followed by a second, near-unity resampler: one
+    // filter per sample instead of two (36 taps instead of 32 + 32 once the clock is corrected, which with a real radio is all the time).
     struct ClockCorrector {
         ExactResampler rs;
         bool on = false;
+        bool merged = false;
+        double nominal = 1.0;   // merged: input samples per output sample at the nominal rates
         std::vector<cf32> out;
-        double ppm() const { return on ? (rs.step() - 1.0) * 1e6 : 0.0; }
-        void reset() { on = false; out.clear(); }
+        void setMerged(double inRate, double outRate) { merged = rs.configure(inRate, outRate, 16) && !rs.passthrough(); nominal = rs.step(); }
+        double ppm() const { return merged ? (rs.step() / nominal - 1.0) * 1e6 : on ? (rs.step() - 1.0) * 1e6 : 0.0; }
+        void reset() { on = false; out.clear(); if (merged) { rs.reset(); rs.setStep(nominal); } }
         // the samples run fast by rel (positive: more samples than nominal): take that much more input per output sample
         void adjust(double rel, double rate) {
+            if (merged) { rs.scaleStep(1.0 + rel); return; }
             if (!on) { rs.configure(rate, rate * (1.0 + 1e-9)); rs.scaleStep(1.0 + 1e-9); on = true; }
             rs.scaleStep(1.0 + rel);
         }
-        void process(std::vector<cf32>& io) { if (!on) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
+        void process(std::vector<cf32>& io) { if (!on || merged) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
     } clk;
     std::vector<cf32> stage;      // the input at the native rate, before the clock correction
     std::vector<cf32> buf;
@@ -89,6 +96,7 @@ struct DvbtReceiver::Impl {
     int back = 0;
     std::unique_ptr<Fft> fft;
     std::vector<cf32> fbuf;
+    std::vector<float> fre, fim;   // transform() works on these split arrays
     std::atomic<int> detect{0};
     std::atomic<bool> lpReq{false};
     int agreeCount = 0, agreeMode = -1, agreeGi = -1;
@@ -143,7 +151,6 @@ struct DvbtReceiver::Impl {
     // scratch of estimateAndDecode, kept between symbols (no allocation per symbol)
     std::vector<cf32> scrGrid, scrEq;
     std::vector<float> scrN0;
-    std::vector<uint8_t> scrRoles;
     // the plots are read about 30 times a second: they are rebuilt every ~25 ms of signal, not every six symbols, and only copied into the telemetry when new
     uint64_t showSeq = 0, pubShowSeq = ~0ull;
     uint64_t lastShowSym = 0; bool showEver = false;
@@ -294,14 +301,27 @@ struct DvbtReceiver::Impl {
         cf32 tab[B];
         for (int i = 0; i < B; i++) tab[i] = cf32((float)std::cos(dph * i), (float)std::sin(dph * i));
         const cf32* src = &at(w);
+        // straight into the transform's split real / imaginary arrays (the same values Fft::forward made from fbuf, without its two copies)
+        fre.resize((size_t)N); fim.resize((size_t)N);
+        float* __restrict re = fre.data();
+        float* __restrict im = fim.data();
         for (int i0 = 0; i0 < N; i0 += B) {
             const double a = ph0 + dph * i0;
             const cf32 c0((float)std::cos(a), (float)std::sin(a));
-            for (int j = 0; j < B; j++) fbuf[i0 + j] = src[i0 + j] * (c0 * tab[j]);
+            for (int j = 0; j < B; j++) { const cf32 v = src[i0 + j] * (c0 * tab[j]); re[i0 + j] = v.real(); im[i0 + j] = v.imag(); }
         }
-        fft->forward(fbuf.data());
+        int lg = 0;
+        while ((1 << lg) < N) lg++;
+        fftSplit(re, im, lg, false);
+        if (!intLocked) for (int i = 0; i < N; i++) fbuf[(size_t)i] = cf32(re[i], im[i]);   // the integer search reads the whole unshifted transform
         Y.resize(K);
-        for (int k = 0; k < K; k++) Y[k] = fbuf[(((k + intShift - kc) % N) + N) % N];
+        // carrier k is bin (k + intShift - kc) mod N: at most two contiguous runs of bins (no two divisions per carrier)
+        {
+            const int b0 = (((intShift - kc) % N) + N) % N;
+            const int run1 = std::min(K, N - b0);
+            for (int k = 0; k < run1; k++) Y[(size_t)k] = cf32(re[b0 + k], im[b0 + k]);
+            for (int k = run1; k < K; k++) Y[(size_t)k] = cf32(re[k - run1], im[k - run1]);
+        }
     }
 
     // CP correlation around the expected position: timing error and fractional CFO
@@ -1102,21 +1122,36 @@ struct DvbtReceiver::Impl {
             } else ceDelayKnown = false;
         }
         // ---- equalise the data carriers
-        if (roleMode != mode) { for (int l = 0; l < 4; l++) carrierRoles(mode, l, roleCache[l]); roleMode = mode; }   // the pattern repeats every 4 symbols
-        const std::vector<uint8_t>& roles = roleCache[symIdx % 4];
+        if (roleMode != mode) {   // the pattern repeats every 4 symbols: the data carriers of each of the four, in order
+            for (int l = 0; l < 4; l++) {
+                std::vector<uint8_t> roles;
+                carrierRoles(mode, l, roles);
+                dataIdx[l].clear();
+                for (int k = 0; k < K && k < (int)roles.size(); k++) if (roles[k] == 0) dataIdx[l].push_back(k);
+            }
+            roleMode = mode;
+        }
+        const std::vector<int>& dk = dataIdx[symIdx % 4];
         const int Nd = dataCarriers(mode);
+        if ((int)dk.size() < Nd) return;
         std::vector<cf32>& eq = scrEq;
         std::vector<float>& n0 = scrN0;
         eq.resize((size_t)Nd); n0.resize((size_t)Nd);
-        int di = 0;
-        for (int k = 0; k < K && di < Nd; k++) {
-            if (roles[k] != 0) continue;
-            const float g2 = std::max(1e-9f, std::norm(H[k]));
-            eq[di] = Yc[k] * std::conj(H[k]) / g2;
-            n0[di] = (float)(sigma2 / (2.0 * g2));
-            di++;
+        // the data carriers' channel and value side by side first, then one plain loop over them (the same operations, which now vectorise)
+        hD.resize((size_t)Nd); yD.resize((size_t)Nd);
+        for (int i = 0; i < Nd; i++) { hD[(size_t)i] = H[(size_t)dk[(size_t)i]]; yD[(size_t)i] = Yc[(size_t)dk[(size_t)i]]; }
+        {
+            const cf32* __restrict hp = hD.data();
+            const cf32* __restrict yp = yD.data();
+            cf32* __restrict ep = eq.data();
+            float* __restrict np = n0.data();
+            const double s2 = sigma2;
+            for (int i = 0; i < Nd; i++) {
+                const float g2 = std::max(1e-9f, std::norm(hp[i]));
+                ep[i] = yp[i] * std::conj(hp[i]) / g2;
+                np[i] = (float)(s2 / (2.0 * g2));
+            }
         }
-        if (di != Nd) return;
         est.stop();
         fecPush(eq.data(), n0.data(), symIdx);
         streaming = true;
@@ -1150,7 +1185,7 @@ struct DvbtReceiver::Impl {
     }
     int chDecimV = 1;
     size_t lastTpsK = 0;
-    std::vector<cf32> ceC, ceYc, ceG, ceEq, ceCv;   // estimateAndDecode()'s work buffers
+    std::vector<cf32> ceC, ceYc, ceCv;   // estimateAndDecode()'s work buffers
     std::vector<cf32> ceH1, ceH2;     // the continual pilots one and two symbols back (for the noise / channel-change estimate)
     int cpHist = 0, ceStats = 0;
     double ceD1 = 0, ceD2 = 0, ceAlpha = 1;
@@ -1163,9 +1198,9 @@ struct DvbtReceiver::Impl {
     double ceDelayCentre = 0, ceDelayHalf = 0;
     std::vector<cf32> ceHw;
     std::vector<cd> ceZ;
-    std::vector<float> ceN0;
-    std::vector<uint8_t> roleCache[4];
+    std::vector<int> dataIdx[4];   // the data carriers of the four symbol patterns (estimateAndDecode)
     int roleMode = -1;
+    std::vector<cf32> hD, yD;
 
     // ------------------------------------------------------------------ the error correction stage
     // Demapping, Viterbi and Reed-Solomon of one symbol after another. Synchronous by default (feed() returns with everything decoded); with
@@ -1297,6 +1332,8 @@ void DvbtReceiver::configure(double inputRateHz, double bandwidthMhz) {
     I.rateOk = I.resampler.configure(inputRateHz, I.fn, nullptr, carriersK(dvbt::k8K) * I.fn / 8192.0) &&   // the signal fills K carriers: only what folds into them has to be stopped (a kernel half as long at 10 Msps)
                   inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
     I.decimate = I.rateOk && !I.resampler.passthrough();
+    I.clk.merged = false;
+    if (I.decimate) { I.clk.setMerged(inputRateHz, I.fn); I.clk.reset(); }
 }
 
 void DvbtReceiver::setLowPriority(bool lp) { p_->lpReq = lp; }   // applied with the next symbol, on the thread that decodes
@@ -1358,7 +1395,8 @@ void DvbtReceiver::feed(const cf32* x, size_t n) {
     {
         DECT2_STAGE("dvbt.resample");
         I.stage.clear();
-        if (I.decimate) I.resampler.process(x, n, I.stage);
+        if (I.decimate && I.clk.merged) I.clk.rs.process(x, n, I.stage);   // resampling and clock correction in one filter
+        else if (I.decimate) I.resampler.process(x, n, I.stage);
         else I.stage.assign(x, x + n);
         I.clk.process(I.stage);
         I.buf.insert(I.buf.end(), I.stage.begin(), I.stage.end());
