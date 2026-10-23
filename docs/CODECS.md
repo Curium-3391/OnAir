@@ -278,8 +278,7 @@ DRA. These are Chinese patented codecs, and OnAir ships none of them: it plays w
 - AVS1 in its JiZhun profile: FFmpeg's `cavs` decoder plays it (the macOS and Windows downloads; the Linux packages carry a smaller
   FFmpeg without it).
 - AVS+ (the broadcast profile, 0x48): FFmpeg's `cavs` decoder refuses it ("only support JiZhun profile", FFmpeg 8 and 9). OnAir lists
-  the service as TV, plays its sound, and says in the player that there is no picture. There is no free AVS+ decoder to install at this
-  time.
+  the service as TV, plays its sound, and says in the player that there is no picture, unless you install the AVS+ add-on (below).
 - AVS2 and AVS3: FFmpeg decodes them only when it is built with libdavs2 or libuavs3d, which the FFmpeg in OnAir is not. Save the stream
   (Outputs: file or UDP) and play it with an FFmpeg build that has them (ffplay).
 - DRA sound: FFmpeg has no DRA decoder, so OnAir plays it through the same **DRA add-on** as CDR (see [DRA+ (CDR sound)](#dra-cdr-sound)). A DTMB service
@@ -289,6 +288,33 @@ DRA. These are Chinese patented codecs, and OnAir ships none of them: it plays w
   add-on to hear this service", with a **?** button to the install steps (also in Help > Voice codecs); a second sound track in another format plays.
   Status: tested with a synthetic stream and a stand-in add-on only; not tried on a real DTMB broadcast or with the real decoder. The stream type 0x14
   is from memory of the Chinese standard (GY/T 220.1) and not verified.
+
+**The AVS+ add-on (optional, you build it).** If you put `libavcodec` and `libavutil` (shared libraries) from an FFmpeg that has an AVS+ decoder
+into the codecs folder (or the folder in `DECT2_AVSPLUS_DIR`), OnAir loads them at run time (the same way as the AC-4 add-on, so the FFmpeg may
+be of another major version than OnAir's; libavcodec 59 to 64, FFmpeg 5 to 9, are accepted) and decodes the video packets of a stream whose sequence header says
+AVS+ (profile 0x48, PMT stream type 0x42) with it. The service list shows an **AVS+** badge on the video; without the add-on the TV panel says
+"install the AVS+ add-on to see the picture" with a **?** that opens the instructions, and the same row is on Help > Voice codecs. An add-on put
+into the folder while OnAir runs is picked up within about three seconds (or press **Look again**); the picture starts at the next sequence
+header. OnAir looks for a decoder named `cavs` in your library (set `DECT2_AVSPLUS_DECODER` if your build names it differently).
+
+*Where it comes from.* The only public source known to this project is <https://github.com/maliwen2015/ffmpeg_cavs_dra> (MIT; "patches FFmpeg to
+support AVS+ and DRA decoding"): a patch `ffmpeg-7.1.2_cavs_dra.patch` for FFmpeg 7.1.2. Its page has no build instructions (and ships
+`ffmpeg.zip` / `ffplay.zip` archives that OnAir neither downloads nor uses). Build it yourself with the ordinary FFmpeg steps:
+
+1. Get the FFmpeg 7.1.2 source (ffmpeg.org) and apply the patch from its top folder: `patch -p1 < ffmpeg-7.1.2_cavs_dra.patch`
+   (check the patch's own paths; use `-p0` if it was made without a prefix).
+2. Configure shared libraries only: `./configure --enable-shared --disable-static --disable-programs --disable-doc`, then `make -j4`.
+   Linux: gcc, make, nasm. macOS: Xcode command line tools and `brew install nasm`. Windows: MSYS2 (MinGW-w64 gcc, make, nasm), and add
+   `--arch=x86_64 --target-os=mingw32` if configure does not guess it.
+3. Take `libavcodec` and `libavutil` from the build (`libavcodec.62.dylib`-style names on macOS, `libavcodec.so.61` on Linux, `avcodec-61.dll`
+   on Windows) together with the libraries they depend on (`libswresample`, ...) and put them side by side in the codecs folder. Press
+   **Look again**.
+
+**Not verified.** Tested here with a stock decoder standing in for the add-on (loading, calling, picture times, hot pickup) and with a synthetic
+transport stream; **never with a real AVS+ broadcast or the real add-on**. Open points: whether the patched decoder is named `cavs`, whether its
+pictures are 4:2:0 8 bit (anything else is refused with a message), interlaced and aspect-ratio signalling (the stream's own aspect is used).
+Licences: the project is MIT and FFmpeg LGPL, so building it yourself is fine for copyright; AVS+ is covered by patents (check where you live).
+OnAir ships and downloads nothing of it.
 
 Details and the external-player route (save the TS / stream UDP, copy the VLC / mpv command): [AVSPLUS.md](AVSPLUS.md).
 

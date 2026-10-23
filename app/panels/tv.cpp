@@ -631,7 +631,7 @@ void rightPanel(App& a) {
         }
         // AVS family video (DTMB in China): say it plainly when OnAir cannot show the picture; the profile is known for the playing service only
         const int avsProf = sel && cardPs.videoStreamType == vType ? cardPs.avsProfile : -1;
-        const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);
+        const bool avsUndecodable = vType == 0x42 ? avsNeverDecodable(vType, avsProf) && !(sel && cardPs.hasVideo) : (vType == 0xD2 || vType == 0xD4) && !(sel && cardPs.hasVideo);
         if (avsUndecodable) x += tagAt(dl, ImVec2(x, ty), tr("no picture"), IM_COL32(112, 52, 50, 255)) + 4;
         if (caSt == CaState::Scrambled) x += tagAt(dl, ImVec2(x, ty), "scrambled", IM_COL32(112, 52, 50, 255)) + 4;
         else if (caSt == CaState::CaFlagClear) x += tagAt(dl, ImVec2(x, ty), "CA flag", IM_COL32(38, 46, 58, 255), IM_COL32(150, 158, 168, 255)) + 4;
@@ -706,7 +706,7 @@ void rightPanel(App& a) {
         }
         // a picture or sound OnAir's FFmpeg cannot decode (AVS+, AVS2, AVS3, DRA): why, and the codec note (docs/CODECS.md)
         if (pl.selected() >= 0) {
-            if (!ps.videoNote.empty()) { codecHelpButton(CodecHelp::Avs); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.videoNote.c_str()); ImGui::PopTextWrapPos(); }
+            if (!ps.videoNote.empty()) { codecHelpButton(ps.avsProfile == 0x48 ? CodecHelp::AvsPlus : CodecHelp::Avs); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.videoNote.c_str()); ImGui::PopTextWrapPos(); }
             if (!ps.audioNote.empty()) { codecHelpButton(CodecHelp::Dra); ImGui::SameLine(); ImGui::PushTextWrapPos(0); ImGui::TextColored(pal::warnAmber(), "%s", ps.audioNote.c_str()); ImGui::PopTextWrapPos(); }
             {   // ATSC 3.0 sound in AC-4 and no decoder library: say why there is no sound
                 const dect2::Ac4Status a4 = dect2::ac4Status();

@@ -134,6 +134,7 @@ add_library(dect2core STATIC core/src/source/source.cpp core/src/source/source_t
 target_sources(dect2core PRIVATE core/src/dsp/synth_wide.cpp)
 target_sources(dect2core PRIVATE core/src/source/synth_group.cpp)
 target_sources(dect2core PRIVATE core/src/t2/t2ldpc.cpp)
+target_sources(dect2core PRIVATE core/src/tv/avsplus_dec.cpp)
 target_sources(dect2core PRIVATE core/src/source/usb_fd.cpp core/src/source/usb_fd_io.cpp)   # radios opened by the platform and handed over as USB descriptors (Android): rtl_fd_shim.h
 # the built-in band plans: data/bandplans/builtin.json compiled in as text (bandplan.cpp parses it); a changed file configures again
 file(READ ${ONAIR_ROOT}/data/bandplans/builtin.json _bp_txt)
@@ -781,6 +782,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_ca_state tests/tv/test_ca_state.cpp)
   target_link_libraries(test_ca_state PRIVATE dect2core)
   add_test(NAME ca_state COMMAND test_ca_state)
+  add_executable(test_avsplus tests/tv/test_avsplus.cpp)
+  target_link_libraries(test_avsplus PRIVATE dect2core)
+  add_test(NAME avsplus COMMAND test_avsplus "${FFMPEG_LIBDIR}")
   add_executable(test_ts_record tests/tv/test_ts_record.cpp)
   target_link_libraries(test_ts_record PRIVATE dect2core)
   add_test(NAME ts_record COMMAND test_ts_record)
