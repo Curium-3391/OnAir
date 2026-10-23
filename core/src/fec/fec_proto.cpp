@@ -113,13 +113,19 @@ void viterbiRangeCpp(const int8_t* soft, size_t steps, std::vector<uint8_t>& bit
     const uint8x16_t wt = vld1q_u8(w8);
     uint64_t* dp = dec;
     size_t t = 0;
-    // four steps per pass, then renormalise so int16 never saturates (the same points as before: after steps 3, 7, 11, ...)
-    for (; t + 4 <= steps; t += 4) {
-        const int8_t* s = soft + 2 * t;
-        vitStep(N, sx0, sy0, sx2, sy2, wt, s[0], s[1], dp + t);
-        vitStep(N, sx0, sy0, sx2, sy2, wt, s[2], s[3], dp + t + 1);
-        vitStep(N, sx0, sy0, sx2, sy2, wt, s[4], s[5], dp + t + 2);
-        vitStep(N, sx0, sy0, sx2, sy2, wt, s[6], s[7], dp + t + 3);
+    // Sixteen steps per pass, then renormalise. int16 never saturates: the metrics of any two states differ by at most 6 steps' worth of
+    // branch-metric range (6 x 2 x 254 = 3048, any state reaches any other in K - 1 = 6 steps) and each step moves a metric by at most
+    // 254, so 16 steps after a renormalisation every metric is within +-(3048 + 16 x 254) = +-7112. Without saturation every operation is
+    // exact integer arithmetic, so where the common offset is taken out changes nothing: the same decisions, and off + pm the same metric.
+    for (; t + 16 <= steps; t += 16) {
+#pragma clang loop unroll(full)
+        for (int g = 0; g < 16; g += 4) {
+            const int8_t* s = soft + 2 * (t + g);
+            vitStep(N, sx0, sy0, sx2, sy2, wt, s[0], s[1], dp + t + g);
+            vitStep(N, sx0, sy0, sx2, sy2, wt, s[2], s[3], dp + t + g + 1);
+            vitStep(N, sx0, sy0, sx2, sy2, wt, s[4], s[5], dp + t + g + 2);
+            vitStep(N, sx0, sy0, sx2, sy2, wt, s[6], s[7], dp + t + g + 3);
+        }
         int16x8_t mx = vmaxq_s16(vmaxq_s16(vmaxq_s16(N[0], N[1]), vmaxq_s16(N[2], N[3])), vmaxq_s16(vmaxq_s16(N[4], N[5]), vmaxq_s16(N[6], N[7])));
         const int16_t top = vmaxvq_s16(mx);
         off += top;
