@@ -170,7 +170,7 @@ if(ONAIR_RUST_RING)
   target_compile_definitions(dect2core PUBLIC DECT2_RUST_RING)   # ring.h is included by the app and the tests too: every user must see the same IqRing
 endif()
 onair_rust_use(dect2core)   # links the Rust library onair_rs
-target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_choice.cpp core/src/geo/passes.cpp core/src/dsp/imgproc.cpp core/src/dsp/wxstudio.cpp core/src/dsp/wx_vectors.cpp core/src/engine/sig_ident.cpp core/src/geo/maidenhead.cpp core/src/geo/maplayers.cpp core/src/geo/tilecache.cpp core/src/mesh/mesh_report.cpp core/src/df/df.cpp core/src/df/source.cpp core/src/df/position.cpp core/src/df/rfcam.cpp core/src/df/group.cpp core/src/df/rtl_group.cpp core/src/geo/pass_sched.cpp core/src/geo/doppler_fit.cpp core/src/engine/sig_known.cpp core/src/radar/passive.cpp core/src/rfi/rfi.cpp core/src/map/contact_graph.cpp)
+target_sources(dect2core PRIVATE core/src/engine/modes.cpp core/src/engine/rate_choice.cpp core/src/geo/passes.cpp core/src/dsp/imgproc.cpp core/src/dsp/wxstudio.cpp core/src/dsp/wx_vectors.cpp core/src/engine/sig_ident.cpp core/src/geo/maidenhead.cpp core/src/geo/maplayers.cpp core/src/geo/tilecache.cpp core/src/mesh/mesh_report.cpp core/src/df/df.cpp core/src/df/source.cpp core/src/df/position.cpp core/src/df/rfcam.cpp core/src/df/group.cpp core/src/df/rtl_group.cpp core/src/geo/pass_sched.cpp core/src/geo/doppler_fit.cpp core/src/engine/sig_known.cpp core/src/engine/sig_known_gen.cpp core/src/radar/passive.cpp core/src/rfi/rfi.cpp core/src/map/contact_graph.cpp)
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
@@ -1648,12 +1648,13 @@ if(DECT2_BUILD_TESTS)
       target_link_libraries(${m}tool PRIVATE dect2core)
     endif()
   endforeach()
-  # the signal identifier: the whole matrix (every mode's test signal at 10 / 20 / 30 dB SNR, with and without the frequency known) is slow; the quick one
-  # (20 dB, no frequency) runs with the rest (tests/specx/test_specx_idmatrix.cpp, docs/signal-id.md)
+  # the signal identifier (docs/IDENTIFIER.md): specx_ideval (about thirty modes made from their parameters, impaired, a confusion matrix; a few
+  # seconds), specx_idfeatures and specx_ident run with the rest. The matrix over every mode's own test signal renders each mode's generator
+  # and takes minutes: the whole one and its quick form (20 dB, no frequency) are in the slow tier (nightly and release tags).
   if(TARGET test_specx_idmatrix)
     set_tests_properties(specx_idmatrix PROPERTIES LABELS slow TIMEOUT 3000)
     add_test(NAME specx_idmatrix_quick COMMAND test_specx_idmatrix --quick)
-    set_tests_properties(specx_idmatrix_quick PROPERTIES TIMEOUT 600)
+    set_tests_properties(specx_idmatrix_quick PROPERTIES LABELS slow TIMEOUT 600)
   endif()
   # a fake mbelib (no codec) for the tests of the runtime loader; the real one is installed by the user (docs/CODECS.md)
   add_library(fake_mbelib MODULE tests/p25/fake_mbelib.c)
@@ -1737,7 +1738,7 @@ if(DECT2_BUILD_TESTS)
     endif()
   endforeach()
   # socket/thread timing tests: label "timing"; CI re-runs only these once on failure (ctest --repeat until-pass:2 -L timing)
-  foreach(t voice_inversion atsc3_synth_basic scan_synth dvbs_engine isdbt_rx radio_mode_glue atv_switch tx wifi_engine multitone_engine native_netradio native_sdrpp feeds feed_targets rooms_net discord_rpc remote_api plugin ais_engine marine_engine inmc_engine specx_idfeatures scan_soapy dvbc_engine qo100_dvbs_second)
+  foreach(t voice_inversion atsc3_synth_basic scan_synth dvbs_engine isdbt_rx radio_mode_glue atv_switch tx wifi_engine multitone_engine native_netradio native_sdrpp feeds feed_targets rooms_net discord_rpc remote_api plugin ais_engine marine_engine inmc_engine scan_soapy dvbc_engine qo100_dvbs_second)
     if(TEST ${t})
       set_property(TEST ${t} APPEND PROPERTY LABELS timing)
     endif()

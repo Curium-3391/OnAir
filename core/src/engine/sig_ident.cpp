@@ -457,12 +457,31 @@ bool chirpTest(const Work& w, Features& f) {
     static const double kBws[] = {7.8e3, 10.4e3, 15.6e3, 20.8e3, 31.25e3, 41.7e3, 62.5e3, 125e3, 250e3, 500e3, 812.5e3, 1625e3};
     for (double b : kBws) if (std::fabs(B / b - 1) < 0.15) { B = b; break; }
     if (B < 20e3) return false;   // narrower than 20 kHz: narrow-band FSK looks like a chirp at this resolution, and nobody uses LoRa that narrow on air
+    // The tone's phase changes from one data symbol to the next (by a quarter turn per symbol value), so the product's spectrum is averaged
+    // over stretches of about a symbol (Welch, Hann windows, half overlap): the tone then shows whatever the data.
     auto tone = [&](size_t L, double& hz) {
-        const size_t m = std::min<size_t>(w.y.size() > L ? w.y.size() - L : 0, (size_t)1 << 18);
-        if (m < 1024) return 0.0;
-        std::vector<cf32> z(m);
-        for (size_t i = 0; i < m; i++) z[i] = (w.on[i] && w.on[i + L]) ? w.y[i + L] * std::conj(w.y[i]) : cf32(0, 0);
-        const auto P = powerSpec(z.data(), m);
+        const size_t m = std::min<size_t>(w.y.size() > L ? w.y.size() - L : 0, (size_t)1 << 20);
+        const size_t S = std::max<size_t>(256, std::min<size_t>(pow2At(4 * L), 2048));   // a stretch may be shorter than a symbol: the tone lasts
+        if (m < std::max<size_t>(1024, 2 * S)) return 0.0;
+        std::vector<float> P(S, 0.f), win(S);
+        for (size_t i = 0; i < S; i++) win[i] = (float)(0.5 - 0.5 * std::cos(2 * kPi * i / S));
+        Fft Fs((int)S);
+        std::vector<cf32> z(S);
+        size_t segs = 0;
+        const size_t hop = std::max<size_t>(S / 2, (m - S) / 96 + 1);   // at most about a hundred stretches, spread over the capture
+        for (size_t o0 = 0; o0 + S <= m; o0 += hop) {
+            size_t on = 0;
+            for (size_t i = 0; i < S; i++) { const bool ok = w.on[o0 + i] && w.on[o0 + i + L]; on += ok; z[i] = ok ? w.y[o0 + i + L] * std::conj(w.y[o0 + i]) * win[i] : cf32(0, 0); }
+            if (on * 2 < S) continue;
+            Fs.forward(z.data());
+            for (size_t i = 0; i < S; i++) P[i] += std::norm(z[i]);
+            segs++;
+        }
+        if (segs < 2) return 0.0;
+        double mp = 0;
+        for (float v : P) mp += v;
+        const float flo = (float)(1e-5 * mp / (double)S);   // a floor: a clean chirp leaves bins with nothing in them, which no line should be measured against
+        for (float& v : P) v += flo;
         const Line l = findLine(P, w.fsd, -w.fsd * 0.48, w.fsd * 0.48);
         hz = l.hz;
         return l.ok ? l.db : 0.0;
@@ -553,6 +572,229 @@ bool fskTest(const Work& w, Features& f, double rs, std::vector<float>& syms, do
     return false;
 }
 
+// ---------------------------------------------------------------------------------------------------- spectral shape, tones, comb
+
+// A Welch spectrum of y (the signal at the centre, Hann windows, the stretches where it is on) at about 1/4000 of its width over 1.2 times
+// the width: the tones that stand out of it (local maxima 6 dB over the band's median with 4 dB of prominence), their common spacing, and the
+// strongest periodicity of the detrended spectrum (its autocorrelation: an OFDM pilot comb, an MFSK grid). Then the shape in a word.
+void spectralShape(const Work& w, Features& f, double sigW) {
+    const size_t m = w.y.size();
+    size_t Ns = pow2At((size_t)std::ceil(w.fsd / std::max(1e-3, sigW / 4096)));
+    Ns = std::max<size_t>(256, std::min<size_t>(Ns, 16384));
+    while (Ns > 256 && Ns * 4 > m) Ns >>= 1;
+    if (Ns * 2 > m) return;
+    std::vector<float> win(Ns);
+    for (size_t i = 0; i < Ns; i++) win[i] = (float)(0.5 - 0.5 * std::cos(2 * kPi * i / Ns));
+    const size_t segs = std::min<size_t>(32, (m - Ns) / (Ns / 2) + 1);
+    const double stride = segs > 1 ? (double)(m - Ns) / (double)(segs - 1) : 0;
+    std::vector<double> acc(Ns, 0.0);
+    Fft F((int)Ns);
+    std::vector<cf32> b(Ns);
+    size_t used = 0;
+    for (size_t s = 0; s < segs; s++) {
+        const size_t o0 = (size_t)(s * stride);
+        if (!w.core[o0 + Ns / 2]) continue;   // off between bursts
+        for (size_t i = 0; i < Ns; i++) b[i] = w.y[o0 + i] * win[i];
+        F.forward(b.data());
+        for (size_t i = 0; i < Ns; i++) acc[i] += std::norm(b[i]);
+        used++;
+    }
+    if (used < 2) return;
+    const double bin = w.fsd / (double)Ns;
+    const int half = (int)std::min<double>((double)Ns / 2 - 1, std::ceil(0.6 * sigW / bin));
+    if (half < 16) return;
+    const int len = 2 * half + 1;
+    std::vector<double> S((size_t)len), L((size_t)len);
+    for (int j = -half; j <= half; j++) {
+        const double p = acc[(size_t)((j + (long)Ns) % (long)Ns)] / (double)used;
+        L[(size_t)(j + half)] = p; S[(size_t)(j + half)] = dB(p);
+    }
+    const int inner = (int)std::min<double>(half, std::ceil(0.5 * sigW / bin));
+    const double med = median(std::vector<double>(S.begin() + (half - inner), S.begin() + (half + inner + 1)));
+    // tones
+    const int pw = std::max(3, len / 25);
+    std::vector<double> pk;
+    for (int i = 2; i + 2 < len; i++) {
+        if (S[(size_t)i] < med + 6) continue;
+        bool mx = true;
+        for (int d = -2; d <= 2 && mx; d++) if (S[(size_t)(i + d)] > S[(size_t)i] || (d < 0 && S[(size_t)(i + d)] == S[(size_t)i])) mx = false;   // a plateau counts once
+        if (!mx) continue;
+        double lmin = S[(size_t)i], rmin = S[(size_t)i];
+        for (int d = 1; d <= pw; d++) { if (i - d >= 0) lmin = std::min(lmin, S[(size_t)(i - d)]); if (i + d < len) rmin = std::min(rmin, S[(size_t)(i + d)]); }
+        if (S[(size_t)i] - std::max(lmin, rmin) >= 4) pk.push_back((i - half) * bin);
+    }
+    f.tones = (int)pk.size();
+    if (pk.size() >= 2) {
+        std::vector<double> dif;
+        for (size_t i = 1; i < pk.size(); i++) dif.push_back(pk[i] - pk[i - 1]);
+        const double g0 = *std::min_element(dif.begin(), dif.end());
+        // the spacing: the smallest gap, when most gaps are whole multiples of it (an MFSK tone set with tones that were not sent)
+        double num = 0, den = 0; size_t fit = 0;
+        for (double d : dif) { const double k = std::round(d / g0); if (k >= 1 && std::fabs(d / (k * g0) - 1) < 0.12) { fit++; num += d; den += k; } }
+        if (fit * 10 >= dif.size() * 7 && den > 0) f.toneSpacingHz = num / den;
+    }
+    // comb: the autocorrelation of the spectrum over its inner part, the slow shape (a moving average) taken out
+    {
+        const int a0 = half - inner, n0 = 2 * inner + 1;
+        const int tw = std::max(8, n0 / 8);
+        std::vector<double> pre((size_t)n0 + 1, 0.0), r((size_t)n0);
+        for (int i = 0; i < n0; i++) pre[(size_t)i + 1] = pre[(size_t)i] + L[(size_t)(a0 + i)];
+        for (int i = 0; i < n0; i++) {
+            const int lo = std::max(0, i - tw), hi = std::min(n0 - 1, i + tw);
+            const double t = (pre[(size_t)hi + 1] - pre[(size_t)lo]) / (hi - lo + 1);
+            r[(size_t)i] = t > 0 ? L[(size_t)(a0 + i)] / t - 1 : 0;
+        }
+        double r0 = 0;
+        for (double v : r) r0 += v * v;
+        const int maxLag = std::min(n0 / 4, tw);   // a period longer than the trend window would be taken out with the trend
+        double best = 0; int bl = 0;
+        std::vector<double> ac((size_t)maxLag + 2, 0.0);
+        for (int l = 1; l <= maxLag + 1; l++) { double s = 0; for (int i = 0; i + l < n0; i++) s += r[(size_t)i] * r[(size_t)(i + l)]; ac[(size_t)l] = r0 > 0 ? s / r0 : 0; }
+        for (int l = 2; l <= maxLag; l++) if (ac[(size_t)l] > best && ac[(size_t)l] >= ac[(size_t)(l - 1)] && ac[(size_t)l] >= ac[(size_t)(l + 1)]) { best = ac[(size_t)l]; bl = l; }
+        if (best > 0.2 && bl > 0) { f.combHz = bl * bin; f.combStrength = best; }
+    }
+    if (f.flatTop) f.shape = ShapeFlat;
+    else if (sigW < 400 && f.carrierDb > 15) f.shape = ShapeLine;
+    else if (f.tones >= 2 && f.toneSpacingHz > 0) f.shape = ShapeTones;
+    else f.shape = ShapeRounded;
+}
+
+// MFSK (constant envelope, narrow): the instantaneous frequency, averaged over half a symbol, sits on the tones, so its histogram is a comb at
+// the tone spacing whatever tones the data picks; the autocorrelation of the detrended histogram finds that spacing. Tried for half symbols of
+// 200, 60, 20 and 6 Bd (the rate is not known yet), the clearest comb wins. Only spacings up to 40 % of the width (the levels of 2FSK and 4FSK
+// are fskTest's).
+void mfskTones(const Work& w, Features& f, double sigW) {
+    const size_t m = w.d.size();
+    if (m < 2048 || sigW <= 0) return;
+    const double binHz = sigW / 400;
+    const int nb = 600, half = nb / 2;
+    std::vector<double> pre(m + 1, 0.0);
+    std::vector<uint32_t> onPre(m + 1, 0);
+    for (size_t i = 0; i < m; i++) { pre[i + 1] = pre[i] + (w.on[i] ? w.d[i] : 0.f); onPre[i + 1] = onPre[i] + (w.on[i] ? 1u : 0u); }
+    double mean = 0; size_t cnt = 0;
+    for (size_t i = 0; i < m; i++) if (w.on[i]) { mean += w.d[i]; cnt++; }
+    if (cnt < 1024) return;
+    mean /= (double)cnt;
+    double bestS = 0, bestSp = 0;
+    for (double rs : {200.0, 60.0, 20.0, 6.0}) {
+        const size_t K = (size_t)std::max(1.0, std::round(0.5 * w.fsd / rs));
+        if (K * 40 > m) continue;
+        std::vector<double> h((size_t)nb, 0.0);
+        const size_t step = std::max<size_t>(1, K / 4);
+        for (size_t i = 0; i + K <= m; i += step) {
+            if (onPre[i + K] - onPre[i] != K) continue;
+            const double v = (pre[i + K] - pre[i]) / (double)K - mean;
+            const long b = (long)std::floor(v / binHz) + half;
+            if (b >= 0 && b < nb) h[(size_t)b] += 1;
+        }
+        // smooth by a bin each side, detrend with a window of a quarter of the width, the autocorrelation
+        std::vector<double> s((size_t)nb, 0.0);
+        for (int i = 1; i + 1 < nb; i++) s[(size_t)i] = (h[(size_t)i - 1] + 2 * h[(size_t)i] + h[(size_t)i + 1]) / 4;
+        const int tw = 100;
+        std::vector<double> sp((size_t)nb + 1, 0.0), r((size_t)nb, 0.0);
+        for (int i = 0; i < nb; i++) sp[(size_t)i + 1] = sp[(size_t)i] + s[(size_t)i];
+        double tot = sp[(size_t)nb];
+        if (tot < 200) continue;
+        for (int i = 0; i < nb; i++) {
+            const int lo = std::max(0, i - tw), hi = std::min(nb - 1, i + tw);
+            const double t = (sp[(size_t)hi + 1] - sp[(size_t)lo]) / (hi - lo + 1);
+            r[(size_t)i] = t > tot / nb * 0.05 ? s[(size_t)i] - t : 0;
+        }
+        double r0 = 0;
+        for (double v : r) r0 += v * v;
+        if (r0 <= 0) continue;
+        const int maxLag = 160;
+        std::vector<double> ac((size_t)maxLag + 2, 0.0);
+        for (int l = 1; l <= maxLag + 1; l++) { double a = 0; for (int i = 0; i + l < nb; i++) a += r[(size_t)i] * r[(size_t)(i + l)]; ac[(size_t)l] = a / r0; }
+        auto peak = [&](int l) { return ac[(size_t)l] >= ac[(size_t)l - 1] && ac[(size_t)l] >= ac[(size_t)l + 1]; };
+        double mx = 0;
+        for (int l = 4; l <= maxLag; l++) if (peak(l)) mx = std::max(mx, ac[(size_t)l]);
+        for (int l = 4; l <= maxLag; l++)   // the first peak about as high as the highest: the spacing, not a multiple of it
+            if (peak(l) && ac[(size_t)l] >= 0.8 * mx) { if (ac[(size_t)l] > bestS) { bestS = ac[(size_t)l]; bestSp = l * binHz; } break; }
+    }
+    if (bestS > 0.35 && (f.toneSpacingHz <= 0 || f.tones < 4)) { f.toneSpacingHz = bestSp; f.tones = std::max(f.tones, (int)std::lround(sigW / bestSp)); }
+}
+
+// root raised cosine, t in symbols
+double rrc(double t, double beta) {
+    const double eps = 1e-6;
+    if (std::fabs(t) < eps) return 1 - beta + 4 * beta / kPi;
+    if (beta > 0 && std::fabs(std::fabs(t) - 1 / (4 * beta)) < eps)
+        return beta / std::sqrt(2.0) * ((1 + 2 / kPi) * std::sin(kPi / (4 * beta)) + (1 - 2 / kPi) * std::cos(kPi / (4 * beta)));
+    const double a = kPi * t, d = a * (1 - 16 * beta * beta * t * t);
+    return (std::sin(a * (1 - beta)) + 4 * beta * t * std::cos(a * (1 + beta))) / d;
+}
+
+// Linear modulation with a symbol rate: the symbols of the longest stretch the signal is on, after a matched filter (root raised cosine,
+// roll-off 0.35, 6 symbols) at the best of 8 timing phases, the carrier's own offset taken out. How many amplitude levels (k-means), how well
+// u^2, u^4, u^8 line up (u = s / |s|; a clean M-PSK gives 1 at M and above, whatever a small frequency error), and the order they suggest.
+void constellation(const Work& w, Features& f, double offHz) {
+    const double rs = f.symRate, sps = rs > 0 ? w.fsd / rs : 0;
+    if (sps < 2 || sps > 96) return;
+    size_t a = 0, e = 0;
+    for (const auto& r : w.runs) if (r.second - r.first > e - a) { a = r.first; e = r.second; }
+    const int nt = (int)std::ceil(6 * sps) | 1, h2 = nt / 2;
+    if (e < a + (size_t)(64 * sps) + (size_t)nt) return;
+    const size_t nsym = std::min<size_t>(4096, (size_t)((double)(e - a - (size_t)nt) / sps) - 2);
+    std::vector<float> h((size_t)nt);
+    for (int i = 0; i < nt; i++) h[(size_t)i] = (float)rrc((i - h2) / sps, 0.35);
+    const double dph = -2 * kPi * offHz / w.fsd;
+    auto mf = [&](double t) {   // the matched filter's output at sample time t (nearest sample), derotated
+        const size_t c = (size_t)std::lround(t);
+        cf32 s(0, 0);
+        for (int i = 0; i < nt; i++) s += h[(size_t)i] * w.y[c + (size_t)i - (size_t)h2];
+        const double ph = dph * (double)c;
+        return s * cf32((float)std::cos(ph), (float)std::sin(ph));
+    };
+    const double t0 = (double)a + h2 + 1;
+    int bp = 0; double be = -1;
+    for (int p = 0; p < 8; p++) {
+        double en = 0;
+        for (size_t n = 0; n < nsym; n += 4) en += std::norm(mf(t0 + p * sps / 8 + (double)n * sps));
+        if (en > be) { be = en; bp = p; }
+    }
+    std::vector<cf32> s(nsym);
+    double m2 = 0, m4 = 0;
+    for (size_t n = 0; n < nsym; n++) { s[n] = mf(t0 + bp * sps / 8 + (double)n * sps); const double q = std::norm(s[n]); m2 += q; m4 += q * q; }
+    m2 /= (double)nsym; m4 /= (double)nsym;
+    if (m2 <= 0) return;
+    // the noise in the symbols: the filter's gain on the noise of y
+    double hh = 0;
+    for (float v : h) hh += (double)v * v;
+    const double nz = w.noise * hh, s2 = std::max(0.05 * m2, m2 - nz), s4 = std::max(0.5 * s2 * s2, m4 - 4 * s2 * nz - 2 * nz * nz);
+    const double kurt = s4 / (s2 * s2);   // 1 PSK, 1.32 16-QAM, 1.38 64-QAM
+    const size_t Nf = pow2At(nsym * 4);
+    Fft F((int)Nf);
+    std::vector<cf32> z(Nf);
+    const int Ms[3] = {2, 4, 8};
+    for (int j = 0; j < 3; j++) {
+        std::fill(z.begin(), z.end(), cf32(0, 0));
+        for (size_t n = 0; n < nsym; n++) {
+            const float am = std::abs(s[n]);
+            if (am <= 0) continue;
+            cf32 u = s[n] / am, r = u;
+            for (int q = 1; q < Ms[j]; q++) r *= u;
+            z[n] = r;
+        }
+        F.forward(z.data());
+        double mx = 0;
+        for (const cf32& v : z) mx = std::max(mx, (double)std::abs(v));
+        f.phaseCoh[j] = mx / (double)nsym;
+    }
+    std::vector<float> amp(nsym);
+    for (size_t n = 0; n < nsym; n++) amp[n] = (float)(std::abs(s[n]) / std::sqrt(m2));
+    const KM k3 = kmeans(amp, 3), k2 = kmeans(amp, 2);
+    auto apart = [&](const KM& k) {
+        for (int j = 1; j < k.k; j++) if (k.c[j] - k.c[j - 1] < 2.5 * k.spread || k.cnt[j] < (int)(0.08 * nsym) || k.cnt[j - 1] < (int)(0.08 * nsym)) return false;
+        return true;
+    };
+    f.ampRings = apart(k3) ? 3 : apart(k2) ? 2 : 1;
+    if (kurt > 1.18 || f.ampRings >= 3) f.constOrder = kurt < 1.35 ? 16 : 64;
+    else if (f.phaseCoh[0] > 0.5) f.constOrder = 2;
+    else if (f.phaseCoh[1] > 0.45) f.constOrder = 4;
+    else if (f.phaseCoh[2] > 0.4) f.constOrder = 8;
+}
+
 std::string hzText(double hz) {
     char b[48];
     const double a = std::fabs(hz);
@@ -577,6 +819,11 @@ const char* modName(int m) {
     return m >= 0 && m < ModCount ? k[m] : "?";
 }
 
+const char* shapeName(int s) {
+    static const char* const k[ShapeCount] = {"not measured", "flat top", "rounded (filtered)", "discrete tones", "a line"};
+    return s >= 0 && s < ShapeCount ? k[s] : "?";
+}
+
 // ---------------------------------------------------------------------------------------------------- confidence and priors
 
 // What the evidence is worth. The raw score of a candidate (0 .. 100) is turned into the probability that this candidate is the right one by a
@@ -599,11 +846,17 @@ static void calibrate(Result& R) {
         Candidate& c = R.cands[i];
         const double z = kB0 + kB1 * c.score / 100 - kB2 * (s1 - c.score) / 100 + (i == 0 ? kB3 * (s1 - s2) / 100 : 0.0);
         c.confidence = 1.0 / (1.0 + std::exp(-z));
+        if (c.source == 2) c.confidence = std::min(c.confidence, 0.2);   // known by its frequency only: never more than a hint
         sum += c.confidence;
     }
     if (sum > 1) for (Candidate& c : R.cands) c.confidence /= sum;   // events that exclude each other cannot add up to more than one
     const Candidate& t = R.cands[0];
     const double p2 = R.cands.size() > 1 ? R.cands[1].confidence : 0.0;
+    // modes that look the same (LoRa and the networks on it, NXDN48 and dPMR without a sync) tie: each is unlikely, the set of them is not,
+    // and the answer is "one of these", not "I do not know"
+    double tied = 0;
+    for (const Candidate& c : R.cands) if (c.score >= t.score - 3 && c.source != 2) tied += c.confidence;
+    if (t.confidence < kUnknownBelow && tied >= 0.55 && t.score >= 50 && R.cands.size() > 1 && R.cands[1].score >= t.score - 3) { R.verdict = VerdictAmbiguous; return; }
     if (t.confidence < kUnknownBelow) return;
     R.verdict = t.confidence >= kLikelyFrom && p2 < 0.5 * t.confidence ? VerdictLikely : VerdictAmbiguous;
 }
@@ -664,6 +917,7 @@ static std::vector<Region> detectRegions(const cf32* x, size_t n, double fs, dou
 static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o) {
     Result R;
     Features& f = R.f;
+    const std::vector<Known>& sigs = signatures();
     n = std::min<size_t>(n, (size_t)4 << 20);
     if (!x || n < 4096 || fs <= 0) { f.why = "too few samples"; return R; }
     f.captureSec = n / fs;
@@ -765,7 +1019,8 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
         std::vector<cf32> z(m);
         for (size_t i = 0; i < m; i++) z[i] = w.core[i] ? w.y[i] : cf32(0, 0);
         const auto P = powerSpec(z.data(), m);
-        const double tol = std::max(4 * w.fsd / P.size(), std::min(0.02 * sigW, 200.0));
+        // the middle of the 99 % band of an AM signal is a little off its carrier (the audio is not the same on both sides): 4 % of the width
+        const double tol = std::max(4 * w.fsd / P.size(), std::min(0.04 * sigW, 400.0));
         const Line c = findLine(P, w.fsd, -tol, tol);
         f.carrierDb = c.ok ? c.db : 0;
     }
@@ -787,8 +1042,9 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
     auto tableLines = [&]() {
         std::vector<std::pair<double, double>> out;   // (dB, rate)
         std::vector<double> seen;
-        for (int i = 0; i < kKnownCount; i++) for (double r : kKnown[i].rates) {
-            if (r < 100 || r < fmin || r > fmax || std::find(seen.begin(), seen.end(), r) != seen.end()) continue;
+        for (const Known& k : sigs) for (double r : k.rates) {
+            if (k.source != 0) break;   // the rates of the hand-written rows only (the measured ones are measurements themselves)
+            if (r < 30 || r < fmin || r > fmax || std::find(seen.begin(), seen.end(), r) != seen.end()) continue;
             seen.push_back(r);
             double db = 0;
             if (!Pd.empty()) { const Line a = findLine(Pd, w.fsd, r * 0.99, r * 1.01); if (a.ok) db = a.db; }
@@ -830,17 +1086,19 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
     };
     auto snap = [&](double rs) {
         double best = rs, be = 0.012;
-        for (int i = 0; i < kKnownCount; i++) for (double r : kKnown[i].rates) if (r > 1 && std::fabs(rs / r - 1) < be) { be = std::fabs(rs / r - 1); best = r; }
+        for (const Known& k : sigs) if (k.source == 0) for (double r : k.rates) if (r > 1 && std::fabs(rs / r - 1) < be) { be = std::fabs(rs / r - 1); best = r; }
         return best;
     };
     auto inTable = [&](double rs) { return snap(rs) != rs; };
     // ---- classification
     std::vector<float> syms; double mid = 0, unit = 1;
     OfdmCorr oc;
+    double carrierOff = 0;   // linear modulation: the carrier's own offset from the spectrum's centre (from the x^n lines)
     const bool constEnv = f.envKurt < 1.12;
     if (sigW < 400 && f.carrierDb > 15) f.mod = ModCarrier;
     else if (f.envKurt > 1.6 || (f.flatTop && f.envKurt > 1.45)) {
         if (f.envKurt < 3.5 && ofdmTest(w, f, &oc)) f.mod = ModOfdm;   // Gaussian samples have a kurtosis of 2: spikier than that is a pulse train
+        else if (f.envKurt < 2.2 && f.carrierDb < 10 && std::max(f.lineDb[1], f.lineDb[2]) > 20) {}   // a PSK with a small roll-off (its envelope dips deep): the x^n analysis below
         else if (f.duty < 0.97 || le.db > 12) { f.mod = ModPulse; if (le.ok && le.db > 10) { f.symRate = le.hz; f.symLineDb = le.db; f.symSrc = 1; } }
         else f.mod = ModQam;
     } else if (f.carrierDb > 12 && f.envKurt > 1.04 && std::max(f.lineDb[2], f.lineDb[3]) < f.carrierDb + 6) f.mod = ModAm;
@@ -851,6 +1109,7 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
             // FSK at the discriminator's rate (or the envelope's)
             const double lineMin = f.duty < 0.5 ? 7.0 : 9.0;   // a few short bursts give a weak line
             Line r = ld.ok && ld.db > lineMin ? ld : (le.ok && le.db > lineMin ? le : Line());
+            if (!r.ok) { const auto tl = tableLines(); if (!tl.empty()) { r.ok = true; r.db = tl[0].first; r.hz = tl[0].second; } }   // no strong line: a rate of the table with a line of its own
             if (r.ok && r.hz >= sigW / 30 && toneFrac < 0.85) {
                 // the rate whose symbols fall into the cleanest levels (the strongest line, or one of the table's rates with a line of its own)
                 double rs = snap(r.hz), bestQ = 1e9;
@@ -865,6 +1124,31 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
                     const double q = g.devSpread / std::max(1e-9, gap) * (c == cands[0] ? 1.0 : 1.15);   // the strongest line is preferred a little
                     if (q < bestQ) { bestQ = q; rs = c; }
                 }
+                // The line of a sharply keyed FSK can be the second harmonic of its rate. Sampled at twice the rate, the symbols come in equal
+                // pairs (in one of the two alignments of each block of sampleSymbols); at the rate, neighbours agree about half the time.
+                for (int pass = 0; pass < 2 && rs / 2 >= std::max(fmin, sigW / 30); pass++) {
+                    smooth(rs);
+                    Features g = f; std::vector<float> sy; double m2 = 0, u2 = 1;
+                    if (!fskTest(w, g, rs, sy, m2, u2)) break;
+                    std::vector<int> lv;
+                    for (float s : sy) {
+                        if (std::isnan(s)) { lv.push_back(-1); continue; }
+                        int b = 0;
+                        for (int j = 1; j < g.fskLevels; j++) if (std::fabs(s - m2 - g.devHz[j]) < std::fabs(s - m2 - g.devHz[b])) b = j;
+                        lv.push_back(b);
+                    }
+                    size_t agree = 0, pairs = 0;
+                    for (size_t a = 0; a < lv.size();) {   // the blocks: up to 128 symbols between NaNs
+                        size_t e = a;
+                        while (e < lv.size() && lv[e] >= 0 && e - a < 128) e++;
+                        size_t best = 0, np = (e - a) / 2;
+                        for (size_t al = 0; al < 2; al++) { size_t c = 0; for (size_t i = a + al; i + 1 < e; i += 2) c += lv[i] == lv[i + 1]; best = std::max(best, c); }
+                        agree += best; pairs += np;
+                        a = e < lv.size() && lv[e] < 0 ? e + 1 : std::max(e, a + 1);
+                    }
+                    if (pairs < 32 || agree < 0.88 * (double)pairs) break;
+                    rs = snap(rs / 2);
+                }
                 smooth(rs);
                 if (fskTest(w, f, rs, syms, mid, unit)) {
                     f.symRate = rs; f.symLineDb = r.db; f.symSrc = r.hz == ld.hz || !ld.ok || std::fabs(r.hz / ld.hz - 1) > 0.02 ? 2 : 1;
@@ -875,12 +1159,18 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
                     }
                 }
             }
+            bool linearNext = false;
             if (f.mod == ModUnknown && f.lineDb[1] > 14) {
-                // MSK-like: (x)^2 shows two lines Rs apart; take the rate from the discriminator line if there is one
-                f.mod = ModGmsk;
-                if (ld.ok && ld.db > 8) { f.symRate = snap(ld.hz); f.symLineDb = ld.db; f.symSrc = 2; }
+                // MSK-like: (x)^2 shows two lines Rs apart, about as strong; one line alone is a BPSK whose envelope dips at the phase
+                // reversals (PSK31), which the x^n analysis below takes
+                const Line l2 = findLine(w.P[1], w.fsd, -0.48 * w.fsd, 0.48 * w.fsd, f.lineHz[1], std::max(4 * w.fsd / std::max<size_t>(1, w.P[1].size()), 0.03 * sigW));
+                if ((!l2.ok || l2.db < f.lineDb[1] - 6) && f.lineDb[1] > f.lineDb[0] + 6) linearNext = true;   // (a carrier of its own in x: not a BPSK)
+                else {
+                    f.mod = ModGmsk;
+                    if (ld.ok && ld.db > 8) { f.symRate = snap(ld.hz); f.symLineDb = ld.db; f.symSrc = 2; }
+                }
             }
-            if (f.mod == ModUnknown) f.mod = f.carrierDb > 25 && sigW < 400 ? ModCarrier : ModFm;
+            if (f.mod == ModUnknown && !linearNext) f.mod = f.carrierDb > 25 && sigW < 400 ? ModCarrier : ModFm;
         }
     }
     if (f.mod == ModUnknown) {
@@ -923,13 +1213,21 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
             if (bestRs > 0 && (rs <= 0 || std::fabs(bestRs / rs - 1) > 0.05)) { f.symRate = snap(bestRs); f.symSrc = 3; f.symLineDb = 0; }
         } else if (f.carrierDb > 12) f.mod = ModAm;
         else f.mod = f.envKurt > 1.25 ? ModQam : ModFm;
-        if (f.mod != ModAm && f.mod != ModFm) f.centreHz += off;   // the carrier's own offset
+        if (f.mod != ModAm && f.mod != ModFm) { f.centreHz += off; carrierOff = off; }   // the carrier's own offset
         if (f.mod == ModGmsk && f.symRate > 0) {   // the bits for the AIS flags
             smooth(f.symRate);
             if (!fskTest(w, f, f.symRate, syms, mid, unit)) syms.clear();
         }
     }
     f.rfHz = o.rfHz + f.centreHz;
+    // ---- spectral shape, constellation, OFDM carrier spacing
+    spectralShape(w, f, sigW);
+    if (f.envKurt < 1.15 && sigW < 20e3 && f.mod != ModChirp && f.mod != ModCarrier) mfskTones(w, f, sigW);
+    if ((f.mod == ModBpsk || f.mod == ModQpsk || f.mod == ModPi4Dqpsk || f.mod == ModPsk8 || f.mod == ModQam) && f.symRate > 0) {
+        constellation(w, f, carrierOff);
+        f.rolloff = std::max(-0.2, std::min(2.0, f.obwHz / f.symRate - 1));
+    }
+    if (f.mod == ModOfdm && f.ofdmTuSec > 0) { f.ofdmSpacingHz = 1 / f.ofdmTuSec; f.ofdmGuard = f.ofdmTgSec / f.ofdmTuSec; }
     // ---- frame syncs (cheap, where the measurement fits)
     int sync[SyncCount] = {};
     bool tried[SyncCount] = {};
@@ -995,8 +1293,20 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
     // ---- rank the table: every rule that can be applied adds what it earns to `sc` and what it could have earned to `mx`; the score is the
     // share (0 .. 100) of the evidence that holds, so a mode with few measurable traits is not held back by the traits it does not have
     const double rf = f.rfHz / 1e6;
-    for (int i = 0; i < kKnownCount; i++) {
-        const Known& k = kKnown[i];
+    auto atUsual = [&](const Known& k) { return o.rfHz > 0 && k.defMhz > 0 && std::fabs(rf - k.defMhz) <= std::max(0.025, 0.003 * k.defMhz); };
+    for (size_t i = 0; i < sigs.size(); i++) {
+        const Known& k = sigs[i];
+        if (k.source == 2) {   // a mode known by its name and usual frequency only: a candidate there, with little weight
+            if (!atUsual(k)) continue;
+            Candidate c;
+            c.name = k.name; c.modeId = k.modeId; c.subId = k.subId; c.why = k.note; c.family = k.family; c.source = 2; c.sig = (int)i;
+            char t[160];
+            snprintf(t, sizeof t, "%.3f MHz is its usual frequency; nothing is known about its signal (30 of 100)", k.defMhz);
+            c.evidence.push_back(t);
+            c.score = 30;
+            R.cands.push_back(c);
+            continue;
+        }
         double sc = 0, mx = 0;
         Candidate c;
         auto rule = [&](double got, double best, const std::string& text) {
@@ -1069,7 +1379,25 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
             for (int j = 0; j + 1 < 10 && k.bands[j] > 0; j += 2) if (rf >= k.bands[j] && rf <= k.bands[j + 1]) in = true;
             if (in) rule(12, 12, F("%.3f MHz is in its band", rf)); else rule(-3, 12, F("%.3f MHz is outside its band", rf));   // a table of bands is never complete: a small penalty
         }
-        c.name = k.name; c.modeId = k.modeId; c.subId = k.subId; c.why = k.note; c.family = k.family;
+        if (k.bands[0] <= 0 && atUsual(k)) rule(12, 12, F("%.3f MHz is the mode's usual frequency", rf));
+        if (k.toneHz > 0 && f.toneSpacingHz > 0) {   // an MFSK tone set
+            const double e = std::fabs(f.toneSpacingHz / k.toneHz - 1);
+            if (e < 0.08) rule(10, 10, F("tones %.4g Hz apart, its tone spacing", f.toneSpacingHz));
+            else rule(-4, 10, F("tones %.4g Hz apart, not its tone spacing", f.toneSpacingHz));
+        }
+        if (f.constOrder > 0) {   // the constellation guess against the mode's own (pi/4-DQPSK: 4 or 8 points, as its two sets alternate)
+            const int want = k.mod == ModBpsk ? 2 : k.mod == ModQpsk ? 4 : k.mod == ModPsk8 ? 8 : k.mod == ModPi4Dqpsk ? 48 : k.mod == ModQam ? 16 : 0;
+            if (want) {
+                const bool ok = f.constOrder == want || (want == 16 && f.constOrder == 64) || (want == 48 && (f.constOrder == 4 || f.constOrder == 8));
+                if (ok) rule(6, 6, F("constellation looks %.0f-point, like its own", f.constOrder));
+                else rule(-4, 6, F("constellation looks %.0f-point, not like its own", f.constOrder));
+            }
+        }
+        if (k.mod == ModOfdm && f.combHz > 0 && f.ofdmSpacingHz > 0) {   // pilots: a comb every whole number of carriers
+            const double q = f.combHz / f.ofdmSpacingHz;
+            if (q > 0.9 && std::fabs(q - std::round(q)) < 0.06) rule(5, 5, F("spectral comb every %.0f carriers (pilots)", std::round(q)));
+        }
+        c.name = k.name; c.modeId = k.modeId; c.subId = k.subId; c.why = k.note; c.family = k.family; c.source = k.source; c.sig = (int)i;
         if (k.sync && tried[k.sync]) {
             c.syncTried = true; c.syncHits = sync[k.sync];
             if (c.syncHits >= 2) rule(40, 40, F("frame sync found %.0f times", c.syncHits));
@@ -1080,7 +1408,73 @@ static Result identifyImpl(const cf32* x, size_t n, double fs, const Options& o)
         if (c.score >= 20) R.cands.push_back(c);
     }
     if (o.usePriors && o.rfHz > 0) applyPriors(R, f);
-    std::stable_sort(R.cands.begin(), R.cands.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+    auto byScore = [](const Candidate& a, const Candidate& b) { return a.score > b.score; };
+    std::stable_sort(R.cands.begin(), R.cands.end(), byScore);
+    // ---- verify: the detectors of the best few candidates, each at that mode's own parameters. A frame sync, the burst timing and the
+    // deviation have counted already (they only set the verdict of the check); the symbol clock at the mode's exact rate, the cyclic prefix at
+    // its exact symbol length and the chirp width are finer than the scoring's tolerances and move the score.
+    if (o.verify && !R.cands.empty()) {
+        const int K = std::min<int>(std::max(0, o.verifyTop), (int)R.cands.size());
+        auto lineAt = [&](double r, double tol) {   // the strongest symbol-clock line within r (1 -+ tol): discriminator, envelope
+            double db = 0;
+            if (!Pd.empty()) { const Line a = findLine(Pd, w.fsd, r * (1 - tol), r * (1 + tol)); if (a.ok) db = a.db; }
+            if (!Pe.empty()) { const Line b = findLine(Pe, w.fsd, r * (1 - tol), r * (1 + tol)); if (b.ok) db = std::max(db, b.db); }
+            return db;
+        };
+        for (int i = 0; i < K; i++) {
+            Candidate& c = R.cands[(size_t)i];
+            if (c.sig < 0 || c.source == 2) continue;
+            const Known& k = sigs[(size_t)c.sig];
+            int ok = 0, bad = 0, okScore = 0, badScore = 0;
+            auto note = [&](bool pass, bool scores, const std::string& t) {
+                (pass ? ok : bad)++;
+                if (scores) (pass ? okScore : badScore)++;
+                c.verifyNotes.push_back((pass ? "confirmed: " : "not confirmed: ") + t);
+            };
+            char t[160];
+            if (k.sync && tried[k.sync]) { snprintf(t, sizeof t, "frame sync found %d times", sync[k.sync]); note(sync[k.sync] >= 2, false, t); }
+            if (k.mod == ModOfdm && k.rates[0] > 0 && f.mod == ModOfdm && !oc.mag.empty()) {
+                double best = 0, bt = 0;
+                for (double r : k.rates) if (r > 0) { const double q = oc.at(r); if (q > best) { best = q; bt = r; } }
+                snprintf(t, sizeof t, "cyclic prefix at its symbol length %.4g us (%.1f x the median correlation)", bt * 1e6, best);
+                if (best > 12) note(true, true, t); else if (best < 5) note(false, true, t);
+            }
+            if (k.mod != ModOfdm && k.mod != ModChirp && k.rates[0] > 0 && f.symRate > 0) {
+                double bestDb = 0, bestR = 0;
+                for (double r : k.rates) if (r > fmin && r < fmax) { const double db = lineAt(r, 0.004); if (db > bestDb) { bestDb = db; bestR = r; } }
+                if (bestR > 0) {
+                    snprintf(t, sizeof t, "symbol clock at %s (%.0f dB)", rateText(bestR).c_str(), bestDb);
+                    if (bestDb >= 12 && std::fabs(f.symRate / bestR - 1) < 0.01) note(true, true, t);
+                    else if (bestDb < 6) note(false, true, std::string(t) + ", no clock there");
+                }
+            }
+            if (k.mod == ModChirp) {
+                if (f.mod != ModChirp) note(false, true, "no chirps");
+                else {
+                    bool fit = false;
+                    for (double b : k.bw) if (b > 0 && std::fabs(f.chirpBwHz / b - 1) < 0.1) fit = true;
+                    snprintf(t, sizeof t, "chirps of SF%d, %s wide", f.loraSf, hzText(f.chirpBwHz).c_str());
+                    note(fit, true, std::string(t) + (fit ? "" : ", not its width"));
+                }
+            }
+            if (k.mod == ModFm && f.fmPilot) note(true, false, "19 kHz stereo pilot");
+            if (k.burstMs > 0 && f.bursts >= 3) { snprintf(t, sizeof t, "bursts of %.3g ms (its own %.3g ms)", f.burstMs, k.burstMs); note(std::fabs(std::log(f.burstMs / k.burstMs)) < 0.25, false, t); }
+            if (k.periodMs > 0 && f.burstPeriodMs > 0) { snprintf(t, sizeof t, "frame period %.3g ms (its own %.3g ms)", f.burstPeriodMs, k.periodMs); note(std::fabs(std::log(f.burstPeriodMs / k.periodMs)) < 0.06, false, t); }
+            if (k.devOuter > 0 && f.fskLevels) {
+                const double outer = std::max(std::fabs(f.devHz[0]), std::fabs(f.devHz[f.fskLevels - 1])), e = std::fabs(outer / k.devOuter - 1);
+                snprintf(t, sizeof t, "deviation +-%.0f Hz (its own +-%.0f Hz)", outer, k.devOuter);
+                if (e < 0.1) note(true, false, t); else if (e > 0.4) note(false, false, t);
+            }
+            c.verify = bad ? VerifyFailed : ok ? VerifyConfirmed : c.verifyNotes.empty() ? VerifyNotTried : VerifyInconclusive;
+            const double adj = 4.0 * std::min(okScore, 2) - 8.0 * std::min(badScore, 2);
+            if (adj != 0) {
+                c.score = std::max(0.0, std::min(100.0, c.score + adj));
+                snprintf(t, sizeof t, "verify: %d of its detectors confirmed it, %d did not (%+.0f)", okScore, badScore, adj);
+                c.evidence.push_back(t);
+            }
+        }
+        std::stable_sort(R.cands.begin(), R.cands.end(), byScore);
+    }
     if (R.cands.size() > 6) R.cands.resize(6);
     calibrate(R);
     // ---- the summary line
@@ -1149,29 +1543,64 @@ Memory toMemory(const Candidate& c, const Features& f) {
     return m;
 }
 
+std::vector<std::pair<std::string, std::string>> featureRows(const Features& f) {
+    std::vector<std::pair<std::string, std::string>> v;
+    if (!f.valid) return v;
+    char b[160];
+    auto add = [&](const char* k, const std::string& s) { v.push_back({k, s}); };
+    add("Centre", hzText(f.rfHz));
+    snprintf(b, sizeof b, "%s (99 %%); -3 dB %s, -20 dB %s, -26 dB %s", hzText(f.obwHz).c_str(), hzText(f.bw3Hz).c_str(), hzText(f.bw20Hz).c_str(), hzText(f.bw26Hz).c_str()); add("Width", b);
+    snprintf(b, sizeof b, "%.1f dB", f.snrDb); add("SNR", b);
+    add("Spectrum", shapeName(f.shape) + std::string(f.flatTop ? " (flat top)" : ""));
+    if (f.tones > 0) { snprintf(b, sizeof b, "%d", f.tones); std::string s = b; if (f.toneSpacingHz > 0) s += ", " + hzText(f.toneSpacingHz) + " apart"; add("Tones", s); }
+    if (f.combHz > 0) { snprintf(b, sizeof b, "every %s (strength %.2f)", hzText(f.combHz).c_str(), f.combStrength); add("Spectral comb", b); }
+    if (f.duty < 0.97) {
+        snprintf(b, sizeof b, "bursts, %.0f %% on, %d of about %.3g ms", f.duty * 100, f.bursts, f.burstMs);
+        std::string s = b;
+        if (f.burstPeriodMs > 0) { snprintf(b, sizeof b, ", every %.3g ms", f.burstPeriodMs); s += b; }
+        add("On the air", s);
+    } else add("On the air", "continuous");
+    add("Modulation", modName(f.mod));
+    snprintf(b, sizeof b, "%.2f (1 constant, 2 noise-like)", f.envKurt); add("Envelope", b);
+    if (f.carrierDb > 0) { snprintf(b, sizeof b, "%.1f dB over the spectrum", f.carrierDb); add("Carrier line", b); }
+    snprintf(b, sizeof b, "x %.0f, x^2 %.0f, x^4 %.0f, x^8 %.0f dB", f.lineDb[0], f.lineDb[1], f.lineDb[2], f.lineDb[3]); add("Power lines", b);
+    if (f.symRate > 0) {
+        static const char* const kSrc[] = {"", "|x|^2 line", "FM discriminator line", "x^n lines", "chirp length", "OFDM symbol"};
+        snprintf(b, sizeof b, "%s (%s, %.0f dB)", rateText(f.symRate).c_str(), kSrc[f.symSrc >= 0 && f.symSrc < 6 ? f.symSrc : 0], f.symLineDb); add("Symbol rate", b);
+    }
+    if (f.rolloff >= 0) { snprintf(b, sizeof b, "%.2f (99 %% width / symbol rate - 1)", f.rolloff); add("Roll-off", b); }
+    if (f.constOrder > 0 || f.ampRings > 0) {
+        snprintf(b, sizeof b, "%d-point guess; %d amplitude level%s; u^2 %.2f, u^4 %.2f, u^8 %.2f", f.constOrder, f.ampRings, f.ampRings == 1 ? "" : "s", f.phaseCoh[0], f.phaseCoh[1], f.phaseCoh[2]);
+        add("Constellation", b);
+    }
+    if (f.fskLevels == 4) { snprintf(b, sizeof b, "%+.0f / %+.0f / %+.0f / %+.0f Hz", f.devHz[0], f.devHz[1], f.devHz[2], f.devHz[3]); add("FSK levels", b); }
+    if (f.fskLevels == 2) { snprintf(b, sizeof b, "%+.0f / %+.0f Hz", f.devHz[0], f.devHz[1]); add("FSK levels", b); }
+    if (f.mod == ModOfdm && f.ofdmTuSec > 0) {
+        snprintf(b, sizeof b, "Tu %.4g us (carriers %s apart), guard %.4g us (1/%.0f), correlation %.2f", f.ofdmTuSec * 1e6, hzText(f.ofdmSpacingHz).c_str(), f.ofdmTgSec * 1e6, f.ofdmGuard > 0 ? 1 / f.ofdmGuard : 0.0, f.ofdmCorr);
+        add("OFDM", b);
+    }
+    if (f.mod == ModChirp) { snprintf(b, sizeof b, "SF%d, %s", f.loraSf, hzText(f.chirpBwHz).c_str()); add("LoRa", b); }
+    if (f.fmPilot) add("FM", "19 kHz stereo pilot");
+    snprintf(b, sizeof b, "%.3g s", f.captureSec); add("Capture", b);
+    return v;
+}
+
 std::string toText(const Result& r) {
     const Features& f = r.f;
     std::string t = r.headline.empty() ? r.summary : r.headline;
     t += "\n";
     if (!f.valid) return t;
     char b[256];
-    snprintf(b, sizeof b, "Centre %s, occupied width %s (-3 dB %s, -26 dB %s), SNR %.1f dB\n", hzText(f.rfHz).c_str(), hzText(f.obwHz).c_str(), hzText(f.bw3Hz).c_str(), hzText(f.bw26Hz).c_str(), f.snrDb);
-    t += b;
-    t += std::string("Modulation ") + modName(f.mod);
-    if (f.symRate > 0) t += ", symbol rate " + rateText(f.symRate);
-    if (f.fskLevels == 4) { snprintf(b, sizeof b, ", FSK levels %+.0f / %+.0f / %+.0f / %+.0f Hz", f.devHz[0], f.devHz[1], f.devHz[2], f.devHz[3]); t += b; }
-    if (f.fskLevels == 2) { snprintf(b, sizeof b, ", FSK levels %+.0f / %+.0f Hz", f.devHz[0], f.devHz[1]); t += b; }
-    if (f.mod == ModOfdm && f.ofdmTuSec > 0) { snprintf(b, sizeof b, ", useful symbol %.4g us, guard %.4g us", f.ofdmTuSec * 1e6, f.ofdmTgSec * 1e6); t += b; }
-    if (f.mod == ModChirp) { snprintf(b, sizeof b, ", SF%d, %s", f.loraSf, hzText(f.chirpBwHz).c_str()); t += b; }
-    t += "\n";
-    if (f.duty < 0.97) { snprintf(b, sizeof b, "Bursts: %.0f %% on, %d of %.3g ms", f.duty * 100, f.bursts, f.burstMs); t += b; if (f.burstPeriodMs > 0) { snprintf(b, sizeof b, ", every %.3g ms", f.burstPeriodMs); t += b; } t += "\n"; }
-    else t += "Continuous\n";
+    for (const auto& kv : featureRows(f)) t += kv.first + ": " + kv.second + "\n";
     for (const std::string& p : r.priors) t += "Frequency list: " + p + "\n";
     for (size_t i = 0; i < r.cands.size(); i++) {
         const Candidate& c = r.cands[i];
-        snprintf(b, sizeof b, "%zu. %s (%s%s%s): %.0f %% sure, score %.0f\n", i + 1, c.name.c_str(), c.modeId.c_str(), c.subId.empty() ? "" : "/", c.subId.c_str(), c.confidence * 100, c.score);
+        static const char* const kVer[] = {"failed", "not verified", "verified", "inconclusive"};
+        snprintf(b, sizeof b, "%zu. %s (%s%s%s): %.0f %% sure, score %.0f, %s\n", i + 1, c.name.c_str(), c.modeId.c_str(), c.subId.empty() ? "" : "/", c.subId.c_str(), c.confidence * 100, c.score,
+                 kVer[std::max(-1, std::min(2, c.verify)) + 1]);
         t += b;
         if (i == 0) for (const std::string& e : c.evidence) t += "     " + e + "\n";
+        for (const std::string& e : c.verifyNotes) t += "     " + e + "\n";
     }
     t += "Identified by OnAir (classical DSP, calibrated on its own test signals; not verified on every real signal).\n";
     return t;
@@ -1265,10 +1694,13 @@ std::vector<Region> findRegions(const cf32* x, size_t n, double fs, size_t maxN,
     return r;
 }
 
-size_t signatureCount() { return (size_t)kKnownCount; }
+size_t signatureCount() { return signatures().size(); }
 const SigInfo& signatureInfo(size_t i) {
-    static std::vector<SigInfo> v;
-    if (v.empty()) for (int k = 0; k < kKnownCount; k++) v.push_back({kKnown[k].name, kKnown[k].modeId, kKnown[k].subId, kKnown[k].family});
+    static const std::vector<SigInfo> v = [] {
+        std::vector<SigInfo> o;
+        for (const Known& k : signatures()) o.push_back({k.name, k.modeId, k.subId, k.family, k.source});
+        return o;
+    }();
     return v[i < v.size() ? i : 0];
 }
 

@@ -4,8 +4,13 @@
 // prefix correlation, LoRa chirps, pulses), the symbol rate (cyclostationary line of |x|^2, of the FM discriminator or of x^n) and, for FSK, the
 // deviation levels. Then it scores the table of OnAir's modes (sig_known.cpp: what each one looks like) against the measurement, looks for the frame
 // sync of the land-mobile systems and POCSAG / AIS where that is cheap, lets the frequency database and the band plan move the scores a little,
-// and turns the scores into calibrated probabilities with a reject option ("unknown"). identify() is a pure function; Capture collects samples from
-// the engine's sample path and runs it on its own thread (docs/signal-id.md says how it works, what the numbers mean and how well it does).
+// and turns the scores into calibrated probabilities with a reject option ("unknown"). Besides those it measures the spectral shape (roll-off,
+// tones and their spacing, the comb of an OFDM or MFSK spectrum) and, for linear modulation, a constellation guess at the symbol instants; and it
+// verifies the best few candidates with their own detectors (frame sync, symbol clock lock at the mode's exact rate, the cyclic prefix at the
+// mode's symbol length, chirp width, burst timing, deviation). The table of modes is the hand-written one (sig_known.cpp), the one measured on
+// the modes' own test signals (sig_known_gen.cpp) and, for the modes in neither, rows made from the mode list (ModeTuning). identify() is a pure,
+// deterministic function; Capture collects samples from the engine's sample path and runs it on its own thread (docs/IDENTIFIER.md says how it
+// works, what the numbers mean and how well it does).
 #pragma once
 #include "dect2/channels/memory_bank.h"
 #include "dect2/common/ring.h"
@@ -14,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dect2 {
@@ -24,6 +30,10 @@ enum Mod {
     ModOfdm, ModChirp, ModPulse, ModCount
 };
 const char* modName(int m);   // "4FSK", "pi/4-DQPSK", ...
+
+// The shape of the spectrum across the occupied band
+enum Shape { ShapeUnknown = 0, ShapeFlat, ShapeRounded, ShapeTones, ShapeLine, ShapeCount };
+const char* shapeName(int s);   // "flat top", "rounded (filtered)", "discrete tones", "a line"
 
 struct Features {
     bool valid = false;
@@ -52,7 +62,23 @@ struct Features {
     double ofdmTuSec = 0, ofdmTgSec = 0, ofdmCorr = 0;   // OFDM: useful symbol, guard, cyclic prefix correlation
     double chirpBwHz = 0; int loraSf = 0;                 // LoRa
     bool fmPilot = false;          // a 19 kHz pilot in the FM discriminator (stereo broadcast)
+    // spectral shape (a Welch spectrum of the signal at about 1/1000 of its width)
+    int shape = ShapeUnknown;
+    double rolloff = -1;           // linear modulation: excess bandwidth, 99 % width / symbol rate - 1 (-1 not measured)
+    int tones = 0;                 // distinct lines standing out of the band (MFSK tones, wide-shift FSK, pilots, a carrier)
+    double toneSpacingHz = 0;      // their common spacing (0: fewer than two, or no common spacing)
+    double combHz = 0, combStrength = 0;   // the strongest periodicity of the spectrum across the band (OFDM pilots, an MFSK grid): spacing, 0..1
+    double ofdmSpacingHz = 0, ofdmGuard = 0;   // OFDM: carrier spacing 1 / Tu, guard fraction Tg / Tu
+    // constellation (linear modulation with a symbol rate: matched filter, best timing phase, the symbols)
+    int constOrder = 0;            // the order the symbols look like: 2, 4, 8 (PSK), 16, 64 (QAM); 0 not measured
+    int ampRings = 0;              // amplitude levels of the symbols (1 PSK, 3 for 16-QAM, more for larger QAM)
+    double phaseCoh[3] = {0, 0, 0};   // |mean of u^M| at the symbol instants (u = s / |s|) for M = 2, 4, 8: 1 is a clean M-PSK
 };
+
+// one row per measured feature, for the "why" view and the text form: (what, value), English
+std::vector<std::pair<std::string, std::string>> featureRows(const Features& f);
+
+enum VerifyState { VerifyNotTried = 0, VerifyConfirmed = 1, VerifyFailed = -1, VerifyInconclusive = 2 };
 
 struct Candidate {
     std::string name;              // "DMR", "NXDN96", ...
@@ -60,11 +86,15 @@ struct Candidate {
     std::string subId;             // SubMode id inside that mode ("" none)
     std::string family;            // "Digital voice", "Aviation", ... (the group the accuracy table is kept by)
     double score = 0;              // 0 .. 100, the raw evidence
-    double confidence = 0;         // 0 .. 1, calibrated on the app's own test signals (docs/signal-id.md): the share of this and only this being right
+    double confidence = 0;         // 0 .. 1, calibrated on the app's own test signals (docs/IDENTIFIER.md): the share of this and only this being right
     std::vector<std::string> evidence;   // one line per rule that moved the score: "symbol rate 4800 Bd within 0.4 % (+25)"
     int syncHits = 0;              // frame syncs found (0 not looked for or none)
     bool syncTried = false;
     std::string why;               // what matched: "4FSK 4800 Bd, +-1944 Hz, 12.5 kHz"
+    int verify = VerifyNotTried;   // the verify step (Options::verify): the mode's own detectors on the samples
+    std::vector<std::string> verifyNotes;   // what each detector found: "symbol clock locks at 4800 Bd (+0.02 %, 23 dB)"
+    int source = 0;                // where its signature comes from: 0 hand-written, 1 measured on its test signal, 2 the mode list only
+    int sig = -1;                  // its row of the signature table (signatureInfo)
 };
 
 enum Verdict { VerdictUnknown = 0, VerdictAmbiguous, VerdictLikely };   // nothing fits well / several fit about the same / one stands out
@@ -83,6 +113,8 @@ struct Options {
     double rfHz = 0;               // the RF frequency of the samples' centre (the band of a candidate counts)
     double loHz = 0, hiHz = 0;     // the region, from the samples' centre; lo == hi: the strongest signal in the samples
     bool usePriors = true;         // the frequency database and the band plans move the scores a little (never a signal that does not fit)
+    bool verify = true;            // run the detectors of the best few candidates (a few ms) and let what they find move the scores
+    int verifyTop = 3;             // how many
 };
 
 Result identify(const cf32* x, size_t n, double rateHz, const Options& o = Options());
@@ -105,7 +137,8 @@ Memory toMemory(const Candidate& c, const Features& f);
 std::string toText(const Result& r);
 
 // What the calibration says: the table of modes the identifier knows (name, mode id, sub id, family) and how many there are
-struct SigInfo { const char* name; const char* modeId; const char* subId; const char* family; };
+// source: 0 hand-written (sig_known.cpp), 1 measured on the mode's own test signal (sig_known_gen.cpp), 2 made from the mode list (ModeTuning) only
+struct SigInfo { const char* name; const char* modeId; const char* subId; const char* family; int source; };
 size_t signatureCount();
 const SigInfo& signatureInfo(size_t i);
 

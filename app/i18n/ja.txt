@@ -596,14 +596,9 @@ Candidates	候補
 (sync %dx)	(同期 %d 回)
 (no sync)	(同期なし)
 Centre	中心
-Width -3 / -20 / -26 dB	幅 -3 / -20 / -26 dB
-Occupied (99 %)	占有 (99 %)
 On the air	運用中
-bursts, %.0f %% on, %d of about %.3g ms	バースト、オン %.0f %%、%d 個 (各約 %.3g ms)
-continuous	連続
 Modulation	変調
 Envelope	包絡線
-%.2f (1 constant, 2 noise-like)	%.2f (1 = 一定、2 = ノイズ状)
 Symbol rate	シンボルレート
 #  updates
 Updates	アップデート
@@ -2293,7 +2288,6 @@ sky + spill K	空 + スピルオーバー K
 , %.0f baud	, %.0f ボー
 , %s wide	, 幅 %s
 , bursts (%.0f %% on)	, バースト (オン %.0f %%)
-, every %.3g ms	, %.3g ms ごと
 , useful symbol %.4g us	, 有効シンボル %.4g µs
 A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal.	スコアは当てはまる根拠の割合です。パーセントは OnAir 自身のテスト信号で較正したもので、すべての実際の信号で検証したものではありません。
 Add to memory	Memory に追加
@@ -2301,11 +2295,9 @@ Best guess	最有力候補
 Copy as text	テキストとしてコピー
 Could be %s (%.0f %%) or %s (%.0f %%).	%s (%.0f %%) または %s (%.0f %%) かもしれません。
 Could not open this mode.	このモードを開けませんでした。
-Evidence for %s:	%s の根拠:
 I do not know what this is: nothing I know fits well enough to say.	これが何かは分かりません。既知のどれも十分には当てはまりません。
 Identify all signals	すべての信号を識別
 Identify: click a signal or drag across it. Esc or I leaves the tool.	識別: 信号をクリックするか、その上をドラッグします。Esc または I でツールを終了します。
-Measured	測定値
 Most likely %s, %.0f %% sure.	おそらく %s (確度 %.0f %%)。
 No signal stands out of the noise here.	ここにはノイズから突き出た信号がありません。
 Open in %s	%s で開く

@@ -582,14 +582,9 @@ Candidates	Candidati
 (sync %dx)	(sinc. %dx)
 (no sync)	(nessun sinc.)
 Centre	Centro
-Width -3 / -20 / -26 dB	Larghezza -3 / -20 / -26 dB
-Occupied (99 %)	Occupata (99 %)
 On the air	In onda
-bursts, %.0f %% on, %d of about %.3g ms	burst, %.0f %% attivo, %d di circa %.3g ms
-continuous	continuo
 Modulation	Modulazione
 Envelope	Inviluppo
-%.2f (1 constant, 2 noise-like)	%.2f (1 costante, 2 simile a rumore)
 Symbol rate	Symbol rate
 Updates	Aggiornamenti
 Check for updates automatically	Controlla gli aggiornamenti automaticamente
@@ -2276,7 +2271,6 @@ sky + spill K	cielo + spillover K
 , %.0f baud	, %.0f baud
 , %s wide	, larghezza %s
 , bursts (%.0f %% on)	, burst (%.0f %% attivo)
-, every %.3g ms	, ogni %.3g ms
 , useful symbol %.4g us	, simbolo utile %.4g µs
 A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal.	Un punteggio è la quota di indizi che risultano veri; le percentuali sono calibrate sui segnali di prova di OnAir, non su ogni segnale reale.
 Add to memory	Aggiungi a Memory
@@ -2284,11 +2278,9 @@ Best guess	Ipotesi migliore
 Copy as text	Copia come testo
 Could be %s (%.0f %%) or %s (%.0f %%).	Potrebbe essere %s (%.0f %%) o %s (%.0f %%).
 Could not open this mode.	Impossibile aprire questa modalità.
-Evidence for %s:	Indizi per %s:
 I do not know what this is: nothing I know fits well enough to say.	Non so che cosa sia: nulla di ciò che conosco corrisponde abbastanza bene.
 Identify all signals	Identifica tutti i segnali
 Identify: click a signal or drag across it. Esc or I leaves the tool.	Identifica: fai clic su un segnale o trascina sopra. Esc o I esce dallo strumento.
-Measured	Misurato
 Most likely %s, %.0f %% sure.	Molto probabilmente %s, sicuro al %.0f %%.
 No signal stands out of the noise here.	Qui nessun segnale emerge dal rumore.
 Open in %s	Apri in %s

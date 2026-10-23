@@ -603,14 +603,9 @@ Candidates	Kandidaten
 (sync %dx)	(Sync %dx)
 (no sync)	(kein Sync)
 Centre	Mitte
-Width -3 / -20 / -26 dB	Breite -3 / -20 / -26 dB
-Occupied (99 %)	Belegt (99 %)
 On the air	Auf Sendung
-bursts, %.0f %% on, %d of about %.3g ms	Bursts, %.0f %% an, %d mit etwa %.3g ms
-continuous	durchgehend
 Modulation	Modulation
 Envelope	Hüllkurve
-%.2f (1 constant, 2 noise-like)	%.2f (1 konstant, 2 rauschartig)
 Symbol rate	Symbolrate
 #  updates
 Updates	Updates
@@ -2293,7 +2288,6 @@ sky + spill K	Himmel + Spill K
 , %.0f baud	, %.0f Baud
 , %s wide	, %s breit
 , bursts (%.0f %% on)	, Bursts (%.0f %% aktiv)
-, every %.3g ms	, alle %.3g ms
 , useful symbol %.4g us	, Nutzsymbol %.4g µs
 A score is the share of the evidence that holds; the percentages are calibrated on OnAir's own test signals, not on every real signal.	Eine Bewertung ist der Anteil der zutreffenden Hinweise; die Prozentwerte sind an OnAirs eigenen Testsignalen kalibriert, nicht an jedem echten Signal.
 Add to memory	Zu Memory hinzufügen
@@ -2301,11 +2295,9 @@ Best guess	Beste Vermutung
 Copy as text	Als Text kopieren
 Could be %s (%.0f %%) or %s (%.0f %%).	Könnte %s (%.0f %%) oder %s (%.0f %%) sein.
 Could not open this mode.	Dieser Modus lässt sich nicht öffnen.
-Evidence for %s:	Belege für %s:
 I do not know what this is: nothing I know fits well enough to say.	Ich weiß nicht, was das ist: nichts, was ich kenne, passt gut genug.
 Identify all signals	Alle Signale identifizieren
 Identify: click a signal or drag across it. Esc or I leaves the tool.	Identifizieren: Signal anklicken oder darüberziehen. Esc oder I beendet das Werkzeug.
-Measured	Gemessen
 Most likely %s, %.0f %% sure.	Am ehesten %s, zu %.0f %% sicher.
 No signal stands out of the noise here.	Hier hebt sich kein Signal vom Rauschen ab.
 Open in %s	In %s öffnen

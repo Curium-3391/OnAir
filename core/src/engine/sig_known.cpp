@@ -1,8 +1,10 @@
 // The table of modes (sig_known.h). The widths are the 99 % occupied width as this identifier measures it on the mode's signal; they
-// were checked against the spec values (docs/signal-id.md) and against the app's own generators. Fields: name, mode id, sub-mode id,
+// were checked against the spec values (docs/IDENTIFIER.md) and against the app's own generators. Fields: name, mode id, sub-mode id,
 // family, accepted modulation classes, the usual class, symbol rates (OFDM: useful symbol lengths), widths, FSK deviation, 0 either /
-// 1 continuous / 2 bursty, burst length, burst period, frame sync to look for, bands (MHz), note.
+// 1 continuous / 2 bursty, burst length, burst period, frame sync to look for, bands (MHz), note; optional: MFSK tones and their spacing.
 #include "sig_known.h"
+#include "dect2/engine/mode_tuning.h"
+#include <cstring>
 
 namespace dect2 {
 namespace sigid {
@@ -55,8 +57,8 @@ const Known kKnown[] = {
 // ---- marine
 {"AIS", "ais", "", "Marine", MB(ModGmsk)|MB(ModFsk2)|MB(ModPulse), ModGmsk, {9600}, {9.9e3}, 2400, 2, 0, 0, SyncAis, {156, 163}, "GMSK 9600 Bd, 25 kHz, bursts"},
 {"VDES", "vdes", "", "Marine", MB(ModQpsk)|MB(ModPi4Dqpsk)|MB(ModQam)|MB(ModGmsk)|MB(ModPulse), ModQam, {}, {93.6e3, 50e3, 100e3}, 0, 2, 0, 0, SyncNone, {157, 163}, "VDE-TER pi/4-QPSK 25 to 100 kHz, ASM GMSK 9600"},
-{"NAVTEX", "marine", "navtex", "Marine", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {100}, {360}, 85, 1, 0, 0, SyncNone, {0.4f, 0.6f}, "FSK 100 Bd, 170 Hz shift (SITOR-B)"},
-{"DSC", "marine", "dsc", "Marine", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {100}, {411}, 85, 0, 0, 0, SyncNone, {2.1f, 2.2f, 156.5f, 156.6f}, "FSK 100 Bd, 170 Hz shift"},
+{"NAVTEX", "marine", "navtex", "Marine", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {100}, {360}, 85, 1, 0, 0, SyncNone, {0.4f, 0.6f}, "FSK 100 Bd, 170 Hz shift (SITOR-B)", 2, 170},
+{"DSC", "marine", "dsc", "Marine", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {100}, {411}, 85, 0, 0, 0, SyncNone, {2.1f, 2.2f, 156.5f, 156.6f}, "FSK 100 Bd, 170 Hz shift", 2, 170},
 {"Weather fax", "marine", "wefax", "Marine", MB(ModCarrier)|MB(ModFm), ModCarrier, {}, {172}, 0, 1, 0, 0, SyncNone, {3, 30}, "FM of a 1500 - 2300 Hz audio subcarrier, 120 lpm"},
 // ---- satellite
 {"Inmarsat-C", "inmc", "", "Satellite", MB(ModBpsk)|MB(ModQpsk), ModBpsk, {1200}, {1.98e3}, 0, 1, 0, 0, SyncNone, {1525, 1560}, "BPSK 1200 Bd"},
@@ -96,27 +98,27 @@ const Known kKnown[] = {
 {"5G NR", "nr", "", "Cellular", MB(ModOfdm), ModOfdm, {33.33e-6, 66.67e-6}, {4.3e6, 8.9e6, 17.8e6, 35.6e6}, 0, 1, 0, 0, SyncNone, {700, 960, 1710, 2700, 3300, 4200}, "OFDM, 30 / 15 kHz carriers"},
 // ---- HF and utility
 {"CW", "cw", "", "HF and utility", MB(ModCarrier)|MB(ModAm)|MB(ModPulse)|MB(ModPsk8)|MB(ModFm), ModCarrier, {}, {200}, 0, 2, 0, 0, SyncNone, {}, "keyed carrier"},
-{"RTTY", "hfdig", "rtty", "HF and utility", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {45.45, 50, 75, 100}, {350}, 85, 0, 0, 0, SyncNone, {1.8f, 30}, "FSK 45.45 Bd, 170 Hz shift"},
-{"PSK31", "psk", "", "HF and utility", MB(ModBpsk)|MB(ModPulse)|MB(ModCarrier), ModBpsk, {31.25}, {954}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "BPSK 31.25 Bd, 62 Hz wide"},
+{"RTTY", "hfdig", "rtty", "HF and utility", MB(ModFsk2)|MB(ModGmsk), ModFsk2, {45.45, 50, 75, 100}, {350}, 85, 0, 0, 0, SyncNone, {1.8f, 30}, "FSK 45.45 Bd, 170 Hz shift", 2, 170},
+{"PSK31", "psk", "", "HF and utility", MB(ModBpsk)|MB(ModPulse)|MB(ModCarrier), ModBpsk, {31.25}, {954, 62}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "BPSK 31.25 Bd, 62 Hz wide"},
 {"SSTV", "hfdig", "sstv", "HF and utility", MB(ModFm)|MB(ModCarrier)|MB(ModGmsk), ModFm, {}, {1.3e3}, 0, 0, 0, 0, SyncNone, {3.7f, 30, 144.5f}, "audio FM 1200 to 2300 Hz on SSB"},
 {"FreeDV", "hfdig", "freedv", "HF and utility", MB(ModQam)|MB(ModQpsk)|MB(ModOfdm)|MB(ModFm), ModQam, {}, {1.16e3}, 0, 1, 0, 0, SyncNone, {3.5f, 30}, "OFDM voice, 1.25 kHz"},
-{"FT8", "hfdig", "ft8", "HF and utility", MB(ModQam)|MB(ModPulse)|MB(ModFm)|MB(ModAm), ModQam, {6.25}, {2.37e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30, 50, 52, 144, 146}, "8-GFSK, 6.25 Bd, 50 Hz wide, 15 s slots"},
-{"FT4", "hfdig", "ft4", "HF and utility", MB(ModAm)|MB(ModPulse)|MB(ModQam)|MB(ModFm), ModAm, {20.83}, {2.05e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "4-GFSK, 20.83 Bd, 83 Hz wide, 7.5 s slots"},
+{"FT8", "hfdig", "ft8", "HF and utility", MB(ModQam)|MB(ModPulse)|MB(ModFm)|MB(ModAm), ModQam, {6.25}, {2.37e3, 50}, 0, 2, 0, 0, SyncNone, {1.8f, 30, 50, 52, 144, 146}, "8-GFSK, 6.25 Bd, 50 Hz wide, 15 s slots", 8, 6.25},
+{"FT4", "hfdig", "ft4", "HF and utility", MB(ModAm)|MB(ModPulse)|MB(ModQam)|MB(ModFm), ModAm, {20.83}, {2.05e3, 90}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "4-GFSK, 20.83 Bd, 83 Hz wide, 7.5 s slots", 4, 20.833},
 {"FT2", "hfdig", "ft2", "HF and utility", MB(ModQam)|MB(ModPulse)|MB(ModAm)|MB(ModFm), ModQam, {41.67}, {1.65e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "4-GFSK, 41.67 Bd, 3.8 s slots"},
-{"WSPR", "hfdig", "wspr", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModCarrier)|MB(ModAm), ModPulse, {1.4648}, {270}, 0, 2, 0, 0, SyncNone, {0.4742f, 0.4743f, 1.8366f, 1.8367f, 3.5686f, 3.5687f, 7.0386f, 7.0387f, 10.1387f, 14.0956f}, "4-FSK 1.4648 Bd, 6 Hz wide, 2 minute slots"},
-{"JT65", "hfdig", "jt65", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {2.69}, {1.4e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "65-FSK 2.69 Bd, 177 Hz wide, 1 minute slots"},
-{"JT9", "hfdig", "jt9", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {1.736}, {1.4e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "9-FSK 1.736 Bd, 15.6 Hz wide, 1 minute slots"},
+{"WSPR", "hfdig", "wspr", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModCarrier)|MB(ModAm), ModPulse, {1.4648}, {270}, 0, 2, 0, 0, SyncNone, {0.4742f, 0.4743f, 1.8366f, 1.8367f, 3.5686f, 3.5687f, 7.0386f, 7.0387f, 10.1387f, 14.0956f}, "4-FSK 1.4648 Bd, 6 Hz wide, 2 minute slots", 4, 1.4648},
+{"JT65", "hfdig", "jt65", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {2.69}, {1.4e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "65-FSK 2.69 Bd, 177 Hz wide, 1 minute slots", 65, 2.69},
+{"JT9", "hfdig", "jt9", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {1.736}, {1.4e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "9-FSK 1.736 Bd, 15.6 Hz wide, 1 minute slots", 9, 1.736},
 {"Q65", "hfdig", "q65", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {}, {1.7e3}, 0, 2, 0, 0, SyncNone, {1.8f, 30, 144, 146}, "65-FSK, 15 / 30 / 60 s slots"},
 {"FST4", "hfdig", "fst4", "HF and utility", MB(ModPulse)|MB(ModFm)|MB(ModAm)|MB(ModQam), ModPulse, {}, {1.98e3}, 0, 2, 0, 0, SyncNone, {0.136f, 30}, "4-GFSK, 15 to 1800 s slots"},
 {"MSK144", "hfdig", "msk144", "HF and utility", MB(ModGmsk)|MB(ModFsk2), ModGmsk, {2000}, {2.35e3}, 0, 2, 0, 0, SyncNone, {50, 52, 144, 146}, "MSK 2000 Bd meteor scatter bursts"},
 {"HamDRM", "hfdig", "hamdrm", "HF and utility", MB(ModOfdm)|MB(ModQam)|MB(ModPulse), ModOfdm, {}, {2.52e3}, 0, 0, 0, 0, SyncNone, {3.5f, 30}, "DRM in 2.5 kHz for digital SSTV"},
-{"Olivia", "hfdig", "olivia", "HF and utility", MB(ModFm)|MB(ModQam)|MB(ModOfdm), ModFm, {}, {1.04e3}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "32-tone MFSK 31.25 Bd, 1 kHz"},
-{"Contestia", "hfdig", "contestia", "HF and utility", MB(ModFm)|MB(ModQam)|MB(ModOfdm), ModFm, {}, {990}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "MFSK, Olivia family"},
-{"MFSK", "hfdig", "mfsk", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModGmsk, {15.625}, {322}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "16-tone MFSK 15.625 Bd"},
-{"THOR", "hfdig", "thor", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModFm, {}, {364}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "incremental MFSK with FEC"},
-{"DominoEX", "hfdig", "dominoex", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModFm, {}, {299}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "IFK+ MFSK 18 tones"},
+{"Olivia", "hfdig", "olivia", "HF and utility", MB(ModFm)|MB(ModQam)|MB(ModOfdm), ModFm, {}, {1.04e3}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "32-tone MFSK 31.25 Bd, 1 kHz", 32, 31.25},
+{"Contestia", "hfdig", "contestia", "HF and utility", MB(ModFm)|MB(ModQam)|MB(ModOfdm), ModFm, {}, {990}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "MFSK, Olivia family", 32, 31.25},
+{"MFSK", "hfdig", "mfsk", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModGmsk, {15.625}, {322}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "16-tone MFSK 15.625 Bd", 16, 15.625},
+{"THOR", "hfdig", "thor", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModFm, {}, {364}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "incremental MFSK with FEC", 18, 15.625},
+{"DominoEX", "hfdig", "dominoex", "HF and utility", MB(ModFm)|MB(ModGmsk)|MB(ModQam), ModFm, {}, {299}, 0, 0, 0, 0, SyncNone, {1.8f, 30}, "IFK+ MFSK 18 tones", 18, 15.625},
 {"Hellschreiber", "hfdig", "hell", "HF and utility", MB(ModQam)|MB(ModPulse)|MB(ModAm)|MB(ModCarrier), ModPulse, {122.5}, {438}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "keyed carrier 122.5 Bd (Feld Hell)"},
-{"JS8Call", "js8", "", "HF and utility", MB(ModFm)|MB(ModPulse)|MB(ModCarrier)|MB(ModAm), ModFm, {6.25}, {184}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "8-GFSK, 15 s slots"},
+{"JS8Call", "js8", "", "HF and utility", MB(ModFm)|MB(ModPulse)|MB(ModCarrier)|MB(ModAm), ModFm, {6.25}, {184, 50}, 0, 2, 0, 0, SyncNone, {1.8f, 30}, "8-GFSK, 15 s slots", 8, 6.25},
 {"ALE", "ale", "", "HF and utility", MB(ModFsk4)|MB(ModFsk2)|MB(ModPsk8)|MB(ModFm), ModPsk8, {125}, {2e3}, 0, 2, 0, 0, SyncNone, {2, 30}, "8-FSK 125 Bd (MIL-STD-188-141)"},
 {"HF beacons", "hfbeacon", "", "HF and utility", MB(ModCarrier)|MB(ModPulse)|MB(ModAm), ModCarrier, {}, {200}, 0, 2, 0, 0, SyncNone, {14.1f, 14.11f, 18.11f, 18.12f, 21.15f, 21.16f, 24.93f, 24.94f, 28.2f, 28.3f}, "NCDXF/IARU beacons, 100 W to 1 W in 10 s slots"},
 {"CODAR", "codar", "", "HF and utility", MB(ModChirp)|MB(ModFsk4)|MB(ModFm)|MB(ModQam), ModChirp, {}, {49.8e3, 25e3}, 0, 1, 0, 0, SyncNone, {4.4f, 5.4f, 12, 14, 24, 27, 41, 43}, "FMCW sweep, ocean radar"},
@@ -129,6 +131,50 @@ const Known kKnown[] = {
 {"GNSS", "gnss", "", "Instruments", MB(ModNoise), ModNoise, {1.023e6}, {2e6}, 0, 1, 0, 0, SyncNone, {1164, 1610}, "CDMA below the noise floor"},
 };
 const int kKnownCount = (int)(sizeof kKnown / sizeof *kKnown);
+
+const std::vector<Known>& signatures() {
+    static const std::vector<Known> table = [] {
+        std::vector<Known> v(kKnown, kKnown + kKnownCount);
+        // a mode (sub "") counts as covered by any row of its id; a sub-mode by a row of its own
+        auto covered = [&](const char* mode, const char* sub) {
+            for (const Known& k : v) if (!std::strcmp(k.modeId, mode) && (!*sub || !std::strcmp(k.subId, sub))) return true;
+            return false;
+        };
+        for (int i = 0; i < kKnownMeasuredCount; i++) {
+            const Known& m = kKnownMeasured[i];
+            if (covered(m.modeId, m.subId)) continue;
+            v.push_back(m);
+            v.back().source = 1;
+        }
+        int nsub = 0;
+        const SubMode* subs = subModes(nsub);
+        auto hasSubs = [&](int stdMode) { for (int i = 0; i < nsub; i++) if (subs[i].stdMode == stdMode) return true; return false; };
+        auto fromList = [&](const char* name, const char* mode, const char* sub, double defMhz) {
+            Known k{};
+            k.name = name; k.modeId = mode; k.subId = sub; k.family = "Other modes";
+            k.mods = 0; k.mod = ModUnknown; k.sync = SyncNone;
+            k.note = "from the mode list: no signature measured for it yet";
+            k.defMhz = defMhz; k.source = 2;
+            v.push_back(k);
+        };
+        for (int s = 8; s < 200; s++) {
+            const ModeTuning* mt = modeTuning(s);
+            if (mt && !hasSubs(s) && !covered(mt->id, "")) fromList(mt->name, mt->id, "", mt->defMhz);
+        }
+        for (int i = 0; i < nsub; i++) {
+            const ModeTuning* mt = modeTuning(subs[i].stdMode);
+            if (mt && !covered(mt->id, subs[i].id)) fromList(subs[i].name, mt->id, subs[i].id, subs[i].defMhz);
+        }
+        // rows without bands: the mode's usual frequency from the mode list is their prior
+        for (Known& k : v) {
+            if (k.bands[0] > 0 || k.defMhz > 0) continue;
+            if (*k.subId) { if (const SubMode* sm = subModeById(k.subId)) k.defMhz = sm->defMhz; }
+            else if (const ModeTuning* mt = modeTuningById(k.modeId)) k.defMhz = mt->defMhz;
+        }
+        return v;
+    }();
+    return table;
+}
 
 } // namespace sigid
 } // namespace dect2
