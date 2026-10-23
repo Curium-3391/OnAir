@@ -119,6 +119,7 @@ struct MeteorReceiver::Impl {
     float prevI = 0, prevQ = 0;
     int64_t nSym = 0;
     float lockAvg = 0, varAvg = 1;
+    double m2Avg = 1, m4Avg = 2;           // moments of the soft values per rail, for the displayed SNR
     // coarse search
     bool coarseDone = false;
     std::vector<float> acqRe, acqIm, psd;
@@ -212,7 +213,7 @@ struct MeteorReceiver::Impl {
         hN = 0;
         tau = 8; spsEst = sps;
         theta = 0; omega = 0;
-        amp = 0; prevI = prevQ = 0; nSym = 0; lockAvg = 0; varAvg = 1;
+        amp = 0; prevI = prevQ = 0; nSym = 0; lockAvg = 0; varAvg = 1; m2Avg = 1; m4Avg = 2;
         loopGains(0.02);
         kp = 0.02 * sps; ki = 2e-5 * sps;
         coarseDone = false; acqFill = 0; acqBlocks = 0;
@@ -356,7 +357,9 @@ struct MeteorReceiver::Impl {
         spsEst += ki * eTn;
         spsEst = std::clamp(spsEst, sps * 0.995, sps * 1.005);
         nSym++;
-        if (nSym == (int64_t)(rs * 0.5)) loopGains(0.008);
+        // after 0.5 s: carrier loop 0.004 (was 0.008) and the symbol clock 4x slower (its noise walked the clock by ~100 ppm at
+        // 3-6 dB and slipped symbols). QPSK 72k now decodes at 2-2.5 dB Es/N0 (was 4), OQPSK 72k at 3.5 dB (was 5).
+        if (nSym == (int64_t)(rs * 0.5)) { loopGains(0.004); kp *= 0.25; ki *= 0.0625; }
         // lock and spread
         const float r2 = In * In + Qn * Qn;
         if (r2 > 1e-6f) {
@@ -365,6 +368,11 @@ struct MeteorReceiver::Impl {
         }
         const float dv = (std::fabs(In) - 1) * (std::fabs(In) - 1) + (std::fabs(Qn) - 1) * (std::fabs(Qn) - 1);
         varAvg += 0.002f * (0.5f * dv - varAvg);
+        {
+            const double i2 = (double)In * In, q2 = (double)Qn * Qn;
+            m2Avg += 0.002 * (0.5 * (i2 + q2) - m2Avg);
+            m4Avg += 0.002 * (0.5 * (i2 * i2 + q2 * q2) - m4Avg);
+        }
         if (constel.size() < 256) constel.emplace_back(In, Qn); else { constel[constelPos] = {In, Qn}; constelPos = (constelPos + 1) % 256; }
         softPair(sat8(In * 40), sat8(Qn * 40));
     }
@@ -521,6 +529,15 @@ struct MeteorReceiver::Impl {
                 for (size_t x = 0; x < hits.size() && at < 0; x++)
                     for (size_t y = x + 1; y < hits.size(); y++) if (hits[y] - hits[x] == 8192) { at = hits[y]; break; }
                 if (at < 0) continue;
+                if (sl && diff && varAvg > 0.16f) {
+                    // N2-x found half a symbol late (pairs Q, next I) on a weak signal (under ~8 dB): there it would be decoded in the
+                    // difference domain, ~2 dB worse. Move the symbol clock on by half a symbol and the carrier by a quarter turn (the same
+                    // signal in the normal state) and search again (a fraction of a second). A strong signal keeps the quick lock.
+                    tau += spsEst / 2; theta += kPi / 2; if (theta > kPi) theta -= 2 * kPi;
+                    pairs.clear(); pairsSinceSearch = 0;
+                    say("half a symbol late: symbol clock moved");
+                    return;
+                }
                 searchLock = true; xt = t; slip = sl;
                 // The raw-pair transform guessed from the difference domain gives garbage frames when the symbol clock settled half a symbol
                 // late (OQPSK, slip 1; found with static offsets too, about one acquisition in three): decode in the difference domain then.
@@ -528,6 +545,7 @@ struct MeteorReceiver::Impl {
                 nrzm = {};
                 tel.rotation = xt + 8 * slip;
                 lastAsmSec = nowSec();
+                badRun = 0;
                 vit.reset();
                 sr = 0; inFrame = false; frameLock = false;
                 const int from = std::max(1, at - 31 - 8192 - 40);
@@ -542,6 +560,7 @@ struct MeteorReceiver::Impl {
     }
     int slip = 0;
     int8_t heldB = 0;
+    int badRun = 0;                      // frames in a row that did not decode
 
     void vitPush(int a, int b) {
         vit.push(a, b);
@@ -566,7 +585,8 @@ struct MeteorReceiver::Impl {
             if (sinceFrame < 32) return;
             // the next sync word is due now
             if (std::min(e, ei) <= 10) misses = 0; else misses++;
-            if (misses > 4) { frameLock = false; say("frame sync lost"); }
+            // lost: search again now (it was 3 s later), the lock may have slipped
+            if (misses > 4) { frameLock = false; searchLock = false; pairs.clear(); pairsSinceSearch = 0; tel.rotation = -1; say("frame sync lost: searching again"); }
             else { if (std::min(e, ei) <= 10) inv = ei < e; startFrame(); tel.asmHits++; lastAsmSec = nowSec(); return; }
         }
         if (e <= 3 || ei <= 3) { inv = ei < e; startFrame(); frameLock = true; misses = 0; tel.asmHits++; lastAsmSec = nowSec(); }
@@ -577,7 +597,13 @@ struct MeteorReceiver::Impl {
     void gotFrame() {
         uint8_t v[meteor::kVcduBytes];
         const int e = meteor::decodeCadu(frame, v, false);   // Meteor: conventional basis
-        if (e < 0) { tel.blocksBad++; return; }
+        if (e < 0) {
+            tel.blocksBad++;
+            // three in a row: a lock taken while the loops settled, or one that slipped since; search again
+            if (++badRun >= 3) { searchLock = false; frameLock = false; pairs.clear(); pairsSinceSearch = 0; tel.rotation = -1; say("frames do not decode: searching again"); }
+            return;
+        }
+        badRun = 0;
         tel.blocksOk++; tel.rsCorrected += (uint64_t)e;
         lastGoodSec = nowSec();
         meteor::Vcdu vc;
@@ -645,7 +671,13 @@ struct MeteorReceiver::Impl {
         tel.cfoHz = coarseHz + omega * rs / (2 * kPi);
         tel.clockPpm = (sps / spsEst - 1) * 1e6;
         tel.carrierLock = std::clamp(lockAvg, 0.f, 1.f);
-        tel.snrDb = (float)(10 * std::log10(1.0 / std::max(1e-4f, varAvg)));
+        // Es/N0 from the second and fourth moments of each rail (+-A plus noise: m2 = A^2 + s^2, m4 = A^4 + 6 A^2 s^2 + 3 s^4); the
+        // spread around the decisions read 1.5 dB high at 2.5 dB (the noise folds onto the decided sign)
+        {
+            const double a4 = std::max(0.0, 1.5 * m2Avg * m2Avg - 0.5 * m4Avg);
+            const double a2 = std::sqrt(a4), s2 = std::max(1e-6, m2Avg - a2);
+            tel.snrDb = a2 > 0 ? (float)std::min(40.0, 10 * std::log10(a2 / s2)) : -10.f;
+        }
         tel.levelDb = nPower ? (float)(10 * std::log10(std::max(1e-20, power / (double)nPower))) : -200.f;
         power = 0; nPower = 0;
         tel.frameLock = frameLock;

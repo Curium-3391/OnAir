@@ -166,6 +166,14 @@ int main(int argc, char** argv) {
         const Result r = run("OQPSK 72k at 8 dB", g, getenv("TT") ? atof(getenv("TT")) : 8, g.modulation);
         CHECK(r.t.blocksOk > 10 && r.rowsWrong == 0, "8 dB");
     }
+    if (want()) {   // the threshold: QPSK 72k at 2.5 dB and OQPSK 72k (N2-x, NRZ-M) at 4 dB Es/N0 (they failed at 4 and 5 dB before 2026-10)
+        MeteorGenConfig q; q.modulation = 2; q.snrDb = 2.5; q.rate = 250e3;
+        const Result r = run("QPSK 72k at 2.5 dB", q, 12, 2);
+        CHECK(r.t.blocksOk > 80 && r.rowsWrong == 0, "QPSK 72k at 2.5 dB: %llu frames", (unsigned long long)r.t.blocksOk);
+        MeteorGenConfig o; o.modulation = 1; o.snrDb = 4; o.rate = 250e3;
+        const Result r2 = run("OQPSK 72k at 4 dB", o, 12, 1);
+        CHECK(r2.t.blocksOk > 80 && r2.rowsWrong == 0, "OQPSK 72k at 4 dB: %llu frames", (unsigned long long)r2.t.blocksOk);
+    }
     if (want()) {
         MeteorGenConfig g; g.amp = 0.0; g.snrDb = 99; g.modulation = 1;
         MeteorGenerator gen(g);
