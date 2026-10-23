@@ -8,7 +8,9 @@
 
 namespace dect2 {
 
-struct RigctlConfig { bool on = false; int port = 4532; bool allowLan = false; };
+// token: commands that change the radio need "\auth <token>" first. Needed (and refused when empty) whenever allowLan is on; on the loopback
+// it is needed when a token is set. Reads stay open, as in rigctld.
+struct RigctlConfig { bool on = false; int port = 4532; bool allowLan = false; std::string token; };
 
 class RigctlServer {
 public:

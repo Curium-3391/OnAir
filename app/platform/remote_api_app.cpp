@@ -374,6 +374,7 @@ void applyStreamer() {
 void applyAll() {
     State& s = st();
     s.srv.configure(s.cfg);
+    s.rigCfg.token = s.cfg.token;   // rigctl uses the API token for "\auth"
     s.rigSrv.configure(s.rigCfg);
     s.udp.configure(s.udpCfg);
     applyStreamer();
@@ -390,7 +391,7 @@ void remoteApiLoadPrefs(App& a) {
     c.requireTokenLocal = d.getB("apiLocalAuth", true);   // a program on this computer sends the token too
     c.ratePerSec = 20; c.rateBurst = 40;
     if (!apipol::tokenUsable(c.token)) { c.token = remoteApiNewToken(); d.setS("apiToken", c.token); }   // stored in the preferences only; never logged
-    s.rigCfg.on = d.getB("rigctlOn", false); s.rigCfg.port = (int)d.getI("rigctlPort", 4532); s.rigCfg.allowLan = d.getI("rigctlLan", 0) != 0;
+    s.rigCfg.on = d.getB("rigctlOn", false); s.rigCfg.port = (int)d.getI("rigctlPort", 4532); s.rigCfg.allowLan = d.getI("rigctlLan", 0) != 0; s.rigCfg.token = c.token;
     s.udpCfg.on = d.getB("udpOn", false); s.udpCfg.host = d.getS("udpHost", "255.255.255.255"); s.udpCfg.port = (int)d.getI("udpPort", 0);
     if (c.on || s.rigCfg.on || s.udpCfg.on) applyAll();
 }
@@ -470,7 +471,7 @@ void remoteApiSection(App& a) {
     ImGui::InputInt(tr("rigctl port"), &rp, 0, 0);
     s.rigCfg.port = std::max(1, std::min(65535, rp));
     ch2 |= ImGui::IsItemDeactivatedAfterEdit();
-    ch2 |= ImGui::Checkbox(tr("rigctl: let other computers connect (it has no login)"), &s.rigCfg.allowLan);
+    ch2 |= ImGui::Checkbox(tr("rigctl: let other computers connect (changes need \\auth <token> first)"), &s.rigCfg.allowLan);
     if (s.rigCfg.on && !s.rigSrv.error().empty()) ImGui::TextColored(pal::badRed(), "%s", s.rigSrv.error().c_str());
     ch2 |= ImGui::Checkbox(tr("Send decoded messages as UDP JSON lines"), &s.udpCfg.on);
     char hb[32];
@@ -485,5 +486,5 @@ void remoteApiSection(App& a) {
     s.udpCfg.port = std::max(0, std::min(65535, up));
     ch2 |= ImGui::IsItemDeactivatedAfterEdit();
     if (s.udpCfg.on && !s.udp.error().empty()) ImGui::TextColored(pal::badRed(), "%s", s.udp.error().c_str());
-    if (ch || ch2) { s.srv.configure(c); s.rigSrv.configure(s.rigCfg); s.udp.configure(s.udpCfg); applyStreamer(); remoteApiSavePrefs(a); savePrefs(a); }
+    if (ch || ch2) { s.srv.configure(c); s.rigCfg.token = c.token; s.rigSrv.configure(s.rigCfg); s.udp.configure(s.udpCfg); applyStreamer(); remoteApiSavePrefs(a); savePrefs(a); }
 }

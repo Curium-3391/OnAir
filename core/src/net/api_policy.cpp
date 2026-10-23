@@ -273,10 +273,32 @@ bool modeKnown(const std::string& m) {
 } // namespace
 
 std::string rigctlHandle(const std::string& lineIn, RigctlRadio& radio, bool& quit) {
+    RigctlSession open;
+    return rigctlHandle(lineIn, radio, quit, open);
+}
+
+namespace {
+// "Host: x", "Origin: x", "Content-Type: x" ...: a header name (letters, digits, '-') directly followed by ':'
+bool looksLikeHttpHeader(const std::string& line) {
+    const size_t c = line.find(':');
+    if (c == std::string::npos || c == 0 || c > 40) return false;
+    for (size_t i = 0; i < c; i++) {
+        const unsigned char ch = (unsigned char)line[i];
+        if (!(std::isalnum(ch) || ch == '-')) return false;
+    }
+    return true;
+}
+} // namespace
+
+std::string rigctlHandle(const std::string& lineIn, RigctlRadio& radio, bool& quit, RigctlSession& sess) {
     quit = false;
     if (lineIn.size() > kMaxRigctlLine) return rprt(-8);
     std::string line = lineIn;
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+    // Cross-protocol guard: a web page can POST text/plain to this port ("POST / HTTP/1.1", headers, then a body such as "F 145500000").
+    // No rigctl command contains " HTTP/", so hang up at the request line, before any body line is executed.
+    if (line.find(" HTTP/") != std::string::npos) { quit = true; return std::string(); }
+    if (looksLikeHttpHeader(line)) { quit = true; return std::string(); }
     for (unsigned char c : line) if (c < 9 || (c > 13 && c < 32) || c == 127) return rprt(-8);
     std::vector<std::string> w = words(line);
     if (w.empty()) return rprt(-1);
@@ -285,6 +307,15 @@ std::string rigctlHandle(const std::string& lineIn, RigctlRadio& radio, bool& qu
     if (cmd.empty()) return rprt(-1);
     // a leading VFO argument (rigctld -o style "f VFOA") is not supported: anything with the wrong count is -1
     char c0 = cmd[0];
+    if (cmd == "\\auth") {
+        if (w.size() != 2 || sess.token.empty() || !tokenEqual(w[1], sess.token)) {
+            if (++sess.badAuth >= 3) { quit = true; return std::string(); }
+            return rprt(-1);
+        }
+        sess.authed = true;
+        return rprt(0);
+    }
+    if (cmd.size() == 1 && sess.required && !sess.authed && (c0 == 'F' || c0 == 'M' || c0 == 'S' || c0 == 'T' || c0 == 'V')) return rprt(-1);   // a change needs the token first
     if (cmd.size() == 1) {
         switch (c0) {
         case 'q': case 'Q': quit = true; return std::string();
