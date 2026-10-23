@@ -390,7 +390,6 @@ private:
         const double c = ops_.freqCorrection ? ops_.freqCorrection(s.tel) : 0.0;
         return s.car.hz + (std::fabs(c) < 0.3 * cfg_.stepHz ? c : 0.0);
     }
-    size_t histCap() const { return (size_t)(ops_.preRollSec * spanRate_); }
     void retireAll() { while (!live_.empty()) retire(live_.back()->car.id); }
     void applyAudio() { if (!ops_.audio) return; for (auto& s : live_) ops_.audio(*s->rx, !muted_ && s->car.id == effSel()); }
     int effSel() const { return sel_ ? sel_ : autoPlay_; }   // the carrier whose sound plays: the chosen one, else the best locked one
