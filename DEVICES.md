@@ -8,7 +8,7 @@ signal may be weak or absent") and the radio keeps running. What stays an error 
 32-bit value in Hz (at most 4.29 GHz), and a negative frequency is turned into 0.
 
 RTL-SDR below 24 MHz picks the way down by itself (direct sampling "Auto"): the RTL-SDR Blog V4 and V4 Lite use the upconverter in the
-Blog library (OnAir never switches direct sampling on there), every other dongle samples its Q input directly (an RTL-SDR Blog V3 has its
+Blog library (OnAir never switches direct sampling on there; the V4 Lite is listed as "RTL-SDR Blog V4 Lite", see docs/RTLSDR-V4L.md), every other dongle samples its Q input directly (an RTL-SDR Blog V3 has its
 HF input on Q; a stock dongle has no HF input, so the signal may be weak or absent unless it is modified). The radio settings can still
 pick the I input or switch direct sampling off. Over rtl_tcp "Auto" sends nothing and the server's own library decides.
 

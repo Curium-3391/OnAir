@@ -134,6 +134,8 @@ RtlModel rtlModelFromStrings(const std::string& v, const std::string& p) {
     if ((v == "RTLSDRBlog" && p == "Blog V3") || p.find("RTL-SDR Blog V3") != std::string::npos) return kBlogV3;
     return kGeneric;
 }
+// The RTL-SDR Blog V4 Lite (R828S tuner, diplexer instead of the V4's triplexer, no notch filters) reports the USB product "Blog V4L"
+bool isBlogV4Lite(const std::string& v, const std::string& p) { return v == "RTLSDRBlog" && p == "Blog V4L"; }
 RtlModel rtlModel(uint32_t index) {
     char vendor[256] = {0}, product[256] = {0}, serial[256] = {0};
     if (rtl().get_device_usb_strings(index, vendor, product, serial) != 0) return kGeneric;
@@ -423,6 +425,7 @@ void listRtl(std::vector<DeviceInfo>& out) {
         std::string label = trimmed(product, sizeof product);
         const RtlModel model = rtlModel(i);
         if (model == kDxPatrol) label = "DXpatrol SDR (RTL2832U)";
+        else if (isBlogV4Lite(trimmed(vendor, sizeof vendor), label)) label = "RTL-SDR Blog V4 Lite";
         else if (label.empty()) { const char* nm = rtl().get_device_name(i); label = nm ? nm : "RTL-SDR"; }
         d.name = label + (d.serial.empty() ? "" : " " + d.serial) + " (native, experimental)";
         d.maxRateHz = model == kDxPatrol ? kDxpMaxRate : 2.56e6; d.minRateHz = 0.9e6;
