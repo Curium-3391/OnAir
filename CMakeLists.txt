@@ -7,6 +7,13 @@ else()
   project(OnAir VERSION 3.0.0 LANGUAGES C CXX)
 endif()
 
+# Windows (MinGW-w64) cross build: the static FFmpeg in the Windows prefix needs clock_gettime64 and nanosleep64, which an older MinGW runtime
+# lacks. Weak shims for them live in core/src/source/source.cpp (inside libdect2core.a); the linker only takes a member out of an archive when
+# something needs a symbol it defines, so ask for the two symbols explicitly (otherwise dect2.exe, dect2cli.exe and dect2scan.exe fail to link).
+if(MINGW)
+  add_link_options(-Wl,-u,clock_gettime64 -Wl,-u,nanosleep64)
+endif()
+
 # A compiler cache, when one is installed, makes repeat builds take seconds (-DDECT2_CCACHE=OFF turns it off).
 option(DECT2_CCACHE "Use ccache when it is installed" ON)
 if(DECT2_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
