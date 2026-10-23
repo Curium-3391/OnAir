@@ -370,3 +370,20 @@ Receiver: chirp-pair acquisition (timing and carrier in one step, +-4 kHz), pilo
 Measured: V60 at 1 % PER needs 8.0 dB Es/N0; mean lock time 0.12 s; text goes from 10 B/s (v3 beacon slice) to 3168 B/s with all slots free, and 64 B/s with all four voice slots busy.
 Wiring: TX generator kaal.frame=4 (TX and IQ file); the live receiver runs v4 beside v3; new panel options. Tests: test_kaal_v4, test_kaal_v4_impair (long), test_kaal_v4_live.
 Not done: v4 voice codec (other agent), over-the-air test, slot interleaving for fast fading, multi-transmitter TDMA. Details in docs/KAAL-NEXT.md.
+## 2026-10-23: ISDB-S rebuilt on ITU-R BO.1408-1, branch isdbs-spec2-030
+Replaced the guessed ISDB-S framing of 2026-10-22 with the one in ITU-R BO.1408-1. The owner allowed one download: the free English PDF, 606 KB, kept in the scratchpad. ARIB TR-B15 and STD-B21 were used as well.
+* **Header:** W1 1B95, 64 TMCC bits and W2 A340 / W3 5CBF, through the rate 1/2 code, BPSK.
+* **TMCC:** 384 bits with RS(64,48), 8 blocks a super-frame, its own PRBS. It is applied two super-frames late (TR-B15).
+* **Coding:** one K=7 code over the whole frame, puncturing restarted per group. TC8PSK = coded B0 + uncoded B1, with the Fig. 15 maps.
+* **Slots:** one 203 byte packet each, groups most efficient first, dummy slots not sent.
+* **Dispersal and interleaving:** PRBS 1+x14+x15 per super-frame after RS; byte interleaving across the 8 frames.
+* **Bursts:** squared, never relied on.
+* **Code and tests:** new core/src/isdbs/isdbs_fec.{h,cpp} replaces isdbs_slot.*. Generator and tests rewritten: Table 3/4 numbers, RS(64,48), a frame coding loop, and the receiver end to end, including random bursts and a TMCC change with no lost packet.
+
+Lesson: at low Es/N0 a symbol timing slip inside a frame costs a whole super-frame, because of the interleaving. Narrowing the timing loop after lock (0.01 -> 0.002) fixed the BPSK / QPSK 1/2 RS failures at 3 dB.
+
+Thresholds on generated signals: TC8PSK 9 dB, QPSK 1/2 3 dB, BPSK 1/2 1 dB.
+
+Still guessed (docs/ISDBS.md lists them): details of the TMCC field order, where dummy slots sit inside a group, PRBS clocking over skipped bytes, the burst PN.
+
+**No real signal tested.** Only the standalone test_isdbs was built and run. The app/engine build was not run and CI was not dispatched.
