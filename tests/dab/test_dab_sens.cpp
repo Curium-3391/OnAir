@@ -2,7 +2,8 @@
 // 90 % of the DAB+ access units decode) under white noise, TU6- and RA4-like multipath with Doppler, carrier offsets of +-5 kHz and sample clock
 // errors of +-50 ppm; and the time to lock from a cold start (sync found, first FIB decoded, the service list known, first access unit decoded),
 // median and 90th percentile over random start points. The generator (dab_gen.cpp) and the channel model here are independent of the receiver.
-// Usage: test_dab_sens [thr|lock] [condition substring]. DAB_SENS_SECONDS changes the seconds per SNR point (default 6).
+// Usage: test_dab_sens [thr|lock] [condition substring]. DAB_SENS_SECONDS changes the seconds per SNR point (default 6), DAB_SENS_STEP the
+// step (0.5 dB), DAB_SENS_TOP the first SNR (14 dB).
 #include "dect2/dab/dab.h"
 #include "dect2/dab/dab_gen.h"
 #include "../common/jobs.h"
@@ -80,7 +81,7 @@ struct Channel {
     }
 };
 
-struct Point { double fib = 0, au = 0; };
+struct Point { double fib = 0, au = 0; uint64_t rsFail = 0; };
 
 // Counts from `warm` seconds on (the lock and the 16 CIFs of interleaving are not counted)
 static Point runPoint(const Cond& c, double snr, double seconds, uint32_t seed) {
@@ -120,6 +121,7 @@ static Point runPoint(const Cond& c, double snr, double seconds, uint32_t seed) 
     const double auExp = seconds / 0.12 * 6;
     p.au = std::min(100.0, 100.0 * (double)(a.auOk - a0) / auExp);
     (void)fb0; (void)ab0;
+    p.rsFail = a.rsUncorrectable;
     return p;
 }
 
@@ -129,9 +131,13 @@ static Thr threshold(const Cond& c, double seconds) {
     Thr r;
     bool ficDone = false, mscDone = false;
     char b[96];
-    for (double snr = 14; snr >= -2 && !(ficDone && mscDone); snr -= 0.5) {
-        const Point p = runPoint(c, snr, seconds, 7000 + (uint32_t)(snr * 10 + 100));
-        snprintf(b, sizeof b, " %.1f:%.0f/%.0f", snr, p.fib, p.au);
+    double step = 0.5, top = 14;
+    if (const char* e = std::getenv("DAB_SENS_STEP")) step = std::atof(e);
+    if (const char* e = std::getenv("DAB_SENS_TOP")) top = std::atof(e);
+    for (double snr = top; snr >= -2 && !(ficDone && mscDone); snr -= step) {
+        const Point p = runPoint(c, snr, seconds, 7000 + (uint32_t)(snr * 100 + 1000));
+        if (p.au < 100) snprintf(b, sizeof b, " %.2f:%.0f/%.0f(RS %llu bad)", snr, p.fib, p.au, (unsigned long long)p.rsFail);
+        else snprintf(b, sizeof b, " %.2f:%.0f/%.0f", snr, p.fib, p.au);
         r.log += b;
         if (!ficDone) { if (p.fib >= 90) r.fic = snr; else ficDone = true; }
         if (!mscDone) { if (p.au >= 90) r.msc = snr; else mscDone = true; }
