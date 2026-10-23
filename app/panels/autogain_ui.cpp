@@ -7,6 +7,7 @@
 // once and Safe start run once and leave the result (with Undo). The amp and the antenna power are never switched unless the user allowed the
 // amp in the popup ("Let auto gain switch the amp", saved per radio as before: agcamp.<radio>).
 #include "../app.h"
+#include "../ui/panel_layout.h"
 #include "dect2/source/autogain.h"
 #include <cmath>
 #include <ctime>
@@ -406,9 +407,14 @@ void autogainControl(App& a, bool vertical, bool running) {
     loadSettings();
     int cur = s.oneShot == ag::AgMode::Once ? 2 : s.oneShot == ag::AgMode::Safe ? 3 : a.agcOn ? 1 : 0;
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("%s", tr("Auto gain"));
-    ImGui::SameLine(0, 4 * gUi);
-    ImGui::SetNextItemWidth((vertical ? 150 : 120) * gUi);
+    if (vertical) {   // the label column of the gain rows; the box fills the row up to the settings cog
+        const float w = panel::rowLabel(tr("Auto gain"));
+        ImGui::SetNextItemWidth(std::max(80.f * gUi, w - ImGui::GetFrameHeight() - 4 * gUi));
+    } else {
+        ImGui::TextDisabled("%s", tr("Auto gain"));
+        ImGui::SameLine(0, 4 * gUi);
+        ImGui::SetNextItemWidth(120 * gUi);
+    }
     ImGui::BeginDisabled(!radioOk(a));
     if (ImGui::BeginCombo("##agmode", tr(kModeNames[cur]))) {
         for (int i = 0; i < 4; i++) {

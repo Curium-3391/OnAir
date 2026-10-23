@@ -3,6 +3,7 @@
 // The source, rig windows, status bar and mode selection are in toolbar_source.cpp, toolbar_rig.cpp, statusbar.cpp and mode_select.cpp.
 #include "../app.h"
 #include "touch.h"
+#include "panel_layout.h"
 #include "../state/presets_app.h"
 #include "dect2/engine/rate_choice.h"
 #include "dect2/engine/click_tune.h"
@@ -20,7 +21,8 @@
 
 // the radio picker, the antenna port, rescan, the add-radio windows and the radio warnings
 static void toolbarSource(App& a, bool vertical, bool running) {
-    ImGui::TextDisabled("%s", tr("SRC")); ImGui::SameLine(0, 5 * gUi);
+    if (vertical) panel::subHeading(tr("Radio"));   // the side panel: Radio, Record and Listen groups (radioMessagesUi draws the last two)
+    else { ImGui::TextDisabled("%s", tr("SRC")); ImGui::SameLine(0, 5 * gUi); }
     // in the side panel the box takes the width left by the refresh button; a long name is cut short with "...", whole on hover
     const float srcW = vertical ? std::max(90.f * gUi, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 2 * ImGui::GetStyle().ItemSpacing.x) : 190 * gUi;
     const std::string srcName = ellipsize(a.devices[a.devIdx].name, srcW - ImGui::GetFrameHeight() - 2 * ImGui::GetStyle().FramePadding.x);
@@ -209,36 +211,40 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
     const bool generic = curDev.isGeneric();
     if (!a.newUi) vSeparator();   // the new interface starts the gain controls on a second row
     ImGui::BeginDisabled(!isHw);
+    if (vertical) panel::subHeading(tr("Level"));
     if (!vertical) { ImGui::TextDisabled("%s", tr("GAIN")); ImGui::SameLine(0, 5 * gUi); }
+    // one label column in the side panel (panel::labelW); the slider fills the rest of the row and shows its value and unit
+    const auto gainLabel = [&](const char* label, const char* tip, float narrowW) {
+        if (vertical) { const float w = panel::rowLabel(label, tip); ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : w); return; }
+        ImGui::TextDisabled("%s", label);
+        ImGui::SameLine(0);
+        ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : narrowW * gUi);
+    };
     if (generic) {
         // in the side panel the slider gets its own row (on the header's row it pushed AGC and Auto-tune past the panel edge)
-        if (vertical) { ImGui::TextDisabled("%s", tr("Gain")); ImGui::SameLine(54 * gUi); } else ImGui::SameLine();
-        ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : 150 * gUi);   // touch: the sheet's full width
+        if (vertical) { const float w = panel::rowLabel(tr("Gain"), tr("The radio's overall gain")); ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : w); }
+        else { ImGui::SameLine(); ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : 150 * gUi); }   // touch: the sheet's full width
         float gdb = (float)a.tune.gainDb;
         ImGui::SliderFloat("##gain", &gdb, (float)curDev.gainMinDb, (float)std::max(curDev.gainMaxDb, curDev.gainMinDb + 1.0), "%.0f dB");
         a.tune.gainDb = std::round(gdb);
         if (ImGui::IsItemDeactivatedAfterEdit()) retune = true, a.agcOn = false;
     } else {
-    ImGui::TextDisabled("%s", tr("LNA"));
-    ImGui::SameLine(vertical ? 54 * gUi : 0);
-    ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : (vertical ? 150 : 78) * gUi);
+    gainLabel(tr("LNA"), tr("The RF amplifier's gain (the radio sets it in 8 dB steps)"), 78);
     int lna = a.tune.lnaDb;
     ImGui::SliderInt("##lna", &lna, 0, 40, "%d dB");
     a.tune.lnaDb = (lna + 4) / 8 * 8; // hardware steps are 8 dB
     if (ImGui::IsItemDeactivatedAfterEdit()) retune = true, a.agcOn = false;
     if (!vertical) flowNext();
-    ImGui::TextDisabled("%s", tr("VGA"));
-    ImGui::SameLine(vertical ? 54 * gUi : 0);
-    ImGui::SetNextItemWidth(touch::on() ? -FLT_MIN : (vertical ? 150 : 78) * gUi);
+    gainLabel(tr("VGA"), tr("The baseband gain after the mixer (2 dB steps)"), 78);
     int vga = a.tune.vgaDb;
     ImGui::SliderInt("##vga", &vga, 0, 62, "%d dB");
     a.tune.vgaDb = (vga + 1) / 2 * 2; // 2 dB steps
     if (ImGui::IsItemDeactivatedAfterEdit()) retune = true, a.agcOn = false;
     if (!vertical) flowNext();
     if (ImGui::Checkbox(tr("Amp"), &a.tune.ampOn)) retune = true, a.agcOn = false;
-    if (a.tune.ampOn) { if (!vertical) flowNext(6 * gUi); agcAmpWarning(a); }   // beside a manual Amp switch that is on: the amp can be damaged by strong signals
+    if (a.tune.ampOn) { if (!vertical) flowNext(6 * gUi); else ImGui::SameLine(0, 8 * gUi); agcAmpWarning(a); }   // beside a manual Amp switch that is on: the amp can be damaged by strong signals
     }
-    if (!vertical) flowNext(); else if (!generic && !a.tune.ampOn) ImGui::SameLine();   // side panel, generic radio: AGC and Auto-tune on the row below the slider
+    if (!vertical) flowNext();   // the side panel: Auto gain has its own row under the sliders
     // Auto gain (docs/AUTOGAIN.md): Off / Auto / Optimise once / Safe start, its settings, and the live ADC meter strip under it
     autogainControl(a, vertical, running);
     ImGui::EndDisabled();
@@ -249,13 +255,15 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
     if (!isHw && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Gain controls apply to radios only (not to a recording, a sound card, or the synthetic signal)"));
     if (isHw) {   // sample clean-up for zero-IF radios; applied as the samples come in, so it works while running
         if (!vertical) flowNext(14 * gUi);
-        if (vertical) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 2 * gUi));
+        if (vertical) panel::subHeading(tr("Corrections"));
         bool iq = a.engine.iqFix().iq;
         // the DC spike (the radio's own oscillator leaking in): left alone, removed, or kept off the channel by offset tuning
         int dcMode = a.engine.autoOffset() ? 2 : a.engine.iqFix().dc ? 1 : 0;
         static const char* kDcModes[] = {"DC spike: leave", "DC spike: remove", "DC spike: tune beside it"};
-        ImGui::SetNextItemWidth(std::min(ImGui::CalcTextSize(kDcModes[2]).x + ImGui::GetFrameHeight() + 12 * gUi, std::max(80.f, ImGui::GetContentRegionAvail().x)));
-        if (ImGui::Combo("##dcmode", &dcMode, kDcModes, 3)) {
+        static const char* kDcShort[] = {"Leave", "Remove", "Tune beside it"};   // the side panel has the label "DC spike" in front
+        if (vertical) { const float w = panel::rowLabel(tr("DC spike"), tr("What to do about the radio's own spike in the middle of the spectrum")); ImGui::SetNextItemWidth(w); }
+        else ImGui::SetNextItemWidth(std::min(ImGui::CalcTextSize(kDcModes[2]).x + ImGui::GetFrameHeight() + 12 * gUi, std::max(80.f, ImGui::GetContentRegionAvail().x)));
+        if (ImGui::Combo("##dcmode", &dcMode, vertical ? kDcShort : kDcModes, 3)) {
             const bool wasOffset = a.engine.autoOffset();
             a.engine.iqFix().dc = dcMode == 1;
             a.engine.setAutoOffset(dcMode == 2);
@@ -271,7 +279,6 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
         if (!vertical) flowNext(10 * gUi);
         if (ImGui::Checkbox(tr("IQ correction"), &iq)) { a.engine.iqFix().iq = iq; savePrefs(a); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Corrects I/Q gain and phase imbalance, which puts a faint mirror image of every signal on the other side of the centre.\nMeasured from the signal itself; now %.2f dB, %.1f degrees. Not applied in DTMB and analog TV (their signals fool the measurement)."), a.engine.iqFix().gainDb(), a.engine.iqFix().phaseDeg());
-        if (vertical) ImGui::PopStyleVar();
     }
     if (!curDev.hasBiasTee) a.tune.biasTee = false;   // a radio without antenna power never inherits the setting of another one
     if (const std::string bc = biasContext(a); bc != a.biasCtx) {   // another mode or radio (or the start): its own saved antenna power
@@ -282,11 +289,10 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
     }
     if (curDev.hasBiasTee) {
         if (!vertical) flowNext(14 * gUi);
-        else ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 2 * gUi));
+        else panel::subHeading(tr("Antenna power"));
         if (ImGui::Checkbox(tr("Bias-tee (antenna power)"), &a.tune.biasTee)) { retune = true; saveBiasTee(a); }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Sends DC power up the antenna cable for an active antenna or LNA (e.g. a GNSS patch antenna). Leave it off with a passive antenna, and never with a DC short in the antenna path (some antennas, splitters or filters): it can damage the radio."));
         if ((a.family == 12 || a.family == 150) && !a.tune.biasTee) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("Most GNSS antennas are active and need this on.")); ImGui::PopTextWrapPos(); }
-        if (vertical) ImGui::PopStyleVar();
     }
     if (vertical) radioSettingsUi(a, true);   // radio_ui.cpp: the selected radio's own settings (frequency correction, notch filters, ...); a one-line bar has its button elsewhere
 }

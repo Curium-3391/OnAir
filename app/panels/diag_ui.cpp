@@ -16,6 +16,7 @@
 #include "fixit.h"
 #include "dect2/engine/crash_report.h"
 #include "dect2/voicekeys/key_guard.h"
+#include "../ui/panel_layout.h"
 #include <fstream>
 #include <iterator>
 #include <cstring>
@@ -145,7 +146,15 @@ std::string sizeText(uint64_t bytes) {
     return b;
 }
 
-void recordUi(App& a) {
+// the second column of the record rows: the format boxes start at the same x in the IQ and the audio row
+float recordColX() { return std::max(panel::dotButtonW("Record IQ"), panel::dotButtonW("Record audio")) + 8 * gUi; }
+void toRecordCol(float x0) {
+    const float want = x0 + recordColX();
+    if (ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetScrollX() + 6 * gUi < want) ImGui::SameLine(want); else flowNext(6 * gUi);
+}
+
+// part 0: the whole row; 1: the button and the format; 2: the SigMF switch (the Record group puts it with Rewind and Library)
+void recordUi(App& a, int part = 0) {
     const RecordingStats rs = a.engine.recordingStats();
     if (rs.active) a.recWasActive = true;
     else if (a.recWasActive) {   // it ended: stopped here, with the radio, at the size limit or on a disk error
@@ -158,6 +167,8 @@ void recordUi(App& a) {
         if (rs.droppedSamples) a.engine.log("the disk was too slow: some samples are missing from the recording");
     }
     const bool isFile = a.devices[a.devIdx].kind == DeviceInfo::File;
+    const float rowX0 = ImGui::GetCursorPosX();
+    if (part != 2) {
     if (rs.active) {
         char b[96];
         // ### keeps the button id still while the seconds and the size change. Without it the click is lost and the recording only ends when the radio is stopped.
@@ -174,21 +185,18 @@ void recordUi(App& a) {
     } else {
         const bool can = a.engine.running() && !isFile;
         ImGui::BeginDisabled(!can);
-        const ImVec2 p0 = ImGui::GetCursorScreenPos();
-        const float sp = ImGui::CalcTextSize(" ").x;
-        if (ImGui::SmallButton((std::string("    ") + tr("Record IQ")).c_str())) {
+        if (panel::dotButton(tr("Record IQ"), can)) {
             const FileFormat f = a.recFormat >= 1 ? FileFormat::CF32 : FileFormat::CS8;
             const std::string path = plat::dataDir() + "/recordings/" + (a.recFormat == 2 ? blueRecordingName(a.engine.recordingName(f)) : a.engine.recordingName(f));
             std::string err;
             if (a.engine.startRecording(path, f, err)) a.recDonePath.clear();
             else a.engine.log("recording failed: " + err);
         }
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p0.x + ImGui::GetStyle().FramePadding.x + 2.2f * sp, p0.y + ImGui::GetItemRectSize().y * 0.5f), 3.2f * gUi, can ? ImGui::GetColorU32(pal::badRed()) : IM_COL32(120, 80, 78, 255));
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", tr(isFile ? "Recordings of a file are not needed" : !can ? "Start the radio first" : "Saves the radio's raw samples to a file, for a bug report"));
     }
-    flowNext(6 * gUi);
+    toRecordCol(rowX0);
     ImGui::BeginDisabled(rs.active);
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("X-Midas BLUE").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);
     if (ImGui::BeginCombo("##recfmt", a.recFormat == 2 ? "X-Midas BLUE" : a.recFormat == 1 ? "float" : "8-bit")) {
@@ -199,12 +207,14 @@ void recordUi(App& a) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("8-bit: 2 bytes per sample, small. Float: 8 bytes per sample, exact. X-Midas BLUE: float samples in a .tmp file with the rate and centre frequency in its header (for X-Midas, SigPlot and other BLUE tools).");
-    flowNext(6 * gUi);
+    }   // part != 2
+    if (part != 1) {
     ImGui::BeginDisabled(rs.active);
     if (ImGui::Checkbox("SigMF", &a.recSigmf)) { plat::prefs().setB("recSigmf", a.recSigmf); a.engine.setRecordSigmf(a.recSigmf); }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Writes a .sigmf-meta file (sample rate, data type, centre frequency, time) next to the recording, and the same data under a .sigmf-data name, so the recording opens in IQEngine (iqengine.org) and other SigMF tools.");
-    if (!a.recDonePath.empty() && !rs.active) {
+    }   // part != 1
+    if (part != 2 && !a.recDonePath.empty() && !rs.active) {
         flowNext(6 * gUi);
         if (ImGui::SmallButton(tr("Show recording##iq"))) dect2::openUrl(a.recDonePath.substr(0, a.recDonePath.find_last_of("/\\")));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", a.recDonePath.c_str());
@@ -214,7 +224,8 @@ void recordUi(App& a) {
 
 // "Record audio": the sound you hear, from any mode (a tap in AudioOut, before the volume). Idle: a button, the format and three switches;
 // recording: a red "Stop 12.3 s 1.2 MB". Stops by itself on a mode change or a retune unless "Keep going" is on.
-void audioRecordUi(App& a) {
+// part 0: the whole row; 1: the button, the format, Show recording; 2: the switches (Only audio, Split, Keep going)
+void audioRecordUi(App& a, int part = 0) {
     dect2::AudioRecorder& rec = dect2::AudioRecorder::instance();
     const dect2::AudioRecStats rs = rec.stats();
     if (rs.active) {
@@ -230,6 +241,8 @@ void audioRecordUi(App& a) {
         if (!rs.error.empty()) a.engine.log("audio recording stopped: " + rs.error);
         if (rs.dropped) a.engine.log("the disk was too slow: some audio is missing from the recording");
     }
+    const float rowX0 = ImGui::GetCursorPosX();
+    if (part != 2) {
     if (rs.active) {
         char b[96];
         snprintf(b, sizeof b, "%s  %.1f s  %.1f MB%s###audiorecstop", tr("Stop"), rs.seconds, rs.bytes / 1e6, a.audioRecGate && !rs.gateOpen ? "  (waiting)" : "");
@@ -240,9 +253,7 @@ void audioRecordUi(App& a) {
     } else {
         const bool can = a.engine.running();
         ImGui::BeginDisabled(!can);
-        const ImVec2 p0 = ImGui::GetCursorScreenPos();
-        const float sp = ImGui::CalcTextSize(" ").x;
-        if (ImGui::SmallButton((std::string("    ") + tr("Record audio")).c_str())) {
+        if (panel::dotButton(tr("Record audio"), can)) {
             dect2::AudioRecOptions o;
             o.format = (dect2::AudioRecFormat)a.audioRecFmt; o.gated = a.audioRecGate; o.split = a.audioRecGate && a.audioRecSplit;
             const int m = a.engine.standardMode();
@@ -254,13 +265,12 @@ void audioRecordUi(App& a) {
             if (rec.start(path, o, err)) { tx::captionsRecordStart(); a.audioRecDonePath.clear(); a.audioRecMode = m; a.audioRecFreq = a.freqMhz; }
             else a.engine.log("audio recording failed: " + err);
         }
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p0.x + ImGui::GetStyle().FramePadding.x + 2.2f * sp, p0.y + ImGui::GetItemRectSize().y * 0.5f), 3.2f * gUi, can ? ImGui::GetColorU32(pal::badRed()) : IM_COL32(120, 80, 78, 255));
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", tr(!can ? "Start the radio first" : "Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)"));
     }
     tourMark("record", ImGui::GetItemRectMin(), ImGui::GetItemRectMax());   // the recording lesson
-    flowNext(6 * gUi);
+    toRecordCol(rowX0);
     ImGui::BeginDisabled(rs.active);
     static const char* const fm[] = {"WAV", "FLAC", "MP3"};
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("FLAC").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);
@@ -276,7 +286,8 @@ void audioRecordUi(App& a) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo."));
-    flowNext(6 * gUi);
+    }   // part != 2
+    if (part != 1) {
     ImGui::BeginDisabled(rs.active);
     if (ImGui::Checkbox(tr("Only audio"), &a.audioRecGate)) plat::prefs().setB("audioRecGate", a.audioRecGate);
     ImGui::EndDisabled();
@@ -291,7 +302,8 @@ void audioRecordUi(App& a) {
     flowNext(6 * gUi);
     if (ImGui::Checkbox(tr("Keep going"), &a.audioRecKeep)) plat::prefs().setB("audioRecKeep", a.audioRecKeep);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keeps recording when the mode or the frequency changes. Off: the recording stops then."));
-    if (!a.audioRecDonePath.empty() && !rs.active) {
+    }   // part != 1
+    if (part != 2 && !a.audioRecDonePath.empty() && !rs.active) {
         flowNext(6 * gUi);
         if (ImGui::SmallButton(tr("Show recording##aud"))) dect2::openUrl(a.audioRecDonePath.substr(0, a.audioRecDonePath.find_last_of("/\\")));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", a.audioRecDonePath.c_str());
@@ -318,7 +330,6 @@ void audioMonitorUi(App& a) {
         d.setB("monYield", a.monYield); d.setS("monDev", a.monDev); d.setS("monDev2", a.monDev2); d.setB("monOut2", a.monOut2); d.setB("monNet", a.monNet);
         d.setI("monPort", a.monPort); d.setB("monBindAll", a.monBindAll); d.setB("monWav", a.monWav);
     };
-    flowNext(10 * gUi);
     if (ImGui::Checkbox(tr("Monitor audio"), &a.monOn)) save();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound."));
     const dect2::MonitorStats ms = mon.stats();
@@ -626,15 +637,22 @@ void radioMessagesUi(App& a, bool vertical) {
         }
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Saves one zip file with the diagnostics, the log and the last crash report: attach it to a GitHub issue"));
-    flowNext(6 * gUi);
-    recordUi(a);
+    // the three groups of the Source panel: Radio (above, with its status), Record, Listen; one left edge, a second column for the formats
+    panel::subHeading(tr("Record"));
+    recordUi(a, 1);              // [dot] Record IQ     [8-bit]
+    flowBreak();
+    recordUi(a, 2);              // SigMF  Rewind  Library
     flowNext(6 * gUi);
     timeMachineUi(a);
     flowNext(6 * gUi);
     recordingLibraryUi(a);
-    flowNext(10 * gUi);
-    audioRecordUi(a);
+    flowBreak();
+    audioRecordUi(a, 1);         // [dot] Record audio  [WAV]
     flowNext(6 * gUi);
     clipsui::button(a);
-    audioMonitorUi(a);
+    flowBreak();
+    panel::subHeading(tr("Listen"));
+    audioRecordUi(a, 2);         // Only audio  Split  Keep going
+    flowBreak();
+    audioMonitorUi(a);           // Monitor audio  [demod]  volume  Audio...
 }

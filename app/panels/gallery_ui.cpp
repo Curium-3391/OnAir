@@ -18,6 +18,8 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include "picsave_ui.h"
+#include "../state/picsave.h"
 #include <fstream>
 #include <sstream>
 
@@ -25,6 +27,9 @@ namespace fs = std::filesystem;
 using namespace dect2::img;
 
 namespace {
+
+picsave::PendingDelete gPend;   // pictures deleted from the list: hidden for a few seconds (Undo), then really removed
+constexpr double kUndoSec = 8.0;
 
 struct Item {
     std::string id, key, source, sat, detail;
@@ -748,11 +753,16 @@ void windowPanel(App& a) {
     runDev();
     firstWindowSize(960 * gUi, 620 * gUi);
     ImGui::SetNextWindowPos(ImVec2(260 * gUi, 60 * gUi), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(trw("Images"), &a.galleryOpen)) { ImGui::End(); return; }
-    if (S.sel.empty() && !S.items.empty()) selectItem(S.items[0]);
-    uint64_t tot = 0;
-    for (const Item& it : S.items) tot += it.bytes;
-    ImGui::Text("%zu pictures, %s", S.items.size(), sizeText(tot).c_str());
+    const auto dropIds = [&](const std::vector<std::string>& ids) {
+        for (const std::string& id : ids) for (size_t i = 0; i < S.items.size(); i++) if (S.items[i].id == id) { dropItemAt(i); break; }
+        if (!ids.empty()) saveIndex();
+    };
+    dropIds(gPend.expire(ImGui::GetTime(), kUndoSec));
+    if (!ImGui::Begin(trw("Images"), &a.galleryOpen)) { ImGui::End(); dropIds(gPend.flush()); return; }
+    if (S.sel.empty()) for (Item& it : S.items) if (!gPend.hidden(it.id)) { selectItem(it); break; }
+    uint64_t tot = 0; size_t shown = 0;
+    for (const Item& it : S.items) if (!gPend.hidden(it.id)) { tot += it.bytes; shown++; }
+    ImGui::Text("%zu pictures, %s", shown, sizeText(tot).c_str());
     ImGui::SameLine();
     if (ImGui::SmallButton("Open folder")) dect2::openUrl(S.dir);
     ImGui::SameLine();
@@ -768,19 +778,28 @@ void windowPanel(App& a) {
     if (ImGui::Selectable(mt, S.showMosaic, 0, ImVec2(80 * gUi, 0))) S.showMosaic = !S.showMosaic;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Stitch several projected passes into one map"));
     if (!S.msg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", S.msg.c_str()); }
+    picui::settingRow();
+    picui::statusLine();
+    if (gPend.canUndo()) {
+        ImGui::TextDisabled("%s", tr("Picture deleted."));
+        ImGui::SameLine(0, 6 * gUi);
+        if (ImGui::SmallButton(tr("Undo##picdel"))) { const std::string id = gPend.undo(); for (Item& it : S.items) if (it.id == id) { selectItem(it); break; } }
+    }
     ImGui::Separator();
     const float lw = 300 * gUi;
     ImGui::BeginChild("##glist", ImVec2(lw, 0), ImGuiChildFlags_Borders);
-    if (S.items.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("No pictures yet. Weather satellites (Meteor, GOES), weather fax, SSTV and HamDRM pictures appear here as they finish."); ImGui::PopTextWrapPos(); }
+    if (shown == 0) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("No pictures yet. Weather satellites (Meteor, GOES), weather fax, SSTV and HamDRM pictures appear here as they finish."); ImGui::PopTextWrapPos(); }
     int del = -1;
     int made = 0;
     for (size_t i = 0; i < S.items.size(); i++) {
         Item& it = S.items[i];
+        if (gPend.hidden(it.id)) continue;
         ImGui::PushID((int)i);
         if (!it.thumb && !it.thumbTried && made < 2) { ensureThumb(it); made++; }
         const float th = 64 * gUi;
         const ImVec2 c0 = ImGui::GetCursorScreenPos();
         const bool selected = S.sel == it.id;
+        ImGui::SetNextItemAllowOverlap();   // the save and delete icons sit on top of the row: without this the row takes their clicks
         if (ImGui::Selectable("##row", selected, 0, ImVec2(0, th + 4))) selectItem(it);
         const ImVec2 c1 = ImGui::GetItemRectMax();
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -797,14 +816,21 @@ void windowPanel(App& a) {
         dl->AddText(ImVec2(tx, c0.y + 2 + 2 * lh), dim, l3);
         (void)c1;
         ImGui::SetCursorScreenPos(ImVec2(c0.x + lw - 2 * (ImGui::GetFrameHeight() + 6) - 12, c0.y + th - ImGui::GetFrameHeight() + 2));
-        if (iconFlat(Ic::Save, "Save this picture as PNG")) { saveOriginal(it); }
+        {
+            const std::string mode = it.sat.empty() ? it.source : it.sat;
+            const std::string tip = picsave::tooltipText(picui::folder(), mode);   // says what and where
+            if (iconFlat(Ic::Save, tip.c_str())) picui::saveCopy(mode.c_str(), (time_t)it.time, S.dir + "/" + it.id + ".png");
+        }
         ImGui::SameLine(0, 4);
-        if (iconFlat(Ic::Cross, "Delete this picture")) del = (int)i;
+        if (iconFlat(Ic::Cross, tr("Delete this picture (Undo for a few seconds)"))) del = (int)i;
         ImGui::SetCursorScreenPos(ImVec2(c0.x, c0.y + th + 4 + ImGui::GetStyle().ItemSpacing.y));
         ImGui::Dummy(ImVec2(0, 0));
         ImGui::PopID();
     }
-    if (del >= 0) { dropItemAt((size_t)del); saveIndex(); }
+    if (del >= 0) {
+        gPend.mark(S.items[(size_t)del].id, ImGui::GetTime());
+        if (S.sel == S.items[(size_t)del].id) S.sel.clear();
+    }
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("##gview", ImVec2(0, 0));
