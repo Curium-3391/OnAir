@@ -105,6 +105,36 @@ Measured in the prototype (48 kHz, 9 kHz channel); the test checks the same on t
 | station 5 kHz above, 10 dB stronger, SINAD | -4.9 | -3.9 | -9.9 | 20.0 |
 | impulses +20 / +30 dB, blanker off -> on | 1.8 -> 19.8 / -8.1 -> 19.8 | | | |
 
+## AM Auto quality (core/src/general/am_proc.cpp)
+
+The general receiver's AM can go through a processor (panel: Auto quality, on by default; off and the envelope detector = exactly the old
+path): noise blanker on the IF magnitude (the running mean fed with clipped samples, so it cannot lock up), carrier search (FFT within
++-3 kHz) and PLL (40 Hz, then 12 Hz; holds in fades), synchronous detection of both sidebands or the cleaner one (ECSS: one side's excess
+over the other averaged over 4 s, so moving selective fading does not trigger it), adaptive audio bandwidth (2.5 - 10 kHz, the edge where
+the programme falls to the noise or interference starts), notches for whistles (a narrow line on one sideband only, seen in 3 frames) and
+50/60 Hz hum series, MMSE-LSA noise reduction (Ephraim-Malah, minimum statistics capped by a white floor so held notes are not taken
+for noise, gain floor 6 - 16 dB from the SNR, off above 35 dB), leveler and 3 ms look-ahead limiter. "Enhanced treble" (synthetic
+harmonics above the received edge) is experimental and off. AM cannot gain FM's noise immunity: the processor removes what is not
+the programme; it cannot recover programme that the noise covers.
+
+Measured (scratch harness, 48 kHz, programme band-limited 100 Hz - 4.5 kHz, 10 - 12 s, SNR of the output against the programme in
+200 - 4500 Hz after the best delay and gain; envelope = the old detector with the 9 kHz channel filter):
+
+| case | speech: envelope / auto dB | music: envelope / auto dB |
+|---|---|---|
+| clean 40 dB | 20.7 / 20.4 | 29.1 / 30.9 |
+| AWGN 25 / 15 / 10 / 6 dB | 5.7 / 10.1, -4.3 / 2.7, -9.3 / -2.6, -13.3 / -8.0 | 16.2 / 20.4, 6.3 / 13.5, 1.2 / 9.6, -2.9 / 6.3 |
+| selective fading 0.2 ms, 25 dB | -2.4 / 4.6 | 2.9 / 5.1 |
+| flat fading 0.3 Hz, 20 dB | -9.0 / -0.6 | 1.5 / 4.8 |
+| station +9 kHz / -10 kHz, 10 dB stronger | 9.2 / 12.6, 10.1 / 12.8 | 19.7 / 20.7, 20.5 / 23.3 |
+| whistle 1.7 kHz, -20 dB | -0.1 / 11.3 | 10.5 / 21.7 |
+| atmospherics +20 dB | -5.0 / 5.9 | 5.5 / 16.0 |
+| ignition +25 dB | -10.3 / 13.2 | 0.2 / 23.6 |
+| carrier 400 Hz off, 25 dB | 5.8 / 8.2 | 16.4 / 18.0 |
+
+Not done (left for later): an AM channel scanner with band-plan names, S-units, C-QUAM through the new chain (C-QUAM is its own mode
+and is untouched), DRM / HD AM hand-off hints, a multiband leveler. No real AM recording was measured.
+
 ## Known limits
 
 * Nothing was checked on a real station: real multipath, real RDS encoders (2B, eRT, RT+ in the field), real impulse noise.
