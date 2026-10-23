@@ -17,4 +17,5 @@ Speech to text for the live transcripts (`core/src/transcribe`, `docs/TRANSCRIBE
 
 1. `src/aneforge/whisper-aneforge.cpp` is replaced by empty stubs (upstream loads a library with `dlopen` for an experimental Neural Engine encoder; that
    is not wanted here and does not exist on Windows). `whisper-aneforge.h` is unchanged.
-2. Nothing else in the vendored files is edited. `WHISPER_VERSION` is defined by `CMakeLists.txt`.
+2. `ggml/src/ggml-cpu/ggml-cpu.c`: the thread power throttling call (Windows 11 API) is compiled only when the headers define it, so that older MinGW-w64 headers build.
+3. Nothing else in the vendored files is edited. `WHISPER_VERSION` is defined by `CMakeLists.txt`.
