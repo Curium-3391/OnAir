@@ -39,6 +39,7 @@ constexpr size_t kMaxMessages = 2000;
 constexpr double kMinAmp = 0.2;                // rad/sample: the smallest mean deviation a sync may have (the full one is about 0.6)
 constexpr double kTimingGain = 0.02;
 constexpr int kFirstBatchValid = 10;           // of the 16 words of the first batch after a searched sync, at least this many valid
+constexpr float kDoubtText = 1.5f;             // message words (FLEX vectors too): any of the least reliable bits (a wrong one only damages a text)
 constexpr float kDoubt = 0.6f;                // soft repair: only bits nearer the decision threshold than 0.6 of the outer amplitude may be overruled
 
 int pickDecimation(double fs) {
@@ -80,7 +81,7 @@ inline int popcount32(uint32_t v) { return dect2::bits::popcount(v); }
 // least reliable wins; it must differ from the hard decisions in at most four bits, all of them doubtful (below `doubt`; the hard decoder
 // alone accepts a quarter of random words, so a confident bit is never overruled). rel[k]: the reliability of transmitted bit k (bit 31 - k
 // of the word). Returns the word to hand on, which the plain repair then accepts (flipped where the search found the errors), or w unchanged.
-uint32_t chaseWord(uint32_t w, const float* rel, float doubt, bool* rescued = nullptr) {
+uint32_t chaseWord(uint32_t w, const float* rel, float doubt, int maxErr = 4, bool* rescued = nullptr) {
     if (rescued) *rescued = false;
     if (pager::correctWord(w).ok) return w;
     int idx[6];
@@ -99,7 +100,7 @@ uint32_t chaseWord(uint32_t w, const float* rel, float doubt, bool* rescued = nu
         const pager::Fixed f = pager::correctWord(w ^ flip);
         if (!f.ok) continue;
         const uint32_t e = w ^ pager::encodeWord(f.data);   // every bit the candidate changes
-        if (popcount32(e) > 4) continue;
+        if (popcount32(e) > maxErr) continue;
         float m = 0;
         bool sure = false;
         for (int k = 0; k < 32; k++) if (e & (1u << (31 - k))) { m += rel[k]; if (rel[k] >= doubt) sure = true; }
@@ -550,7 +551,7 @@ struct PagerReceiver::Impl {
             if (popcount32(curWord ^ pager::kPocsagSync) <= 4 && good) { inSync = false; wi = 0; }
             else { parser.flush(tmp); emit(tmp, speed, false); locked = false; lockH = -1; lastLockEnd = cur; }
         } else {
-            uint32_t wd = chaseWord(curWord, wordRel, kDoubt);
+            uint32_t wd = chaseWord(curWord, wordRel, kDoubtText);
             // a soft repair may complete a message or an idle word, never start a page: a wrong address is a page that was never sent
             if (wd != curWord && pager::pocsagClassify(wd).kind == pager::PocsagWord::Address) wd = curWord;
             if (firstBatch) {
@@ -585,8 +586,9 @@ struct PagerReceiver::Impl {
             break;
         case 2: { // the frame information word: like the data, sent complemented against the sync code and marker (pager_gen.cpp flexFrameTx)
             acc = (acc << 1) | (uint32_t)(1 - bitOf(x));
+            wordRel[cnt] = (float)(std::fabs(x - m) / std::max(amp, 0.05));
             if (++cnt < 32) break;
-            const pager::Fixed c = pager::correctWord(acc);
+            const pager::Fixed c = pager::correctWord(chaseWord(acc, wordRel, kDoubt));
             int cycle, frame;
             if (!c.ok || !pager::flexFiwCheck(pager::rev21(c.data), cycle, frame)) {
                 // A bad FIW is common on a real channel; dropping lock here threw away the 1600/4 and 3200/4 pages.
@@ -645,20 +647,35 @@ struct PagerReceiver::Impl {
         bool any = false;
         int ok = 0, fixed = 0, failed = 0;
         for (int p = 0; p < nph; p++) {
-            // soft repair of the words the BCH code alone cannot repair (chaseWord); each block interleaves 8 words bit by bit
-            for (int blk = 0; blk < 11; blk++)
-                for (int wd = 0; wd < 8; wd++) {
-                    float rel[32];
-                    uint32_t word = 0;
-                    for (int j = 0; j < 32; j++) {
-                        const size_t at = (size_t)(blk * 256 + j * 8 + wd);
-                        word = (word << 1) | (fb[p][at] & 1u);
-                        rel[j] = fr[p][at];
-                    }
-                    const uint32_t fixedW = chaseWord(word, rel, kDoubt);
-                    if (fixedW != word)
-                        for (int j = 0; j < 32; j++) fb[p][(size_t)(blk * 256 + j * 8 + wd)] = (uint8_t)((fixedW >> (31 - j)) & 1u);
+            // Soft repair of the words the BCH code alone cannot repair (chaseWord); each block interleaves 8 words bit by bit. The block
+            // information word (word 0) says where the address words are: those are repaired only where the bits are doubtful (a wrong
+            // address is a page that was never sent), the vector and message words more boldly (a wrong one only damages a page's text).
+            uint32_t words[pager::kFlexPhaseWords];
+            float rels[pager::kFlexPhaseWords][32];
+            for (int i = 0; i < pager::kFlexPhaseWords; i++) {
+                words[i] = 0;
+                for (int j = 0; j < 32; j++) {
+                    const size_t at = (size_t)((i / 8) * 256 + j * 8 + i % 8);
+                    words[i] = (words[i] << 1) | (fb[p][at] & 1u);
+                    rels[i][j] = fr[p][at];
                 }
+            }
+            int aoff = 1, voff = 1;   // the address words: [aoff, voff)
+            {
+                const pager::Fixed b = pager::correctWord(chaseWord(words[0], rels[0], kDoubt));
+                if (b.ok) {
+                    const uint32_t f0 = pager::rev21(b.data);
+                    aoff = (int)((f0 >> 8) & 3) + 1;
+                    voff = (int)((f0 >> 10) & 0x3F);
+                    if (voff < aoff) voff = aoff;
+                } else voff = pager::kFlexPhaseWords;   // unknown: every word is treated as an address
+            }
+            for (int i = 0; i < pager::kFlexPhaseWords; i++) {
+                const bool addr = i == 0 || (i >= aoff && i < voff);
+                const uint32_t fixedW = chaseWord(words[i], rels[i], addr ? kDoubt : kDoubtText);
+                if (fixedW != words[i])
+                    for (int j = 0; j < 32; j++) fb[p][(size_t)((i / 8) * 256 + j * 8 + i % 8)] = (uint8_t)((fixedW >> (31 - j)) & 1u);
+            }
             pager::flexDecodePhase(fb[p].data(), got, st[p]);
             any |= st[p].biwOk;
             ok += st[p].ok; fixed += st[p].fixed; failed += st[p].failed;
