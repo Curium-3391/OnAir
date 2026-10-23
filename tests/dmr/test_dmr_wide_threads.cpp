@@ -17,7 +17,7 @@
 #include <vector>
 using namespace dect2;
 static const double kFs = 2.4e6;
-static double cpu() {
+static double cpuSeconds() {
 #ifdef _WIN32
     FILETIME c, e, k, u;   // 100 ns units
     GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);
@@ -38,11 +38,11 @@ static Out feedAll(const std::vector<cf32>& sig, size_t blk, bool par) {
     wm.setLogCallback([&](const std::string& s) { o.log.push_back(s); });
     wm.configure(10, kFs, 0);
     uint64_t seq = 0; RxTelemetry t;
-    const double c0 = cpu();
+    const double c0 = cpuSeconds();
     const auto w0 = std::chrono::steady_clock::now();
     for (size_t i = 0; i + blk <= sig.size(); i += blk) { wm.feed(10, sig.data() + i, blk); wm.telemetry(10, t, seq); }
     o.wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
-    o.cpuS = cpu() - c0;
+    o.cpuS = cpuSeconds() - c0;
     for (auto& r : t.wide) { char b[160]; snprintf(b, sizeof b, "%d %.0f %.2f %.2f %d %s", r.id, r.hz, r.levelDb, r.snrDb, r.state, r.info.c_str()); o.rows.push_back(b); }
     for (auto& c : t.dmr.callLog) { char b[160]; snprintf(b, sizeof b, "%d %d %d %.0f %d", (int)c.src, (int)c.dst, (int)c.kind, c.carrierHz, c.carrierId); o.calls.push_back(b); }
     WideParallel::enabled() = true;
