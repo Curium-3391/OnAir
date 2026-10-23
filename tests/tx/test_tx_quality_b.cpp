@@ -1,6 +1,6 @@
 // Transmit quality of the second half of the TX registry (mode ids "iridium" .. "zwave" in alphabetical order; tests/tx/test_tx_quality_a.cpp has the
 // first half). Each mode's generator is run at its nominal rate in memory (NOTHING is transmitted, no radio is opened) and the IQ is measured:
-//   speed      (thread CPU time) real-time factor over the whole run and the slowest 32768-sample block (the session's block) against its own duration
+//   speed      (thread CPU time) real-time factor of the median block and the slowest 32768-sample block (the session's block) against its own duration
 //   level      peak, rms, peak-to-average ratio, share of samples the output limiter would touch (> 0.9) and that would clip (> 1.0), NaN / Inf
 //   spectrum   Welch average (Blackman-Harris 4-term, 4096 bins, 50 % overlap): the 99 % occupied band [lo, hi] of width B and centre fc, then
 //              aclr    power in fc +- (0.75 B .. 1.75 B) over the power in the band, the worse side (dBc)
@@ -94,6 +94,9 @@ bool measure(const TxModeSpec& m, Q& q, std::string& err) {
     // the slotted modes wait for their UTC slot: run them long enough for a whole one (JS8 at its lowest rate to keep the buffer small)
     double secs = std::min(2.0, std::max(0.5, 4e6 / q.rate));
     if (!strcmp(m.id, "js8")) { q.rate = 250000; secs = 32; }
+    // the WSJT modes start where the system clock is in their slot (Q65: 51 s of tones in a 60 s slot): 2 s fell into the silence about one run
+    // in eight. 16 s always holds part of a transmission (as test_tx_quality_a), at a quarter of the rate to keep the buffer small
+    if (txPayloadKind(m.id) == TxPayloadKind::Ftx) { q.rate = std::max(250e3, m.minRateHz); secs = 16; }
     if (!strcmp(m.id, "kaws")) secs = 125;
     auto g = makeTxGenerator(m, r, q.rate, err);
     if (!g) return false;
@@ -104,15 +107,22 @@ bool measure(const TxModeSpec& m, Q& q, std::string& err) {
     q.secs = (double)n / q.rate;
     std::vector<cf32> x(n);
     double cpu = 0;
+    std::vector<double> per;   // CPU time of each block after the first
     for (size_t i = 0; i < n; i += blk) {
         const double t0 = cpuNow();
         g->generate(x.data() + i, blk);
         const double dt = cpuNow() - t0;
         cpu += dt;
-        if (i > 0) q.worstBlock = std::max(q.worstBlock, dt / (blk / q.rate));   // the first block pays the set-up
+        if (i > 0) { q.worstBlock = std::max(q.worstBlock, dt / (blk / q.rate)); per.push_back(dt); }   // the first block pays the set-up
         if (g->finished()) { x.resize(i + blk); break; }
     }
-    q.rt = q.secs / std::max(cpu, 1e-9);
+    // the real-time factor from the median block: even thread CPU time grows when a shared runner's other jobs take the core's caches and
+    // its second hardware thread (NR and Remote ID at 20 Msps measured 1.6 .. 1.9 x alone and 0.8 .. 1.1 x beside a full ctest -j); the
+    // median keeps the generator's own speed and drops those stretches. A single block (short runs): the whole-run figure.
+    if (per.size() >= 3) {
+        std::nth_element(per.begin(), per.begin() + (long)(per.size() / 2), per.end());
+        q.rt = (blk / q.rate) / std::max(per[per.size() / 2], 1e-9);
+    } else q.rt = q.secs / std::max(cpu, 1e-9);
     double acc = 0, pk = 0;
     cf32 mean(0, 0);
     size_t o09 = 0, o1 = 0, zr = 0, zmax = 0;
@@ -267,8 +277,9 @@ int main(int argc, char** argv) {
         // carrier with wide, weak data sidebands. Its far power is bounded at -30 dBc until the modulator and the receiver move to the standard
         CHECK(q.farDb < (id == "uat" ? -30 : -40), "%s: %.1f dBc of the power lies more than 3 occupied bandwidths away", id.c_str(), q.farDb);
         // KAAL's own waveform (the owner's specification) and the TETRAPOL test frame sent over and over (its line spectrum has a line at
-        // the centre) carry a mean by design; every other mode must not leak a carrier at the IF centre
-        if (id != "kaal" && id != "tetrapol") CHECK(q.dcDb < -20, "%s: DC offset %.1f dB of the rms", id.c_str(), q.dcDb);
+        // the centre) carry a mean by design, and so does the NFC reader: its unmodulated 13.56 MHz carrier powers the tag (ISO/IEC 14443-2) and is
+        // the IF centre; every other mode must not leak a carrier at the IF centre
+        if (id != "kaal" && id != "tetrapol" && id != "nfc") CHECK(q.dcDb < -20, "%s: DC offset %.1f dB of the rms", id.c_str(), q.dcDb);
         // a mode on the burst shaper's list must start and end its bursts on a ramp, not a step
         if (txBurstRampSec(id) > 0) CHECK(q.step < 0.5, "%s: the envelope still steps by %.2f of the peak at a burst edge (at %.6f s)", id.c_str(), q.step, q.stepAtSec);
     }

@@ -1,6 +1,7 @@
 #include "dect2/common/thread_name.h"
 #include "dect2/packs/packs.h"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -123,10 +124,13 @@ std::vector<Pack> builtinCatalog() {
         p.files = {a, f};
         v.push_back(std::move(p));
     }
-    for (const char* cc : {"DE", "GB", "FR", "PL", "NL", "LT", "AT", "CH"})
-        v.push_back(file1((std::string("dab-tii-") + cc).c_str(), (std::string("DAB transmitter list (TII): ") + cc).c_str(), "Transmitters", "OnAir-channels (github.com/adswill/OnAir-channels)",
+    for (const char* cc : {"DE", "GB", "FR", "PL", "NL", "LT", "AT", "CH"}) {
+        std::string id = std::string("dab-tii-") + cc;   // pack and dataset ids are lower case (datasets::validDatasetId); the file keeps the country's capitals
+        for (char& c : id) c = (char)std::tolower((unsigned char)c);
+        v.push_back(file1(id.c_str(), (std::string("DAB transmitter list (TII): ") + cc).c_str(), "Transmitters", "OnAir-channels (github.com/adswill/OnAir-channels)",
                           "CC0 (public domain)", "OnAir-channels contributors", 40 << 10,
                           (std::string("https://raw.githubusercontent.com/adswill/OnAir-channels/main/dab-tii/") + cc + ".csv").c_str(), (std::string("dab-tii-") + cc + ".csv").c_str(), Root::Cache));
+    }
     return v;
 }
 
