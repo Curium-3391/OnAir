@@ -108,25 +108,7 @@ struct NxdnReceiver::Impl {
         }
         rp = M + 2;
         prevZ = cf32(0, 0);
-        // NXDN48 (6.25 kHz channel, the signal within +-2.5 kHz) has its own narrower filter at 48 kHz ahead of its discriminator:
-        // the +-7.5 kHz NXDN96 needs passes twice the noise (about 3 dB at the NXDN48 threshold)
-        constexpr double nb = 4000.0;   // +-4 kHz: a 2 kHz tuning error still fits
-        nfir.assign(kNarrowTaps, 0.f);
-        double ns = 0;
-        for (int k = 0; k < kNarrowTaps; k++) {
-            const double t = k - (kNarrowTaps - 1) / 2.0, x = 2 * nb / kFs * t;
-            const double s = std::fabs(x) < 1e-9 ? 1.0 : std::sin(kPi * x) / (kPi * x);
-            const double w = 0.42 + 0.5 * std::cos(2 * kPi * t / (kNarrowTaps - 1)) + 0.08 * std::cos(4 * kPi * t / (kNarrowTaps - 1));
-            nfir[(size_t)k] = (float)(s * w); ns += nfir[(size_t)k];
-        }
-        for (float& v : nfir) v = (float)(v / ns);
-        nhist.assign(2 * (size_t)kNarrowTaps, cf32(0, 0)); nPos = 0; prevN = cf32(0, 0);
     }
-    static constexpr int kNarrowTaps = 49;
-    std::vector<float> nfir;
-    std::vector<cf32> nhist;
-    int nPos = 0;
-    cf32 prevN{0, 0};
 
     void input(std::complex<double> x) {
         const std::complex<double> v = x * lo;
@@ -150,15 +132,7 @@ struct NxdnReceiver::Impl {
                 const cf32 d = acc * std::conj(prevZ);
                 prevZ = acc;
                 const float f = (float)(std::atan2(d.imag(), d.real()) * kFs / (2 * kPi));
-                nhist[(size_t)nPos] = nhist[(size_t)(nPos + kNarrowTaps)] = acc;
-                nPos = (nPos + 1) % kNarrowTaps;
-                cf32 an(0, 0);
-                const cf32* hx = nhist.data() + nPos;
-                for (int k = 0; k < kNarrowTaps; k++) an += hx[k] * nfir[(size_t)k];
-                const cf32 dn = an * std::conj(prevN);
-                prevN = an;
-                ch[0].push((float)(std::atan2(dn.imag(), dn.real()) * kFs / (2 * kPi)));
-                ch[1].push(f);
+                for (auto& c2 : ch) c2.push(f);
                 for (int k = 0; k < 2; k++) chainStep(k);
             }
         }
