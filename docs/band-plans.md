@@ -61,7 +61,7 @@ The same ZIP confirms the rest: every PBOM frequency is on the 10 kHz raster fro
 To check or update:
 
 1. Download the ZIP above (Anatel's site may refuse cloud and VPN addresses; a home connection works). `unzip -l planos_basicos.zip` shows the date of the data.
-2. Run `python3 -I tools/check_bandplan_br.py planos_basicos.zip`. It reads PBFM, PBOM and PBTVD and prints every row whose channel or frequency does not land on a channel of the `br` plan, plus the channel range of each file. Exit status 0 means everything fits.
+2. Run `python3 -I tools/check_bandplan_br.py planos_basicos.zip`. It reads PBFM, PBOM and PBTVD and prints every row whose channel or frequency does not land on a channel of the `br` plan, plus the channel range of each file. Exit status 0 means everything fits; a missing file or a changed CSV layout also exits 1. `python3 -m unittest tools/test_check_bandplan_br.py` tests the checker itself on small made-up ZIPs.
 3. If rows do not fit, change the `fm-br`, `mw-r2` or `tv-br` template in `data/bandplans/builtin.json`, update the dates in this section and run `test_bandplan`.
 4. For the amateur bands, compare Tabela I of the current Ato (Anatel, Legislação, Atos de Requisitos Técnicos de Gestão do Espectro) with the `ham-br` template. A newer Ato replaces 926/2024 when the PDFF cites it for the amateur service.
 
