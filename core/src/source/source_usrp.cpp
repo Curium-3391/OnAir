@@ -57,6 +57,24 @@ struct UhdApi {
     err_t (DECT2_CALL* sensor_make)(void**) = nullptr;
     err_t (DECT2_CALL* sensor_free)(void**) = nullptr;
     err_t (DECT2_CALL* sensor_to_bool)(void*, bool*) = nullptr;
+    // optional: the transmit side (UsrpTx). All of them present = hasTx; a UHD without them leaves the radio receive-only
+    struct tx_streamer_t; struct tx_metadata_t;
+    err_t (DECT2_CALL* set_tx_rate)(usrp_t*, double, size_t) = nullptr;
+    err_t (DECT2_CALL* get_tx_rate)(usrp_t*, size_t, double*) = nullptr;
+    err_t (DECT2_CALL* set_tx_freq)(usrp_t*, tune_request_t*, size_t, tune_result_t*) = nullptr;
+    err_t (DECT2_CALL* set_tx_gain)(usrp_t*, double, size_t, const char*) = nullptr;
+    err_t (DECT2_CALL* get_tx_gain_range)(usrp_t*, const char*, size_t, range_t_*) = nullptr;
+    err_t (DECT2_CALL* set_tx_antenna)(usrp_t*, const char*, size_t) = nullptr;
+    err_t (DECT2_CALL* set_tx_bandwidth)(usrp_t*, double, size_t) = nullptr;
+    err_t (DECT2_CALL* get_tx_num_channels)(usrp_t*, size_t*) = nullptr;
+    err_t (DECT2_CALL* get_tx_stream)(usrp_t*, stream_args_t*, tx_streamer_t*) = nullptr;
+    err_t (DECT2_CALL* tx_streamer_make)(tx_streamer_t**) = nullptr;
+    err_t (DECT2_CALL* tx_streamer_free)(tx_streamer_t**) = nullptr;
+    err_t (DECT2_CALL* tx_streamer_max_num_samps)(tx_streamer_t*, size_t*) = nullptr;
+    err_t (DECT2_CALL* tx_streamer_send)(tx_streamer_t*, const void**, size_t, tx_metadata_t**, double, size_t*) = nullptr;
+    err_t (DECT2_CALL* tx_metadata_make)(tx_metadata_t**, bool, int64_t, double, bool, bool) = nullptr;
+    err_t (DECT2_CALL* tx_metadata_free)(tx_metadata_t**) = nullptr;
+    bool hasTx = false;
     bool ok = false;
     DynLib lib;
     UhdApi() {
@@ -82,6 +100,14 @@ struct UhdApi {
             lib.opt(get_clock_sources, "uhd_usrp_get_clock_sources"); lib.opt(get_time_sources, "uhd_usrp_get_time_sources");
             lib.opt(get_mboard_sensor, "uhd_usrp_get_mboard_sensor"); lib.opt(sensor_make, "uhd_sensor_value_make");
             lib.opt(sensor_free, "uhd_sensor_value_free"); lib.opt(sensor_to_bool, "uhd_sensor_value_to_bool");
+            lib.opt(set_tx_rate, "uhd_usrp_set_tx_rate"); lib.opt(get_tx_rate, "uhd_usrp_get_tx_rate"); lib.opt(set_tx_freq, "uhd_usrp_set_tx_freq");
+            lib.opt(set_tx_gain, "uhd_usrp_set_tx_gain"); lib.opt(get_tx_gain_range, "uhd_usrp_get_tx_gain_range"); lib.opt(set_tx_antenna, "uhd_usrp_set_tx_antenna");
+            lib.opt(set_tx_bandwidth, "uhd_usrp_set_tx_bandwidth"); lib.opt(get_tx_num_channels, "uhd_usrp_get_tx_num_channels");
+            lib.opt(get_tx_stream, "uhd_usrp_get_tx_stream"); lib.opt(tx_streamer_make, "uhd_tx_streamer_make"); lib.opt(tx_streamer_free, "uhd_tx_streamer_free");
+            lib.opt(tx_streamer_max_num_samps, "uhd_tx_streamer_max_num_samps"); lib.opt(tx_streamer_send, "uhd_tx_streamer_send");
+            lib.opt(tx_metadata_make, "uhd_tx_metadata_make"); lib.opt(tx_metadata_free, "uhd_tx_metadata_free");
+            hasTx = set_tx_rate && get_tx_rate && set_tx_freq && set_tx_gain && get_tx_gain_range && set_tx_antenna && get_tx_stream && tx_streamer_make &&
+                    tx_streamer_free && tx_streamer_max_num_samps && tx_streamer_send && tx_metadata_make && tx_metadata_free;
         }
     }
     // UHD's text for the last failure, on one line (its messages can span several)
@@ -374,6 +400,110 @@ private:
     double lo_ = 0, hi_ = 0;   // RX tuning range the library reports (0 = not known)
 };
 
+// ---- transmit -------------------------------------------------------------------------------------------------------------------------
+// The USRP's transmit path through UHD's C API: tx_streamer, fc32 samples (sc16 on the wire), the TX/RX connector of the chosen output (a B210:
+// RF A = 0, RF B = 1). Samples beyond +-1.0 are clipped. The radio is opened on its own (a USB USRP cannot be opened twice), so RX and TX of one
+// USRP never run together: the device claim makes the TX window wait for the receiver that holds it.
+class UsrpTx : public TxSink {
+public:
+    explicit UsrpTx(const std::string& args) { args_ = args.substr(0, args.find('#')); }
+    ~UsrpTx() override { close(); }
+    bool open(const TxTune& t, std::string& err) override {
+        close();
+        if (!uhd().ok) { err = "USRP: UHD is not installed, it cannot transmit"; return false; }
+        if (!uhd().hasTx) { err = "USRP: the installed UHD has no transmit functions (uhd_usrp_set_tx_rate, uhd_tx_streamer_send, ...); install UHD 3.15 or newer"; return false; }
+        if (uhd().make(&dev_, args_.c_str()) != 0 || !dev_) {
+            if (dev_) uhd().free_(&dev_);
+            dev_ = nullptr;
+            const std::string x = uhd().text(nullptr);
+            err = "USRP: cannot open the radio" + (x.empty() ? std::string(" (in use by a receiver?)") : ": " + x);
+            return false;
+        }
+        const size_t ch = (size_t)std::max(0, t.channel);
+        if (size_t n = 0; uhd().get_tx_num_channels && uhd().get_tx_num_channels(dev_, &n) == 0 && ch >= n) {
+            err = "USRP: this radio has " + std::to_string(n) + " transmit output(s), output " + std::to_string(ch + 1) + " was picked"; shut(); return false;
+        }
+        const double rate = std::max(t.sampleRate > 0 ? t.sampleRate : 1e6, 0.2e6);
+        if (uhd().set_tx_rate(dev_, rate, ch) != 0) { err = "USRP: the sample rate " + mhz(rate) + " Msps was refused: " + uhd().text(dev_); shut(); return false; }
+        rate_ = rate;
+        uhd().get_tx_rate(dev_, ch, &rate_);
+        if (uhd().set_tx_bandwidth) uhd().set_tx_bandwidth(dev_, std::max(0.2e6, t.bandwidthHz > 0 ? t.bandwidthHz : rate_ * 0.95), ch);
+        if (uhd().set_tx_antenna(dev_, "TX/RX", ch) != 0) { err = "USRP: the transmit connector TX/RX was refused: " + uhd().text(dev_); shut(); return false; }
+        TuneSettings ts; ts.radio = t.radio;
+        char noArgs[1] = {0};
+        UhdApi::tune_request_t req{std::max(ppmCorrectedHz(txRadioHz(t), radioPpm(ts)), 0.0), UhdApi::kPolicyAuto, 0, UhdApi::kPolicyAuto, 0, noArgs};
+        UhdApi::tune_result_t res{};
+        if (uhd().set_tx_freq(dev_, &req, ch, &res) != 0) { err = "USRP: the driver refused " + mhz(txRadioHz(t)) + " MHz as a transmit frequency: " + uhd().text(dev_); shut(); return false; }
+        double gmin = 0, gmax = 89.75;
+        if (UhdApi::range_t_* rg = nullptr; uhd().get_tx_gain_range && uhd().meta_range_make(&rg) == 0 && rg) {
+            if (uhd().get_tx_gain_range(dev_, "", ch, rg) == 0) { uhd().meta_range_start(rg, &gmin); uhd().meta_range_stop(rg, &gmax); }
+            uhd().meta_range_free(&rg);
+        }
+        if (uhd().set_tx_gain(dev_, std::min(std::max(t.gainDb, gmin), gmax), ch, "") != 0) { err = "USRP: the transmit gain was refused: " + uhd().text(dev_); shut(); return false; }
+        size_t chan = ch;
+        char cpu[] = "fc32", otw[] = "sc16", none[] = "";
+        UhdApi::stream_args_t sa{cpu, otw, none, &chan, 1};
+        if (uhd().tx_streamer_make(&st_) != 0 || uhd().get_tx_stream(dev_, &sa, st_) != 0) { err = "USRP: cannot set up the transmit stream: " + uhd().text(dev_); shut(); return false; }
+        size_t m = 0;
+        uhd().tx_streamer_max_num_samps(st_, &m);
+        maxN_ = m > 0 ? m : 8192;
+        open_ = true; sob_ = true;
+        return true;
+    }
+    bool write(const cf32* x, size_t n, std::string& err) override {
+        if (!open_) { err = "USRP: the transmitter is not open"; return false; }
+        size_t done = 0;
+        while (done < n) {
+            const size_t k = std::min(n - done, maxN_);
+            buf_.resize(k);
+            for (size_t i = 0; i < k; i++) buf_[i] = cf32(std::max(-1.f, std::min(1.f, x[done + i].real())), std::max(-1.f, std::min(1.f, x[done + i].imag())));
+            const void* b[1] = {buf_.data()};
+            size_t sent = 0;
+            // the first packet starts the burst; the end of burst goes out with close()
+            UhdApi::tx_metadata_t* md = nullptr;
+            if (uhd().tx_metadata_make(&md, false, 0, 0.0, sob_, false) != 0 || !md) { err = "USRP: cannot make the transmit packet header"; return false; }
+            sob_ = false;
+            const int e = uhd().tx_streamer_send(st_, b, k, &md, 1.0, &sent);
+            uhd().tx_metadata_free(&md);
+            if (e != 0) { err = "USRP: the transmit stream failed: " + uhd().text(dev_); return false; }
+            if (sent == 0) { if (++stalls_ > 5) { err = "USRP: the radio takes no transmit samples"; return false; } } else stalls_ = 0;
+            done += sent;
+        }
+        return true;
+    }
+    void close() override {
+        if (st_ && open_ && !sob_) {   // end of burst: an empty packet, then the radio stops sending
+            UhdApi::tx_metadata_t* md = nullptr;
+            if (uhd().tx_metadata_make(&md, false, 0, 0.0, false, true) == 0 && md) {
+                size_t sent = 0;
+                const void* b[1] = {buf_.data()};
+                uhd().tx_streamer_send(st_, b, 0, &md, 0.5, &sent);
+                uhd().tx_metadata_free(&md);
+            }
+        }
+        open_ = false; sob_ = false; stalls_ = 0;
+        shut();
+    }
+    double sampleRate() const override { return rate_; }
+    std::string name() const override { return "USRP"; }
+private:
+    void shut() {
+        if (st_) uhd().tx_streamer_free(&st_);
+        st_ = nullptr;
+        if (dev_) uhd().free_(&dev_);
+        dev_ = nullptr;
+    }
+    std::string args_;
+    UhdApi::usrp_t* dev_ = nullptr;
+    UhdApi::tx_streamer_t* st_ = nullptr;
+    std::vector<cf32> buf_;
+    size_t maxN_ = 8192;
+    double rate_ = 0;
+    int stalls_ = 0;
+    bool open_ = false, sob_ = false;
+};
+std::unique_ptr<TxSink> makeUsrpTx(const DeviceInfo& d) { return std::make_unique<UsrpTx>(d.nativeArgs); }
+
 void listUsrp(std::vector<DeviceInfo>& out) {
     if (!uhd().ok) return;
     UhdApi::strvec_t* v = nullptr;
@@ -417,6 +547,13 @@ void listUsrp(std::vector<DeviceInfo>& out) {
             d.name = "USRP " + prod + (d.serial.empty() ? "" : " " + d.serial) + (in.label.empty() ? "" : " " + in.label) + " (native, experimental)";
             d.maxRateHz = 56e6; d.minRateHz = 0.2e6;
             d.gainMinDb = 0; d.gainMaxDb = 76;
+            // Transmit: every receive entry of one USRP is the same device; the TX window lists it once under txName (not-hasTx UHD: receive-only)
+            d.canTransmit = uhd().hasTx;
+            d.txName = "USRP " + prod + (d.serial.empty() ? "" : " " + d.serial) + " (native, experimental)";
+            d.txChannels = prod == "B210" ? 2 : 1;
+            d.txMinRateHz = 0.2e6; d.txMaxRateHz = 56e6;
+            d.txGainMinDb = 0; d.txGainMaxDb = 89.75;
+            d.txGainNote = "the USRP's own TX gain in dB (a B2xx: 0 to 89.75 dB), on the TX/RX connector";
             d.settings = {ppmSetting(0.01),
                           choiceSetting("clock", "Reference clock",
                                         "The 10 MHz reference the USRP locks to. Default: UHD's choice (the internal oscillator; a B2xx with a GPSDO fitted\n"

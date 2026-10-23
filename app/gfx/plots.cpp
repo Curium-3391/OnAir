@@ -1548,7 +1548,8 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
         const ImVec2 psz = plt::GetPlotSize();   // first: it finishes the setup, after which the limits are this frame's
         const plt::Rect vis = plt::GetPlotLimits();
         const ImVec2 fbs = ImGui::GetIO().DisplayFramebufferScale;
-        const int W = a.wf.cols, texW = Waterfall::W;   // the history (8192 or finer) and the view texture (at most a pixel a column)
+        // the history (8192 or finer) and the view texture (at most a pixel a column; no wider than the GPU takes: 4096 on a Pi, #284)
+        const int W = a.wf.cols, texW = gGfx ? std::min(Waterfall::W, gGfx->maxImageSize()) : Waterfall::W;
         int c0 = 0, c1 = W;
         specaxis::visibleCols(vis.X.Min, vis.X.Max, x0, fs, W, c0, c1);
         const int k = plt::WfView::groupRows(vis.Y.Max - vis.Y.Min, psz.y * std::max(1.f, fbs.y), H);

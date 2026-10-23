@@ -38,7 +38,7 @@ ThreadPool::~ThreadPool() {
 
 void ThreadPool::workerLoop(const std::string& name, bool background) {
     setThreadName(name.c_str());
-    if (background) setThreadPriority(ThreadPriority::Background);
+    setThreadPriority(background ? ThreadPriority::Background : ThreadPriority::Decode);
     for (;;) {
         std::function<void()> job;
         {
@@ -58,21 +58,24 @@ void ThreadPool::enqueue(std::function<void()> job) {
 }
 
 namespace {
-int autoWorkers() {
+int autoWorkers(bool decode) {
     const int c = configuredThreads();
     if (c >= 0) return c;
-    const int hw = (int)std::thread::hardware_concurrency();
+    int hw = (int)std::thread::hardware_concurrency();
+#if defined(__linux__)
+    if (decode && coreSets().hetero) hw = CPU_COUNT(&coreSets().big);   // the decode workers are held to the big cores (platform.h): no more of them than those
+#endif
     return std::max(1, std::min(8, hw - 1));
 }
 } // namespace
 
 ThreadPool& ThreadPool::shared() {
-    static ThreadPool pool(autoWorkers(), "onair-w", false);
+    static ThreadPool pool(autoWorkers(true), "onair-w", false);
     return pool;
 }
 
 ThreadPool& ThreadPool::background() {
-    static ThreadPool pool(autoWorkers(), "onair-bg", true);
+    static ThreadPool pool(autoWorkers(false), "onair-bg", true);
     return pool;
 }
 
@@ -94,12 +97,15 @@ void ThreadPool::parallelFor(size_t n, const std::function<void(size_t)>& fn, si
     auto st = std::make_shared<State>();
     st->n = n;
     st->fn = &fn;
-    auto run = [st] {
+    const int acc = cpu::current();   // the helpers' time counts for the caller's account
+    auto run = [st, acc] {
+        cpu::Scope scope(acc);
         for (;;) {
             size_t i = st->next.fetch_add(1, std::memory_order_acq_rel);
             if (i >= st->n) return;
             std::exception_ptr e;
             try { (*st->fn)(i); } catch (...) { e = std::current_exception(); }
+            if (acc) cpu::tick();   // charged before the caller can see the job as done
             bool last;
             {
                 std::lock_guard<std::mutex> lk(st->m);
