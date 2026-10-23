@@ -36,6 +36,8 @@ void pn9(uint8_t* out, int n);
 // a block of nWords Hamming words (8 * nWords info bits) to 12 * nWords air bits (interleaved, scrambled) and back
 void blockEncode(const uint8_t* info, int nWords, uint8_t* air);
 int blockDecode(const uint8_t* air, int nWords, uint8_t* info);   // returns bits corrected, -1 when a word could not be
+// the same from soft values in air order (> 0 a 1, the magnitude the confidence; before the descrambling): maximum likelihood per word
+int blockDecodeSoft(const float* soft, int nWords, uint8_t* info);
 
 enum HdrType { kHdrComm = 0, kHdrConnReq = 1, kHdrUnconnect = 2, kHdrAck = 3, kHdrSysReq = 4, kHdrStatus = 5 };
 enum CommMode { kVoice = 0, kVoiceSlow = 1, kData1 = 2, kData2 = 3, kPacket = 4, kVoiceData = 5 };

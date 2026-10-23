@@ -140,8 +140,7 @@ struct NxdnReceiver::Impl {
 
     // ------------------------------------------------------------ one chain per symbol rate
     struct Chain {
-        int baud = 2400, sps = 20, boxLen = 10;
-        std::vector<float> box; int boxPos = 0; float boxSum = 0;
+        int baud = 2400, sps = 20;
         std::vector<float> y = std::vector<float>(kYMask + 1, 0.f);
         int64_t yN = 0;
         enum { Search, Track } mode = Search;
@@ -152,22 +151,43 @@ struct NxdnReceiver::Impl {
         int miss = 0;
         bool fly = false;
         int bad = 0;             // frames in a row without a good CRC        // the current frame's sync was not found (carried over)
+        // Symbol filter: a windowed-sinc low pass to 0.625 of the symbol rate (1500 Hz for NXDN48, 3000 Hz for NXDN96; the raised-cosine
+        // signal reaches 0.6 of it). The discriminator's noise grows with frequency, and the half-symbol box used before let much of it
+        // through: the threshold moved by about 5 dB.
+        int sD = 40;                     // the filter's delay in samples (two symbols)
+        std::vector<float> sh, shist;
+        int shPos = 0;
         void init(int b) {
-            baud = b; sps = (int)(kFs / b); boxLen = sps / 2;
-            box.assign((size_t)boxLen, 0.f); boxPos = 0; boxSum = 0;
+            baud = b; sps = (int)(kFs / b);
+            sD = 2 * sps;
+            const int n = 2 * sD + 1;
+            const double lpf = 0.625 * b;
+            sh.assign((size_t)n, 0.f);
+            double sum = 0;
+            for (int k = 0; k < n; k++) {
+                const double t = k - sD, x = 2 * lpf / kFs * t;
+                const double sc = t == 0 ? 1.0 : std::sin(kPi * x) / (kPi * x);
+                const double w = 0.42 + 0.5 * std::cos(kPi * t / (sD + 1)) + 0.08 * std::cos(2 * kPi * t / (sD + 1));
+                sh[(size_t)k] = (float)(sc * w); sum += sh[(size_t)k];
+            }
+            for (float& v : sh) v = (float)(v / sum);
+            shist.assign(2 * (size_t)n, 0.f); shPos = 0;
             std::fill(y.begin(), y.end(), 0.f); yN = 0;
             mode = Search; candN = -1; candR = 0; miss = 0; decoded = false;
         }
         void push(float f) {
-            boxSum += f - box[(size_t)boxPos];
-            box[(size_t)boxPos] = f;
-            boxPos = (boxPos + 1) % boxLen;
-            if ((yN & 4095) == 0) { boxSum = 0; for (float v : box) boxSum += v; }
-            y[(size_t)(yN & kYMask)] = boxSum / boxLen;
+            if (sh.empty()) init(baud);
+            const int n = (int)sh.size();
+            shist[(size_t)shPos] = shist[(size_t)(shPos + n)] = f;
+            shPos = (shPos + 1) % n;
+            const float* x = shist.data() + shPos;
+            float acc = 0;
+            for (int k = 0; k < n; k++) acc += x[k] * sh[(size_t)(n - 1 - k)];
+            y[(size_t)(yN & kYMask)] = acc;
             yN++;
         }
         // the sample a symbol's centre lands on: the filter output lags by about half its length
-        float at(int64_t i) const { return y[(size_t)((i + boxLen / 2) & kYMask)]; }
+        float at(int64_t i) const { return y[(size_t)((i + sD) & kYMask)]; }
         void fswAt(int64_t e, float* v) const { for (int k = 0; k < nxdn::kFswSym; k++) v[k] = at(e - (int64_t)(nxdn::kFswSym - 1 - k) * sps); }
     };
     Chain ch[2];
@@ -182,7 +202,7 @@ struct NxdnReceiver::Impl {
 
     void chainStep(int idx) {
         Chain& c = ch[idx];
-        const int64_t last = c.yN - 1 - c.boxLen;   // newest sample whose symbol filter is complete
+        const int64_t last = c.yN - 1 - 2 * c.sD;   // newest sample whose symbol filter is complete
         const int64_t need = (int64_t)(nxdn::kFswSym) * c.sps;
         if (last < need) return;
         float v[nxdn::kFswSym];
@@ -291,7 +311,13 @@ struct NxdnReceiver::Impl {
         uint8_t lb = 0;
         for (int k = 0; k < 8; k++) lb = (uint8_t)((lb << 1) | (s[k] < 0 ? 1 : 0));
         nxdn::Lich l;
-        const bool lichOk = nxdn::lichDecode(lb, l);
+        bool lichOk = nxdn::lichDecode(lb, l);
+        if (!lichOk) {
+            // one parity bit: the least reliable symbol is the one most likely wrong
+            int wk = 0;
+            for (int k = 1; k < 8; k++) if (std::fabs(s[k]) < std::fabs(s[wk])) wk = k;
+            if (std::fabs(s[wk]) < 1.f) { lb ^= (uint8_t)(0x80 >> wk); lichOk = nxdn::lichDecode(lb, l); }
+        }
         if (lichOk) { lastLich = l; haveLich = true; }
         else { tel.lichBad++; if (!haveLich) return false; l = lastLich; }
         bool sacchOk = false;

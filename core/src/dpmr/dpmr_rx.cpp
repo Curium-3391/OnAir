@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <complex>
 #include <cstdio>
 #include <cstring>
@@ -22,7 +23,7 @@ namespace dect2 {
 namespace {
 using dect2::math::kPi;
 constexpr double kFs = 48000;            // demodulator rate: 20 samples per symbol
-constexpr int kSps = 20, kBox = 10;
+constexpr int kSps = 20;
 constexpr int kYMask = 32767;
 constexpr size_t kMaxEvents = 200;
 constexpr double kUnit = 350.0;          // Hz per symbol level (+3 = 1050 Hz)
@@ -146,18 +147,39 @@ struct DpmrReceiver::Impl {
     }
 
     // ------------------------------------------------------------ symbol filter and the frame state machine
-    float box[kBox] = {}; int boxPos = 0; float boxSum = 0;
     std::vector<float> y = std::vector<float>(kYMask + 1, 0.f);
     int64_t yN = 0;
+    // Symbol filter: a windowed-sinc low pass to 1500 Hz (the 2400 baud raised-cosine signal reaches 1440 Hz). The discriminator's noise
+    // grows with frequency, and the half-symbol box used before let much of it through: the threshold moved by about 5 dB.
+    static constexpr int sD = 2 * kSps;          // the filter's delay in samples
+    std::vector<float> sh, shist;      // taps, history (doubled)
+    int shPos = 0;
+    void initSym() {
+        constexpr double lpf = 1500.0;
+        const int n = 2 * sD + 1;
+        sh.assign((size_t)n, 0.f);
+        double sum = 0;
+        for (int k = 0; k < n; k++) {
+            const double t = k - sD, x = 2 * lpf / kFs * t;
+            const double sc = t == 0 ? 1.0 : std::sin(kPi * x) / (kPi * x);
+            const double w = 0.42 + 0.5 * std::cos(kPi * t / (sD + 1)) + 0.08 * std::cos(2 * kPi * t / (sD + 1));
+            sh[(size_t)k] = (float)(sc * w); sum += sh[(size_t)k];
+        }
+        for (float& v : sh) v = (float)(v / sum);
+        shist.assign(2 * (size_t)n, 0.f); shPos = 0;
+    }
     void push(float f) {
-        boxSum += f - box[boxPos];
-        box[boxPos] = f;
-        boxPos = (boxPos + 1) % kBox;
-        if ((yN & 4095) == 0) { boxSum = 0; for (float v : box) boxSum += v; }
-        y[(size_t)(yN & kYMask)] = boxSum / kBox;
+        if (sh.empty()) initSym();
+        const int n = (int)sh.size();
+        shist[(size_t)shPos] = shist[(size_t)(shPos + n)] = f;
+        shPos = (shPos + 1) % n;
+        const float* x = shist.data() + shPos;
+        float acc = 0;
+        for (int k = 0; k < n; k++) acc += x[k] * sh[(size_t)(n - 1 - k)];
+        y[(size_t)(yN & kYMask)] = acc;
         yN++;
     }
-    float at(int64_t i) const { return y[(size_t)((i + kBox / 2) & kYMask)]; }
+    float at(int64_t i) const { return y[(size_t)((i + sD) & kYMask)]; }
     void symsAt(int64_t first, int n, float* v) const { for (int k = 0; k < n; k++) v[k] = at(first + (int64_t)k * kSps); }
 
     enum Mode { Search, Header, Sync, Frame, EndWait } mode = Search;
@@ -211,7 +233,7 @@ struct DpmrReceiver::Impl {
     }
 
     void step() {
-        const int64_t last = yN - 1 - kBox;
+        const int64_t last = yN - 1 - 2 * sD;
         if (last < 64 * kSps) return;
         switch (mode) {
         case Search: search(last); break;
@@ -307,6 +329,19 @@ struct DpmrReceiver::Impl {
         }
         return 10 * std::log10(5.0 / std::max(1e-4, mse / std::max(1, nSym)));
     }
+    // soft values of the same bits (> 0 a 1): the first bit of a dibit is 1 below zero, the second 1 on an outer level
+    void softAt(int64_t first, int nSym, float* soft) const {
+        for (int k = 0; k < nSym; k++) {
+            const float x = (float)((at(first + (int64_t)k * kSps) - d) / g);
+            soft[2 * k] = -x; soft[2 * k + 1] = std::fabs(x) - 2.f;
+        }
+    }
+    // a block of Hamming words, soft decision (about 1.5 dB over the hard decoder)
+    int blockAt(int64_t first, int nSym, int nWords, uint8_t* info) {
+        float soft[288];
+        softAt(first, nSym, soft);
+        return dpmr::blockDecodeSoft(soft, nWords, info);
+    }
     int ccAt(int64_t first) {
         float v[dpmr::kCcSym];
         for (int k = 0; k < dpmr::kCcSym; k++) v[k] = (float)((at(first + (int64_t)k * kSps) - d) / g);
@@ -329,8 +364,17 @@ struct DpmrReceiver::Impl {
             if (flip) { g = -g; packetHdr = !packetHdr; }   // FS1 seen as FS4 (or the other way): the polarity was wrong
             for (int part = 0; part < 2 && !ok; part++) {
                 snr = bitsAt(e + (int64_t)(1 + 72 * part) * kSps, 60, air);
-                const int fixed = dpmr::blockDecode(air, 10, info);
+                const int fixed = blockAt(e + (int64_t)(1 + 72 * part) * kSps, 60, 10, info);
                 if (fixed >= 0 && dpmr::headerParse(info, h)) { ok = true; addBer(fixed, 120); }
+            }
+            if (!ok) {
+                // HI1 repeats HI0: both copies' soft values added are 3 dB stronger than either
+                float s0[120], s1[120];
+                softAt(e + kSps, 60, s0);
+                softAt(e + 73 * kSps, 60, s1);
+                for (int i = 0; i < 120; i++) s0[i] += s1[i];
+                const int fixed = dpmr::blockDecodeSoft(s0, 10, info);
+                if (fixed >= 0 && dpmr::headerParse(info, h)) { ok = true; addBer(fixed, 240); }
             }
         }
         if (!ok) { g = -g; packetHdr = !packetHdr; }
@@ -385,7 +429,7 @@ struct DpmrReceiver::Impl {
         uint8_t air[dpmr::kTchBits], info[192];
         const double snr = bitsAt(s + 12 * kSps, 36, air);
         dpmr::Cch c;
-        const int fixed = dpmr::blockDecode(air, 6, info);
+        const int fixed = blockAt(s + 12 * kSps, 36, 6, info);
         const bool ok = fixed >= 0 && dpmr::cchParse(info, c);
         if (ok) { tel.cchOk++; addBer(fixed, 72); fn = c.frame; tel.slowData = c.slowData; good(snr); }
         else tel.cchBad++;
@@ -394,7 +438,7 @@ struct DpmrReceiver::Impl {
         bitsAt(s + 48 * kSps, 144, air);
         const int mode = ok ? c.commMode : sdOn ? sd.commMode : tel.now.active ? tel.now.commMode : -1;
         if (mode == dpmr::kData1 || mode == dpmr::kData2 || mode == dpmr::kPacket) {
-            const int fx = dpmr::blockDecode(air, 24, info);
+            const int fx = blockAt(s + 48 * kSps, 144, 24, info);
             int blk = 0; std::string txt;
             if (fx >= 0 && dpmr::dataParse(info, blk, txt)) {
                 tel.dataOk++; addBer(fx, 288);
@@ -426,7 +470,7 @@ struct DpmrReceiver::Impl {
         uint8_t air[dpmr::kEndBits], info[48];
         const double snr = bitsAt(first, 36, air);
         dpmr::End e;
-        const int fixed = dpmr::blockDecode(air, 6, info);
+        const int fixed = blockAt(first, 36, 6, info);
         tel.frames++;
         if (fixed >= 0 && dpmr::endParse(info, e)) {
             tel.endOk++; addBer(fixed, 72); good(snr);
@@ -515,7 +559,7 @@ struct DpmrReceiver::Impl {
         aud8.clear();
     }
 
-    void resetChain() { mode = Search; candN = -1; candR = 0; g = kUnit; d = 0; std::fill(y.begin(), y.end(), 0.f); yN = 0; boxSum = 0; boxPos = 0; for (float& b : box) b = 0; }
+    void resetChain() { mode = Search; candN = -1; candR = 0; g = kUnit; d = 0; std::fill(y.begin(), y.end(), 0.f); yN = 0; initSym(); }
 
     // The call log and the decoded headers stay through resets: Clear and a loaded file reach the feed thread's copy through these requests (mu), and the
     // published report at once

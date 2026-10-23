@@ -1,5 +1,6 @@
 // dPMR air interface helpers (see dpmr_proto.h).
 #include "dect2/dpmr/dpmr_proto.h"
+#include "dect2/common/bits.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -73,6 +74,48 @@ void blockEncode(const uint8_t* info, int nW, uint8_t* air) {
     for (int w = 0; w < nW; w++) { hamEncode(info + 8 * w, c); for (int k = 0; k < 12; k++) air[k * nW + w] = c[k]; }
     for (int i = 0; i < 12 * nW; i++) air[i] ^= pn[i];
 }
+// Soft decision: every word is the codeword closest to the received values (all 256 tried, the correlation with the soft values), which
+// also repairs most double errors that the hard decoder can only detect. A word more than two bits from the hard decisions is not trusted.
+int blockDecodeSoft(const float* soft, int nW, uint8_t* info) {
+    static const struct Table {
+        uint16_t cw[256];
+        Table() {
+            for (int v = 0; v < 256; v++) {
+                uint8_t d[8], c[12];
+                for (int i = 0; i < 8; i++) d[i] = (uint8_t)((v >> (7 - i)) & 1);
+                hamEncode(d, c);
+                uint16_t w = 0;
+                for (int k = 0; k < 12; k++) w = (uint16_t)((w << 1) | c[k]);
+                cw[v] = w;
+            }
+        }
+    } tab;
+    uint8_t pn[512];
+    pn9(pn, 12 * nW);
+    int fixed = 0;
+    bool bad = false;
+    for (int w = 0; w < nW; w++) {
+        float s[12];
+        uint16_t hard = 0;
+        for (int k = 0; k < 12; k++) {
+            s[k] = pn[k * nW + w] ? -soft[k * nW + w] : soft[k * nW + w];
+            hard = (uint16_t)((hard << 1) | (s[k] > 0 ? 1 : 0));
+        }
+        int best = 0;
+        float bm = -1e30f;
+        for (int v = 0; v < 256; v++) {
+            const uint16_t c = tab.cw[v];
+            float m = 0;
+            for (int k = 0; k < 12; k++) m += ((c >> (11 - k)) & 1) ? s[k] : -s[k];
+            if (m > bm) { bm = m; best = v; }
+        }
+        const int dist = bits::popcount((uint32_t)(tab.cw[best] ^ hard));
+        if (dist > 2) bad = true; else fixed += dist;
+        for (int i = 0; i < 8; i++) info[8 * w + i] = (uint8_t)((best >> (7 - i)) & 1);
+    }
+    return bad ? -1 : fixed;
+}
+
 int blockDecode(const uint8_t* air, int nW, uint8_t* info) {
     uint8_t c[12], pn[512];
     pn9(pn, 12 * nW);

@@ -116,7 +116,9 @@ struct DstarReceiver::Impl {
             rstep = fd / kFs;
             M = std::max(8, (int)std::ceil(5.5 * fd / 5000.0 / 2));
             fir.assign((size_t)nPh * 2 * M, 0.f);
-            const double fc = 7000.0 / std::max(1.0, fd);
+            // the channel filter: +-4.5 kHz holds the GMSK signal (+-3 kHz) with a 2 kHz tuning error; the +-7 kHz used before let in noise that
+            // the discriminator turns into clicks (about 2 dB at the threshold)
+            const double fc = 4500.0 / std::max(1.0, fd);
             for (int ph = 0; ph < nPh; ph++) {
                 const double frac = (double)ph / nPh;
                 double sum = 0;
@@ -167,7 +169,9 @@ struct DstarReceiver::Impl {
             }
         }
 
+        float pwr = 0;               // the channel power, averaged over about 10 ms
         void demod(cf32 z) {
+            pwr += (std::norm(z) - pwr) * (1.f / 480.f);
             const cf32 d = z * std::conj(prevZ);
             prevZ = z;
             const float f = (float)(std::atan2(d.imag(), d.real()) * kFs / (2 * kPi));
@@ -195,6 +199,7 @@ struct DstarReceiver::Impl {
     float fz[dstar::kFrameBits];
     int fi = 0;                      // frame number since the header (0 carries the data sync)
     int syncMissRun = 0, weakRun = 0;
+    double callPwr = 0;              // the channel power of the call's good frames (the carrier stopping is a drop of it)
     double lastAny = -10;
     double snrAvg = 0, berAvg = 0;
 
@@ -366,9 +371,13 @@ struct DstarReceiver::Impl {
         snrAvg += 0.1 * (snr - snrAvg);
         tel.snrDb = (float)snrAvg;
         tel.cfoHz = lp == 1 ? -dc : dc;
-        // a frame that does not look like bits (the carrier gone: the discriminator gives noise): three in a row end the call, and the
-        // two before are taken back; the slow data of a weak frame is not used
-        const bool weak = snr < 4 || m > 1.8 || m < 0.4;
+        // a frame that does not look like bits: three in a row end the call, and the two before are taken back; the slow data of a weak
+        // frame is not used
+        // the carrier gone: the discriminator gives noise, or (in the narrow channel filter, where noise looks almost like bits) the
+        // power falls to a quarter of the call's
+        const double pw = fr[lp].pwr;
+        const bool weak = snr < 4 || m > 1.8 || m < 0.4 || (callPwr > 0 && pw < 0.25 * callPwr);
+        if (!weak) callPwr = callPwr > 0 ? callPwr + 0.05 * (pw - callPwr) : pw;
         if (weak) {
             if (++weakRun >= 3) {
                 pend.clear();
@@ -503,6 +512,7 @@ struct DstarReceiver::Impl {
         tel.now.wallTime = (int64_t)time(nullptr);
         tel.now.startSec = startSec;
         hdrErr = hdrBits = syncErr = syncBits = 0;
+        callPwr = 0;
         half1Ok = false;
         memset(text, ' ', sizeof text); textMask = 0; textLogged = false;
         gpsBuf.clear(); hdrBuf.clear();
