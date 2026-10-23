@@ -25,6 +25,18 @@ int main() {
     dect2::setThreadName("");   // ignored
     CHECK(dect2::currentThreadName() == "onair-main");
 #endif
+    // the scheduling class by name: savers are background, uploads utility, the rest (the sample path) untouched
+    CHECK(dect2::threadNameClass("onair-results") == 2);
+    CHECK(dect2::threadNameClass("onair-mapsend") == 1);
+    CHECK(dect2::threadNameClass("onair-analysis") == 0);
+    CHECK(dect2::threadNameClass("onair-src") == 0);
+    CHECK(dect2::threadNameClass(nullptr) == 0);
+    {
+        bool ran = false;
+        std::thread b = dect2::namedThread("onair-results", [&] { ran = true; });
+        b.join();
+        CHECK(ran);
+    }
     if (!fails) std::printf("thread_name OK\n");
     return fails ? 1 : 0;
 }

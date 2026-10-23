@@ -20,6 +20,9 @@
 #include "ui/typography.h"
 #include "state/workspace.h"
 #include "state/layout.h"
+#include "ui/frame_pace.h"
+#include "ui/perf_overlay.h"
+#include "platform/power.h"
 
 // code runs before the library's (the linker places the program's own objects first), so the check here comes in time.
 #if defined(DECT2_REQUIRES_AVX2) && (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
@@ -62,27 +65,34 @@ static void discordTick(const App& a) {   // posts the wanted Rich Presence; the
     gDiscord->set(p);
 }
 
-// frame pacing: the screen is only redrawn as often as it can change (see the comment inside)
-static void paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double& frameNext, double& lastInputT) {
-    // a ProMotion Mac) and draw the same spectrum three times over. Input wakes the loop at once; --shot keeps the unpaced loop its frame counts rely on.
+// frame pacing: the screen is only redrawn as often as it can change (the policy and its rates: ui/frame_pace.h). Unpaced, the loop would
+// follow the display (120 Hz on a ProMotion Mac) and draw the same spectrum several times over. Input wakes the loop at once; --shot keeps
+// the unpaced loop its frame counts rely on. Returns the interval chosen (View > Performance overlay shows it).
+struct PaceInfo { double interval = 0; bool battery = false, occluded = false; };
+static PaceInfo paceFrame(GLFWwindow* window, App& app, const DevOpts& o, double& frameNext, double& lastInputT) {
     const double t = glfwGetTime();
-    const bool shown = glfwGetWindowAttrib(window, GLFW_VISIBLE) && !glfwGetWindowAttrib(window, GLFW_ICONIFIED);
-    const bool focused = glfwGetWindowAttrib(window, GLFW_FOCUSED) != 0;
-    specaxis::Pace p;   // the rule is in gfx/spec_axis.h (tested): a shown window with a live waterfall keeps 30 frames a second, focused or not (#246)
-    p.shot = o.shotPath != nullptr;
-    p.shown = shown || popOutShown() || gNoOsWindows;                                               // the pop-out window keeps playing
-    p.reduceCpuHidden = app.reduceCpuHidden;
-    p.recentInput = t - lastInputT < 1.0;                                                           // typing, dragging
-    p.video = app.engine.player().selected() >= 0;
-    p.running = anyRunning();                                                                       // spectrum and waterfall
-    p.focused = focused;
-    p.liveWaterfall = p.running && !app.wf.paused;
-    const double interval = specaxis::frameInterval(p);
+    pace::State ps;
+    ps.shot = o.shotPath != nullptr;
+    ps.shown = glfwGetWindowAttrib(window, GLFW_VISIBLE) && !glfwGetWindowAttrib(window, GLFW_ICONIFIED);
+    ps.occluded = ps.shown && power::windowOccluded(window);
+    ps.popOut = popOutShown();
+    ps.noOsWindows = gNoOsWindows;
+    ps.reduceCpuHidden = app.reduceCpuHidden;
+    ps.focused = glfwGetWindowAttrib(window, GLFW_FOCUSED) != 0;
+    ps.recentInput = t - lastInputT < 1.0;
+    ps.video = app.engine.player().selected() >= 0;
+    ps.running = anyRunning();
+    ps.liveWaterfall = ps.running && !app.wf.paused;   // a shown window with a live waterfall keeps 30 frames a second, focused or not (#246)
+    ps.onBattery = app.batterySaver && power::onBattery();
+    ps.batterySaver = app.batterySaver;
+    power::setReceiving(ps.running);   // no App Nap while a receiver runs
+    const double interval = pace::interval(ps);
     if (interval > 0 && frameNext > t) {
         glfwWaitEventsTimeout(frameNext - t);
         if (glfwGetTime() < frameNext - 0.002) lastInputT = glfwGetTime();                               // woken early: an event
     }
     frameNext = glfwGetTime() + interval;
+    return {interval, ps.onBattery, ps.occluded};
 }
 
 // true when the main window has nothing to draw this frame (minimised, or hidden with the CPU saver); the pop-out keeps playing
@@ -309,7 +319,7 @@ int main(int argc, char** argv) {
         workspaceSessionTick(app);   // every few seconds: the last-session file (crash restore)
         discordTick(app);
         {
-            paceFrame(window, app, o, frameNext, lastInputT);
+            const PaceInfo pi = paceFrame(window, app, o, frameNext, lastInputT);
             glfwPollEvents();
             wbDropTick(app);
             updateTick(app);
@@ -328,17 +338,20 @@ int main(int argc, char** argv) {
             last = now;
             const double tUi0 = glfwGetTime();
             receiversFrame(app, io.DisplaySize);
+            perfOverlayDraw(app);
             popOutFrame(app);
             ImGui::Render();
             if (app.highContrast) lightenDrawData(ImGui::GetDrawData(), false, true);   // High contrast wins over Light
             else if (app.lightUi) lightenDrawData(ImGui::GetDrawData());
             perfLog(tUi0);
+            perfFrame(glfwGetTime(), glfwGetTime() - tUi0, pi.interval, pi.battery, pi.occluded, app.perfOverlay);
             const bool shotNow = o.shotPath && (o.shotAfter > 0 ? glfwGetTime() > o.shotAfter : ++o.shotFrame == (o.hackrfStart ? (app.playReq >= 0 || app.engine.player().selected() >= 0 ? 2400 : 900) : 400));
             statusLog(app);
             const bool autoShot = !shotNow && !gAutomationShotPath.empty();   // the Automations' screenshot action: the program's own window
             const std::string autoPath = autoShot ? gAutomationShotPath : std::string();
             if (autoShot) gAutomationShotPath.clear();
-            gfxBackend->endFrame(ImGui::GetDrawData(), shotNow ? o.shotPath : autoShot ? autoPath.c_str() : nullptr);
+            if (pi.occluded && !shotNow && !autoShot && gfxBackend->canSkipFrame()) gfxBackend->skipFrame();   // nobody can see it: no GPU work
+            else gfxBackend->endFrame(ImGui::GetDrawData(), shotNow ? o.shotPath : autoShot ? autoPath.c_str() : nullptr);
             popOutPresent();
             if (shotNow) {
                 shotReport(app);

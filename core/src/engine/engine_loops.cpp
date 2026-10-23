@@ -205,12 +205,16 @@ void Engine::analysisLoop() {
             }
             bandwidthStep(f, rxTel_, activeStd_.load() == 1 && rxTel_.dvbt.tpsOk);
         }
-        // keep reading while we wait so the ring never fills
-        while (std::chrono::steady_clock::now() < next && !stopReq_) {
+        // keep reading while we wait so the ring never fills. Between pieces the thread sleeps until about 5 ms of signal is there (the
+        // radio's write wakes it) or the next telemetry tick: an idle radio costs no wake-ups, a slow one one per USB transfer.
+        const size_t minN = (size_t)std::clamp(srcRate_ * 0.005, 1.0, (double)buf.size());
+        while (!stopReq_) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= next) break;
             catchUp();
             size_t m = ring_.read(buf.data(), buf.size());
             if (m) ingest(buf.data(), m);
-            else std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            else ring_.waitData(minN, std::chrono::duration_cast<std::chrono::microseconds>(next - now));
         }
     }
 }

@@ -39,6 +39,8 @@ struct State {
     // picture
     int picW = 0, picH = 0;
     std::vector<uint32_t> base, comp;
+    unsigned gen = 1;                               // bumped when the picture or the result changes: the composition is redone only then
+    struct CompKey { unsigned gen = 0; float floorDb = 0, alpha = 0; View view; bool haveRes = false; } compKey;
     std::filesystem::file_time_type fileTime{};
     double picAt = 0;
     std::string picKey;
@@ -81,6 +83,7 @@ void demoPicture() {
     const int W = 1080, H = 270;
     S.picW = W; S.picH = H;
     S.base.assign((size_t)W * H, 0);
+    S.gen++;
     Rng r(11);
     std::vector<int> top(W, H * 6 / 10);
     for (int x = 0; x < W;) {
@@ -107,7 +110,7 @@ bool loadFile(const std::string& path) {
         for (int y = 0; y < h / 2; y++) for (int x = 0; x < w / 2; x++) q[(size_t)y * (w / 2) + x] = px[(size_t)(2 * y) * w + 2 * x];
         px.swap(q); w /= 2; h /= 2;
     }
-    S.base.swap(px); S.picW = w; S.picH = h;
+    S.base.swap(px); S.picW = w; S.picH = h; S.gen++;
     return true;
 }
 
@@ -123,10 +126,10 @@ void updatePicture(double now) {
         S.picAt = now;
         std::error_code ec;
         const auto t = std::filesystem::last_write_time(S.path, ec);
-        if (ec) { if (changed) { S.picKey = key; S.base.clear(); S.msg = tr("Cannot load the picture."); } return; }
+        if (ec) { if (changed) { S.picKey = key; S.base.clear(); S.gen++; S.msg = tr("Cannot load the picture."); } return; }
         if (!changed && t == S.fileTime) return;
         S.picKey = key; S.fileTime = t;
-        if (loadFile(S.path)) { S.view.w = S.picW; S.view.h = S.picH; S.msg.clear(); } else { S.base.clear(); S.msg = tr("Cannot load the picture."); }
+        if (loadFile(S.path)) { S.view.w = S.picW; S.view.h = S.picH; S.msg.clear(); } else { S.base.clear(); S.gen++; S.msg = tr("Cannot load the picture."); }
         return;
     }
     // URL: one fetch at a time, about once a second
@@ -158,6 +161,7 @@ void rfCamFeed(const Frame& x, const Array& arr, double hz, double fs, const Opt
     o.filterLoHz = S.lo * 1e3; o.filterHiHz = S.hi * 1e3;
     S.res = analyse(x, arr, hz, fs, o);
     S.haveRes = !S.res.spectrum.empty();
+    S.gen++;
     S.resAt = ImGui::GetTime();
 }
 
@@ -245,14 +249,23 @@ void rfCamSection(App&) {
     if (S.picW <= 0 || S.base.empty()) { ImGui::TextDisabled("%s", tr("No picture.")); if (ch) save(); return; }
     // compose and show
     S.view.w = S.picW; S.view.h = S.picH;
-    S.comp = S.base;
-    if (S.haveRes) {
-        HeatOptions ho; ho.floorDb = S.floorDb; ho.maxAlpha = S.alpha;
-        blendHeat(S.comp, S.view, S.res.bearings, S.res.spectrum, ho);
-    }
-    if (!S.tex || S.texW != S.picW || S.texH != S.picH) { delete S.tex; S.tex = gGfx ? gGfx->createImage(S.picW, S.picH, 0xFF000000u) : nullptr; S.texW = S.picW; S.texH = S.picH; }
+    // the blend and the upload only when something they depend on changed (they ran every frame: a full-picture copy, blend and upload at 60 fps)
+    const State::CompKey key{S.gen, S.floorDb, S.alpha, S.view, S.haveRes};
+    const State::CompKey& k0 = S.compKey;
+    const bool same = k0.gen == key.gen && k0.floorDb == key.floorDb && k0.alpha == key.alpha && k0.haveRes == key.haveRes && k0.view.w == key.view.w &&
+                      k0.view.h == key.view.h && k0.view.hfovDeg == key.view.hfovDeg && k0.view.centerAzDeg == key.view.centerAzDeg && k0.view.proj == key.view.proj;
+    bool fresh = false;
+    if (!S.tex || S.texW != S.picW || S.texH != S.picH) { delete S.tex; S.tex = gGfx ? gGfx->createImage(S.picW, S.picH, 0xFF000000u) : nullptr; S.texW = S.picW; S.texH = S.picH; fresh = true; }
     if (!S.tex) { if (ch) save(); return; }
-    S.tex->update(0, 0, S.picW, S.picH, S.comp.data());
+    if (!same || fresh) {
+        S.comp = S.base;
+        if (S.haveRes) {
+            HeatOptions ho; ho.floorDb = S.floorDb; ho.maxAlpha = S.alpha;
+            blendHeat(S.comp, S.view, S.res.bearings, S.res.spectrum, ho);
+        }
+        S.tex->update(0, 0, S.picW, S.picH, S.comp.data());
+        S.compKey = key;
+    }
     const float availW = ImGui::GetContentRegionAvail().x;
     const float sc = availW / (float)S.picW;
     const ImVec2 sz(availW, (float)S.picH * sc);

@@ -19,7 +19,8 @@ constexpr int kNumLanguages = (int)(sizeof kLanguages / sizeof *kLanguages);
 struct Loaded {
     std::deque<std::string> store;                                 // the texts, never moved
     std::unordered_map<std::string_view, const char*> map;         // English -> translation
-    std::unordered_map<std::string, std::string> composed, ids;    // tr() of "Label##id", trw()
+    std::unordered_map<std::string_view, const char*> composed;    // tr() of "Label##id": keys and texts live in `store` (no allocation per call)
+    std::unordered_map<std::string, std::string> ids;              // trw()
     bool empty = true;                                             // English: nothing to look up
 };
 
@@ -95,12 +96,13 @@ const char* tr(const char* s) {
     if (const char* t = lookup(L, sv)) return t;
     const size_t hh = sv.find("##");
     if (hh == std::string_view::npos || hh == 0) return s;
-    auto c = L.composed.find(std::string(sv));
-    if (c != L.composed.end()) return c->second.c_str();
+    auto c = L.composed.find(sv);
+    if (c != L.composed.end()) return c->second;
     const char* t = lookup(L, sv.substr(0, hh));
-    std::string& out = L.composed[std::string(sv)];
-    out = t ? std::string(t) + std::string(sv.substr(hh)) : std::string(sv);
-    return out.c_str();
+    const std::string& key = L.store.emplace_back(sv);
+    const char* out = t ? L.store.emplace_back(std::string(t) + std::string(sv.substr(hh))).c_str() : key.c_str();
+    L.composed.emplace(std::string_view(key), out);
+    return out;
 }
 
 const char* trw(const char* s) {

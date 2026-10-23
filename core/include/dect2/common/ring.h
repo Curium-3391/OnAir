@@ -8,6 +8,9 @@
 #include <cstdint>
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 namespace dect2 {
 
@@ -33,6 +36,12 @@ public:
         writeNs_.store(ns, std::memory_order_relaxed);
         lastN_.store(n, std::memory_order_relaxed);
         seq_.fetch_add(1, std::memory_order_release);
+        // a consumer that sleeps in waitData() is woken once enough is there (pairs with the fence in waitData: no wake is lost)
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        if (waiting_.load(std::memory_order_acquire) && w + m - r_.load(std::memory_order_acquire) >= wantN_.load(std::memory_order_relaxed)) {
+            std::lock_guard<std::mutex> lk(waitMu_);
+            waitCv_.notify_one();
+        }
         return m;
     }
 
@@ -62,6 +71,21 @@ public:
         copyOut(r, dst, m);
         r_.store(r + m, std::memory_order_release);
         return m;
+    }
+
+    // Consumer: sleeps until at least `minN` samples are there or `maxWait` has passed; true when samples are there. The producer wakes
+    // it, so an idle or slow radio costs no wake-ups (the old 2 ms sleep loop woke 500 times a second whether samples came or not).
+    bool waitData(size_t minN, std::chrono::microseconds maxWait) {
+        if (minN < 1) minN = 1;
+        if (available() >= minN) return true;
+        if (maxWait.count() <= 0) return available() > 0;
+        std::unique_lock<std::mutex> lk(waitMu_);
+        wantN_.store(minN, std::memory_order_relaxed);
+        waiting_.store(true, std::memory_order_release);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        waitCv_.wait_for(lk, maxWait, [&] { return available() >= minN; });
+        waiting_.store(false, std::memory_order_relaxed);
+        return available() > 0;
     }
 
     // Consumer. When the consumer is too slow the ring fills and the producer can only write the few samples that happen to be free,
@@ -107,6 +131,10 @@ private:
     std::atomic<uint64_t> seq_{0}, offered_{0};
     std::atomic<int64_t> writeNs_{0};
     std::atomic<size_t> lastN_{0};
+    std::atomic<bool> waiting_{false};
+    std::atomic<size_t> wantN_{1};
+    std::mutex waitMu_;
+    std::condition_variable waitCv_;
 };
 
 // The same ring implemented in Rust (rust/onair_ring), with the same API and behaviour. The storage stays here, the algorithm is in Rust.
@@ -144,6 +172,12 @@ public:
     void noteLost(uint64_t n) { onair_ring_note_lost(hdr_, n); }
     void clear() { onair_ring_clear(hdr_); }
     void resetDropped() { onair_ring_reset_dropped(hdr_); }
+    // the Rust ring has no wake-up: the old short sleep
+    bool waitData(size_t minN, std::chrono::microseconds maxWait) {
+        if (available() >= (minN < 1 ? 1 : minN) || maxWait.count() <= 0) return available() > 0;
+        std::this_thread::sleep_for(std::min(maxWait, std::chrono::microseconds(2000)));
+        return available() > 0;
+    }
 
 private:
     std::vector<cf32> buf_;

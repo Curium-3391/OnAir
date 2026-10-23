@@ -446,6 +446,8 @@ struct App {
     std::vector<MultiService> mtvSvc;   // every service of every channel (refreshed with ts)
     bool atvWide = false;     // analog TV: system E chosen (14 MHz channel, 10 MHz of video): the radio runs at 20 Msps
     bool reduceCpuHidden = true;   // View > Reduce CPU when hidden: no drawing while the window is minimised or hidden (decoding goes on)
+    bool batterySaver = true;      // View > Save power on battery: input redraws at 30 fps, a receiver in the background at 10 (video keeps its rate)
+    bool perfOverlay = false;      // View > Performance overlay: frame rate, CPU per thread, wake-ups (ui/perf_overlay.cpp)
     bool discordOn = false, discordFreq = true;   // View > Show in Discord (opt-in Rich Presence, discord_rpc.cpp) and its "Show the frequency"
     bool mapSend = false, mapConsent = false;     // Server > Send data to map server (opt-in; consent once)
     bool mapVoice = false;                        // Server > also share transcripts of airband radio calls (public text; own choice, off until chosen)

@@ -27,6 +27,7 @@ struct St {
     bool posOnly = false;
     int page = 0;
     std::vector<mdb::Record> rows;
+    bool oneLine = true;   // no row has a line break: every row is as tall, so only the visible ones are drawn (ImGuiListClipper)
     std::vector<std::string> modes;
     int64_t matches = 0;
     mdb::Stats stats;
@@ -117,6 +118,8 @@ void refresh() {
     mdb::Db& db = mdb::global();
     const mdb::Filter f = filter();
     S.rows = db.query(f);
+    S.oneLine = true;
+    for (const mdb::Record& r : S.rows) if (r.text.find('\n') != std::string::npos || r.mode.find('\n') != std::string::npos || r.ident.find('\n') != std::string::npos) { S.oneLine = false; break; }
     S.matches = db.count(f);
     S.stats = db.stats();
     S.modes = db.modes();
@@ -183,7 +186,7 @@ void windowPanel(App& a) {
         ImGui::TableSetupColumn(tr("MHz"), ImGuiTableColumnFlags_WidthFixed, 70);
         ImGui::TableSetupColumn(tr("Message"), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
-        for (size_t i = 0; i < S.rows.size(); i++) {
+        auto drawRow = [](size_t i) {
             const mdb::Record& r = S.rows[i];
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -194,7 +197,14 @@ void windowPanel(App& a) {
             ImGui::TableNextColumn(); ImGui::TextUnformatted(r.ident.c_str());
             ImGui::TableNextColumn(); if (r.freqHz > 0) ImGui::Text("%.4f", r.freqHz / 1e6);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(r.text.c_str());
-        }
+        };
+        if (S.oneLine) {   // a page of 300: only the rows in view are built (each one formats its time)
+            ImGuiListClipper clip;
+            clip.Begin((int)S.rows.size());
+            while (clip.Step())
+                for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++) drawRow((size_t)i);
+        } else
+            for (size_t i = 0; i < S.rows.size(); i++) drawRow(i);
         ImGui::EndTable();
     }
     if (S.sel >= 0 && S.sel < (int)S.rows.size()) {
