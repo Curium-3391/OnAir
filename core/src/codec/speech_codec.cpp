@@ -1,6 +1,7 @@
 // Loader for user-installed speech codecs (see core/include/dect2/codec/speech_codec.h and docs/CODECS.md).
 #include "dect2/codec/speech_codec.h"
 #include "dect2/codec/codec_guard.h"
+#include "dect2/codec/codec_arch.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -51,7 +52,14 @@ void* openLibrary(const std::string& path, std::string& err) {
     return reinterpret_cast<void*>(m);
 #else
     void* h = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!h) { const char* e = dlerror(); err = std::string("the file would not load: ") + (e ? e : "unknown error"); }
+    if (!h) {
+        const char* e = dlerror();
+        const std::string why = e ? e : "unknown error";
+        // the wrong processor (an arm64 plug-in in the Intel OnAir under Rosetta): said in plain words first
+        const std::string arch = archMismatchMessage(why);
+        err = arch.empty() ? "the file would not load: " + why : arch;   // the loader's own text lists every path it tried: too long to show
+        if (runningUnderRosetta()) err += " " + rosettaNotice();
+    }
     return h;
 #endif
 }

@@ -136,6 +136,15 @@ when it finds itself loaded with the other one.
 Plug-ins may export `int onair_speech_abi(void)` returning `1`: OnAir refuses a plug-in that answers another number, with a message
 that says so, instead of calling it.
 
+### macOS: build for the processor OnAir runs as
+
+A plug-in must be built for the same processor as the running OnAir. The release has two Mac builds: `OnAir-<version>-macos-arm64.dmg`
+(Apple Silicon, M1 and later) and `OnAir-<version>-macos-x86_64.dmg` (Intel Macs). The Intel build also starts on an Apple Silicon Mac
+through Rosetta, but it is slower there and **cannot load arm64 plug-ins** (the loader says "incompatible architecture (have 'arm64',
+need 'x86_64')"). OnAir now says so in plain words in the codec help, in Help > Voice codecs (with the architecture of each plug-in file
+next to OnAir's) and in the Credits window, with a button to the download page. Either install the arm64 build, or build the plug-in
+for both: `cc -shared -fPIC -O2 -arch arm64 -arch x86_64 ...` (the library it links, mbelib or mbelib-neo, must then be universal too).
+
 ## codec2 (FreeDV, M17)
 
 codec2 is open software (LGPL-2.1) and **comes with OnAir**: FreeDV and M17 speech works after you download OnAir, with nothing to install.

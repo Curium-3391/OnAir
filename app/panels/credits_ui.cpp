@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include "dect2/engine/updater.h"
+#include "dect2/codec/codec_arch.h"
 #include <cstring>
 
 static void licencesTab() {
@@ -187,6 +188,13 @@ void creditsWindow(App& a) {
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(std::min(900 * gUi, vp->WorkSize.x * 0.95f), std::min(620 * gUi, vp->WorkSize.y * 0.9f)), ImGuiCond_Appearing);
     if (!ImGui::Begin(trw("Credits"), &a.creditsOpen)) { ImGui::End(); return; }
+    if (dect2::codec::runningUnderRosetta()) {   // the Intel build on an Apple Silicon Mac: said where people look for the version
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "%s", dect2::codec::rosettaNotice().c_str());
+        ImGui::PopTextWrapPos();
+        if (ImGui::SmallButton(tr("Open download page"))) dect2::openUrl("https://github.com/adswill/OnAir/releases/latest");
+        ImGui::Separator();
+    }
     if (ImGui::BeginTabBar("##credtabs")) {
         const int want = a.creditsTab; a.creditsTab = -1;
         if (typo::beginTabItem(tr("Contributors"), nullptr, want == 0 ? ImGuiTabItemFlags_SetSelected : 0)) { contributorsTab(); ImGui::EndTabItem(); }

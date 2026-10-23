@@ -41,6 +41,8 @@ bool voiceCodecTick(const char* id);
 
 // The install helper: loaded / not found with the exact file name, the codecs folder path, Open codecs folder, Build steps and Rescan buttons.
 void codecInstallHelper(const char* id);
+// OnAir's processor, the Rosetta notice (Intel build on Apple Silicon) and, with buildTip, which architecture to build plug-ins for
+void codecArchLines(bool buildTip);
 // Shows the codec notice popup (with "I accept") when the plug-in is installed but the notice was not accepted yet; draws nothing otherwise. Call it from a voice panel every frame.
 void codecNoticePrompt(const char* id);
 

@@ -268,6 +268,7 @@ void codecHelpButton(CodecHelp c, const char* label) {
         ImGui::Separator();
         // a codec that crashed or hung this run (codec_guard.h): said first; Look again tries it once more
         if (const std::string gm = dect2::codec::guardAllMessages(); !gm.empty()) { ImGui::TextColored(pal::warnAmber(), "%s", gm.c_str()); ImGui::Separator(); }
+        appcodec::codecArchLines(true);   // OnAir's processor, Rosetta notice, which architecture to build for
         {   // the AMBE / IMBE family: the shared plug-in install helper first
             const char* pid = pluginIdFor(c);
             if (pid) { appcodec::codecInstallHelper(pid); ImGui::Separator(); }
