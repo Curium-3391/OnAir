@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <string>
 #include <chrono>
+#include <mutex>
 #ifdef __linux__
 #include <unistd.h>
 #include <sys/stat.h>
@@ -24,6 +25,10 @@ static std::atomic<int64_t> gModeWriteMs{INT64_MIN / 4};
 static int64_t nowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 int AudioOut::msSinceModeWrite() { const int64_t d = nowMs() - gModeWriteMs.load(std::memory_order_relaxed); return d > 1000000000 ? 1000000000 : (int)d; }
 std::vector<std::string> AudioOut::devices() { return audioListOutputs(); }
+static std::mutex gDefDevMx;
+static std::string gDefDev;
+void AudioOut::setDefaultDevice(const std::string& name) { std::lock_guard<std::mutex> g(gDefDevMx); gDefDev = name; }
+std::string AudioOut::defaultDevice() { std::lock_guard<std::mutex> g(gDefDevMx); return gDefDev; }
 
 void AudioOut::Impl::render(float* out, uint32_t nFrames) {
     if (flushReq.exchange(false)) { r.store(w.load()); playing = false; leveler.reset(); }
@@ -60,7 +65,8 @@ AudioOut::~AudioOut() { stop(); }
 bool AudioOut::start(int rate) {
     if (running_) return true;
     rate_ = rate;
-    p_->device = device_;
+    // the device: the one set for this output, else the one chosen for the current mode (audio_control.h); one that has disappeared falls back to the default
+    p_->device = actl::audioPickDevice(audioListOutputs(), device_.empty() ? defaultDevice() : device_);
 #ifdef __linux__
     // run with sudo, the sound server of the user who ran sudo is not found (issue #67): point PulseAudio/PipeWire at it
     if (geteuid() == 0 && !getenv("PULSE_SERVER") && !getenv("XDG_RUNTIME_DIR")) {
@@ -76,6 +82,8 @@ bool AudioOut::start(int rate) {
     }
 #endif
     p_->cleanup.prepare(rate);
+    p_->control.prepare(rate);
+    { const int lat = AudioControlConfig::global().get().latencyMs; if (lat != 300) p_->startThreshold = std::max(480, rate / 1000 * lat); }   // the user's choice; modes that set their own threshold after start() keep it
     p_->vinv.prepare(rate);
     if (!audioBackendStart(p_.get(), rate)) return false;
     running_ = true;
@@ -99,20 +107,28 @@ int AudioOut::write(const float* s, int frames) {
         const int m = std::min(n - off, (int)AudioCleanup::kMaxChunk);
         const float* raw = s + 2 * (size_t)off;
         const float* src = raw;
-        bool active = false, invActive = false;
+        bool active = false, invActive = false, recOpen = true;
         if (clean) {
             // voice inversion first (analog voice only, off by default), then the cleanup; decoders / clips / transcripts keep `raw`
             if (m <= VoiceInversion::kMaxChunk) src = p_->vinv.process(raw, m, p_->invBuf, &invActive);
             const float* cleaned = p_->cleanup.process(src, m, p_->cleanBuf, &active);
             src = cleaned;
             active = active || invActive;
+            // audio control: filters, EQ, notch, AGC, squelch (off: the same pointer back)
+            bool ctlActive = false, ctlOpen = true;
+            src = p_->control.process(src, m, p_->ctlBuf, &ctlActive, &ctlOpen);
+            active = active || ctlActive;
+            recOpen = ctlOpen;
         }
         for (int i = 0; i < m; i++) {
             const size_t k = (size_t)((w + off + i) & mask) * 2;
             p_->ring[k] = src[2 * i]; p_->ring[k + 1] = src[2 * i + 1];
         }
         // "Record audio": the raw sound, or the cleaned one when asked; with "skip silence" nothing while the gate holds the sound off
-        if (active && cc.recCleaned.load(std::memory_order_relaxed)) {
+        // with "record only when the squelch is open" nothing is recorded while it is closed
+        const bool recGate = !(recOpen || !AudioControlConfig::global().recordOnlyOpen.load(std::memory_order_relaxed));
+        if (recGate) {}
+        else if (active && cc.recCleaned.load(std::memory_order_relaxed)) {
             if (!(cc.skipSilence.load(std::memory_order_relaxed) && !p_->cleanup.gateOpen())) AudioRecorder::offer(this, src, m, rate_);
         } else AudioRecorder::offer(this, raw, m, rate_);
         AudioClipRing::offer(this, raw, m, rate_);   // radio clips: the last seconds, kept in a ring

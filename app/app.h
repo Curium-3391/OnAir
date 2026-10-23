@@ -842,6 +842,10 @@ bool audioCleanupButton(App& a);
 void audioCleanupTick(App& a);
 void audioCleanupDevOpen(bool advanced);
 int audioCleanupProfileOf(const App& a);   // the kind of audio of the mode (AudioProfile): 0 data / off, 1 generic, 2 AM, 3 NFM, 4 WFM, 5 SSB, 6 CW, 7 digital voice
+// Audio control (audio_control_ui.cpp, docs/AUDIO.md): the "Audio" button next to the volume opens one pop-up with volume, squelch, filters, EQ, notch,
+// AGC, stereo, clarifier, output device, recorder and the AF spectrum. Settings are kept per mode (prefs "acl.<family>"), including its own volume.
+bool audioControlButton(App& a);
+void audioControlTick(App& a);   // every frame: hands the settings of the heard receiver's mode to the audio chain, per-mode volume, keyboard shortcuts
 // Voice inversion (voice_inversion_ui.cpp): the button next to the audio cleanup button (analog voice only), the per-frame hand-over of its settings
 bool voiceInversionButton(App& a);
 void voiceInversionTick(App& a);

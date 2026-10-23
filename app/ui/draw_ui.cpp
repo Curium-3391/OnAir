@@ -56,6 +56,7 @@ static void tickReceiver(App& a) {
     if (!a.engine.running()) { a.epg.clear(); }
     tvRecTick(a);
     audioCleanupTick(a);
+    audioControlTick(a);
     voiceInversionTick(a);
     timeMachineTick(a);
     gainControl(a);

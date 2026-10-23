@@ -16,6 +16,10 @@ public:
     static std::vector<std::string> devices();
     void setDevice(const std::string& name) { device_ = name; }
     const std::string& device() const { return device_; }
+    // The device every output without one of its own uses at start() (the user's choice for the current mode, audio_control.h); a name that is not
+    // present any more falls back to the system default.
+    static void setDefaultDevice(const std::string& name);
+    static std::string defaultDevice();
     // A monitor output (audio_monitor.h) is not "the mode's sound": the monitor yields while any other, unmuted AudioOut has written lately.
     void setMonitorRole(bool m) { monitor_ = m; }
     static int msSinceModeWrite();      // milliseconds since an unmuted non-monitor output last wrote (large when never)

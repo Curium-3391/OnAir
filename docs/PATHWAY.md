@@ -193,3 +193,6 @@ Power policy (core/include/dect2/power): Low power mode and Save power when hidd
 ## 2026-10-22 Signal-processing CPU (perf-dsp-030)
 New standalone cost table tools/bench/bench_dsp.{cpp,sh} (kernels + receivers, CPU s per signal s, not in ctest); results and method in docs/PERFORMANCE-DSP.md. Wins: wide-bank carrier mixer -66%, FM -31%, general NFM/AM/SSB -27%, TETRA -23%, LTR/EDACS front -45%, RationalResampler -20%, DVB-T search -33..50%, ATSC search -21%; mostly std::complex products written out (same bits) and table mixers. Viterbi chunks on the shared pool. Tests channelizer_mix, viterbi_simd.
 
+## 2026-10-22 Audio control (audio-030)
+One "Audio" pop-up in every mode (audio_control.h/.cpp, audio_control_ui.cpp, docs/AUDIO.md): per-mode volume, squelch (level/SNR/CTCSS/DCS, hysteresis, hang, tail), HP/LP, 5-band EQ, notch + auto notch, AGC, de-emphasis, stereo, clarifier/CW pitch, meter+clip, AF spectrum/waterfall with click-to-notch, per-mode device with fallback, recorder gate, receiver solo, reset. Pure DSP blocks, tests/audio/test_audio_control.cpp passes standalone; app code only syntax-checked (no full build). DCS only self-tested. NR stays in Audio cleanup; blanker slot left.
+
