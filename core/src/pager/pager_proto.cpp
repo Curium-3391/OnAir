@@ -124,16 +124,42 @@ void PocsagParser::word(uint32_t raw, int slot, std::vector<PagerMessage>& out) 
 }
 // ---------------------------------------------------------------- FLEX
 
+uint32_t flexWithCheck(uint32_t f) {
+    f &= 0x1FFFF0;
+    int s = 0;
+    for (int i = 4; i < 20; i += 4) s += (int)((f >> i) & 0xF);
+    s += (int)((f >> 20) & 1);
+    return f | (uint32_t)((0xF - s) & 0xF);
+}
+
+bool flexLongCap(uint32_t cap) { return cap > kFlexLongCapBase; }
+
+void flexLongWords(uint32_t cap, uint32_t& w1, uint32_t& w2) {
+    // the inverse of the decoder's cap = w1 + ((w2 ^ 0x1FFFFF) << 15) + 0x1F9000, with w1 from 1 to 0x8000 (below the short addresses)
+    uint32_t v = cap - 0x1F9000u;
+    uint32_t a = v & 0x7FFF;
+    if (a == 0) { a = 0x8000; v -= 0x8000; }
+    w1 = a;
+    w2 = ((v >> 15) ^ 0x1FFFFFu) & 0x1FFFFF;
+}
+
 std::vector<uint8_t> flexPhaseBits(const std::vector<FlexPage>& pages) {
     uint32_t f[kFlexPhaseWords] = {};
     const int n = (int)pages.size();
     if (n > 0) {
-        const int aoff = 1, voff = 1 + n;
-        f[0] = ((uint32_t)voff << 10) | ((uint32_t)(aoff - 1) << 8);
-        int next = voff + n;                       // the next free message word
+        int naw = 0;                               // address words (two for a long address), and as many vector words
+        for (const FlexPage& pg : pages) naw += flexLongCap(pg.cap) ? 2 : 1;
+        const int aoff = 1, voff = 1 + naw;
+        f[0] = flexWithCheck(((uint32_t)voff << 10) | ((uint32_t)(aoff - 1) << 8));
+        int next = voff + naw;                     // the next free message word
+        int ai = aoff;
         for (int k = 0; k < n; k++) {
             const FlexPage& pg = pages[(size_t)k];
-            f[aoff + k] = pg.cap + 0x8000;
+            const bool lng = flexLongCap(pg.cap);
+            const int slot = ai;
+            if (lng) { flexLongWords(pg.cap, f[ai], f[ai + 1]); ai += 2; }
+            else f[ai++] = pg.cap + 0x8000;
+            const int vi = voff + (slot - aoff);   // the vector word(s) of this address
             uint32_t vec = 0;
             if (pg.type == kPagerNumeric) {
                 std::vector<uint8_t> bits(2, 0);   // two header bits
@@ -144,34 +170,43 @@ std::vector<uint8_t> flexPhaseBits(const std::vector<FlexPage>& pages) {
                 }
                 const int words = std::min(8, ((int)bits.size() + 20) / 21);
                 while ((int)bits.size() + 4 <= words * 21) for (int i = 0; i < 4; i++) bits.push_back((uint8_t)((12 >> i) & 1));
-                if (next + words > kFlexPhaseWords) continue;
+                const int inField = lng ? words - 1 : words;                  // a long address carries the first numeric word in its second vector word
+                if (next + inField > kFlexPhaseWords) continue;
+                uint32_t mw[8] = {};
                 for (int w = 0; w < words; w++)
                     for (int i = 0; i < 21; i++) {
                         const size_t idx = (size_t)(w * 21 + i);
-                        if (idx < bits.size() && bits[idx]) f[next + w] |= 1u << i;
+                        if (idx < bits.size() && bits[idx]) mw[w] |= 1u << i;
                     }
+                for (int w = 0; w < words; w++) {
+                    if (lng && w == 0) f[vi + 1] = mw[0];
+                    else f[next + w - (lng ? 1 : 0)] = mw[w];
+                }
                 vec = (3u << 4) | ((uint32_t)next << 7) | ((uint32_t)(words - 1) << 14);
-                next += words;
+                next += inField;
             } else if (pg.type == kPagerAlpha) {
                 std::vector<int> ch;
                 for (char c : pg.text) ch.push_back((unsigned char)c & 0x7F);
                 const int nc = (int)ch.size();
                 const int words = 1 + (std::max(nc - 2, 0) + 2) / 3;          // the first message word holds two characters, the others three
                 const int len = 1 + words;                                    // and the header word counts in the length
-                if (next + len > kFlexPhaseWords) continue;
+                const int inField = lng ? words : len;                        // a long address carries the header in its second vector word
+                if (next + inField > kFlexPhaseWords) continue;
                 auto at = [&](int i) { return i < nc ? ch[(size_t)i] : 3; };       // 3 pads
-                f[next] = 3u << 11;                                           // header: complete message (continuation 0, fragment 3)
-                f[next + 1] = ((uint32_t)at(0) << 7) | ((uint32_t)at(1) << 14);   // bits 0 to 6 of this word are not text
+                const uint32_t hdr = 3u << 11;                                // header: complete message (continuation 0, fragment 3)
+                const int t0 = lng ? next : next + 1;                         // the first text word
+                if (lng) f[vi + 1] = hdr; else f[next] = hdr;
+                f[t0] = ((uint32_t)at(0) << 7) | ((uint32_t)at(1) << 14);     // bits 0 to 6 of this word are not text
                 for (int w = 1; w < words; w++) {
                     const int c0 = 2 + 3 * (w - 1);
-                    f[next + 1 + w] = (uint32_t)at(c0) | ((uint32_t)at(c0 + 1) << 7) | ((uint32_t)at(c0 + 2) << 14);
+                    f[t0 + w] = (uint32_t)at(c0) | ((uint32_t)at(c0 + 1) << 7) | ((uint32_t)at(c0 + 2) << 14);
                 }
                 vec = (5u << 4) | ((uint32_t)next << 7) | ((uint32_t)len << 14);
-                next += len;
+                next += inField;
             } else {
                 vec = (2u << 4) | (1u << 7);       // tone only (bits 7 and 8 = 1; 0 would be a short numeric page)
             }
-            f[voff + k] = vec;
+            f[vi] = flexWithCheck(vec);
         }
     }
     std::vector<uint8_t> bits((size_t)kFlexPhaseWords * 32);

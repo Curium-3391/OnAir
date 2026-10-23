@@ -524,8 +524,8 @@ struct PagerReceiver::Impl {
         case 1:   // 16 symbols of dotting
             if (++cnt == 16) { stage = 2; cnt = 0; acc = 0; }
             break;
-        case 2: { // the frame information word
-            acc = (acc << 1) | (uint32_t)bitOf(x);
+        case 2: { // the frame information word: like the data, sent complemented against the sync code and marker (pager_gen.cpp flexFrameTx)
+            acc = (acc << 1) | (uint32_t)(1 - bitOf(x));
             if (++cnt < 32) break;
             const pager::Fixed c = pager::correctWord(acc);
             int cycle, frame;
@@ -558,10 +558,11 @@ struct PagerReceiver::Impl {
         default: { // the data
             const int bidx = dataIdx;
             int a1 = 0, b1 = 0;
-            if (fmode->levels == 2) a1 = bitOf(x);
+            // the data bits are the complement of the sync sense (bitOf); in 4-level frames the inner levels carry a second bit of 1
+            if (fmode->levels == 2) a1 = 1 - bitOf(x);
             else {
                 const double y = (x - m) / amp * pol;
-                if (y < -0.667) { a1 = 1; b1 = 0; } else if (y < 0) { a1 = 1; b1 = 1; } else if (y < 0.667) { a1 = 0; b1 = 1; } else { a1 = 0; b1 = 0; }
+                if (y < -0.667) { a1 = 0; b1 = 0; } else if (y < 0) { a1 = 0; b1 = 1; } else if (y < 0.667) { a1 = 1; b1 = 1; } else { a1 = 1; b1 = 0; }
             }
             const int spd = fmode->speed;
             if (spd == kFlex1600_2) fb[0][(size_t)bidx] = (uint8_t)a1;
