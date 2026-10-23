@@ -4,7 +4,9 @@
 //  * a web session can never transmit, arm a transmitter, import keys, decrypt, or write to the host's disk: the protocol has no such
 //    message (web_proto.cpp answers them with "forbidden"), and the web code is compiled with ONAIR_WEB_SESSION, which makes the transmit
 //    headers (dect2/tx/*.h) a compile error, so no transmit function can even be linked into it;
-//  * digital voice decoders (DMR, P25, NXDN, TETRA, dPMR, D-STAR, Yaesu System Fusion) and pagers (POCSAG, FLEX) are OFF for web listeners;
+//  * the web-safe modes are an ALLOW-LIST (analog audio, spectrum, ADS-B, AIS, APRS, ACARS / VDL2, FT8 / FT4 / WSPR, SSTV, weather fax, satellite
+//    images). Everything else is OFF for web listeners, including digital voice (DMR, P25, NXDN, TETRA, dPMR, D-STAR, Yaesu System Fusion),
+//    pagers (POCSAG, FLEX), mesh, LoRa, FreeDV, key-related modes and every mode that is added later;
 //    the host can enable each one only after accepting the legal notice (its version is stored in the config as web_legal_ack);
 //  * encrypted traffic is never decoded, and the voice key store is not part of the server;
 //  * the IP address of a listener is kept in memory for the per-address limits only; it is shown or logged only with web_log_ip=1.
@@ -19,13 +21,18 @@ namespace onair_server { class ConfigFile; }
 
 namespace onair_web {
 
-enum class DecoderClass { Data, Voice, Pager };
+enum class DecoderClass { Data, Voice, Pager, Other };   // Other: anything that is not on the web-safe allow-list (off for web listeners)
 
 struct DecoderInfo { const char* kind; DecoderClass cls; const char* name; };
 // The decoder kinds the policy knows (data ones on by default, voice and pager ones off)
 const std::vector<DecoderInfo>& decoderCatalogue();
-// The class of a decoder kind or an engine mode id ("dmr", "pocsag", "fusion", ...); unknown kinds are Data
+// The class of a decoder kind or an engine mode id ("dmr", "pocsag", "fusion", ...). FAIL CLOSED: only the kinds on the web-safe allow-list are
+// Data (analog audio demodulators, the spectrum views and the public data modes: ADS-B, AIS, APRS, ACARS / VDL2 text, FT8 / FT4 / WSPR, SSTV,
+// weather fax and weather-satellite images); a kind that is not known at all is Other, so a new mode is blocked until it is added to the list.
 DecoderClass decoderClass(const std::string& kind);
+// True when the kind is on one of the explicit lists (safe, voice, pager, or "known and restricted"). tests/server/test_web_safety.cpp checks
+// that every mode id of the receiver registry is classified, so a new mode forces a decision here.
+bool decoderKindClassified(const std::string& kind);
 const char* className(DecoderClass c);
 
 constexpr const char* kLegalNoticeVersion = "onair-web-legal-1";

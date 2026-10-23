@@ -21,8 +21,8 @@ const std::vector<DecoderInfo>& decoderCatalogue() {
         {"apt", DecoderClass::Data, "NOAA APT weather satellite images"},
         {"meteor", DecoderClass::Data, "Meteor-M LRPT images"},
         {"rds", DecoderClass::Data, "RDS"},
-        {"cw", DecoderClass::Data, "Morse"},
-        {"rtty", DecoderClass::Data, "RTTY"},
+        {"cw", DecoderClass::Other, "Morse"},
+        {"rtty", DecoderClass::Other, "RTTY"},
         {"dmr", DecoderClass::Voice, "DMR"},
         {"p25", DecoderClass::Voice, "P25"},
         {"nxdn", DecoderClass::Voice, "NXDN"},
@@ -36,21 +36,63 @@ const std::vector<DecoderInfo>& decoderCatalogue() {
     return v;
 }
 
+namespace {
+// The web-safe allow-list (public broadcasts and open data). Everything else is blocked unless the host turns it on after the legal notice.
+const std::set<std::string>& webSafeKinds() {
+    static const std::set<std::string> s = {
+        // analog audio demodulators and the spectrum views
+        "fm", "am", "general", "airband", "specan", "specx", "wb",
+        // data modes the owner approved for web listeners
+        "adsb", "uat", "ais", "aprs", "packet", "acars", "vdl2", "ft8", "ft4", "wspr", "sstv", "wefax",
+        // weather-satellite images, RDS of the FM broadcast
+        "apt", "goes", "meteor", "hrpt", "elektro", "rds",
+        // the host decoder itself: the policy then checks the host's running mode
+        "host"};
+    return s;
+}
+const std::set<std::string>& voiceKinds() {
+    static const std::set<std::string> s = {"dmr", "p25", "nxdn", "tetra", "dpmr", "dstar", "d-star", "ysf", "fusion", "yaesu", "m17", "dmr_wide",
+                                            "p25_wide", "nxdn_wide", "edacs", "tetrapol", "mpt1327", "ltr", "trunk", "trunking"};
+    return s;
+}
+const std::set<std::string>& pagerKinds() {
+    static const std::set<std::string> s = {"pocsag", "flex", "pager", "pagers", "ermes", "golay"};
+    return s;
+}
+// Every other mode id of the receiver registry, listed so that a new mode that nobody classified is noticed by the test. They are all blocked.
+const std::set<std::string>& restrictedKnownKinds() {
+    static const std::set<std::string> s = {
+    "aero", "ale", "ant", "ardop", "astro", "atsc", "atsc3", "atv", "ble", "bletracker", "cdr", "cell", "codar", "contestia", "cquam",
+    "cubesat", "cw", "dab", "datawell", "dect", "dgps", "dji", "dme", "dominoex", "drm", "dsc", "dtmb", "dvb", "dvbc", "dvbs", "eczas",
+    "eloran", "flarm", "fpv", "freedv", "fsq", "fst4", "ft2", "globalstar", "gnss", "goesdcs", "gsmr", "halow", "hamdrm", "hdr", "hell",
+    "hfbeacon", "hfdig", "hfdl", "ifkp", "ils", "inmc", "iono", "iridium", "isdbt", "ism", "js8", "jt4", "jt65", "jt9", "kaal", "kaft",
+    "kait", "kapp", "kavb", "kaws", "klw", "lbj", "loraaprs", "loraraw", "lorawan", "mac", "marine", "mesh", "meshcom", "meshcore",
+    "meshtastic", "mfsk", "milhf", "modeac", "mscatter", "msk144", "mt63", "multitone", "navtex", "nbiot", "ndb", "nr", "olivia",
+    "orbcomm", "pager", "psk", "q65", "qo100", "rid", "rtty", "same", "sarsat", "satbeacon", "sonde", "t", "t2", "tdcs", "thor", "time",
+    "tones", "uplink", "vdes", "vdl4", "vor", "vorils", "wifi", "wisun", "wmbus", "zigbee", "zwave",
+    };
+    return s;
+}
+} // namespace
+
 DecoderClass decoderClass(const std::string& k) {
-    // engine mode ids and other spellings of the same protocols
-    static const std::set<std::string> voice = {"dmr", "p25", "nxdn", "tetra", "dpmr", "dstar", "d-star", "ysf", "fusion", "yaesu", "m17", "dmr_wide",
-                                                "p25_wide", "nxdn_wide", "edacs", "tetrapol", "mpt1327", "ltr", "trunk", "trunking"};
-    static const std::set<std::string> pager = {"pocsag", "flex", "pager", "pagers", "ermes", "golay"};
-    if (voice.count(k)) return DecoderClass::Voice;
-    if (pager.count(k)) return DecoderClass::Pager;
-    for (const auto& d : decoderCatalogue()) if (k == d.kind) return d.cls;
-    return DecoderClass::Data;
+    if (voiceKinds().count(k)) return DecoderClass::Voice;
+    if (pagerKinds().count(k)) return DecoderClass::Pager;
+    if (webSafeKinds().count(k)) return DecoderClass::Data;
+    return DecoderClass::Other;   // fail closed: a mode id that is not on the allow-list is blocked
 }
 
-const char* className(DecoderClass c) { return c == DecoderClass::Voice ? "voice" : c == DecoderClass::Pager ? "pager" : "data"; }
+bool decoderKindClassified(const std::string& k) {
+    return voiceKinds().count(k) || pagerKinds().count(k) || webSafeKinds().count(k) || restrictedKnownKinds().count(k) || [&] {
+        for (const auto& d : decoderCatalogue()) if (k == d.kind) return true;
+        return false;
+    }();
+}
+
+const char* className(DecoderClass c) { return c == DecoderClass::Voice ? "voice" : c == DecoderClass::Pager ? "pager" : c == DecoderClass::Other ? "restricted" : "data"; }
 
 const char* legalNoticeText() {
-    return "Before you let web listeners decode digital voice or pager traffic, check the law where your receiver is and where your listeners are. "
+    return "Before you let web listeners decode digital voice, pager, mesh or other message traffic, check the law where your receiver is and where your listeners are. "
            "In many countries it is an offence to disclose, publish or pass on the content of radio messages that are not meant for the general "
            "public (for example the EU member states' telecommunications laws, the UK Wireless Telegraphy Act 2006 s.48, the US 47 U.S.C. 605 and "
            "the ECPA). Pager messages often carry personal and medical data. Turning a decoder on here makes its output available to everyone who "

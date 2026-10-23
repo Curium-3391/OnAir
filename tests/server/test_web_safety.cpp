@@ -10,7 +10,10 @@
 #include "server_config.h"
 #include <cstdio>
 #include <filesystem>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <type_traits>
 using namespace onair_web;
@@ -121,7 +124,88 @@ static void testDefaults() {
     CHECK(makeDirectoryHeartbeat() == nullptr, "no directory module in this build");
 }
 
+// ---- 4. the web policy is an allow-list: only the approved modes are on; every mode of the registry is classified; a new mode is blocked
+static std::set<std::string> registryModeIds() {
+    namespace fs = std::filesystem;
+    const fs::path root = ONAIR_SOURCE_DIR;
+    std::set<std::string> ids = {"dvb", "t2", "t", "atsc", "atsc3", "dab", "isdbt", "fm"};   // the built-in ones (ServerHost::buildModes)
+    // the sub-modes (core/src/engine/modes.cpp kSubModes): {"id", "Name", family, ...
+    {
+        const std::string s = readFile(root / "core/src/engine/modes.cpp");
+        size_t p = 0;
+        while ((p = s.find("\n    {\"", p)) != std::string::npos) {
+            const size_t a = p + 7, b = s.find('"', a);
+            if (b == std::string::npos) break;
+            const std::string id = s.substr(a, b - a);
+            const size_t c = s.find(", \"", b), nl = s.find('\n', b);
+            if (c != std::string::npos && c < nl && !id.empty() && id.size() < 20) ids.insert(id);
+            p = b;
+        }
+    }
+    // every XxxTuning() definition: its id (a literal, or a ternary of two literals)
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(root / "core/src", ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != ".cpp") continue;
+        const std::string s = readFile(it->path());
+        size_t p = 0;
+        while ((p = s.find("ModeTuning ", p)) != std::string::npos) {
+            size_t q = p + 11;
+            while (q < s.size() && (std::isalnum((unsigned char)s[q]) || s[q] == '_')) q++;
+            const bool def = s.compare(q, 3, "() ") == 0 && s.compare(q - 6, 6, "Tuning") == 0 && s.find('{', q) < s.find(';', q);
+            p = q;
+            if (!def) continue;
+            const size_t fin = s.find("\n}\n", q);
+            const std::string body = s.substr(q, std::min<size_t>(1500, fin == std::string::npos ? 1500 : fin - q));
+            const size_t k = body.find(".id = ");
+            if (k == std::string::npos) continue;
+            const size_t end2 = body.find(';', k);
+            const std::string expr = body.substr(k, end2 - k);
+            size_t u = 0;
+            while ((u = expr.find('"', u)) != std::string::npos) {
+                const size_t v = expr.find('"', u + 1);
+                if (v == std::string::npos) break;
+                ids.insert(expr.substr(u + 1, v - u - 1));
+                u = v + 1;
+            }
+        }
+    }
+    return ids;
+}
+
+static void testAllowList() {
+    // the approved web-safe modes are data / on
+    for (const char* k : {"fm", "am", "general", "airband", "specan", "specx", "adsb", "ais", "packet", "aprs", "acars", "vdl2", "ft8", "ft4", "wspr", "sstv", "wefax", "goes", "meteor", "hrpt", "elektro"})
+        CHECK(decoderClass(k) == DecoderClass::Data, "%s is on the web-safe list", k);
+    WebPolicy p;
+    for (const char* k : {"adsb", "ais", "packet", "acars", "vdl2", "ft8", "wspr", "sstv", "wefax", "fm", "specan"}) CHECK(p.decoderAllowed(k), "%s on by default", k);
+    // everything else is off by default, including the ones the old name list did not know
+    for (const char* k : {"dmr", "p25", "nxdn", "tetra", "dpmr", "dstar", "fusion", "m17", "pocsag", "flex", "freedv", "hamdrm", "meshtastic", "meshcore", "meshcom", "lorawan", "loraaprs", "loraraw",
+                          "cw", "rtty", "hfdl", "dsc", "navtex", "ale", "dab", "dvbs", "drm", "ble", "rid", "dji", "mac", "kaal", "iridium", "inmc", "aero", "a_mode_added_next_year", ""}) {
+        CHECK(decoderClass(k) != DecoderClass::Data, "%s must not be web-safe", k);
+        CHECK(!p.decoderAllowed(k), "%s off by default", k);
+    }
+    // turning one on needs the legal notice
+    std::string err;
+    CHECK(!p.setDecoder("meshtastic", true, "", err) && !p.decoderAllowed("meshtastic"), "a restricted mode needs the notice");
+    CHECK(p.setDecoder("meshtastic", true, kLegalNoticeVersion, err) && p.decoderAllowed("meshtastic"), "and is then on");
+    // a host mode id that is blocked keeps the host decoder's output away (the hub checks the kind and the mode)
+    CHECK(!p.decoderAllowed("lorawan") && p.decoderAllowed("host"), "the host kind is on, its mode decides");
+    // the data kinds can be turned off by the host
+    CHECK(p.setDecoder("ais", false, "", err) && !p.decoderAllowed("ais"), "a data kind can be turned off");
+
+    // every mode id of the registry is classified (a new mode must be added to web_policy.cpp: safe, voice, pager or restricted)
+    const std::set<std::string> ids = registryModeIds();
+    CHECK(ids.size() >= 100, "found the mode registry (%d ids)", (int)ids.size());
+    for (const std::string& id : ids) CHECK(decoderKindClassified(id), "mode \"%s\" is not classified in server/web/web_policy.cpp", id.c_str());
+    // and only the approved ones are on
+    int on = 0;
+    for (const std::string& id : ids) if (decoderClass(id) == DecoderClass::Data) on++;
+    CHECK(on > 0 && on < 30, "only a few modes are web-safe (%d)", on);
+    CHECK(decoderClass("dmr") == DecoderClass::Voice && decoderClass("pocsag") == DecoderClass::Pager, "voice and pager keep their names");
+}
+
 int main() {
+    testAllowList();
     testProtocol();
     testSourceScan();
     testDefaults();
