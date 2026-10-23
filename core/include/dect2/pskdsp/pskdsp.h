@@ -38,7 +38,8 @@ struct Carrier {
 // The strongest narrow signal: the region of the spectrum above the noise with the most power, ignoring a DC spike (a line one or two bins
 // wide at 0 Hz). nearHz / nearOnly: only the region that contains nearHz (or the nearest one within maxDistHz). Zooms in (mixes and
 // decimates) until the signal is at least ~40 bins wide, so a 25 Bd signal in an 8 Msps capture is measured as well as a wide one.
-Carrier findCarrier(const cf* x, size_t n, double fs, bool nearOnly = false, double nearHz = 0, double maxDistHz = 0);
+// bandHz: only the middle bandHz of the samples hold signal and noise (a channeliser's output; its stop band is no noise floor); 0: all
+Carrier findCarrier(const cf* x, size_t n, double fs, bool nearOnly = false, double nearHz = 0, double maxDistHz = 0, double bandHz = 0);
 
 // ================================================================ building blocks (pskdsp_dsp.cpp)
 std::vector<float> rrcTaps(double sps, double alpha, int spanSym);   // unit energy; alpha 0..1
@@ -130,6 +131,9 @@ struct AnalyseOptions {
     bool snapStandard = true;    // snap to 75 / 150 / ... / 9600 x 2^k, 1k2 x n and the other common rates when within 0.6 %
     bool haveCarrier = false;    // carrierHz / bwHz given (a click in the spectrum); else the strongest signal is found
     double carrierHz = 0, bwHz = 0;
+    double bandHz = 0;           // the input's usable band around 0 Hz (a channeliser's pass band), 0: all of it
+    bool nearCentre = false;     // no click: the signal nearest 0 Hz (the dial) within nearMaxHz, instead of the strongest
+    double nearMaxHz = 0;
     double maxSeconds = 30;      // analyse at most this much of the input (the latest part)
 };
 struct Analysis {
@@ -157,7 +161,8 @@ Analysis analyse(const cf* x, size_t n, double fs, const AnalyseOptions& o = {})
 // the standard rate nearest b when within tol (fraction), else 0
 double snapRate(double b, double tol = 0.006);
 // roll-off from the power spectrum of the channel and the symbol rate: alpha, and rect = true for rectangular (sinc^2) pulses
-double estimateRolloff(const cf* y, size_t n, double fs, double baud, bool* rect);
+// bandHz: the usable band of y around 0 Hz (the noise floor is measured inside it); 0: all
+double estimateRolloff(const cf* y, size_t n, double fs, double baud, bool* rect, double bandHz = 0);
 
 // ================================================================ bits (pskdsp_bits.cpp)
 enum class Diff { None = 0, Dpsk = 1, NrzM = 2, NrzS = 3 };   // NRZI is NRZ-S here (a 0 is a change, as AX.25 / HDLC)

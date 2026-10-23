@@ -125,14 +125,19 @@ double snapRate(double b, double tol) {
     return bd <= tol ? best : 0;
 }
 
-double estimateRolloff(const cf* y, size_t n, double fs, double baud, bool* rect) {
-    // the share of the power beyond +-0.75 x baud: about 20 % for rectangular pulses, below 3 % for a root-raised cosine up to 0.5
+double estimateRolloff(const cf* y, size_t n, double fs, double baud, bool* rect, double bandHz) {
+    // the share of the power beyond +-0.75 x baud (up to the channel edge): a few % for rectangular pulses, about none for a root-raised cosine up to 0.5
     const std::vector<double> P = signallab::psd(y, n, 4096);
     const size_t N = P.size();
     std::vector<double> s(P);
-    std::vector<double> srt(s);
-    std::nth_element(srt.begin(), srt.begin() + (long)(N / 20), srt.end());
-    const double fl = srt[N / 20];
+    std::vector<double> srt;
+    for (size_t i = 0; i < N; i++) {
+        const double f = ((double)i - N / 2.0) * fs / (double)N;
+        if (bandHz <= 0 || std::fabs(f) < 0.45 * bandHz) srt.push_back(s[i]);
+    }
+    if (srt.empty()) srt = s;
+    std::nth_element(srt.begin(), srt.begin() + (long)(srt.size() / 20), srt.end());
+    const double fl = srt[srt.size() / 20];
     double in = 0, out = 0, occ = 0;
     std::vector<double> cum;
     for (size_t i = 0; i < N; i++) {
@@ -140,7 +145,7 @@ double estimateRolloff(const cf* y, size_t n, double fs, double baud, bool* rect
         const double v = std::max(0.0, s[i] - fl);
         if (std::fabs(f) <= 0.75 * baud) in += v; else if (std::fabs(f) <= 3 * baud) out += v;
     }
-    const bool r = in + out > 0 && out / (in + out) > 0.10;
+    const bool r = in + out > 0 && out / (in + out) > 0.02;   // rectangular about 0.035 inside the analysis channel, RRC up to 0.5 below 0.01
     if (rect) *rect = r;
     // 99 % width over the symbol rate gives 1 + alpha
     double tot = 0;
@@ -163,9 +168,9 @@ Analysis analyse(const cf* x0, size_t n0, double fs, const AnalyseOptions& o) {
     // 1. where the signal is
     if (o.haveCarrier && o.bwHz > 0) {
         a.carrier.found = true; a.carrier.offsetHz = o.carrierHz; a.carrier.bw3Hz = o.bwHz; a.carrier.bw10Hz = o.bwHz; a.carrier.occHz = o.bwHz;
-        const Carrier c = findCarrier(x, n, fs, true, o.carrierHz, o.bwHz);
+        const Carrier c = findCarrier(x, n, fs, true, o.carrierHz, o.bwHz, o.bandHz);
         if (c.found) { a.carrier = c; }
-    } else a.carrier = findCarrier(x, n, fs);
+    } else a.carrier = o.nearCentre ? findCarrier(x, n, fs, true, 0, o.nearMaxHz, o.bandHz) : findCarrier(x, n, fs, false, 0, 0, o.bandHz);
     if (!a.carrier.found) { a.status = "searching for a signal"; a.log.push_back("no signal above the noise"); return a; }
     a.signal = true;
     const Carrier& c = a.carrier;
@@ -330,8 +335,11 @@ Analysis analyse(const cf* x0, size_t n0, double fs, const AnalyseOptions& o) {
     if (o.forceOrder != Order::Auto) orders = {o.forceOrder}; else orders = {Order::Bpsk, Order::Qpsk, Order::Oqpsk, Order::Psk8};
     Trial best; Order bo = orders[0];
     std::vector<Trial> tr;
+    // the trial demodulations look at the newest 5000 symbols at most (the cost of an analysis stays bounded for fast signals)
+    const size_t maxT = (size_t)std::max(2048.0, 5000.0 * fsc / a.baud);
+    const std::vector<cf> yt(y.size() > maxT ? y.end() - (long)maxT : y.begin(), y.end());
     for (Order od : orders) {
-        tr.push_back(trial(y, fsc, a.baud, od, alpha0, initFor(od)));
+        tr.push_back(trial(yt, fsc, a.baud, od, alpha0, initFor(od)));
         a.orderEvm.push_back({od, tr.back().evm});
     }
     if (orders.size() == 1) { best = tr[0]; bo = orders[0]; a.orderConf = 1; }
@@ -356,13 +364,14 @@ Analysis analyse(const cf* x0, size_t n0, double fs, const AnalyseOptions& o) {
     // 5. pulse shape
     if (o.forceAlpha == -2) {
         bool rect = false;
-        const double est = estimateRolloff(y.data(), y.size(), fsc, a.baud, &rect);
+        const double est = estimateRolloff(y.data(), y.size(), fsc, a.baud, &rect, pass);
         const double cands[] = {-1, 0.2, 0.35, 0.5, 0.8};
         double be = best.evm, ba = alpha0;
         for (double al : cands) {
             if (std::fabs(al - alpha0) < 1e-9) continue;
-            Trial t = trial(y, fsc, a.baud, bo, al < 0 ? 0.0 : al, initFor(bo));
-            if (t.evm < be * 0.97) { be = t.evm; ba = al; best = t; }
+            Trial t = trial(yt, fsc, a.baud, bo, al < 0 ? 0.0 : al, initFor(bo));
+            const double need = al < 0 && !rect ? 0.8 : 0.97;   // rectangular only when the spectrum agrees, or clearly better
+            if (t.evm < be * need) { be = t.evm; ba = al; best = t; }
         }
         a.rect = ba < 0; a.alpha = a.rect ? 0 : ba;
         std::snprintf(line, sizeof line, "pulse shape: %s (spectrum says %s, roll-off about %.2f)", a.rect ? "rectangular" : "root-raised cosine", rect ? "rectangular" : "shaped", est);

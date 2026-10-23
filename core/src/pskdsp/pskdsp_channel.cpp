@@ -10,7 +10,7 @@ namespace {
 
 struct Region { size_t a = 0, b = 0; double power = 0; };
 
-Carrier measure(const std::vector<double>& P, double fs, bool nearOnly, double nearHz, double maxDistHz, size_t* widthBins) {
+Carrier measure(const std::vector<double>& P, double fs, bool nearOnly, double nearHz, double maxDistHz, double bandHz, size_t* widthBins) {
     Carrier c;
     const size_t N = P.size();
     if (N < 32) return c;
@@ -30,17 +30,24 @@ Carrier measure(const std::vector<double>& P, double fs, bool nearOnly, double n
         for (long j = (long)i - 2; j <= (long)i + 2; j++) if (j >= 0 && j < (long)N) { a += p[(size_t)j]; k++; }
         s[i] = a / k;
     }
+    // the bins that hold signal and noise: the outer 1/32 on each side holds the anti-alias roll-off, and a channeliser's stop band is not
+    // a noise floor
+    size_t i0 = N / 32, i1 = N - N / 32;
+    if (bandHz > 0 && bandHz < fs) {
+        const size_t h = (size_t)(0.5 * bandHz / hzBin * 0.97);
+        i0 = std::max(i0, N / 2 - std::min(N / 2 - 1, h)); i1 = std::min(i1, N / 2 + std::min(N / 2 - 1, h));
+    }
     // noise floor: the 30th percentile of the smoothed spectrum (a signal can fill more than half of a zoomed span)
-    std::vector<double> sorted(s.begin() + (long)(N / 32), s.end() - (long)(N / 32));   // the outer edges hold the anti-alias roll-off
+    std::vector<double> sorted(s.begin() + (long)i0, s.begin() + (long)i1);
     std::nth_element(sorted.begin(), sorted.begin() + (long)(sorted.size() * 3 / 10), sorted.end());
     const double floor = std::max(1e-30, sorted[sorted.size() * 3 / 10]);
     const double thr = floor * 4.0;   // 6 dB
     std::vector<Region> regs;
-    for (size_t i = N / 64; i < N - N / 64;) {
+    for (size_t i = i0; i < i1;) {
         if (s[i] <= thr) { i++; continue; }
         Region r; r.a = i;
         size_t gap = 0, j = i;
-        for (; j < N - N / 64; j++) {
+        for (; j < i1; j++) {
             if (s[j] > thr) gap = 0;
             else if (++gap > 3) break;
         }
@@ -113,13 +120,13 @@ Carrier measure(const std::vector<double>& P, double fs, bool nearOnly, double n
     return c;
 }
 
-Carrier find(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, double maxDistHz, int depth) {
+Carrier find(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, double maxDistHz, double bandHz, int depth) {
     Carrier c;
     if (n < 64 || fs <= 0) return c;
     const size_t nfft = std::clamp<size_t>(signallab::nextPow2(n / 32), 256, 16384);
     const std::vector<double> P = signallab::psd(x, n, nfft);
     size_t wb = 0;
-    c = measure(P, fs, nearOnly, nearHz, maxDistHz, &wb);
+    c = measure(P, fs, nearOnly, nearHz, maxDistHz, bandHz, &wb);
     if (!c.found || depth >= 3) return c;
     // narrow against the span: zoom in around it so its shape is measured over enough bins
     const double width = std::max(c.occHz, c.bw10Hz);
@@ -128,7 +135,7 @@ Carrier find(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, dou
         double fsz = fs;
         const std::vector<cf> in(x, x + n);
         const std::vector<cf> z = signallab::channelise(in, fs, c.offsetHz, span / 2, fsz);
-        Carrier zc = find(z.data(), z.size(), fsz, true, 0, width, depth + 1);
+        Carrier zc = find(z.data(), z.size(), fsz, true, 0, width, span, depth + 1);
         if (zc.found) {
             zc.offsetHz += c.offsetHz;
             return zc;
@@ -139,8 +146,8 @@ Carrier find(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, dou
 
 } // namespace
 
-Carrier findCarrier(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, double maxDistHz) {
-    return find(x, n, fs, nearOnly, nearHz, maxDistHz, 0);
+Carrier findCarrier(const cf* x, size_t n, double fs, bool nearOnly, double nearHz, double maxDistHz, double bandHz) {
+    return find(x, n, fs, nearOnly, nearHz, maxDistHz, bandHz, 0);
 }
 
 } // namespace dect2::pskd

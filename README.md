@@ -284,6 +284,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 - **Inmarsat-C**, **Inmarsat Aero**, **Iridium** (bursts can be saved for iridium-toolkit), **Orbcomm**, **Globalstar** (activity monitor only; L-band 1610-1626.5 MHz terminal uplink, spread and encrypted; the S-band satellite downlink is not tuned), **QO-100** (beacon lock, narrowband and wideband transponders, DATV hand-over to DVB-S/S2) and **CubeSat telemetry** (AX.25 1200 / 9600 baud, AX100 modes, CCSDS Reed-Solomon, SatNOGS-style KISS out).
 
 - **Argos** (receive only; [details](docs/argos.md)): PTT uplink on 401.650 MHz (PTT-A2 bursts decoded to the 28 bit platform ID and the user data in hex, each platform's burst frequencies as its Doppler / drift curve; A3, ZE and Argos-4 bursts only listed, their specifications are not public) and the MetOp-B / -C downlink on 465.9875 MHz (carrier followed through the pass, measured Doppler against the pass planner's prediction, HDLC frames in hex).
+- **PSK demodulator** (experimental, receive only; [details](docs/psk-demodulator.md)): BPSK, QPSK, OQPSK and 8PSK at any symbol rate the radio holds (from about 50 Bd), found blind: symbol rate, order, pulse shape, carrier, Doppler and Eb/N0, then a constellation and eye diagram, Doppler following, DPSK / NRZ-M / NRZ-S, G3RUH and CCSDS descramblers, a sync-word hunt for the phase ambiguity and the bits saved to a file.
 
 ### Two-way radio
 

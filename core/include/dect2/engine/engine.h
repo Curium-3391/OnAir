@@ -94,6 +94,7 @@
 #include "dect2/lorawan/lorawan_rx.h"
 #include "dect2/lorasat/lorasat_rx.h"
 #include "dect2/pactor/pactor_rx.h"
+#include "dect2/pskdsp/pskdsp_rx.h"
 #include "dect2/wisun/wisun_rx.h"
 #include "dect2/zwave/zwave_rx.h"
 #include "dect2/eczas/eczas_live.h"
@@ -442,6 +443,7 @@ public:
     KappLiveReceiver& kapp() { return rxKapp_; }   // KAPP: clear the packet list (telemetry through latestRx)
     KaftLiveReceiver& kaft() { return rxKaft_; }   // KAFT: the folder received files are saved to, clear the list (telemetry through latestRx)
     IfkpReceiver& ifkp() { return rxIfkp_; }   // IFKP: speed, clear the text (telemetry through latestRx)
+    PskdReceiver& pskd() { return rxPskd_; }       // PSK demodulator: settings, analyse again, clear
     PactorReceiver& pactor() { return rxPac_; }   // PACTOR-I monitor: clear the packets, Listen (telemetry through latestRx)
     ArdopReceiver& ardop() { return rxArd_; }   // ARDOP: clear the frames, Listen (telemetry through latestRx)
     Mt63Receiver& mt63() { return rxMt63_; }   // MT63: bandwidth and interleave (automatic by default), clear the text (telemetry through latestRx)
@@ -769,6 +771,7 @@ private:
     CquamReceiver rxCq_;
     ArdopReceiver rxArd_;
     PactorReceiver rxPac_;
+    PskdReceiver rxPskd_;
     MscatterLiveReceiver rxMs_;
     GoesDcsReceiver rxGd_;
     ModeAcReceiver rxModeAc_;
