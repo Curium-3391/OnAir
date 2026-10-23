@@ -1,5 +1,6 @@
 // Iridium short burst data: IDA reassembly, SBD headers, ACARS (see iridium_sbd.h for the sources).
 #include "dect2/iridium/iridium_sbd.h"
+#include "dect2/acars/acars_proto.h"
 #include <algorithm>
 #include <cmath>
 
@@ -26,7 +27,7 @@ std::string printable(const uint8_t* p, size_t n) {
 }
 } // namespace
 
-std::vector<IridiumIdaPacket> IridiumIdaAssembler::feed(const IridiumFrame& f, bool downlink, double freqHz, double timeSec) {
+std::vector<IridiumIdaPacket> IridiumIdaAssembler::feed(const IridiumFrame& f, bool downlink, double freqHz, double timeSec, uint64_t tag) {
     std::vector<IridiumIdaPacket> out;
     // give up on packets that waited too long (ida.py: 1000 ms)
     for (size_t i = 0; i < open_.size();) {
@@ -40,6 +41,7 @@ std::vector<IridiumIdaPacket> IridiumIdaAssembler::feed(const IridiumFrame& f, b
         if (std::fabs(freqHz - o.lastF) < 260 && timeSec >= o.lastT && timeSec <= o.lastT + 0.28 && (o.ctr + 1) % 8 == f.idaCtr && o.p.downlink == downlink) {
             o.p.data.insert(o.p.data.end(), bytes.begin(), bytes.end());
             o.p.fragments++;
+            o.p.tags.push_back(tag);
             o.ctr = f.idaCtr; o.lastT = timeSec; o.lastF = freqHz;
             if (!f.idaCont) { out.push_back(o.p); open_.erase(open_.begin() + i); }
             return out;
@@ -47,7 +49,7 @@ std::vector<IridiumIdaPacket> IridiumIdaAssembler::feed(const IridiumFrame& f, b
     }
     if (f.idaCtr != 0) return out;     // a middle part whose start was missed
     Open o;
-    o.p.data = bytes; o.p.downlink = downlink; o.p.timeSec = timeSec; o.p.freqHz = freqHz; o.p.fragments = 1;
+    o.p.data = bytes; o.p.downlink = downlink; o.p.timeSec = timeSec; o.p.freqHz = freqHz; o.p.fragments = 1; o.p.tags.push_back(tag);
     o.ctr = 0; o.lastT = timeSec; o.lastF = freqHz;
     if (!f.idaCont) out.push_back(o.p);
     else if (open_.size() < 64) open_.push_back(o);
@@ -81,8 +83,35 @@ IridiumSbd iridiumParseSbd(const std::vector<uint8_t>& pk, bool downlink) {
         a.label = printable(&d[10], 2);
         a.blockId = (char)(d[12] & 0x7f);
         size_t b = 13, e = d.size();
-        if (e > b && (d[e - 1] & 0x7f) == 0x03) e--;
-        else if (e > b && (d[e - 1] & 0x7f) == 0x17) { e--; a.more = true; }
+        // The suffix (ETX / ETB) ends the text. Some links add the two check bytes (and DEL) after it: look for the suffix at the end first,
+        // then 3 and 4 bytes before the end, and check the sequence (CRC-16 of ARINC 618 over mode ... check bytes, with and without the
+        // parity bits) where it is there.
+        auto isSuf = [&](size_t i) { const int c = d[i] & 0x7f; return c == 0x03 || c == 0x17; };
+        auto crcGood = [&](size_t suf) {
+            if (suf + 3 > d.size()) return false;
+            std::vector<uint8_t> v(d.begin() + 1, d.begin() + suf + 3);
+            if (acarsCrc(v.data(), v.size()) == 0) return true;
+            for (auto& c : v) c &= 0x7f;     // (the check bytes themselves keep all 8 bits)
+            v[v.size() - 1] = d[suf + 2]; v[v.size() - 2] = d[suf + 1];
+            return acarsCrc(v.data(), v.size()) == 0;
+        };
+        size_t suf = std::string::npos;
+        for (size_t back : {(size_t)3, (size_t)4}) {
+            if (d.size() >= b + back && isSuf(d.size() - back) && crcGood(d.size() - back)) { suf = d.size() - back; a.crc = 1; break; }
+        }
+        if (suf == std::string::npos) {
+            if (e > b && isSuf(e - 1)) suf = e - 1;
+            else if (e >= b + 3 && isSuf(e - 3)) { suf = e - 3; a.crc = 2; }
+            else if (e >= b + 4 && isSuf(e - 4) && (d[e - 1] & 0x7f) == 0x7f) { suf = e - 4; a.crc = 2; }
+        }
+        if (suf != std::string::npos) {
+            if ((d[suf] & 0x7f) == 0x17) a.more = true;
+            e = suf;
+            // parity: odd over all 8 bits of every byte from the mode character to the suffix; none of the bytes using bit 7 = no parity in use
+            bool any = false, bad = false;
+            for (size_t i = 1; i <= suf; i++) { if (d[i] & 0x80) any = true; if (!(__builtin_popcount(d[i]) & 1)) bad = true; }
+            a.parity = !any ? 0 : bad ? 2 : 1;
+        }
         if (e > b && (d[b] & 0x7f) == 0x02) {
             b++;
             if (!downlink && e >= b + 10) {   // from the aircraft: sequence number and flight number first

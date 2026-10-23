@@ -15,6 +15,7 @@ struct IridiumIdaPacket {
     double timeSec = 0, freqHz = 0;
     int fragments = 0;
     bool complete = true;            // false: timed out before its last fragment
+    std::vector<uint64_t> tags;      // the tag of each fragment, as given to feed()
 };
 
 // Joins IDA fragments (ida.py): a packet starts with counter 0; the next fragment has counter + 1 (mod 8), the same direction,
@@ -23,7 +24,7 @@ struct IridiumIdaPacket {
 class IridiumIdaAssembler {
 public:
     // f must be an IDA frame that checked out; returns the packets this fragment completed (or that timed out)
-    std::vector<IridiumIdaPacket> feed(const IridiumFrame& f, bool downlink, double freqHz, double timeSec);
+    std::vector<IridiumIdaPacket> feed(const IridiumFrame& f, bool downlink, double freqHz, double timeSec, uint64_t tag = 0);
     void reset() { open_.clear(); }
 private:
     struct Open { IridiumIdaPacket p; int ctr; double lastT, lastF; };
@@ -40,6 +41,8 @@ struct IridiumAcars {
     std::string seq, flight;         // from the aircraft only (uplink frames): message sequence number, flight number
     std::string text;
     bool more = false;               // ended with ETB: another block follows
+    int crc = 0;                     // block check sequence after the suffix: 0 not present, 1 matches, 2 does not
+    int parity = 0;                  // 0 no parity bits in use, 1 odd parity everywhere, 2 some bytes wrong
 };
 
 struct IridiumSbd {

@@ -33,7 +33,8 @@ struct IridiumFrame {
     int satId = -1, beamId = -1;
     bool hasPosition = false;           // IRA: position as the ring alert carries it (geocentric latitude, like the toolkit)
     double lat = 0, lon = 0, altKm = 0;
-    int paged = 0;                      // IRA: number of TMSIs paged (the identities themselves are not kept)
+    int paged = 0;                      // IRA: number of TMSIs paged
+    std::vector<uint32_t> tmsis;        // IRA: the paged temporary identities, in the order sent (at most 12)
     bool hasTime = false;               // IBC/ITL: time as UTC seconds since 1970
     double unixTime = 0;
     int ric = -1, msgSeq = -1, block = -1, blocks = -1;   // MSG (pager): block = part number (from 0), blocks = number of parts
@@ -57,6 +58,7 @@ struct IridiumPagerMessage {
     int ric = -1, seq = -1;
     std::string text;
     bool complete = false;              // all parts received and the checksum of the whole text matches
+    int fmt = -1;                       // 5 alphanumeric (ASCII), 3 numeric (BCD)
     double timeSec = 0;
 };
 

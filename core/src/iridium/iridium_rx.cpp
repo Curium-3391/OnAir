@@ -9,6 +9,8 @@
 #include "dect2/iridium/iridium_frame.h"
 #include "dect2/iridium/iridium_phy.h"
 #include "dect2/iridium/iridium_sbd.h"
+#include "dect2/iridium/iridium_acars.h"
+#include "dect2/automation/engine.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -70,6 +72,8 @@ struct IridiumReceiver::Impl {
     std::vector<cf32> seg;
     IridiumMsgAssembler assembler;
     IridiumIdaAssembler idaAsm;
+    std::atomic<uint64_t> frameSerial{0};
+    uint64_t packetSerial = 0;                    // (mu)
     IridiumVoice voice;                       // voice calls (own lock; the user's codec plug-in decodes them)
     struct Recent { double t, f; float level; };
     std::deque<Recent> recent;
@@ -179,7 +183,8 @@ struct IridiumReceiver::Impl {
         std::vector<IridiumPagerMessage> done;
         if (haveFrame && f.type == IridiumType::MSG) done = assembler.feed(f, bb.timeSec);
         std::vector<IridiumIdaPacket> packets;
-        if (haveFrame && f.type == IridiumType::IDA) packets = idaAsm.feed(f, bb.downlink, bb.freqHz, bb.timeSec);
+        const uint64_t frameTag = haveFrame ? ++frameSerial : 0;
+        if (haveFrame && f.type == IridiumType::IDA) packets = idaAsm.feed(f, bb.downlink, bb.freqHz, bb.timeSec, frameTag);
         std::vector<std::string> logs;
         {
             std::lock_guard<std::mutex> lk(mu);
@@ -210,6 +215,17 @@ struct IridiumReceiver::Impl {
                 } else if (f.type != IridiumType::Voice) {
                     t.blocksBad++;
                 }
+                if (f.type == IridiumType::IDA || (f.type >= IridiumType::IIP && f.type <= IridiumType::IMS) || f.type == IridiumType::ITL || f.type == IridiumType::MSG) {
+                    IridiumFrameRec fr;
+                    fr.serial = frameTag; fr.time = bb.timeSec; fr.freqHz = bb.freqHz; fr.wall = (int64_t)wallNow(); fr.downlink = bb.downlink;
+                    fr.type = (uint8_t)f.type; fr.ok = f.ok; fr.crcOk = f.crcOk; fr.corrected = f.corrected; fr.ctr = f.idaCtr; fr.cont = f.idaCont;
+                    const std::string hx = f.hex.substr(0, 128);
+                    fr.hex = hx;
+                    fr.length = f.idaLen >= 0 ? (uint32_t)f.idaLen : (uint32_t)(f.hex.size() / 2);
+                    fr.status = !f.ok ? "code failed" : ((f.type == IridiumType::IDA || f.type == IridiumType::IIP) && !f.crcOk) ? "crc failed" : "ok";
+                    t.frameDump.push_back(fr);
+                    if (t.frameDump.size() > 600) t.frameDump.erase(t.frameDump.begin(), t.frameDump.begin() + 100);
+                }
                 if (f.ok && f.satId >= 0 && f.satId < 128) {
                     auto it = sats.find(f.satId);
                     if (it == sats.end()) {
@@ -232,7 +248,7 @@ struct IridiumReceiver::Impl {
                 if (f.ok && f.type == IridiumType::IRA) {
                     IridiumRingAlert ra;
                     ra.time = bb.timeSec; ra.sat = f.satId; ra.beam = f.beamId; ra.hasPos = f.hasPosition;
-                    ra.lat = f.lat; ra.lon = f.lon; ra.altKm = f.altKm; ra.paged = f.paged; ra.freqHz = bb.freqHz;
+                    ra.lat = f.lat; ra.lon = f.lon; ra.altKm = f.altKm; ra.paged = f.paged; ra.freqHz = bb.freqHz; ra.tmsis = f.tmsis;
                     t.ringAlerts.push_back(ra);
                     if (t.ringAlerts.size() > 100) t.ringAlerts.erase(t.ringAlerts.begin());
                     t.pagedTotal += std::max(0, f.paged);
@@ -269,7 +285,7 @@ struct IridiumReceiver::Impl {
             }
             for (const auto& m : done) {
                 IridiumPagerMsg pm;
-                pm.time = m.timeSec; pm.ric = m.ric; pm.seq = m.seq; pm.text = m.text.substr(0, 400); pm.complete = m.complete;
+                pm.time = m.timeSec; pm.ric = m.ric; pm.seq = m.seq; pm.text = m.text.substr(0, 400); pm.complete = m.complete; pm.fmt = m.fmt;
                 t.messages.push_back(pm);
                 if (t.messages.size() > 100) t.messages.erase(t.messages.begin());
                 char hdr[64];
@@ -277,17 +293,50 @@ struct IridiumReceiver::Impl {
                 logs.push_back(hdr + pm.text.substr(0, 120));
             }
             for (const auto& pk : packets) {
-                if (!pk.complete) continue;
-                t.sbdPackets++;
-                const IridiumSbd sbd = iridiumParseSbd(pk.data, pk.downlink);
-                if (!sbd.acars.valid) continue;
-                IridiumAcarsMsg am;
-                am.time = pk.timeSec; am.downlink = pk.downlink; am.mode = sbd.acars.mode; am.ack = sbd.acars.ack; am.blockId = sbd.acars.blockId;
-                am.reg = sbd.acars.reg; am.label = sbd.acars.label; am.seq = sbd.acars.seq; am.flight = sbd.acars.flight;
-                am.text = sbd.acars.text.substr(0, 240); am.more = sbd.acars.more;
-                t.acars.push_back(am);
-                if (t.acars.size() > 50) t.acars.erase(t.acars.begin());
-                logs.push_back("Iridium ACARS " + am.reg + " " + am.label + ": " + am.text.substr(0, 100));
+                IridiumPacketRec pr;
+                pr.serial = ++packetSerial; pr.time = pk.timeSec; pr.freqHz = pk.freqHz; pr.wall = (int64_t)wallNow(); pr.downlink = pk.downlink;
+                pr.fragments = pk.fragments; pr.complete = pk.complete; pr.length = (uint32_t)pk.data.size();
+                pr.hex = iridiumHexDump(pk.data, 256);
+                if (!pk.complete) {
+                    pr.status = "incomplete";
+                } else {
+                    t.sbdPackets++;
+                    const IridiumSbd sbd = iridiumParseSbd(pk.data, pk.downlink);
+                    pr.sbdType = sbd.valid ? sbd.type : -1;
+                    if (!sbd.valid) pr.status = "not SBD";
+                    else if (!sbd.acars.valid) pr.status = "SBD";
+                    else {
+                        uint64_t ser = 0;
+                        const IridiumAcarsOutcome oc = iridiumAcarsIngest(t, pk, sbd, pr.wall, &ser);
+                        pr.acarsSerial = ser;
+                        pr.status = oc == IridiumAcarsOutcome::Repeat ? "ACARS repeat" : oc == IridiumAcarsOutcome::Joined ? "ACARS joined" : "ACARS new";
+                        if (oc != IridiumAcarsOutcome::Repeat && !t.acars.empty()) {
+                            for (auto it = t.acars.rbegin(); it != t.acars.rend(); ++it) if (it->serial == ser) {
+                                logs.push_back("Iridium ACARS " + it->reg + " " + it->label + ": " + it->text.substr(0, 100));
+                                // the automations and the message database (same event as the other ACARS modes); a block that waits for the rest is sent when it is whole
+                                if (!it->more && automation::wants(automation::FAcars)) {
+                                    automation::Event ev("acars.message");
+                                    ev.at(automation::wallNow(), "Iridium ACARS", pk.freqHz);
+                                    ev.str("tail", it->regKind == 2 ? std::string() : it->reg).str("flight", it->flight).str("label", it->label).str("text", it->text).flag("downlink", !it->downlink);
+                                    if (it->icao) { char hx[8]; snprintf(hx, sizeof hx, "%06X", it->icao & 0xFFFFFF); ev.str("icao", hx); }
+                                    else if (it->regKind == 2) ev.str("icao", it->reg);
+                                    if (it->hasPos) ev.num("lat", it->lat).num("lon", it->lon);
+                                    automation::emit(std::move(ev));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                t.packets.push_back(pr);
+                if (t.packets.size() > 300) t.packets.erase(t.packets.begin(), t.packets.begin() + 50);
+                for (uint64_t tag : pk.tags) {
+                    if (!tag) continue;
+                    for (auto it = t.frameDump.rbegin(); it != t.frameDump.rend(); ++it) {
+                        if (it->serial == tag) { it->packet = pr.serial; break; }
+                        if (it->serial < tag) break;
+                    }
+                }
             }
             dots.push_back(Dot{tBurst, (float)(b.freqHz / 1e3), kind});
             if (dots.size() > 4000) dots.pop_front();
@@ -353,15 +402,21 @@ struct IridiumReceiver::Impl {
     static void moveLists(IridiumTelemetry& to, IridiumTelemetry& from) {
         to.ringAlerts = std::move(from.ringAlerts); to.ibc = std::move(from.ibc); to.messages = std::move(from.messages);
         to.positions = std::move(from.positions); to.acars = std::move(from.acars);
+        to.aircraft = std::move(from.aircraft); to.packets = std::move(from.packets); to.frameDump = std::move(from.frameDump);
         to.pagedTotal = from.pagedTotal; to.sbdPackets = from.sbdPackets;
+        to.acarsSerial = from.acarsSerial; to.acarsDuplicates = from.acarsDuplicates; to.acarsCrcBad = from.acarsCrcBad; to.acarsParityBad = from.acarsParityBad;
         from.ringAlerts.clear(); from.ibc.clear(); from.messages.clear(); from.positions.clear(); from.acars.clear();
+        from.aircraft.clear(); from.packets.clear(); from.frameDump.clear();
     }
     void shiftTimes(IridiumTelemetry& t, double dt) {
         for (auto& r : t.ringAlerts) r.time += dt;
         for (auto& b : t.ibc) b.time += dt;
         for (auto& m : t.messages) m.time += dt;
         for (auto& p : t.positions) p.time += dt;
-        for (auto& a : t.acars) a.time += dt;
+        for (auto& a : t.acars) { a.time += dt; a.updated += dt; }
+        for (auto& a : t.aircraft) { a.lastHeard += dt; a.posTime += dt; }
+        for (auto& a : t.packets) a.time += dt;
+        for (auto& a : t.frameDump) a.time += dt;
         for (auto& kv : sats) kv.second.lastHeard += dt;
         t.sats.clear();
         for (const auto& kv : sats) t.sats.push_back(kv.second);
@@ -370,6 +425,7 @@ struct IridiumReceiver::Impl {
         IridiumTelemetry e;
         moveLists(e, tel);
         tel.pagedTotal = tel.sbdPackets = 0;
+        tel.acarsDuplicates = tel.acarsCrcBad = tel.acarsParityBad = 0;
         sats.clear(); tel.sats.clear();
         voice.clear(); tel.calls.clear();
         tel.seq++;

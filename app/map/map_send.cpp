@@ -406,6 +406,24 @@ void collectFrom(App& rx, std::vector<Track>& v, std::unordered_set<std::string>
             addTrack(v, seen, std::move(t));
         }
     }
+    dect2::IridiumTelemetry irdm;
+    if (rx.engine.iridium().telemetry(irdm, 0)) {      // ACARS carried in Iridium short burst data: positions from the aircraft's own reports
+        for (const auto& a : irdm.aircraft) {
+            if (!a.hasPos) continue;
+            Track t; t.kind = "aircraft"; t.sub = "Iridium ACARS"; t.src = "acars";
+            t.id = aircraftMapId(a.icao, a.flight, a.reg);
+            if (t.id.empty()) continue;
+            t.label = a.flight.empty() ? (a.reg.empty() ? t.id : a.reg) : a.flight;
+            t.lat = a.lat; t.lon = a.lon; t.age = irdm.timeSec - a.posTime;
+            t.hasHeard = true; t.heardAt = a.posTime;
+            if (a.hasAlt) { t.hasAlt = true; t.alt = a.altFt; }
+            if (a.hasTrack) { t.hasHdg = true; t.hdg = a.trackDeg; }
+            if (a.hasSpeed) { t.hasSpd = true; t.spd = a.speedKt; }
+            t.cat = a.posKind;
+            for (const auto& p : a.track) t.path.push_back({p.first, p.second});
+            addTrack(v, seen, std::move(t));
+        }
+    }
     dect2::FlarmTelemetry flarm;
     if (rx.engine.flarm().telemetry(flarm, 0)) {
         for (const auto& a : flarm.aircraft) {
