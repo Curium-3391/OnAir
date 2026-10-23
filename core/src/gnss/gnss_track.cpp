@@ -77,7 +77,9 @@ void GnssTracker::start(const GnssSignalSpec& sp, const uint8_t* chips, int prn_
     lockIdx_ = 0;
     m2_ = m4_ = 0; cnInit_ = 0; cn0Db_ = cnSmooth_ = 0;
     lowCn0Epochs_ = lowLockEpochs_ = 0;
-    std::memset(hist_, 0, sizeof hist_);
+    std::memset(hist_, 0, sizeof hist_); mlReset();
+    weakPll_ = false; wkI_ = wkQ_ = wkT_ = 0; wkN_ = 0;
+    liI_ = liQ_ = 0; liN_ = 0;
     bitSync_ = frameSync_ = timeValid_ = false;
     bitHistTotal_ = 0; bitAcc_ = 0; bitCount_ = 0; bitsPushed_ = 0; bitsBase_ = 0;
     bits_.clear();
@@ -170,25 +172,47 @@ void GnssTracker::epoch(const GnssBand& band, int N, double startIdx) {
         if (havePrev_) {
             const double cross = prevI_ * Q - I * prevQ_, dot = prevI_ * I + prevQ_ * Q;
             const double fe = std::atan(cross / (dot == 0 ? 1e-12 : dot)) / (2 * M_PI * Tn);
-            fcar_ += 0.12 * fe;
+            // a weak signal (under 32 dB-Hz): the gain falls after the first 0.2 s (an average over a growing span), so the frequency
+            // handed to the phase loop is within a few Hz, not the ~30 Hz rms a fixed gain leaves at 30 dB-Hz (the phase loop then slipped)
+            const bool weak = cnInit_ >= 50 && cn0Db_ < 32.0 && pullEpochs_ >= 200;
+            fcar_ += (weak ? std::max(0.01, 24.0 / (double)pullEpochs_) : 0.12) * fe;
             fllErr_ += (fe - fllErr_) * 0.02;
         }
         pullEpochs_++;
-        // frequency settled: try the phase lock loop
-        if (pullEpochs_ > 300 && std::fabs(fllErr_) < 10.0 && cnInit_ >= 50 && cn0Db_ > 24.0) {
+        // frequency settled: try the phase lock loop (a weak signal after 0.6 s of the falling gain)
+        if (pullEpochs_ > 300 && std::fabs(fllErr_) < 10.0 && cnInit_ >= 50 && cn0Db_ > 24.0 && (cn0Db_ >= 32.0 || pullEpochs_ > 600)) {
             locked_ = true; pllInt_ = 0; pllF0_ = fcar_; lockIdx_ = 0; locked_epochs_ = 0;
         } else if ((pullEpochs_ > 1500 && cnInit_ >= 50 && cn0Db_ < 24.0) || pullEpochs_ > 6000 || std::fabs(fcar_ - fcar0_) > 3000.0) {
             lost_ = true; pullInTimeout_ = true;
             lostWhy_ = std::fabs(fcar_ - fcar0_) > 3000.0 ? "carrier ran off more than 3 kHz while pulling in" : cn0Db_ < 24.0 ? "too weak to lock (C/N0 under 24 dB)" : "carrier did not settle";
         }
     } else {
-        // Costas phase loop, second order, 15 Hz
-        const double th = std::atan2(Q, I == 0 ? 1e-12 : I);
-        double err = th;
-        if (err > M_PI / 2) err -= M_PI; else if (err < -M_PI / 2) err += M_PI;
-        const double wn = 15.0 / 0.53, zeta = 0.707;
-        pllInt_ += wn * wn * Tn * err;
-        fcar_ = pllF0_ + (pllInt_ + 2 * zeta * wn * err) / (2 * M_PI);
+        // Costas phase loop, second order, 15 Hz on every epoch. A weak LNAV signal whose bit edge is known: one update per data bit instead,
+        // on the prompt summed over the bit (20 ms coherent, 13 dB more signal to noise in the discriminator) with a 10 Hz loop, so the phase
+        // jitter is lower where the 1 ms loop slips (the theory gives ~10 deg rms at 25 dB-Hz against ~20). A strong signal never enters it
+        // (under 30 dB-Hz in, over 33 dB-Hz out).
+        if (weakPll_ && !bitSync_) { weakPll_ = false; wkI_ = wkQ_ = wkT_ = 0; wkN_ = 0; }
+        const double zeta = 0.707;
+        if (!weakPll_) {
+            const double th = std::atan2(Q, I == 0 ? 1e-12 : I);
+            double err = th;
+            if (err > M_PI / 2) err -= M_PI; else if (err < -M_PI / 2) err += M_PI;
+            const double wn = 15.0 / 0.53;
+            pllInt_ += wn * wn * Tn * err;
+            fcar_ = pllF0_ + (pllInt_ + 2 * zeta * wn * err) / (2 * M_PI);
+        } else { wkI_ += I; wkQ_ += Q; wkT_ += Tn; wkN_++; }
+        if (spec.msg == GnssMsgLnav && bitSync_ && (int)((ecount_ + 1) % 20) == syncPhase_) {
+            // the last epoch of a data bit
+            if (weakPll_ && wkN_ == 20) {
+                double err = std::atan2(wkQ_, wkI_ == 0 ? 1e-12 : wkI_);
+                if (err > M_PI / 2) err -= M_PI; else if (err < -M_PI / 2) err += M_PI;
+                const double wn = 10.0 / 0.53;
+                pllInt_ += wn * wn * wkT_ * err;
+                fcar_ = pllF0_ + (pllInt_ + 2 * zeta * wn * err) / (2 * M_PI);
+            }
+            weakPll_ = cnInit_ >= 50 && (weakPll_ ? cn0Db_ < 33.0 : cn0Db_ < 30.0);
+            wkI_ = wkQ_ = wkT_ = 0; wkN_ = 0;
+        }
         locked_epochs_++;
         // A false lock half the epoch rate away (500 Hz with 1 ms epochs): the carrier turns half a cycle per epoch, which the Costas loop takes for
         // data changes. Where a data symbol lasts two epochs or more (LNAV, SBAS), consecutive prompts then cancel instead of adding up: compare the
@@ -206,10 +230,19 @@ void GnssTracker::epoch(const GnssBand& band, int N, double startIdx) {
                 flSum_ = flDiff_ = 0;
             }
         }
-        // lock indicator: (I^2 - Q^2) / (I^2 + Q^2), averaged
-        const double li = (I * I - Q * Q) / (I * I + Q * Q + 1e-12);
-        lockIdx_ += (li - lockIdx_) * 0.01;
-        if (locked_epochs_ > 300 && lockIdx_ < 0.1) { lowLockEpochs_++; if (lowLockEpochs_ > 500) { phaseDrop_ = true; locked_ = false; pullEpochs_ = 0; fllErr_ = 1e3; lowLockEpochs_ = 0; bitSync_ = frameSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; } }
+        // lock indicator: (I^2 - Q^2) / (I^2 + Q^2) of the prompt summed over 10 epochs, averaged. Summed, it stays near 1 in lock down to
+        // ~25 dB-Hz (of one epoch it sinks towards the noise there and a held lock was taken for a lost one); a data change inside the 10 ms
+        // only lowers it. Off frequency the sums turn and it falls to 0.
+        // Only LNAV: elsewhere the data or the secondary code can change from one epoch to the next.
+        if (spec.msg != GnssMsgLnav) {
+            const double li = (I * I - Q * Q) / (I * I + Q * Q + 1e-12);
+            lockIdx_ += (li - lockIdx_) * 0.01;
+        } else if (liI_ += I, liQ_ += Q, ++liN_ == 10) {
+            const double li = (liI_ * liI_ - liQ_ * liQ_) / (liI_ * liI_ + liQ_ * liQ_ + 1e-12);
+            lockIdx_ += (li - lockIdx_) * 0.1;
+            liI_ = liQ_ = 0; liN_ = 0;
+        }
+        if (locked_epochs_ > 300 && lockIdx_ < 0.1) { lowLockEpochs_++; if (lowLockEpochs_ > 500) { phaseDrop_ = true; locked_ = false; pullEpochs_ = 0; fllErr_ = 1e3; lowLockEpochs_ = 0; bitSync_ = frameSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; mlReset(); } }
         else lowLockEpochs_ = 0;
         if (cnInit_ >= 50 && locked_epochs_ > 1000) {
             if (cn0Db_ < 17.0) { if (++lowCn0Epochs_ > 3000) { lost_ = true; lostWhy_ = "signal faded (C/N0 under 17 dB for 3 s)"; } } else lowCn0Epochs_ = 0;
@@ -265,6 +298,33 @@ void GnssTracker::bitLayer(float I) {
         // transitions of the sign of I between consecutive epochs, counted by the position in a 20 epoch cycle
         if (prevSign_ != 0 && sign != prevSign_) { hist_[ecount_ % 20]++; bitHistTotal_++; }
         prevSign_ = sign;
+        // the energy of every 20 epoch window, by the phase it starts at (the maximum likelihood bit edge): for weak signals, where the
+        // transitions above are mostly noise. It decides only after 3 s, so a signal strong enough for the histogram keeps its decision.
+        {
+            const int ph = (int)(ecount_ % 20);
+            mlS_ += (double)I - (double)mlRing_[ph]; mlRing_[ph] = I;
+            mlI2_ += (double)I * I;
+            if (++mlN_ >= 20) { const int st = (int)((ecount_ + 1) % 20); mlE_[st] += std::fabs(mlS_); mlS2_[st] += mlS_ * mlS_; }
+            if (mlN_ >= 3000 && ph == 19) {
+                int at = 0;
+                for (int i = 1; i < 20; i++) if (mlE_[i] > mlE_[at]) at = i;
+                int sec = at == 0 ? 1 : 0;
+                for (int i = 0; i < 20; i++) if (i != at && mlE_[i] > mlE_[sec]) sec = i;
+                const double nb = (double)(mlN_ - 19) / 20.0;            // windows per phase
+                // noise per epoch from E[I^2] = A^2 + s^2 and, at the bit edge, E[S^2] = 400 A^2 + 20 s^2
+                const double s2 = std::max(1e-12, (400.0 * mlI2_ / mlN_ - mlS2_[at] / nb) / 380.0);
+                const int dsec = std::min((sec - at + 20) % 20, (at - sec + 20) % 20);
+                const double far = mlE_[(at + 10) % 20];
+                // the runner-up is a neighbour (one epoch of the next bit in its window): their difference has the noise of two epochs
+                const double z = (mlE_[at] - mlE_[sec]) / std::sqrt(2.0 * nb * s2);
+                if (dsec == 1 && z > 4.0 && mlE_[at] > 1.2 * far) {
+                    bitSync_ = true; syncPhase_ = at; bitAcc_ = 0; bitCount_ = 0; firstBitEpoch_ = -1; bitsPushed_ = 0;
+                    bits_.clear(); bitsBase_ = 0; frameSync_ = false; syncEpoch_ = ecount_;
+                    return;
+                }
+                if (mlN_ >= 60000) mlReset();   // a minute without a clear edge: start again (the signal may have changed)
+            }
+        }
         if (bitHistTotal_ >= 24) {
             int best = 0, second = 0, at = 0;
             for (int i = 0; i < 20; i++) if (hist_[i] > best) { best = hist_[i]; at = i; }
@@ -283,7 +343,7 @@ void GnssTracker::bitLayer(float I) {
     }
     if (firstBitEpoch_ >= 0) { bitAcc_ += I; bitCount_++; }
     // a bit synchronisation that does not lead to a frame is wrong: start again
-    if (!frameSync_ && ecount_ - syncEpoch_ > 40000) { bitSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; prevSign_ = 0; }
+    if (!frameSync_ && ecount_ - syncEpoch_ > 40000) { bitSync_ = false; std::memset(hist_, 0, sizeof hist_); bitHistTotal_ = 0; prevSign_ = 0; mlReset(); }
 }
 
 void GnssTracker::pushBit(int bit) {

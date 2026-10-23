@@ -4,20 +4,26 @@
 #include "dect2/engine/test_parallel.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 using namespace dect2;
 using namespace dect2::gnsstest;
 using dect2::testpar::CaseOut;
 // every case runs on its own thread and prints through `out`, so that the log keeps the order of the cases
 #define CHECK(c, ...) do { if (!(c)) out.fail(__LINE__, __VA_ARGS__); } while (0)
 
+// GNSS_SWEEP_TOPS="30,28" GNSS_SWEEP_SECS=60: other skies for a measurement (only printed, the checks are those of the three below)
+static double tops[8] = {40.0, 36.0, 32.0};
+static int nTops = 3;
+static double secs = 34;
+
 static void runCase(int k, CaseOut& out) {
-    const double tops[3] = {40.0, 36.0, 32.0};
     {
         GnssSimConfig cfg;
         cfg.cn0Top = tops[k];
+        if (getenv("GNSS_SWEEP_SEED")) cfg.seed = (uint32_t)atoi(getenv("GNSS_SWEEP_SEED"));
         GnssSim sim(cfg, 4e6);
         Options o;
-        o.rate = 4e6; o.secs = 34;
+        o.rate = 4e6; o.secs = secs;
         Run r = run(sim, o);
         const GnssTelemetry& t = r.tel;
         double lowestTracked = 99, highestMissed = 0;
@@ -38,6 +44,7 @@ static void runCase(int k, CaseOut& out) {
         out.print("\n");
         for (auto& c : t.channels) CHECK(c.cn0 - sim.sats()[(size_t)c.prn - 1].cn0 > -4.0 && c.cn0 - sim.sats()[(size_t)c.prn - 1].cn0 < 3.0, "PRN %d: C/N0 %.1f, true %.1f", c.prn, c.cn0, sim.sats()[(size_t)c.prn - 1].cn0);
         CHECK(t.blocksBad <= t.blocksOk / 20 + 1, "%llu bad subframes against %llu good", (unsigned long long)t.blocksBad, (unsigned long long)t.blocksOk);
+        if (nTops != 3) { out.print("  (measurement only)\n"); return; }
         if (k == 0) { CHECK(t.fix.valid && t.fix.nSats >= 4 && hz < 40.0, "a 40 dB-Hz sky must give a fix"); CHECK(tracked >= 5, "only %d satellites tracked at 40 dB-Hz", tracked); }
         if (k == 1) { CHECK(tracked >= 3, "only %d satellites tracked at 36 dB-Hz", tracked); CHECK(decoded >= 3, "only %d decoded", decoded); }
         // nothing is claimed for the weakest sky: it is there to show the limit; the receiver must not invent satellites
@@ -47,7 +54,12 @@ static void runCase(int k, CaseOut& out) {
 
 int main() {
     // the three skies share nothing: side by side, the log keeps the order
-    const int fails = dect2::testpar::runCases(3, [](size_t i, CaseOut& out) { runCase((int)i, out); });
+    if (const char* e = getenv("GNSS_SWEEP_TOPS")) {
+        nTops = 0;
+        for (const char* p = e; *p && nTops < 8;) { tops[nTops++] = atof(p); while (*p && *p != ',') p++; if (*p) p++; }
+    }
+    if (const char* e = getenv("GNSS_SWEEP_SECS")) secs = atof(e);
+    const int fails = dect2::testpar::runCases((size_t)nTops, [](size_t i, CaseOut& out) { runCase((int)i, out); });
     if (fails) { printf("%d failure(s)\n", fails); return 1; }
     printf("OK\n");
     return 0;
