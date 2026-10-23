@@ -259,11 +259,11 @@ struct KaalLiveReceiver::Impl {
                 for (int s = 0; s < kaal::v4::kSlots; s++) if (r.slot[s].ok && kaal::v4::profileVoice(r.slot[s].profile)) { v4play = s; break; }
             if (v4play < 0) continue;
             const kaal::v4::SlotPayload& p = r.slot[v4play];
-            if (!kaal::v4::profileVoice(p.profile)) continue;
             if (!v4dec) { const kaal::v4::SlotCodec* c = kaal::v4::slotCodec(); if (c) v4dec.reset(c->makeDecoder()); }
             if (!v4dec) continue;
             v4pcm.assign(kaal::v4::kPcmPerPayload, 0);
-            v4dec->decode(p.ok ? p.bits : nullptr, p.profile, v4pcm.data());
+            if (p.ok && !kaal::v4::profileVoice(p.profile)) v4dec->silence(v4pcm.data());   // the talker paused (DTX): the slot carried data
+            else v4dec->decode(p.ok ? p.bits : nullptr, p.profile, v4pcm.data());
             if (tap) tap(v4pcm.data(), v4pcm.size());
             play(v4pcm.data(), v4pcm.size());
         }

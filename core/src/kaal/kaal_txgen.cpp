@@ -111,8 +111,8 @@ private:
 
 
 // Frame version 4 (docs/KAAL-NEXT.md): four slots in the 20 kHz channel. The microphone goes into the first kaal.v4voice slots (0 .. 4, default 1)
-// with the profile kaal.v4profile (1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s, default 2) when a slot voice codec is registered
-// (kaal_slots.h); the other slots carry the text (repeated every 2 s) and fill. The beacon goes into the control channel.
+// with the profile kaal.v4profile (1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s, default 2), coded by the slot codec (KAAL voice codec 4 unless
+// a test registered another, kaal_slots.h); the other slots, and a voice slot while the speaker is silent, carry the text (every 2 s) and fill. The beacon goes into the control channel.
 class KaalGenV4 : public TxGenerator {
 public:
     KaalGenV4(double rate, std::function<int(float*, int)> pull) : rate_(rate), pull_(std::move(pull)) { tx_.configure(rate); }

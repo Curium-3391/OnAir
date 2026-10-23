@@ -9,7 +9,7 @@
 // a longer callsign is only sent in the beacon.
 // opt "kaal.frame": 3 (default) = the v3 stream above; 4 = frame version 4 (docs/KAAL-NEXT.md): 16 ksym/s, 20 kHz, four slots, chirp sync, the beacon and
 // the text in the control channel and the data slots (any text length). opt "kaal.v4voice" (0 .. 4, default 1) slots carry the microphone with opt
-// "kaal.v4profile" (1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s) once a slot voice codec is registered (kaal_slots.h); "kaal.v4robust" 1 = data as QPSK.
+// "kaal.v4profile" (1 = 8.0, 2 = 6.0, 3 = 4.8, 4 = 3.2 kbit/s), coded with KAAL voice codec 4 (kaal_slots.h); "kaal.v4robust" 1 = data as QPSK.
 #pragma once
 #include "dect2/tx/tx.h"
 #include <memory>

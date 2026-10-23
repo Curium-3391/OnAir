@@ -172,7 +172,7 @@ void kaalPanel(TxUi& s, bool running) {
         ImGui::SetNextItemWidth(120 * gUi);
         ImGui::SliderInt("Voice slots", &s.kaalV4Voice, 0, 4);
         ImGui::TextDisabled("%s", "Slots without voice carry the text (any length) and data. The beacon goes in the control channel every 400 ms. "
-                                  "Voice needs the slot voice codec; until it is installed the v4 signal carries text and the beacon only.");
+                                  "Voice uses the KAAL voice codec 4; while the speaker is silent the slot carries data.");
     } else {
         static const int kRates[4] = {12, 16, 24, 32};
         static const char* const kNames[4] = {"12 kbit/s (real time, 8 ksym/s, most robust)", "16 kbit/s (real time, 8 ksym/s)", "24 kbit/s (real time, 16 ksym/s, 20 kHz wide)",

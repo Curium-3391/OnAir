@@ -1070,6 +1070,6 @@ SlotCodec& codecSlot() { static SlotCodec c; return c; }
 void registerSlotCodec(const SlotCodec& c) { std::lock_guard<std::mutex> lk(codecMu()); codecSlot() = c; }
 const SlotCodec* slotCodec() {
     std::lock_guard<std::mutex> lk(codecMu());
-    return codecSlot().makeEncoder && codecSlot().makeDecoder ? &codecSlot() : nullptr;
+    return codecSlot().makeEncoder && codecSlot().makeDecoder ? &codecSlot() : &kv4SlotCodec();
 }
 }  // namespace dect2::kaal::v4
