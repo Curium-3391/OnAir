@@ -157,6 +157,16 @@ private:
     int olPrev_ = 60;
 };
 
+// What the decoder used for one subframe (side information for the enhancer, kv_enhance.cpp).
+struct SubInfo {
+    float aq[kP + 1];   // quantised LPC
+    int Ti;             // integer pitch lag (8 kHz samples)
+    double lag;         // pitch lag in samples (half-sample resolution on the higher tiers)
+    double gp, gc;      // pitch gain and fixed-codebook gain
+    double ecb;         // mean energy per sample of the (sharpened) pulse vector
+    bool rnd;           // random pulses (lost frame or damaged class C)
+};
+
 class CoreDecoder {
 public:
     explicit CoreDecoder(const Prof& P);
@@ -167,6 +177,8 @@ public:
     const double* lsfLast() const { return st_.lsfPrev; }
     double lastVoicing() const { return voicing_; }
     int lostRun() const { return lost_; }
+    const SubInfo& sub(int s) const { return sub_[s]; }
+    const float* excitation() const { return excOut_; }   // the excitation of the last frame (N8 samples)
 private:
     void postfilter(const float* a, const float* in, float* out, int n, int lag, double gp);
     const Prof& P_;
@@ -179,6 +191,8 @@ private:
     float pfFir_[kP], pfIir_[kP];
     float pfTilt_ = 0;
     double pfAgc_ = 1.0, mute_ = 1.0;
+    SubInfo sub_[kMaxSub];
+    float excOut_[kMaxN8];
 };
 
 // ---- high band (16 kHz) ----
@@ -201,8 +215,12 @@ public:
     void reset();
     // q == nullptr: lost (repeat, fading). Adds nothing when the high band is off. out: frameMs * 16 samples.
     void decode(const FrameQ* q, const bool* timeBad, float* out);
+    // The same state update as decode(), but returns the band levels (dB per bin) of every 5 ms block instead of synthesising them.
+    void levels(const FrameQ* q, const bool* timeBad, double (*L)[kHbBands]);
+    void synth(const double (*L)[kHbBands], int nb, float* out);   // noise of those levels, nb 5 ms blocks
     // Comfort noise: flat-ish noise at levelDb (dB per bin) with a tilt.
     void comfort(double levelDb, double tiltDb, float* out, int n16);
+    void comfortLevels(double levelDb, double tiltDb, double* L);   // the levels comfort() would use (same state update)
 private:
     void synthBlock(const double* bandDb, float* out);
     const Prof& P_;

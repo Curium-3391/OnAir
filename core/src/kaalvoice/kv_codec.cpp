@@ -4,6 +4,7 @@
 #include "dect2/kaal/kaal_codec.h"
 #include "dect2/kaal/kaal_codec3.h"
 #include "kv_core.h"
+#include "kv_enhance.h"
 #include <cmath>
 #include <cstring>
 
@@ -36,7 +37,7 @@ Info infoOf(const Config& c, const Prof& P) {
     i.classBits[2] = P.classBits[2];
     i.padBits = P.padBits;
     i.delaySamples = (c.sampleRate == 16000 ? kSplitDelay + 2 * kLA : kLA) +
-                     (c.noiseSuppress ? (c.sampleRate == 16000 ? kNsHop16 : kNsHop8) : 0);
+                     (c.noiseSuppress ? (c.sampleRate == 16000 ? kNsHop16 : kNsHop8) : 0) + enhanceDelay(c, P);
     return i;
 }
 
@@ -366,22 +367,30 @@ struct Decoder::Impl {
     Info inf;
     std::unique_ptr<CoreDecoder> core;
     std::unique_ptr<HbDecoder> hbd;
+    std::unique_ptr<Enhancer> enh;   // null when the enhancer is off
+    std::shared_ptr<ExternalPostFilter> ext;
+    EnhanceSide side;
     Up2 up;
     bool cng = false;           // comfort noise running
     Sid cur{}, target{};
     bool haveSid = false;
     float cngSyn[kP] = {};
     Rng rng;
+    int lostRun = 0;            // consecutive concealed frames
+    bool gap = true;            // the next speech frame follows a loss, comfort noise or a reset
     explicit Impl(const Config& c) : cfg(c) {
         if (!makeProf(c, P, nullptr)) { Config d; d.sampleRate = c.sampleRate == 8000 ? 8000 : 16000; cfg = d; makeProf(d, P, nullptr); }
         inf = infoOf(cfg, P);
         core.reset(new CoreDecoder(P));
         hbd.reset(new HbDecoder(P));
+        if (enhanceActive(cfg, P)) enh.reset(new Enhancer(P, cfg.enhanceStages, cfg.postfilter));
         reset();
     }
     void reset() {
         core->reset();
         hbd->reset();
+        if (enh) enh->reset();
+        if (ext) ext->reset();
         up = Up2();
         cng = false;
         haveSid = false;
@@ -392,14 +401,19 @@ struct Decoder::Impl {
         cur.resDb = target.resDb = 0;
         cur.hbDb = target.hbDb = -100;
         cur.hbTilt = target.hbTilt = 0;
+        lostRun = 0;
+        gap = true;
+        side = EnhanceSide();
     }
     void comfortLb(float* lb) {   // one frame of comfort noise in the low band, parameters moving towards the last SID
         const int L = 40;
+        const bool shape = enh && (cfg.enhanceStages & kEnhComfort);
         for (int s = 0; s < P.N8 / L; s++) {
             for (int i = 0; i < kP; i++) cur.lsf[i] = 0.9 * cur.lsf[i] + 0.1 * target.lsf[i];
             cur.resDb = 0.9 * cur.resDb + 0.1 * target.resDb;
             float a[kP + 1];
             lsfToLpc(cur.lsf, a);
+            if (shape) weightLpc(a, 0.92, a);   // enhancer: no sharp peaks from the coarse SID spectrum
             const float g = (float)std::sqrt(kvFromDb(cur.resDb));
             float e[40];
             for (int n = 0; n < L; n++) e[n] = g * rng.gauss();
@@ -408,19 +422,69 @@ struct Decoder::Impl {
         cur.hbDb = 0.8 * cur.hbDb + 0.2 * target.hbDb;
         cur.hbTilt = 0.8 * cur.hbTilt + 0.2 * target.hbTilt;
     }
-    void out16(const float* lb, const float* hb, int16_t* pcm) {
+    // the high band of a speech / concealed frame (q == nullptr: concealed)
+    void highBand(const FrameQ* q, const bool* timeBad, float* hb) {
+        double L[8][kHbBands];
+        const int nb = 4 * P.halves;
+        hbd->levels(q, timeBad, L);
+        if (enh) enh->highBand(core.get(), L, nb, hb);
+        else hbd->synth(L, nb, hb);
+        sideHb(L, nb);
+    }
+    void comfortHb(float* hb) {
+        const int nb = 4 * P.halves;
+        if (enh) {
+            double L[8][kHbBands];
+            hbd->comfortLevels(cur.hbDb, cur.hbTilt, L[0]);
+            for (int b = 1; b < nb; b++) std::memcpy(L[b], L[0], sizeof L[0]);
+            enh->highBand(nullptr, L, nb, hb);
+            sideHb(L, nb);
+        } else {
+            hbd->comfort(cur.hbDb, cur.hbTilt, hb, inf.frameSamples);
+            side.hbBlocks = 0;
+        }
+    }
+    void sideHb(const double (*L)[kHbBands], int nb) {
+        side.hbBlocks = nb;
+        for (int b = 0; b < nb; b++)
+            for (int j = 0; j < kHbBands; j++) side.hbLevelDb[b][j] = (float)L[b][j];
+    }
+    void sideCore(EnhanceSide::Kind k) {
+        side.kind = k;
+        side.subframes = P.S;
+        side.subLen8 = P.L;
+        double v = 0;
+        for (int s = 0; s < P.S; s++) {
+            const SubInfo& si = core->sub(s);
+            for (int i = 0; i <= kP; i++) side.lpc[s][i] = si.aq[i];
+            side.lag[s] = (float)si.lag;
+            side.pitchGain[s] = (float)si.gp;
+            side.codeGain[s] = (float)si.gc;
+            v += si.gp;
+        }
+        side.voicing = (float)(v / P.S);
+    }
+    void finish(const float* lb, const float* hb, int16_t* pcm, Enhancer::Kind k, bool afterLoss, int lostBefore) {
         const int n = inf.frameSamples;
+        float y[640];
         if (P.fs == 16000) {
             float u[640];
             up.run(lb, P.N8, u);
-            for (int i = 0; i < n; i++) pcm[i] = toS16(u[i] + hb[i]);
+            for (int i = 0; i < n; i++) y[i] = u[i] + hb[i];
         } else {
-            for (int i = 0; i < n; i++) pcm[i] = toS16(lb[i]);
+            for (int i = 0; i < n; i++) y[i] = lb[i];
         }
+        if (enh) enh->output(y, n, k, afterLoss, lostBefore);
+        side.sampleRate = P.fs;
+        side.frameSamples = n;
+        side.enhanced = enh != nullptr;
+        side.lostRun = lostRun;
+        side.noiseDb = (float)(haveSid ? cur.resDb : (enh ? enh->noiseDb() : -100.0));
+        if (ext) ext->process(side, y);
+        for (int i = 0; i < n; i++) pcm[i] = toS16(y[i]);
     }
     void decode(FrameType t, const uint8_t* data, size_t nbytes, int16_t* pcm, uint32_t bad) {
         float lb[320] = {}, hb[640] = {};
-        const int n16 = inf.frameSamples;
         bool lost = data == nullptr || (bad & kBadA);
         const uint8_t* body = data;
         std::vector<uint8_t> shifted;
@@ -437,16 +501,26 @@ struct Decoder::Impl {
         } else if (!lost && t == FrameType::Speech && nbytes != (size_t)inf.payloadBytes) lost = true;
         else if (!lost && t == FrameType::Sid && nbytes != (size_t)inf.sidBytes) lost = true;
         if (t == FrameType::NoData && data == nullptr && nbytes == 0 && !(bad & kBadA)) lost = false;
+        const bool pf = cfg.postfilter && !enh;   // the enhancer has its own post-filter
+        side.firstAfterGap = false;
         if (lost || t == FrameType::NoData) {
             if (cng || (t == FrameType::NoData && !lost && haveSid)) {
                 cng = true;
                 comfortLb(lb);
-                if (P.fs == 16000) hbd->comfort(cur.hbDb, cur.hbTilt, hb, n16);
+                if (enh) enh->comfortLow(lb);
+                if (P.fs == 16000) comfortHb(hb);
+                side.kind = EnhanceSide::ComfortNoise;
+                gap = true;
+                finish(lb, hb, pcm, Enhancer::Comfort, false, 0);
             } else {
-                core->decode(nullptr, nullptr, cfg.postfilter, lb);
-                if (P.fs == 16000) hbd->decode(nullptr, nullptr, hb);
+                core->decode(nullptr, nullptr, pf, lb);
+                if (enh) enh->lowBand(*core, true, lb);
+                if (P.fs == 16000) highBand(nullptr, nullptr, hb);
+                lostRun++;
+                gap = true;
+                sideCore(EnhanceSide::Concealed);
+                finish(lb, hb, pcm, Enhancer::Concealed, false, lostRun);
             }
-            out16(lb, hb, pcm);
             return;
         }
         if (t == FrameType::Sid) {
@@ -459,8 +533,11 @@ struct Decoder::Impl {
             haveSid = true;
             cng = true;
             comfortLb(lb);
-            if (P.fs == 16000) hbd->comfort(cur.hbDb, cur.hbTilt, hb, n16);
-            out16(lb, hb, pcm);
+            if (enh) enh->comfortLow(lb);
+            if (P.fs == 16000) comfortHb(hb);
+            side.kind = EnhanceSide::ComfortNoise;
+            gap = true;
+            finish(lb, hb, pcm, Enhancer::Comfort, false, 0);
             return;
         }
         // speech
@@ -468,17 +545,25 @@ struct Decoder::Impl {
         const bool fromCng = cng;
         if (cng) {   // both sides restart; the comfort noise fades out under the first speech frame
             core->restart(haveSid ? target.lsf : core->lsfLast());
+            if (enh) enh->restart();
             comfortLb(fade);
             cng = false;
         }
         FrameQ q;
         bool fcbBad[kMaxSub], timeBad = false;
         unpackFrame(P, body, bad, q, fcbBad, &timeBad);
-        core->decode(&q, fcbBad, cfg.postfilter, lb);
-        if (P.fs == 16000) hbd->decode(&q, &timeBad, hb);
+        core->decode(&q, fcbBad, pf, lb);
+        if (enh) enh->lowBand(*core, false, lb);
+        if (P.fs == 16000) highBand(&q, &timeBad, hb);
         if (fromCng)
             for (int i = 0; i < P.N8; i++) lb[i] += fade[i] * (float)(1.0 - (double)i / P.N8);
-        out16(lb, hb, pcm);
+        const int lostBefore = lostRun;
+        const bool afterLoss = lostRun > 0;
+        lostRun = 0;
+        sideCore(EnhanceSide::Speech);
+        side.firstAfterGap = gap;
+        gap = false;
+        finish(lb, hb, pcm, Enhancer::Speech, afterLoss, lostBefore);
     }
 };
 
@@ -487,6 +572,9 @@ Decoder::~Decoder() = default;
 const Info& Decoder::info() const { return p_->inf; }
 void Decoder::decode(FrameType t, const uint8_t* data, size_t nbytes, int16_t* pcm, uint32_t bad) { p_->decode(t, data, nbytes, pcm, bad); }
 void Decoder::reset() { p_->reset(); }
+void Decoder::setPostFilter(std::shared_ptr<ExternalPostFilter> pf) { p_->ext = std::move(pf); if (p_->ext) p_->ext->reset(); }
+const EnhanceSide& Decoder::lastSide() const { return p_->side; }
+bool Decoder::enhancing() const { return p_->enh != nullptr; }
 
 // ================================================================ FrameCodec wrappers
 namespace {
