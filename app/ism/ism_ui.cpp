@@ -60,7 +60,10 @@ void presets(App& a) {
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Band");
     struct P { const char* name; double mhz; const char* tip; };
-    static const P ps[] = {{"433.92", 433.92, "433.92 MHz: weather stations, thermometers, remotes, doorbells, TPMS (Europe, Asia)"},
+    static const P ps[] = {{"315", 315.0, "315 MHz: tyre pressure sensors (Toyota PMV-107J, Schrader and others), garage door and gate remotes, alarm sensors (USA, Canada, Japan)"},
+                           {"345", 345.0, "345 MHz: Honeywell and Vivint door, window and motion sensors (USA)"},
+                           {"390", 390.0, "390 MHz: garage door and gate remotes (USA)"},
+                           {"433.92", 433.92, "433.92 MHz: weather stations, thermometers, remotes, doorbells, TPMS (Europe, Asia)"},
                            {"868.3", 868.3, "868.3 MHz: Bresser, LaCrosse IT+, Fine Offset / Ecowitt (Europe); 868.95 MHz wireless M-Bus fits in the same band"},
                            {"868.95", 868.95, "868.95 MHz: wireless M-Bus T and C mode water, heat and gas meters"},
                            {"915", 915.0, "915 MHz: weather stations and sensors in the Americas and Australia"}};
