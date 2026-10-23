@@ -98,6 +98,7 @@
 #include "dect2/loraraw/loraraw_tel.h"
 #include "dect2/lorawan/lorawan_tel.h"
 #include "dect2/lorasat/lorasat_tel.h"
+#include "dect2/pactor/pactor_tel.h"
 #include "dect2/wisun/wisun_tel.h"
 #include "dect2/zwave/zwave_tel.h"
 #include "dect2/eczas/eczas_tel.h"
@@ -217,6 +218,7 @@ struct RxTelemetry {
     LoraRawTelemetry loraraw; // valid when standard == 72 (LoRa raw)
     LorawanTelemetry lorawan; // valid when standard == 201 (LoRaWAN all channels, family 200, engine standard 202)
     LoraSatTelemetry lorasat; // valid when standard == 202 (LoRa satellites, family 201, engine standard 203)
+    PactorTelemetry pactor;   // valid when standard == 204 (PACTOR-I monitor, family 203, engine standard 205)
     ZwaveTelemetry zwave;     // valid when standard == 99 (Z-Wave)
     WisunTelemetry wisun;     // valid when standard == 85 (Wi-SUN FAN)
     FpvTelemetry fpv;         // valid when standard == 102 (analog FPV video)
