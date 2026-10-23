@@ -63,7 +63,12 @@ static bool glfwOnWayland() {
 #endif
 
 // glfwInit (the platform on Linux), the hints, the window and its size; null when there is no window
+static std::string gGlfwError;   // the last text GLFW reported, for the message when no window opens (#283)
 GLFWwindow* createMainWindow(int argc, char** argv) {
+    glfwSetErrorCallback([](int code, const char* text) {
+        gGlfwError = text ? text : "";
+        fprintf(stderr, "GLFW error %d: %s\n", code, gGlfwError.c_str());
+    });
 #if defined(__linux__)
     chooseGlfwPlatform(argc, argv);
     if (!glfwInit()) {   // X11 asked for and no X server after all: whatever GLFW finds
@@ -75,11 +80,29 @@ GLFWwindow* createMainWindow(int argc, char** argv) {
 #else
     glfwInit();
 #endif
-    gfx::windowHints();
-    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);   // a fullscreen main window stays up when another window or monitor is clicked (#71)
-    for (int i = 1; i < argc; i++) if (std::string(argv[i]) == "--hidden") { glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); gNoOsWindows = true; }   // dev: with --shot, render without showing the window
-    GLFWwindow* window = glfwCreateWindow(1500, 900, "OnAir", nullptr, nullptr);
-    if (!window) return nullptr;
+    bool hidden = false;
+    for (int i = 1; i < argc; i++) if (std::string(argv[i]) == "--hidden") { hidden = true; gNoOsWindows = true; }   // dev: with --shot, render without showing the window
+    // The best OpenGL the driver offers: 3.2 core first, then 3.1 and 3.0 (a Raspberry Pi 5 with Mesa has only 3.1, #283)
+    GLFWwindow* window = nullptr;
+    for (int lvl = 0; lvl < gfx::levelCount() && !window; lvl++) {
+        gfx::setLevel(lvl);
+        glfwDefaultWindowHints();
+        gfx::windowHints();
+        glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);   // a fullscreen main window stays up when another window or monitor is clicked (#71)
+        if (hidden) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        window = glfwCreateWindow(1500, 900, "OnAir", nullptr, nullptr);
+        if (!window && gfx::levelCount() > 1) fprintf(stderr, "no %s context; trying the next lower version\n", gfx::levelName());
+    }
+    if (!window) {
+        const std::string why = gGlfwError.empty() ? std::string("no reason given") : gGlfwError;
+        fprintf(stderr, "OnAir: could not open a window or graphics context (%s)\n", why.c_str());
+        plat::showFatalError("OnAir", ("OnAir could not open its window: " + why + "\n\nThe graphics driver needs to offer at least OpenGL 3.0. "
+            "On a Raspberry Pi or another board with a Mesa driver that offers only an old version, start OnAir with:\n"
+            "MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 onair\n"
+            "(over SSH or without a display there is no window; set DISPLAY or use a local session).").c_str());
+        return nullptr;
+    }
+    if (gfx::level() > 0) fprintf(stderr, "graphics: %s\n", gfx::levelName());
 #ifndef __APPLE__
     {   // the default size is in pixels: make the window as large (in points) as on a 96 dpi display, but never larger than the screen
         // (a 1366 x 768 laptop at 100 % is common: a 1500 x 900 window would hang off its bottom and right edges, hiding the status bar)

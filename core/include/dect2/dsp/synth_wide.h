@@ -24,7 +24,7 @@
 #include <memory>
 #include <vector>
 
-namespace dect2::synth {
+namespace dect2::synthwide {
 
 // ---- pure helpers (unit tested) ----
 std::vector<float> sqrtHann(int n);                       // periodic; its square sums to 1 at hop n/2
@@ -160,4 +160,4 @@ private:
     double t_ = 0;
 };
 
-} // namespace dect2::synth
+} // namespace dect2::synthwide

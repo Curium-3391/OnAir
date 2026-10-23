@@ -1,11 +1,15 @@
-// OpenGL 3.2 core back end (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
+// OpenGL 3.2 core back end (falls back to 3.1 and 3.0 where the driver offers no more, see gl_level.h) (Linux, Windows, and macOS when built with DECT2_UI_BACKEND=OpenGL3).
 #include "gfx.h"
 #include "render_caps.h"
+#include "gl_level.h"
+#include "tex_shrink.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -21,7 +25,8 @@ enum : GLenum {
     CLAMP_TO_EDGE = 0x812F, FRAMEBUFFER = 0x8D40, COLOR_ATTACHMENT0 = 0x8CE0, UNPACK_ALIGNMENT = 0x0CF5, FRAGMENT_SHADER = 0x8B30,
     VERTEX_SHADER = 0x8B31, COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82, TRIANGLES = 0x0004, COLOR_BUFFER_BIT = 0x4000, TEXTURE0 = 0x84C0,
     TEXTURE1 = 0x84C1, FRAMEBUFFER_BINDING = 0x8CA6, VIEWPORT = 0x0BA2, CURRENT_PROGRAM = 0x8B8D, TEXTURE_BINDING_2D = 0x8069,
-    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5, RENDERER = 0x1F01
+    ACTIVE_TEXTURE = 0x84E0, VERTEX_ARRAY_BINDING = 0x85B5, BACK = 0x0405, FRAMEBUFFER_COMPLETE = 0x8CD5, RENDERER = 0x1F01,
+    MAX_TEXTURE_SIZE = 0x0D33
 };
 
 #define GLFN(ret, name, args) typedef ret (*PFN_##name) args; PFN_##name name = nullptr;
@@ -106,30 +111,41 @@ struct StateGuard {
     }
 };
 
+int gMaxTex = 16384;   // GL_MAX_TEXTURE_SIZE of the context (4096 on the Raspberry Pi 4/5 V3D, #284), read in create()
+
+// An image larger than the GPU takes (the 8192-wide waterfall on a 4096 V3D, #284: glTexImage2D failed and the waterfall stayed empty)
+// is kept at the largest size it takes and each update is shrunk onto it (tex_shrink.h). The texture coordinates are 0..1 of the whole
+// image, so the callers draw it the same.
 struct GlImage : Image {
     GLuint tex = 0;
-    GlImage(int w, int h, uint32_t fill) {
-        std::vector<uint32_t> px((size_t)w * h, fill);
+    int lw, lh, pw, ph;          // the size asked for and the size of the texture
+    std::vector<uint32_t> tmp;   // the shrunk update
+    GlImage(int w, int h, uint32_t fill) : lw(w), lh(h), pw(texshrink::side(w, gMaxTex)), ph(texshrink::side(h, gMaxTex)) {
+        if (pw != lw || ph != lh) fprintf(stderr, "graphics: a %dx%d picture is larger than this GPU's %d pixel limit, kept at %dx%d\n", lw, lh, gMaxTex, pw, ph);
+        std::vector<uint32_t> px((size_t)pw * ph, fill);
         StateGuard g;
-        tex = makeTexture(RGBA8, RGBA, w, h, px.data(), LINEAR);
+        tex = makeTexture(RGBA8, RGBA, pw, ph, px.data(), LINEAR);
     }
     ~GlImage() override { if (tex) glDeleteTextures(1, &tex); }
     ImTextureID texture() const override { return (ImTextureID)(intptr_t)tex; }
     void update(int x, int y, int w, int h, const uint32_t* rgba) override {
         StateGuard g;
         glBindTexture(TEXTURE_2D, tex);
-        glTexSubImage2D(TEXTURE_2D, 0, x, y, w, h, RGBA, UNSIGNED_BYTE, rgba);
+        if (pw == lw && ph == lh) { glTexSubImage2D(TEXTURE_2D, 0, x, y, w, h, RGBA, UNSIGNED_BYTE, rgba); return; }
+        int X0, X1, Y0, Y1;
+        if (!texshrink::shrink(rgba, x, y, w, h, lw, lh, pw, ph, tmp, X0, X1, Y0, Y1)) return;
+        glTexSubImage2D(TEXTURE_2D, 0, X0, Y0, X1 - X0, Y1 - Y0, RGBA, UNSIGNED_BYTE, tmp.data());
     }
 };
 
-const char* kVert = R"(#version 150
+const char* kVert = R"(
 void main() {
     vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
 // NV12 -> RGB, same maths as the Metal kernel (limited/full range, BT.601/709, optional comb removal for interlaced pictures)
-const char* kFrag = R"(#version 150
+const char* kFrag = R"(
 uniform sampler2D Y;
 uniform sampler2D UV;
 uniform vec3 prm;     // x: BT.709, y: full range, z: deinterlace
@@ -155,7 +171,12 @@ void main() {
 }
 )";
 
-GLuint compile(GLenum type, const char* src) {
+int gLevel = 0;   // index into kGlLevels: set by setLevel() before the windows are created
+
+GLuint compile(GLenum type, const char* body) {
+    static char text[4096];
+    glShaderText(text, sizeof text, gLevel, body);
+    const char* src = text;
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
     glCompileShader(s);
@@ -260,6 +281,7 @@ struct GlBackend : Backend {
     explicit GlBackend(GLFWwindow* w) : win(w) {}
     Image* createImage(int w, int h, uint32_t fill) override { return new GlImage(w, h, fill); }
     Video* createVideo(int w, int h) override { return new GlVideo(w, h); }
+    int maxImageSize() const override { return gMaxTex; }
     int fbW = 0, fbH = 0;
     float clear[4] = {0, 0, 0, 1};
     void newFrame(int w, int h, const float c[4]) override { fbW = w; fbH = h; std::memcpy(clear, c, sizeof clear); ImGui_ImplOpenGL3_NewFrame(); }
@@ -287,11 +309,20 @@ struct GlBackend : Backend {
 
 } // namespace
 
+int levelCount() { return kGlLevelCount; }
+int level() { return gLevel; }
+void setLevel(int l) { gLevel = l < 0 ? 0 : l >= kGlLevelCount ? kGlLevelCount - 1 : l; }
+const char* levelName() {
+    static const char* n[] = {"OpenGL 3.2 core", "OpenGL 3.1", "OpenGL 3.0"};
+    return n[gLevel];
+}
+
 void windowHints() {
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    const GlLevel& l = glLevel(gLevel);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, l.major);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, l.minor);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, l.core ? GLFW_OPENGL_CORE_PROFILE : GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, l.core ? GLFW_TRUE : GLFW_FALSE);
 }
 
 #if defined(__linux__)
@@ -312,7 +343,14 @@ Backend* create(GLFWwindow* window) {
 #endif
     if (!loadGl()) return nullptr;
     rcaps::detect((const char*)glGetString(RENDERER));
-    if (!ImGui_ImplOpenGL3_Init("#version 150")) return nullptr;
+    GLint maxTex = 0;
+    glGetIntegerv(MAX_TEXTURE_SIZE, &maxTex);
+    if (maxTex >= 256) gMaxTex = maxTex;
+    if (const char* e = getenv("DECT2_MAX_TEXTURE")) {   // a smaller limit, to try the Raspberry Pi's 4096 on another GPU (CI, #284)
+        const int m = atoi(e);
+        if (m >= 256 && m < gMaxTex) gMaxTex = m;
+    }
+    if (!ImGui_ImplOpenGL3_Init(glLevel(gLevel).glsl)) return nullptr;
     return new GlBackend(window);
 }
 

@@ -38,6 +38,7 @@ public:
 private:
     void llrs(const cf32* cells, float noiseVar, std::vector<float>& llr) const;   // soft bits of the code word, limited
     bool finish(const std::vector<uint8_t>& hard, std::vector<uint8_t>& payload) const;   // outer code on the decoded word
+    bool decodeLlr(const std::vector<float>& llr, std::vector<uint8_t>& hard, int* iters = nullptr) const;   // the LDPC code word from float LLRs
     BicmConfig cfg_;
     bool ok_ = false;
     bool quad_ = false;                // the constellation is one quadrant and its reflections: faster soft bits

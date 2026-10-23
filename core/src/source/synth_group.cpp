@@ -15,7 +15,7 @@ bool isRtl(const DeviceInfo& d) { const std::string b = lower(d.board + " " + d.
 
 SlicePlan planSlices(int radios, double fs, double wantSpanHz, double usable) {
     SlicePlan p;
-    if (radios < 2 || radios > synth::kSynthMaxSlices) { p.why = "a group needs 2 to 5 radios"; return p; }
+    if (radios < 2 || radios > synthwide::kSynthMaxSlices) { p.why = "a group needs 2 to 5 radios"; return p; }
     if (!(fs > 10e3)) { p.why = "the radios have no common sample rate"; return p; }
     // FFT size: a hop (n/2 samples) of about 0.2 ms, so the per-hop phase tracking follows free-running oscillators
     int n = 256;
@@ -35,11 +35,11 @@ SlicePlan planSlices(int radios, double fs, double wantSpanHz, double usable) {
         p.why = b;
     }
     step = std::max(step, std::max(2, U / 4) & ~1);           // asking for less than one radio covers: the slices still step apart
-    synth::SynthCfg c;
+    synthwide::SynthCfg c;
     c.slices = radios; c.fs = fs; c.n = n; c.stepBins = step; c.usable = usable;
     c.alignFrames = std::max(24, (int)std::lround(0.03 * fs / (n / 2)));   // about 30 ms per alignment solve
     c.maxOffsetHz = std::min(60e3, 0.25 * (U - step) * df);
-    synth::SynthWideband probe;
+    synthwide::SynthWideband probe;
     if (!probe.configure(c)) { p.why = "no valid slice layout for this rate and span"; return p; }
     p.ok = true;
     p.cfg = c;
@@ -111,7 +111,7 @@ std::vector<SynthGroupDef> synthGroupsFromString(const std::string& s) {
                 if (mf.size() != 3) continue;
                 g.members.push_back({unesc(mf[0]), unesc(mf[1]), unesc(mf[2])});
             }
-        if (g.members.size() >= 2 && g.members.size() <= (size_t)synth::kSynthMaxSlices && g.spanHz > 0) v.push_back(g);
+        if (g.members.size() >= 2 && g.members.size() <= (size_t)synthwide::kSynthMaxSlices && g.spanHz > 0) v.push_back(g);
     }
     return v;
 }
@@ -386,7 +386,7 @@ SynthGroupStatus SyntheticWideSource::status() const {
         m.centerHz = tune_.centerHz + plan_.sliceOffsetHz[(size_t)i];
         m.enabled = c.enabled;
         m.running = c.running && now - c.lastNs < 1000000000LL;
-        const synth::SliceStatus ss = sw_.slice(i);
+        const synthwide::SliceStatus ss = sw_.slice(i);
         m.alive = ss.alive && c.running;
         m.locked = i == 0 ? m.alive : ss.locked;
         m.offsetHz = ss.offsetHz; m.driftPpm = ss.driftPpm; m.dropouts = ss.dropouts;

@@ -95,54 +95,51 @@
 786|DVB-T/T2 UHF channel 60|8000|8 MHz channels
 @mode dtmb
 @region CN
-474|DTMB UHF channel 21|8000|8 MHz channels
-482|DTMB UHF channel 22|8000|8 MHz channels
-490|DTMB UHF channel 23|8000|8 MHz channels
-498|DTMB UHF channel 24|8000|8 MHz channels
-506|DTMB UHF channel 25|8000|8 MHz channels
-514|DTMB UHF channel 26|8000|8 MHz channels
-522|DTMB UHF channel 27|8000|8 MHz channels
-530|DTMB UHF channel 28|8000|8 MHz channels
-538|DTMB UHF channel 29|8000|8 MHz channels
-546|DTMB UHF channel 30|8000|8 MHz channels
-554|DTMB UHF channel 31|8000|8 MHz channels
-562|DTMB UHF channel 32|8000|8 MHz channels
-570|DTMB UHF channel 33|8000|8 MHz channels
-578|DTMB UHF channel 34|8000|8 MHz channels
-586|DTMB UHF channel 35|8000|8 MHz channels
-594|DTMB UHF channel 36|8000|8 MHz channels
-602|DTMB UHF channel 37|8000|8 MHz channels
-610|DTMB UHF channel 38|8000|8 MHz channels
-618|DTMB UHF channel 39|8000|8 MHz channels
-626|DTMB UHF channel 40|8000|8 MHz channels
-634|DTMB UHF channel 41|8000|8 MHz channels
-642|DTMB UHF channel 42|8000|8 MHz channels
-650|DTMB UHF channel 43|8000|8 MHz channels
-658|DTMB UHF channel 44|8000|8 MHz channels
-666|DTMB UHF channel 45|8000|8 MHz channels
-674|DTMB UHF channel 46|8000|8 MHz channels
-682|DTMB UHF channel 47|8000|8 MHz channels
-690|DTMB UHF channel 48|8000|8 MHz channels
-698|DTMB UHF channel 49|8000|8 MHz channels
-706|DTMB UHF channel 50|8000|8 MHz channels
-714|DTMB UHF channel 51|8000|8 MHz channels
-722|DTMB UHF channel 52|8000|8 MHz channels
-730|DTMB UHF channel 53|8000|8 MHz channels
-738|DTMB UHF channel 54|8000|8 MHz channels
-746|DTMB UHF channel 55|8000|8 MHz channels
-754|DTMB UHF channel 56|8000|8 MHz channels
-762|DTMB UHF channel 57|8000|8 MHz channels
-770|DTMB UHF channel 58|8000|8 MHz channels
-778|DTMB UHF channel 59|8000|8 MHz channels
-786|DTMB UHF channel 60|8000|8 MHz channels
-794|DTMB UHF channel 61|8000|8 MHz channels
-802|DTMB UHF channel 62|8000|8 MHz channels
-810|DTMB UHF channel 63|8000|8 MHz channels
-818|DTMB UHF channel 64|8000|8 MHz channels
-826|DTMB UHF channel 65|8000|8 MHz channels
-834|DTMB UHF channel 66|8000|8 MHz channels
-842|DTMB UHF channel 67|8000|8 MHz channels
-850|DTMB UHF channel 68|8000|8 MHz channels
+474|DTMB channel DS-13|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+482|DTMB channel DS-14|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+490|DTMB channel DS-15|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+498|DTMB channel DS-16|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+506|DTMB channel DS-17|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+514|DTMB channel DS-18|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+522|DTMB channel DS-19|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+530|DTMB channel DS-20|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+538|DTMB channel DS-21|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+546|DTMB channel DS-22|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+554|DTMB channel DS-23|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+562|DTMB channel DS-24|8000|8 MHz channels, DS-13 to DS-24 (470-566 MHz)
+610|DTMB channel DS-25|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+618|DTMB channel DS-26|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+626|DTMB channel DS-27|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+634|DTMB channel DS-28|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+642|DTMB channel DS-29|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+650|DTMB channel DS-30|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+658|DTMB channel DS-31|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+666|DTMB channel DS-32|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+674|DTMB channel DS-33|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+682|DTMB channel DS-34|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+690|DTMB channel DS-35|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+698|DTMB channel DS-36|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+706|DTMB channel DS-37|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+714|DTMB channel DS-38|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+722|DTMB channel DS-39|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+730|DTMB channel DS-40|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+738|DTMB channel DS-41|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+746|DTMB channel DS-42|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+754|DTMB channel DS-43|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+762|DTMB channel DS-44|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+770|DTMB channel DS-45|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+778|DTMB channel DS-46|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+786|DTMB channel DS-47|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+794|DTMB channel DS-48|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+802|DTMB channel DS-49|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+810|DTMB channel DS-50|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+818|DTMB channel DS-51|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+826|DTMB channel DS-52|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+834|DTMB channel DS-53|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+842|DTMB channel DS-54|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+850|DTMB channel DS-55|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+858|DTMB channel DS-56|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
+866|DTMB channel DS-57|8000|8 MHz channels, DS-25 to DS-57 (606-870 MHz); the top ones were cleared for mobile in places
 @mode atsc
 @region US
 57|ATSC channel 2|6000|6 MHz channels

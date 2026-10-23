@@ -114,7 +114,7 @@ int main() {
         CHECK(cutNumbers("599") == "5NN" && cutNumbers("001") == "TT1" && cutNumbers("150", true) == "AET", "cut numbers");
         CHECK(uncutNumbers("5NN") == "599" && uncutNumbers("TT1") == "001" && uncutNumbers("ONE") == "ONE" && uncutNumbers("NAME") == "NAME", "uncut");
         ContestStation s; s.myCall = "LY1ABC"; s.cqZone = 15; s.ituZone = 29; s.myName = "Kris"; s.myState = ""; s.myClass = "1D"; s.mySection = "DX";
-        const ContestDef& ww = *contestById("cqww-rtty");
+        const KeyerContestDef& ww = *contestById("cqww-rtty");
         CHECK(contestExchangeText(ww, s, 1, "", false) == "599 15", "CQ WW RTTY from DX \"%s\"", contestExchangeText(ww, s, 1, "", false).c_str());
         CHECK(contestExchangeText(*contestById("cqwpx-rtty"), s, 7, "", true) == "599 007 599 007", "WPX twice");
         CHECK(contestExchangeText(*contestById("cqww-cw"), s, 1, "", false) == "5NN 15", "CQ WW CW cut");
