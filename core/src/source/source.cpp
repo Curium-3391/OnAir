@@ -704,4 +704,3 @@ std::unique_ptr<IqSource> makeFileSource(const std::string& path, FileFormat fmt
 }
 
 } // namespace dect2
-#endif
