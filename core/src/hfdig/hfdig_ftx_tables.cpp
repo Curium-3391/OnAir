@@ -206,5 +206,84 @@ int ldpcDecode(const float* llr, int iters, uint8_t* cw) {
     return best;
 }
 
+// Ordered-statistics decoding of the (174,91) code, for when belief propagation fails. The generator is brought to systematic form on the 91
+// most reliable independent bits (the MRB); order 0 takes their hard decisions, order 1 flips each of them, order 2 flips every pair among the
+// nPair least reliable of them. The codeword nearest to the received bits (sum of |llr| over the bits that differ) wins, and only then is its
+// CRC checked, so a slot of noise passes about once in 2^14 tries.
+bool osdDecode(const float* llr, int nPair, uint8_t* cw, OsdStats* st) {
+    struct W { uint64_t w[3]; };
+    static W gen[kK];
+    static bool ready = [] {
+        for (int j = 0; j < kK; j++) {
+            gen[j] = W{{0, 0, 0}};
+            gen[j].w[j / 64] |= 1ull << (j % 64);
+            for (int r = 0; r < kM; r++)
+                if ((kLdpcGen[r][j / 8] >> (7 - j % 8)) & 1) gen[j].w[(kK + r) / 64] |= 1ull << ((kK + r) % 64);
+        }
+        return true;
+    }();
+    (void)ready;
+    auto bit = [](const W& v, int c) { return (int)((v.w[c / 64] >> (c % 64)) & 1); };
+    int ord[kN];
+    for (int i = 0; i < kN; i++) ord[i] = i;
+    std::stable_sort(ord, ord + kN, [&](int a, int b) { return std::fabs(llr[a]) > std::fabs(llr[b]); });
+    W g[kK];
+    std::memcpy(g, gen, sizeof g);
+    int piv[kK], np = 0;
+    for (int ci = 0; ci < kN && np < kK; ci++) {
+        const int c = ord[ci];
+        int row = -1;
+        for (int r = np; r < kK; r++) if (bit(g[r], c)) { row = r; break; }
+        if (row < 0) continue;
+        std::swap(g[row], g[np]);
+        for (int r = 0; r < kK; r++)
+            if (r != np && bit(g[r], c)) for (int w = 0; w < 3; w++) g[r].w[w] ^= g[np].w[w];
+        piv[np++] = c;
+    }
+    if (np < kK) return false;
+    W hard{{0, 0, 0}};
+    for (int i = 0; i < kN; i++) if (llr[i] > 0) hard.w[i / 64] |= 1ull << (i % 64);
+    // order 0: the codeword of the hard decisions on the MRB
+    W c0{{0, 0, 0}};
+    for (int p = 0; p < kK; p++) if (bit(hard, piv[p])) for (int w = 0; w < 3; w++) c0.w[w] ^= g[p].w[w];
+    auto dist = [&](const W& c) {
+        double d = 0;
+        for (int w = 0; w < 3; w++) {
+            uint64_t x = c.w[w] ^ hard.w[w];
+            while (x) { const int b = __builtin_ctzll(x); d += std::fabs(llr[w * 64 + b]); x &= x - 1; }
+        }
+        return d;
+    };
+    W best = c0;
+    double dBest = dist(c0), d2 = 1e30;
+    auto consider = [&](const W& c) {
+        const double d = dist(c);
+        if (d < dBest) { d2 = dBest; dBest = d; best = c; } else if (d < d2) d2 = d;
+    };
+    for (int p = 0; p < kK; p++) {
+        W c = c0;
+        for (int w = 0; w < 3; w++) c.w[w] ^= g[p].w[w];
+        consider(c);
+    }
+    nPair = std::min(nPair, kK);
+    for (int a = kK - nPair; a < kK; a++)
+        for (int b = a + 1; b < kK; b++) {
+            W c = c0;
+            for (int w = 0; w < 3; w++) c.w[w] ^= g[a].w[w] ^ g[b].w[w];
+            consider(c);
+        }
+    for (int i = 0; i < kN; i++) cw[i] = (uint8_t)bit(best, i);
+    if (st) {
+        int he = 0;
+        for (int w = 0; w < 3; w++) he += __builtin_popcountll(best.w[w] ^ hard.w[w]);
+        double tot = 0;
+        for (int i = 0; i < kN; i++) tot += std::fabs(llr[i]);
+        st->hardErrors = he;
+        st->dist = dBest / std::max(1e-30, tot);
+        st->margin = (d2 - dBest) / std::max(1e-30, tot);
+    }
+    return checkCrc(cw);
+}
+
 } // namespace ftx
 } // namespace dect2

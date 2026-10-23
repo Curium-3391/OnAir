@@ -20,6 +20,7 @@
 #include <cmath>
 #include <complex>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -282,6 +283,18 @@ struct Layout {
     int maxCand = 100, passes = 2;
 };
 
+// FT8 / FT4 / FT2 decoding depth (the HFDIG_FTX_* variables are for measuring only)
+static double envOr(const char* n, double v) { const char* e = std::getenv(n); return e ? std::atof(e) : v; }
+static const bool kFtxCoherent = envOr("HFDIG_FTX_COH", 1) != 0;
+static const bool kFtxOsd = envOr("HFDIG_FTX_OSD", 1) != 0;
+static const float kSyncMin = (float)envOr("HFDIG_FTX_SYNCMIN", 1.45);
+static const double kCandMul = envOr("HFDIG_FTX_CANDMUL", 1);
+static const bool kFtxApCq = envOr("HFDIG_FTX_APCQ", 1) != 0;
+static const bool kOsdDebug = envOr("HFDIG_FTX_OSDDBG", 0) != 0;
+static const int kOsdPairs = (int)envOr("HFDIG_FTX_OSDPAIRS", 40);
+static const float kOsdMinScore = (float)envOr("HFDIG_FTX_OSDSCORE", 2.5);
+static const double kOsdMaxDist = envOr("HFDIG_FTX_OSDDIST", 1.0), kOsdMinMargin = envOr("HFDIG_FTX_OSDMARGIN", 0.0);
+
 Layout layoutOf(int mode) {
     Layout l;
     const Spec& s = spec(mode);
@@ -360,30 +373,35 @@ public:
         x_ = j_.x;
         std::vector<FtxDecode> out;
         std::set<std::string> seen;
-        for (int pass = 0; pass < L_.passes; pass++) {
-            bigFft();
-            spectrogram();
-            int found = 0;
-            for (int mir = 0; mir < (mirrored_ ? 2 : 1); mir++) {
-                const auto cands = candidates(mir != 0);
-                for (const auto& c : cands) {
-                    FtxDecode d;
-                    std::vector<int> tones;
-                    double f0, start;
-                    if (!tryCandidate(c, mir != 0, d, tones, f0, start)) continue;
-                    bool same = seen.count(d.msg) > 0;
-                    for (const auto& o : out)   // the rest of a signal already decoded (its subtraction is not perfect)
-                        same |= o.mirrored == d.mirrored && std::fabs(o.hz - d.hz) < 1.5 * L_.sp && std::fabs(o.dt - d.dt) < 2 * spec(j_.mode).symSec;
-                    if (same) { subtract(tones, f0, start, mir != 0); continue; }
-                    seen.insert(d.msg);
-                    d.pass = pass;
-                    out.push_back(d);
-                    raw_.push_back(lastRaw_);
-                    found++;
-                    subtract(tones, f0, start, mir != 0);
+        // the plain decoder's passes first, then (FT8 / FT4 / FT2) the same passes again with the deeper metrics (coherent symbols, OSD,
+        // a-priori) on what is left: so the deep stage never changes what the plain one decodes and subtracts
+        for (int stage = 0; stage < (deepOn() ? 2 : 1); stage++) {
+            deep_ = stage == 1;
+            for (int pass = 0; pass < L_.passes; pass++) {
+                bigFft();
+                spectrogram();
+                int found = 0;
+                for (int mir = 0; mir < (mirrored_ ? 2 : 1); mir++) {
+                    const auto cands = candidates(mir != 0);
+                    for (const auto& c : cands) {
+                        FtxDecode d;
+                        std::vector<int> tones;
+                        double f0, start;
+                        if (!tryCandidate(c, mir != 0, d, tones, f0, start)) continue;
+                        bool same = seen.count(d.msg) > 0;
+                        for (const auto& o : out)   // the rest of a signal already decoded (its subtraction is not perfect)
+                            same |= o.mirrored == d.mirrored && std::fabs(o.hz - d.hz) < 1.5 * L_.sp && std::fabs(o.dt - d.dt) < 2 * spec(j_.mode).symSec;
+                        if (same) { subtract(tones, f0, start, mir != 0); continue; }
+                        seen.insert(d.msg);
+                        d.pass = pass + stage * L_.passes;
+                        out.push_back(d);
+                        raw_.push_back(lastRaw_);
+                        found++;
+                        subtract(tones, f0, start, mir != 0);
+                    }
                 }
+                if (!found && (stage == 0 || pass > 0)) break;   // the deep stage always looks at least once
             }
-            if (!found) break;
         }
         // hashed calls heard later in the slot
         if (j_.mode == kWspr)
@@ -397,6 +415,8 @@ public:
 
 private:
     struct Cand { int frame; int bin; float score; };
+    bool deep_ = false;   // the second stage: the coherent metrics, OSD and a-priori decoding
+    bool deepOn() const { return j_.mode != kWspr && (kFtxCoherent || kFtxOsd || kFtxApCq); }
 
     // the large FFT of the whole slot, kept for cutting out the candidates
     void bigFft() {
@@ -478,7 +498,7 @@ private:
         std::vector<float> srt = best;
         std::nth_element(srt.begin(), srt.begin() + srt.size() / 2, srt.end());
         const float med = srt[srt.size() / 2];
-        const float thr = j_.mode == kWspr ? std::max(0.12f, med + 0.08f) : std::max(1.45f, med * 1.15f);
+        const float thr = j_.mode == kWspr ? std::max(0.12f, med + 0.08f) : std::max(kSyncMin, med * 1.15f);
         std::vector<Cand> c;
         for (int b = b0; b <= b1; b++) {
             const float s = best[(size_t)(b - b0)];
@@ -492,7 +512,7 @@ private:
             if (peak) c.push_back({bestF[(size_t)(b - b0)], b + bLo_, s});
         }
         std::sort(c.begin(), c.end(), [](const Cand& a, const Cand& b) { return a.score > b.score; });
-        if ((int)c.size() > L_.maxCand) c.resize((size_t)L_.maxCand);
+        if ((int)c.size() > L_.maxCand * kCandMul) c.resize((size_t)(L_.maxCand * kCandMul));
         return c;
     }
 
@@ -551,6 +571,35 @@ private:
         return m;
     }
 
+    // LLRs of the data bits from groups of n neighbouring data symbols whose tone correlations are added as complex numbers (WSJT-X's nsym 2 / 3
+    // metrics: max |sum| over the tone sequences with the bit 1 minus that with the bit 0), scaled to WSJT-X's spread
+    void coherentLlr(int n, float* out) const {
+        const uint8_t* gray = L_.nt == 8 ? kFt8Gray : kFt4Gray;
+        const int nd = (int)L_.data.size();
+        int bi = 0;
+        double sum = 0, sum2 = 0;
+        for (int i = 0; i < nd;) {
+            int g = 1;
+            while (g < n && i + g < nd && L_.data[(size_t)(i + g)] == L_.data[(size_t)(i + g - 1)] + 1) g++;
+            const int nb = g * L_.bits, combos = 1 << nb;
+            double m1[12], m0[12];
+            for (int b = 0; b < nb; b++) m1[b] = m0[b] = -1e300;
+            for (int cmb = 0; cmb < combos; cmb++) {
+                cd acc = 0;
+                for (int q = 0; q < g; q++) {
+                    const int v = (cmb >> ((g - 1 - q) * L_.bits)) & (L_.nt - 1);
+                    acc += zc_[(size_t)L_.data[(size_t)(i + q)] * L_.nt + gray[v]];
+                }
+                const double m = std::abs(acc);
+                for (int b = 0; b < nb; b++) { double& r = ((cmb >> (nb - 1 - b)) & 1) ? m1[b] : m0[b]; if (m > r) r = m; }
+            }
+            for (int b = 0; b < nb; b++) { const double l = m1[b] - m0[b]; out[bi++] = (float)l; sum += l; sum2 += l * l; }
+            i += g;
+        }
+        const double mean = sum / bi, sd = std::sqrt(std::max(1e-30, sum2 / bi - mean * mean));
+        for (int i = 0; i < bi; i++) out[i] = (float)std::max(-25.0, std::min(25.0, 2.83 * out[i] / sd));
+    }
+
     bool tryCandidate(const Cand& c, bool mir, FtxDecode& d, std::vector<int>& tones, double& f0out, double& startOut) {
         const double s = mir ? -1 : 1;
         const double f0 = c.bin * binHz_;
@@ -599,10 +648,16 @@ private:
         // tone amplitudes of every symbol
         const int ns = L_.nsym;
         std::vector<double> amp((size_t)ns * L_.nt);
+        zc_.assign((size_t)ns * L_.nt, cd(0, 0));
         cd z[8];
+        // the phase of a continuous-phase transmission runs on by 2 pi (base + dfr) T per symbol whatever the tone: taken out, so that the tone
+        // correlations of neighbouring symbols add up coherently
+        const cd rot = std::polar(1.0, -2 * hfdig::kPi * (base + dfr) * nspsb / fsb);
+        cd ph(1, 0);
         for (int k = 0; k < ns; k++) {
             symbol(y, bestT + k * nspsb, w, nspsb, z);
-            for (int t = 0; t < L_.nt; t++) amp[(size_t)k * L_.nt + t] = std::abs(z[t]);
+            for (int t = 0; t < L_.nt; t++) { amp[(size_t)k * L_.nt + t] = std::abs(z[t]); zc_[(size_t)k * L_.nt + t] = z[t] * ph; }
+            ph *= rot;
         }
         // noise and signal per bin from the data symbols: the strongest tone of each against the rest
         double sMax = 0, sRest = 0;
@@ -674,14 +729,63 @@ private:
                 }
             }
             uint8_t cw[kN];
-            if (ldpcDecode(llr, 40, cw) != 0) return false;
-            if (!checkCrc(cw)) return false;
+            bool got = ldpcDecode(llr, 40, cw) == 0 && checkCrc(cw);
+            if (!got && !deep_) return false;
+            // WSJT-X's other metrics: two and three (FT4 / FT2: two and four) neighbouring symbols taken together coherently
+            float llrC[2][kN];
+            const int grp[2] = {2, L_.nt == 8 ? 3 : 4};
+            for (int q = 0; q < 2 && !got && kFtxCoherent; q++) {
+                coherentLlr(grp[q], llrC[q]);
+                got = ldpcDecode(llrC[q], 40, cw) == 0 && checkCrc(cw);
+            }
+            // a codeword found by OSD or with a-priori bits: OSD finds some codeword in noise now and then, so keep only the plain QSO
+            // message types with no unknown hashed call (and with the CQ bits assumed, a CQ)
+            auto plausible = [&](const uint8_t* w, bool cq) {
+                uint8_t b[77];
+                for (int i = 0; i < 77; i++) b[i] = (uint8_t)(w[i] ^ (j_.mode == kFt8 ? 0 : kFt4Rvec[i]));
+                const int i3 = b[74] << 2 | b[75] << 1 | b[76];
+                if (!(i3 == 1 || i3 == 2 || i3 == 4)) return false;
+                const std::string m = unpack77(b, &hash_);
+                return !m.empty() && m.find("<...>") == std::string::npos && (!cq || m.compare(0, 3, "CQ ") == 0);
+            };
+            bool viaOsd = false;
+            if (!got && !kFtxCoherent) { std::copy(llr, llr + kN, llrC[0]); std::copy(llr, llr + kN, llrC[1]); }
+            const float* sets[3] = {llr, llrC[0], llrC[1]};
+            // ordered statistics on the strongest candidates only
+            if (!got && kFtxOsd && c.score >= kOsdMinScore)
+                for (int q = 0; q < 3 && !got; q++) {
+                    OsdStats os;
+                    const bool crc = osdDecode(sets[q], kOsdPairs, cw, &os);
+                    if (kOsdDebug && crc) fprintf(stderr, "osd set %d score %.2f hard %d dist %.3f margin %.3f\n", q, c.score, os.hardErrors, os.dist, os.margin);
+                    got = viaOsd = crc && os.dist <= kOsdMaxDist && os.margin >= kOsdMinMargin && plausible(cw, false);
+                }
+            // a-priori decoding (WSJT-X's AP type 1, "CQ ??? ???"): the 29 bits of CQ and the message type taken as known; needs nobody's call
+            if (!got && kFtxApCq) {
+                static const std::array<uint8_t, 77> cqBits = [] { std::array<uint8_t, 77> b{}; pack77("CQ K1ABC FN42", b.data()); return b; }();
+                for (int q = 0; q < 3 && !got; q++) {
+                    float a[kN];
+                    std::copy(sets[q], sets[q] + kN, a);
+                    float mx = 0;
+                    for (int i = 0; i < kN; i++) mx = std::max(mx, std::fabs(a[i]));
+                    const float mag = 1.01f * mx;
+                    auto put = [&](int i) { const int v = cqBits[(size_t)i] ^ (j_.mode == kFt8 ? 0 : kFt4Rvec[i]); a[i] = v ? mag : -mag; };
+                    for (int i = 0; i < 29; i++) put(i);
+                    for (int i = 74; i < 77; i++) put(i);
+                    got = ldpcDecode(a, 40, cw) == 0 && checkCrc(cw);
+                    if (!got && kFtxOsd && c.score >= kOsdMinScore) { OsdStats os; got = osdDecode(a, kOsdPairs, cw, &os); }
+                    got = got && plausible(cw, true);
+                    viaOsd |= got;
+                    if (got && kOsdDebug) fprintf(stderr, "ap set %d score %.2f\n", q, c.score);
+                }
+            }
+            if (!got) return false;
             uint8_t b77[77];
             for (int i = 0; i < 77; i++) b77[i] = (uint8_t)(cw[i] ^ (j_.mode == kFt8 ? 0 : kFt4Rvec[i]));
             const std::string msg = unpack77(b77, &hash_);
             if (msg.empty()) return false;
             tones = ftxTones(j_.mode, b77);
             d.msg = msg;
+            if (kOsdDebug && viaOsd) fprintf(stderr, "osd decode \"%s\"\n", msg.c_str());
         }
         // SNR from the decoded tones
         {
@@ -745,6 +849,7 @@ private:
     double df_ = 0, binHz_ = 0;
     int bLo_ = 0, bHi_ = 0, nb_ = 0, nf_ = 0;
     std::vector<float> P_;
+    std::vector<cd> zc_;   // complex tone correlations of the candidate being tried, the symbol-to-symbol phase step taken out
     std::array<uint8_t, 7> lastRaw_{};
     std::vector<std::array<uint8_t, 7>> raw_;
 };

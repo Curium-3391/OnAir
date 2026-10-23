@@ -17,11 +17,68 @@ static std::string callOf(int i) {
     snprintf(b, sizeof b, "%s%d%c%c", pre[i % 10], (i / 10) % 10, 'A' + (i / 100) % 26, 'A' + (i * 7) % 26);
     return b;
 }
+static const char* kNames[] = {"ft8", "ft4", "ft2", "wspr", "jt65", "jt9", "q65", "fst4", "msk144", "fst4w", "jt4"};
+static int modeOf(const char* s) {
+    for (int i = 0; i < 11; i++) if (!strcmp(s, kNames[i])) return i;
+    return -1;
+}
+// sensitivity: K stations per slot, all at one SNR, spread over the band with random DT; success rate per SNR and false decodes
+//   bench_hf sens <mode> [snrLo] [snrHi] [step=1] [slots=4] [K=8] [drift Hz/s=0] [dtMax=1.0] [dialHz=0]
+static int sens(int argc, char** argv) {
+    const int mode = modeOf(argv[2]);
+    if (mode < 0) return 1;
+    const double lo = argc > 3 ? atof(argv[3]) : -26, hi = argc > 4 ? atof(argv[4]) : -14, step = argc > 5 ? atof(argv[5]) : 1;
+    const int slots = argc > 6 ? atoi(argv[6]) : 4, K = argc > 7 ? atoi(argv[7]) : 8;
+    const double drift = argc > 8 ? atof(argv[8]) : 0, dtMax = argc > 9 ? atof(argv[9]) : 1.0, dial = argc > 10 ? atof(argv[10]) : 0;
+    const bool wspr = mode == 3 || mode == 9;
+    const double f0 = wspr ? 1410 : 300, bw = wspr ? 170 : 2400;
+    const int k = wspr ? std::min(K, 4) : K;
+    for (double snr = lo; snr <= hi + 1e-9; snr += step) {
+        int ok = 0, all = 0, fake = 0;
+        for (int t = 0; t < slots; t++) {
+            ftxtest::Gauss g(1000 + t * 31 + (int)(snr * 7 + 500));
+            std::vector<wsjttest::St> st;
+            for (int i = 0; i < k; i++) {
+                std::string a = callOf(i + 13 * t), b = callOf(i + 13 * t + 37);
+                std::string msg = wspr ? a + " FN42 37" : (i % 2 ? "CQ " + a + " FN42" : a + " " + b + " -" + std::to_string(10 + i % 9));
+                st.push_back({msg, f0 + bw * (i + 0.2 + 0.6 * g.u()) / k, snr, dtMax * (2 * g.u() - 1)});
+            }
+            wsjttest::Imp imp; imp.drift = drift; imp.dialHz = dial;
+            auto a = wsjttest::audio(mode, st, 1, imp, 5000 + t * 13 + (int)(snr * 3 + 300));
+            auto d = wsjttest::decode(a, mode, imp);
+            for (const auto& s : st) {
+                all++;
+                bool hit = false;
+                for (const auto& x : d) if (x.msg == s.msg) { hit = true; break; }
+                ok += hit;
+                if (!hit && getenv("BENCH_V")) printf("  missed %.1f Hz dt %.2f \"%s\"\n", s.hz, s.dt, s.msg.c_str());
+            }
+            for (const auto& x : d) { bool sent = false; for (const auto& s : st) sent |= x.msg == s.msg; if (!sent) { fake++; printf("  FALSE \"%s\"\n", x.msg.c_str()); } }
+        }
+        printf("%-6s snr %6.1f  ok %3d/%d  false %d\n", argv[2], snr, ok, all, fake);
+        fflush(stdout);
+    }
+    return 0;
+}
+// false decodes on pure noise: bench_hf noise <mode> [slots=20]
+static int noise(int argc, char** argv) {
+    const int mode = modeOf(argv[2]);
+    const int slots = argc > 3 ? atoi(argv[3]) : 20;
+    int fake = 0;
+    for (int t = 0; t < slots; t++) {
+        wsjttest::Imp imp;
+        auto a = wsjttest::audio(mode, {}, 1, imp, 777 + 7919 * t);
+        for (const auto& x : wsjttest::decode(a, mode, imp)) { fake++; printf("  FALSE \"%s\" %.0f Hz\n", x.msg.c_str(), x.hz); }
+    }
+    printf("%-6s noise slots %d  false %d\n", argv[2], slots, fake);
+    return 0;
+}
 int main(int argc, char** argv) {
-    if (argc < 2) { puts("bench_hf <ft8|ft4|ft2|wspr|jt65|jt9|q65|fst4|msk144|jt4> [stations=20] [slots=2] [snrLo=-18] [snrHi=-4]"); return 1; }
-    const char* names[] = {"ft8", "ft4", "ft2", "wspr", "jt65", "jt9", "q65", "fst4", "msk144", "fst4w", "jt4"};
-    int mode = -1;
-    for (int i = 0; i < 11; i++) if (!strcmp(argv[1], names[i])) mode = i;
+    if (argc < 2) { puts("bench_hf <ft8|ft4|ft2|wspr|jt65|jt9|q65|fst4|msk144|jt4> [stations=20] [slots=2] [snrLo=-18] [snrHi=-4]\nbench_hf sens <mode> [lo hi step slots K drift dtMax dialHz]\nbench_hf noise <mode> [slots]"); return 1; }
+    if (!strcmp(argv[1], "sens") && argc > 2) return sens(argc, argv);
+    if (!strcmp(argv[1], "noise") && argc > 2) return noise(argc, argv);
+    const char** names = kNames;
+    int mode = modeOf(argv[1]);
     if (mode < 0) return 1;
     const int N = argc > 2 ? atoi(argv[2]) : 20, slots = argc > 3 ? atoi(argv[3]) : 2;
     const double lo = argc > 4 ? atof(argv[4]) : -18, hi = argc > 5 ? atof(argv[5]) : -4;
@@ -33,7 +90,7 @@ int main(int argc, char** argv) {
         std::string a = callOf(i), b = callOf(i + 37);
         std::string msg;
         if (mode == 3) msg = a + " FN42 37";
-        else switch (i % 3) { case 0: msg = "CQ " + a + " FN42"; break; case 1: msg = a + " " + b + " -" + std::to_string(5 + i % 15); break; default: msg = a + " " + b + " RR73"; }
+        else switch (i % 3) { case 0: msg = "CQ " + a + " FN42"; break; case 1: msg = a + " " + b + " -" + (5 + i % 15 < 10 ? "0" : "") + std::to_string(5 + i % 15); break; default: msg = a + " " + b + " RR73"; }
         double hz = f0 + (N > 1 ? bw * i / N : 0) + (mode == 3 ? 0 : 3.0 * (i % 4));
         st.push_back({msg, hz, lo + (hi - lo) * g.u(), -0.3 + 0.6 * g.u()});
     }
@@ -52,6 +109,9 @@ int main(int argc, char** argv) {
     }
     for (const auto& s : uniq) for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
     for (const auto& s : st) for (const auto& x : d) if (x.msg == s.msg) { right++; break; }
+    if (getenv("BENCH_LIST")) for (const auto& x : d) printf("  decoded \"%s\"\n", x.msg.c_str());
+    if (getenv("BENCH_V"))
+        for (const auto& x : d) { bool sent = false; for (const auto& s : st) sent |= x.msg == s.msg; if (!sent) printf("  not sent: \"%s\" %.0f Hz\n", x.msg.c_str(), x.hz); }
     struct rusage r; getrusage(RUSAGE_SELF, &r);
     printf("%-6s N=%-3d slots=%d  cpu %.3f s  signal %.1f s  cost %.4f  decodes %zu (sent msgs decoded %d/%d)  digest %016llx  rss %.0f MB\n", names[mode], N, slots, c1 - c0, sig,
            (c1 - c0) / sig, d.size(), right, N, (unsigned long long)h, r.ru_maxrss / 1048576.0);
