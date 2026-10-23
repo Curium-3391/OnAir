@@ -172,12 +172,16 @@ public:
     void add(const std::string& token, const std::string& label);
     bool revoke(const std::string& label);
     bool authorise(const std::string& token, std::string* label = nullptr) const;
+    // The control channel names the key it uses without sending it: keyIdOf(token) = 16 hex characters of HMAC-SHA256(token, "OACTL1 id").
+    bool findByKeyId(const std::string& keyId, std::string& token, std::string* label = nullptr) const;
+    std::vector<std::pair<std::string, std::string>> entries() const { return t_; }   // (token, label), to save
     size_t size() const { return t_.size(); }
 private:
     std::vector<std::pair<std::string, std::string>> t_;
 };
 // What a paired peer may ask for: tune, mode, start/stop, gain, rate, scan slice, status. Never transmit, never keys or credentials, never settings.
 bool controlAllowed(const std::string& command);
+std::string keyIdOf(const std::string& token);   // see TokenBook::findByKeyId
 
 class RateLimiter {   // token bucket, one per peer; allow() false when the peer is too fast
 public:
