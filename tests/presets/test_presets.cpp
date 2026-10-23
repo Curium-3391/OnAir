@@ -1,6 +1,7 @@
 // Presets: serialisation round trip, forward-compatible unknown fields, secrets and location left out, validation, radio-compatible
 // apply, the store (names, rename, delete, favourites, recents, default), the file and the built-ins.
 #include "dect2/presets/preset.h"
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>

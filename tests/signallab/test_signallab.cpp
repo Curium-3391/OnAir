@@ -3,6 +3,7 @@
 // harness on N random signals and prints how often each stage recovers the truth; "gate" is the ctest signallab_eval (a fixed
 // set with minimum success rates).
 #include "dect2/signallab/signallab.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
