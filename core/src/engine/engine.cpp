@@ -16,6 +16,7 @@
 #include "dect2/t2/t2rx.h"
 #include <chrono>
 #include "dect2/common/platform.h"
+#include "dect2/dsp/sample_convert.h"   // dropNonFinite
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -30,23 +31,6 @@
 #include <vector>
 
 namespace dect2 {
-
-// A radio that delivers floating-point samples (LimeSDR, SoapySDR, a cf32 recording) can hand over NaN or infinite values after a
-// glitch or with mismatched firmware. They would poison every filter, FFT and gain loop after them, so they become silence here.
-static void dropNonFinite(cf32* x, size_t n) {
-    // looks at the exponent bits of every float: all ones means NaN or infinity. One branch per block of 256 values, the loop vectorises.
-    static_assert(sizeof(cf32) == 2 * sizeof(float), "cf32 layout");
-    uint32_t* w = reinterpret_cast<uint32_t*>(x);
-    const size_t total = 2 * n;
-    for (size_t b = 0; b < total; b += 256) {
-        const size_t e = std::min<size_t>(b + 256, total);
-        uint32_t bad = 0;
-        for (size_t i = b; i < e; i++) bad |= (uint32_t)((w[i] & 0x7F800000u) == 0x7F800000u);
-        if (bad)
-            for (size_t i = b & ~(size_t)1; i < e; i += 2)
-                if ((w[i] & 0x7F800000u) == 0x7F800000u || (w[i + 1] & 0x7F800000u) == 0x7F800000u) { w[i] = 0; w[i + 1] = 0; }
-    }
-}
 
 // "Remove DC spike" and "IQ correction" of the samples (iq_correct.h), with the part skipped that would harm the active mode (tests/engine/test_iq_modes.cpp):
 // the DC removal where the wanted carrier can sit on the centre (FM, and the modes whose ModeTuning says carrierAtCentre), the IQ correction
@@ -99,13 +83,38 @@ void Engine::ingest(cf32* x, size_t n) {
     // sticky tuning: only the first receiver gets the clicked signal at DC. The spectrum, the signal identifier, the second mode and the
     // monitor see the capture as the radio delivers it (their frequencies are relative to captureCentreHz()), so the display stays put
     // and the tuned marker moves to the click, instead of the whole spectrum sliding by the shift (#262)
-    decodeMix_.mix(x, n);
-    feedRx(x, n);
+    {
+        cpu::Scope cs(cpuDec_.load(std::memory_order_relaxed));   // the receiver's CPU (and its pool jobs) to the decoder account
+        decodeMix_.mix(x, n);
+        feedRx(x, n);
+    }
     tRx_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - a0).count();
     nSamp_ += n;
 }
 
 Engine::Engine() : t0_(std::chrono::steady_clock::now()) { wide_.setTuning(WideTuning()); }   // the whole-span banks get the CPU limit
+
+void Engine::cpuAccounts() {
+    const std::string p = "rx" + std::to_string(receiverId_) + " ";
+    cpuFront_ = cpu::account(p + "front");
+    cpuSpec_ = cpu::account(p + "spectrum");
+    cpuDec_ = cpu::account(p + "decoder");
+    cpuSec_ = cpu::account(p + "second");
+}
+
+double Engine::cpuPercent() const {
+    double s = 0;
+    for (int id : {cpuFront_.load(), cpuSpec_.load(), cpuDec_.load(), cpuSec_.load()}) s += cpu::percent(id);
+    return s;
+}
+
+std::vector<cpu::Usage> Engine::cpuUsage() const {
+    std::vector<cpu::Usage> v;
+    for (int id : {cpuFront_.load(), cpuSpec_.load(), cpuDec_.load(), cpuSec_.load()}) {
+        if (id > 0) v.push_back({cpu::name(id), cpu::percent(id), cpu::seconds(id)});
+    }
+    return v;
+}
 Engine::~Engine() { stop(); flushResults(); }
 
 void Engine::stop() {

@@ -726,6 +726,12 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_channelizer_mix tests/dsp/test_channelizer_mix.cpp)   # carrier channeliser mixer and resampler blocks (docs/PERFORMANCE-DSP.md)
   target_link_libraries(test_channelizer_mix PRIVATE dect2core)
   add_test(NAME channelizer_mix COMMAND test_channelizer_mix)
+  # the portable FFT and the resampler's NEON path against the plain loops (docs/PERFORMANCE-CORE.md): built from the sources with the
+  # portable kernels, so it checks what Windows and Linux run on any machine
+  add_executable(test_fft_bits tests/dsp/test_fft_bits.cpp core/src/dsp/dsp_compat.cpp core/src/dsp/resampler.cpp)
+  target_include_directories(test_fft_bits PRIVATE core/include)
+  target_compile_definitions(test_fft_bits PRIVATE DECT2_PORTABLE)
+  add_test(NAME fft_bits COMMAND test_fft_bits)
   add_executable(test_viterbi_simd tests/fec/test_viterbi_simd.cpp)   # the vector K = 7 Viterbi against a scalar copy of the trellis
   target_link_libraries(test_viterbi_simd PRIVATE dect2core)
   add_test(NAME viterbi_simd COMMAND test_viterbi_simd)

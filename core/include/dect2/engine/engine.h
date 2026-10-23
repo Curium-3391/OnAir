@@ -1,5 +1,6 @@
 // Engine: owns the source, the sample ring and the analysis thread. UI talks only to this.
 #pragma once
+#include "dect2/common/cpu_meter.h"
 #include "dect2/dsp/iq_correct.h"
 #include "dect2/source/offset_tune.h"
 #include "dect2/dsp/exact_resampler.h"
@@ -206,6 +207,12 @@ public:
     // The number of this receiver (RX 1, RX 2 ...): the radio it opens is claimed for it (device_claims.h), another receiver cannot open it too
     void setReceiverId(int id) { receiverId_ = id; }
     int receiverId() const { return receiverId_; }
+    // CPU use of this receiver in percent of one core (100 = one core busy), averaged over about the last second (common/cpu_meter.h):
+    // its sample path (ring, clean-up, offset mixer, recording copies), its spectrum and its decoder (the mode's receiver, including
+    // the jobs it runs on the shared pool and the second mode's thread). cpuUsage() gives the parts, named "rx<N> <part>"; cpu::processPercent()
+    // is the whole process (GUI, drivers and audio included) and cpu::usage() every account of every receiver.
+    double cpuPercent() const;
+    std::vector<cpu::Usage> cpuUsage() const;
     void stop();
     bool retune(const TuneSettings& tune);
     // Retune and flush every stage (receiver, spectrum, transport stream) - used by the channel scanner.
@@ -576,6 +583,7 @@ private:
     std::mutex specQMu_;
     std::condition_variable specQCv_;
     std::deque<std::vector<cf32>> specQ_;
+    std::vector<std::vector<cf32>> specFree_;   // blocks the spectrum thread is done with, reused by feedSpectrum (no allocation per block)
     bool specStop_ = false;
     void catchUp();
     void logRxEvents(const RxTelemetry& t);
@@ -640,6 +648,9 @@ private:
     int logS1_ = -1, logS2_ = -1, logGi_ = -2, logState_ = -1, logFrameSyms_ = 0;
 
     IqRing ring_;
+    // CPU accounts (cpu_meter.h): "rx<N> front" (the sample path), "rx<N> spectrum", "rx<N> decoder", "rx<N> second"; made from receiverId_
+    std::atomic<int> cpuFront_{0}, cpuSpec_{0}, cpuDec_{0}, cpuSec_{0};
+    void cpuAccounts();
     // The log is declared before every receiver: members are destroyed in reverse order, and receiver worker
     // threads (joined in the receivers' destructors) may still log until then.
     std::mutex logMu_;
