@@ -30,6 +30,12 @@ int main() {
     CHECK(buildTrack(nogrid, 4, 1000, t) && t.extra.find("tlat") == std::string::npos && t.extra.find("\"to\":\"DL1ABC\"") != std::string::npos, "partner without locator: call only");
     Contact bad = mk("LY2XX", "DL1ABC"); bad.from = "NOTACALL!!";
     CHECK(!buildTrack(bad, 4, 1000, t), "invalid callsign rejected");
+    // free text around the slash: the long part is a valid call, so hamCallValid passes it; it must not reach the extra JSON
+    bad = mk("LY2XX", "DL1ABC"); bad.to = "DL1ABC/\"},\"x\":{\"";
+    CHECK(!buildTrack(bad, 4, 1000, t), "quote in the partner call rejected");
+    bad = mk("LY2XX", "DL1ABC"); bad.from = "<IMG>/LY2XX";
+    CHECK(!buildTrack(bad, 4, 1000, t), "markup in the station call rejected");
+    CHECK(buildTrack(mk("LY2XX/P", "DL1ABC/MM"), 4, 1000, t), "portable / maritime suffixes still pass");
     bad = mk("LY2XX", "DL1ABC"); bad.mode = "SSTV";
     CHECK(!buildTrack(bad, 4, 1000, t), "unknown mode rejected");
     bad = mk("LY2XX", "LY2XX");

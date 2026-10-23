@@ -37,10 +37,18 @@ std::string extraJson(const std::string& mode, double freqHz, const std::string&
     return j + "}";
 }
 
+// hamCallValid() checks only the longest part between slashes; the other parts (prefix / suffix) come off the air and are free text, and `to` is put
+// into the extra JSON as it is. Only letters, digits and '/' (at most 12 characters) go to the map.
+static bool callChars(const std::string& s) {
+    if (s.empty() || s.size() > 12) return false;
+    for (char c : s) if (!(std::isupper((unsigned char)c) || std::isdigit((unsigned char)c) || c == '/')) return false;
+    return true;
+}
+
 bool buildTrack(const Contact& c, int gridChars, double nowUtc, Track& out) {
     const std::string mode = normMode(c.mode);
     const std::string from = up(c.from), to = up(c.to);
-    if (mode.empty() || !hamCallValid(from) || !hamCallValid(to) || from == to) return false;
+    if (mode.empty() || !callChars(from) || !callChars(to) || !hamCallValid(from) || !hamCallValid(to) || from == to) return false;
     double lat, lon;
     if (!roundedCentre(c.fromGrid, gridChars, lat, lon)) return false;
     double tlat = 0, tlon = 0;
