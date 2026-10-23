@@ -21,8 +21,19 @@ namespace dect2 {
 
 // Short filters (the channel-estimate interpolators have 16 taps): eight outputs at a time, one broadcast tap against eight
 // neighbouring inputs per step, instead of one dot product (with its reduction and call overhead) per output.
+// Thirty-two outputs at a time first: each output is still one running sum over the taps in order (the same value bit for bit), but eight vector
+// sums run side by side instead of two, so the chain of dependent multiply-adds (16 deep) no longer sets the speed.
 DECT2_SIMD_BODY void convCorrShortBody(const float* a, const float* f, float* c, int strideC, int n, int p) {
     int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        float acc[32];
+        for (int l = 0; l < 32; l++) acc[l] = 0;
+        const float* x = a + i;
+        for (int k = 0; k < p; k++) { const float fk = f[k]; for (int l = 0; l < 32; l++) acc[l] += fk * x[k + l]; }
+        float* o = c + (size_t)i * strideC;   // (a pointer stepped by the stride: no address multiply per store)
+        if (strideC == 1) std::memcpy(o, acc, sizeof acc);
+        else for (int l = 0; l < 32; l++) { *o = acc[l]; o += strideC; }
+    }
     for (; i + 8 <= n; i += 8) {
         float acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
         const float* x = a + i;

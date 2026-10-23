@@ -91,7 +91,11 @@ PlpResult PlpDecoder::decodeNow(const PlpJob& job, int threads, bool useGpu, con
         if (lost && (b % 5) != 0) { o.frame.blockIndex = b; return; }
         const cf32* c = rx.data() + (size_t)b * cells;
         const float* nn = n0.data() + (size_t)b * cells;
-        std::vector<float> llr(d.nLdpc);
+        // the block's LLRs (64800 values, a quarter of a megabyte): kept with the worker thread, not allocated and zeroed per block (the
+        // demapper writes every one of them: its bit de-interleaver map is a permutation of the codeword)
+        static thread_local std::vector<float> llrBuf;
+        llrBuf.resize(d.nLdpc);
+        std::vector<float>& llr = llrBuf;
         std::vector<uint8_t> hard;
         if (gpuDone) {
             std::copy(gLlr.begin() + (size_t)b * d.nLdpc, gLlr.begin() + (size_t)(b + 1) * d.nLdpc, llr.begin());

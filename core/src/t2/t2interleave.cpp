@@ -68,9 +68,9 @@ static void freqInterleaverSeqCompute(int fftCode, int nCells, bool oddSymbol, s
 }
 
 // The sequence only depends on (FFT size, active cells, symbol parity): compute it once.
-void freqInterleaverSeq(int fftCode, int nCells, bool oddSymbol, std::vector<int>& H) {
+const std::vector<int>& freqInterleaverSeqRef(int fftCode, int nCells, bool oddSymbol) {
     static std::mutex mu;
-    static std::map<int64_t, std::vector<int>> cache;
+    static std::map<int64_t, std::vector<int>> cache;   // (never erased: the references handed out stay valid)
     const int64_t key = ((int64_t)fftCode << 40) | ((int64_t)nCells << 1) | (oddSymbol ? 1 : 0);
     std::lock_guard<std::mutex> lk(mu);
     auto it = cache.find(key);
@@ -79,7 +79,9 @@ void freqInterleaverSeq(int fftCode, int nCells, bool oddSymbol, std::vector<int
         freqInterleaverSeqCompute(fftCode, nCells, oddSymbol, v);
         it = cache.emplace(key, std::move(v)).first;
     }
-    H = it->second;
+    return it->second;
 }
+
+void freqInterleaverSeq(int fftCode, int nCells, bool oddSymbol, std::vector<int>& H) { H = freqInterleaverSeqRef(fftCode, nCells, oddSymbol); }
 
 } // namespace dect2

@@ -34,23 +34,26 @@ void FecDecoder::pushSymbol(const cf32* cells, const float* n0, int symIdx) {
     const int m = p_.hier ? (lp_ ? v - 2 : 2) : v;
     DECT2_STAGE_VAR(dm, "dvbt.demap");
     static thread_local std::vector<cf32> c2;
-    static thread_local std::vector<float> n2, llr, llr2;
-    c2.resize(N); n2.resize(N); llr.resize((size_t)N * m); llr2.resize((size_t)N * m);
+    static thread_local std::vector<float> n2, llr;
+    c2.resize(N); n2.resize(N); llr.resize((size_t)N * m);
     symbolDeinterleave(p_.mode, symIdx, cells, n0, c2.data(), n2.data());
+    // the bit de-interleaver writes straight onto the end of the queue (no copy of the symbol's values through a second buffer)
+    const size_t q0 = llrQueue_.size();
+    llrQueue_.resize(q0 + (size_t)N * m);
+    float* dst = llrQueue_.data() + q0;
     if (p_.hier) {
         static thread_local std::vector<float> full;
         full.resize((size_t)N * v);
         demap(c2.data(), n2.data(), N, p_.mod, p_.hier, full.data());
-        if (lp_) bitDeinterleaveLp(full.data(), p_.mod, N, llr2.data());
+        if (lp_) bitDeinterleaveLp(full.data(), p_.mod, N, dst);
         else {
             for (int i = 0; i < N; i++) { llr[(size_t)i * 2] = full[(size_t)i * v]; llr[(size_t)i * 2 + 1] = full[(size_t)i * v + 1]; }
-            bitDeinterleave(llr.data(), kQpsk, N, llr2.data());
+            bitDeinterleave(llr.data(), kQpsk, N, dst);
         }
     } else {
         demap(c2.data(), n2.data(), N, p_.mod, p_.hier, llr.data());
-        bitDeinterleave(llr.data(), p_.mod, N, llr2.data());
+        bitDeinterleave(llr.data(), p_.mod, N, dst);
     }
-    llrQueue_.insert(llrQueue_.end(), llr2.begin(), llr2.end());
     st_.symbols++;
     dm.stop();
     // decode in blocks of 16 symbols (the carry gives the trellis its history)
@@ -75,7 +78,8 @@ void FecDecoder::process(bool) {
     const float scale = (float)(std::min(40.0, 22.0 / std::max(1e-6, mean)));
     llrScale_ = scale;
 
-    std::vector<int8_t> soft;
+    static thread_local std::vector<int8_t> soft, window;   // work buffers kept with the decoder thread (hundreds of kB per block)
+    static thread_local std::vector<uint8_t> dec;
     if (!st_.phaseLocked) {
         // the puncturing pattern's phase relative to the start of the symbol stream is unknown: pick the best of k
         long bestMetric = -1; int bestPhase = 0;
@@ -97,10 +101,9 @@ void FecDecoder::process(bool) {
     Viterbi::depuncture(llrQueue_.data(), llrQueue_.size(), rate, st_.punctPhase, soft, scale);
     // each block starts at a symbol boundary and every symbol holds a whole number of puncture periods, so the phase repeats
     const size_t L = 192;
-    std::vector<int8_t> window = carry_;
+    window.assign(carry_.begin(), carry_.end());
     window.insert(window.end(), soft.begin(), soft.end());
     const size_t steps = window.size() / 2;
-    std::vector<uint8_t> dec;
     long metric = 0;
     dp.stop();
     Viterbi::decode(window, dec, 4, &metric);

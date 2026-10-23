@@ -58,6 +58,19 @@ void GridInterpolator::build(int S, double cutoff) {
     }
 }
 
+// w_n = e^{j step n} by the double-precision recurrence (renormalised every 256 steps), as floats; rebuilt only when step or count change
+void GridInterpolator::phasors(double step, int count, double& cachedStep, std::vector<cf32>& w) {
+    if (step == cachedStep && (int)w.size() == count) return;
+    cachedStep = step;
+    w.resize((size_t)count);
+    std::complex<double> z(1, 0), zs(std::cos(step), std::sin(step));
+    for (int n = 0; n < count; n++) {
+        w[(size_t)n] = cf32((float)z.real(), (float)z.imag());
+        z *= zs;
+        if ((n & 255) == 255) z /= std::abs(z);
+    }
+}
+
 void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, double tau0, std::vector<cf32>& H, double cutoff) {
     cutoff = std::min(1.0, std::max(0.05, cutoff));
     if (S != S_ || std::fabs(cutoff - cut_) > 1e-9) build(S, cutoff);
@@ -66,15 +79,15 @@ void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, d
     const int pad = smoothHalf_ + kHalf + 2;
     const int Mp = M + 2 * pad;
     pre_.assign(Mp, 0.f); pim_.assign(Mp, 0.f);
-    // pre-rotation (delay centring) with a double-precision phasor recurrence
+    // pre-rotation (delay centring) with a double-precision phasor recurrence. The phasors depend only on the step and the count, which stay the
+    // same from symbol to symbol while the timing does: they are kept (the same float values the recurrence gave) and only rebuilt on a change.
     {
         const double step = 2 * M_PI * (double)S * tau0 / N;
-        std::complex<double> w(1, 0), ws(std::cos(step), std::sin(step));
+        phasors(step, M, preStep_, preW_);
+        const cf32* pw = preW_.data();
         for (int n = 0; n < M; n++) {
-            cf32 v = grid[n] * cf32((float)w.real(), (float)w.imag());
+            cf32 v = grid[n] * pw[n];
             pre_[pad + n] = v.real(); pim_[pad + n] = v.imag();
-            w *= ws;
-            if ((n & 255) == 255) w /= std::abs(w);
         }
     }
     // odd reflection about both edges keeps linear trends intact
@@ -115,12 +128,9 @@ void GridInterpolator::run(const std::vector<cf32>& grid, int S, int K, int N, d
     H.resize(K);
     {
         const double step = -2 * M_PI * tau0 / N;
-        std::complex<double> w(1, 0), ws(std::cos(step), std::sin(step));
-        for (int k = 0; k < K; k++) {
-            H[k] = cf32(ore_[k], oim_[k]) * cf32((float)w.real(), (float)w.imag());
-            w *= ws;
-            if ((k & 255) == 255) w /= std::abs(w);
-        }
+        phasors(step, K, postStep_, postW_);
+        const cf32* pw = postW_.data();
+        for (int k = 0; k < K; k++) H[k] = cf32(ore_[k], oim_[k]) * pw[k];
     }
 }
 
@@ -138,9 +148,16 @@ bool delaySpan(const std::vector<cf32>& H, int N, int searchLo, int searchHi, in
     std::vector<float> pw(N);
     double peak = 0;
     for (int n = 0; n < N; n++) { pw[n] = re[n] * re[n] + im[n] * im[n]; peak = std::max(peak, (double)pw[n]); }
-    std::vector<float> tmp = pw;
-    std::nth_element(tmp.begin(), tmp.begin() + N / 2, tmp.end());
-    double floorP = tmp[N / 2] * 1.5; // median of noise-only taps, approx mean
+    // The noise floor from the taps of the search range only: an estimate interpolated from a pilot grid holds noise only inside its delay
+    // window (N / S wide), the rest of the N taps are nearly empty. Their median, taken over all N, sat far below the noise in the window, so
+    // at a low SNR every noise tap counted as a path, the span came out as the whole window and the estimate was never narrowed (DVB-T2
+    // L1 at 4 dB: its cells 3 dB noisier than the channel).
+    std::vector<float> tmp;
+    tmp.reserve((size_t)std::max(1, searchHi - searchLo + 1));
+    for (int t = searchLo; t <= searchHi; t++) tmp.push_back(pw[(size_t)((((t + centre) % N) + N) % N)]);
+    if (tmp.size() < 16) tmp = pw;
+    std::nth_element(tmp.begin(), tmp.begin() + tmp.size() / 2, tmp.end());
+    double floorP = tmp[tmp.size() / 2] * 1.5; // median of noise-only taps, approx mean
     double thr = std::max(floorP * 12.0, peak * 3e-4);
     if (peak < floorP * 30.0) return false;
     bool any = false;

@@ -18,6 +18,10 @@ public:
     // Normalised min-sum decoding. llr > 0 means bit 0. Returns true if all parity checks are satisfied.
     // hard[0..n) receives the decided bits. `iters` gets the iteration count used.
     bool decode(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr) const;
+    // Layered sum-product (belief propagation, tanh rule) on the same conventions: about 0.5-1 dB better than min-sum on a heavily
+    // punctured and shortened code (DVB-T2 L1-pre / L1-post, where many bits enter with no information), and much slower. For single
+    // signalling blocks, not for the data.
+    bool decodeBp(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr) const;
 
     // Quasi-cyclic layer structure (used by the GPU decoder): layer r lists (group, shift) of the information columns.
     struct Conn { int group, shift; };

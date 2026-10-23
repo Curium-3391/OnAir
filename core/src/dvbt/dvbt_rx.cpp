@@ -39,18 +39,25 @@ struct DvbtReceiver::Impl {
     // symbol it spreads carrier k by k * 80e-6 of a carrier (a third of a carrier at the band edges), which the timing loop, moving only the
     // FFT window, cannot undo. Once the loop has learnt the drift it is handed to this resampler, which corrects the samples themselves.
     // Off (no cost) until the clock is measurably off. Local to this receiver; a shared clock_correct.h can replace it.
+    // Merged (a radio rate that has to be resampled anyway, 10 Msps for 8 MHz): one ExactResampler takes the radio's samples straight to the native
+    // rate and the clock correction only steers its step, instead of the rational resampler followed by a second, near-unity resampler: one
+    // filter per sample instead of two (36 taps instead of 32 + 32 once the clock is corrected, which with a real radio is all the time).
     struct ClockCorrector {
         ExactResampler rs;
         bool on = false;
+        bool merged = false;
+        double nominal = 1.0;   // merged: input samples per output sample at the nominal rates
         std::vector<cf32> out;
-        double ppm() const { return on ? (rs.step() - 1.0) * 1e6 : 0.0; }
-        void reset() { on = false; out.clear(); }
+        void setMerged(double inRate, double outRate) { merged = rs.configure(inRate, outRate, 16) && !rs.passthrough(); nominal = rs.step(); }
+        double ppm() const { return merged ? (rs.step() / nominal - 1.0) * 1e6 : on ? (rs.step() - 1.0) * 1e6 : 0.0; }
+        void reset() { on = false; out.clear(); if (merged) { rs.reset(); rs.setStep(nominal); } }
         // the samples run fast by rel (positive: more samples than nominal): take that much more input per output sample
         void adjust(double rel, double rate) {
+            if (merged) { rs.scaleStep(1.0 + rel); return; }
             if (!on) { rs.configure(rate, rate * (1.0 + 1e-9)); rs.scaleStep(1.0 + 1e-9); on = true; }
             rs.scaleStep(1.0 + rel);
         }
-        void process(std::vector<cf32>& io) { if (!on) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
+        void process(std::vector<cf32>& io) { if (!on || merged) return; out.clear(); rs.process(io.data(), io.size(), out); io.swap(out); }
     } clk;
     std::vector<cf32> stage;      // the input at the native rate, before the clock correction
     std::vector<cf32> buf;
@@ -67,6 +74,8 @@ struct DvbtReceiver::Impl {
     int state = 0;                // 0 searching, 1 tracking (CP locked, waiting for TPS), 2 TPS locked and decoding
     int mode = -1, gi = -1, N = 0, G = 0, K = 0, kc = 0;
     double symStart = 0;          // absolute index of the CP start of the next symbol (kept integer; steps are rare)
+    int tOff = 0;                 // where the cyclic-prefix correlation peak sits against symStart: moved off zero when the impulse response
+                                  // shows paths outside the guard interval of the window that the peak gives (strong echoes, a pre-echo)
     double timingAcc = 0;         // fractional timing error accumulated by the loop
     double timingDrift = 0;       // samples per symbol the window drifts (sample clock offset), learnt by the loop
     int64_t prevWin = INT64_MIN;  // start of the previous symbol's FFT window
@@ -87,10 +96,11 @@ struct DvbtReceiver::Impl {
     int back = 0;
     std::unique_ptr<Fft> fft;
     std::vector<cf32> fbuf;
+    std::vector<float> fre, fim;   // transform() works on these split arrays
     std::atomic<int> detect{0};
     std::atomic<bool> lpReq{false};
     int agreeCount = 0, agreeMode = -1, agreeGi = -1;
-    std::vector<double> acqCumR, acqCumI, acqEn, acqRr, acqF;   // scratch of acquire()
+    std::vector<double> acqCumR, acqCumI, acqEn, acqRr, acqF, acqMed;   // scratch of acquire()
     uint64_t searchSamples = 0;   // samples the acquisition has gone through without finding a signal (reduced search rate after 2 s)
     int64_t acqLastEnd = 0;
 
@@ -141,7 +151,6 @@ struct DvbtReceiver::Impl {
     // scratch of estimateAndDecode, kept between symbols (no allocation per symbol)
     std::vector<cf32> scrGrid, scrEq;
     std::vector<float> scrN0;
-    std::vector<uint8_t> scrRoles;
     // the plots are read about 30 times a second: they are rebuilt every ~25 ms of signal, not every six symbols, and only copied into the telemetry when new
     uint64_t showSeq = 0, pubShowSeq = ~0ull;
     uint64_t lastShowSym = 0; bool showEver = false;
@@ -166,7 +175,7 @@ struct DvbtReceiver::Impl {
         tpsBitsSeen.clear(); tpsBase = 0; prevTps.clear(); prevCp.clear(); prevValid = false; prevWin = INT64_MIN; tpsOk = false; tpsFailures = 0; secSinceTps = 0;
         for (int i = 0; i < 4; i++) { hypVotes[i] = 0; hypScore[i] = 0; }
         grid.clear(); gridAge.clear(); cpRef.clear(); cpRefValid = false; gridFilled = 0;
-        fecReset(); held.clear(); holding = false; symbols = 0; detect = 0;
+        fecReset(); held.clear(); holding = false; symbols = 0; detect = 0; pend.clear();
         buf.clear(); base = 0; resampler.reset(); dc = cf32(0, 0); clk.reset(); mirror = false;
         eqShow.clear(); rawShow.clear(); chMag.clear(); chPh.clear(); irDb.clear();
     }
@@ -230,7 +239,13 @@ struct DvbtReceiver::Impl {
                 double mx = 0, mean = 0; int arg = 0;
                 for (int i = 0; i < P; i++) { const int c = cntOf(i); if (c) F[i] /= c; mean += F[i]; if (F[i] > mx) { mx = F[i]; arg = i; } }
                 mean /= P;
-                const double ratio = mean > 0 ? mx / mean : 0;
+                // against the floor (the median), not the mean: under a strong echo the correlation is a plateau as wide as the echo delay
+                // (a 0 dB echo at 0.9 of the guard: 0.4 of the symbol at the plateau's level), which pulled the mean up to within 3 times
+                // the peak and the signal was never found. Noise alone stays near its median (ratio 1.2 to 1.6).
+                acqMed.assign(F, F + P);
+                std::nth_element(acqMed.begin(), acqMed.begin() + P / 2, acqMed.end());
+                const double floorF = acqMed[(size_t)P / 2];
+                const double ratio = floorF > 0 ? mx / floorF : mean > 0 ? mx / mean : 0;
                 // a clean cyclic prefix gives a folded peak far above the floor; wrong (N, G) hypotheses stay flat
                 const double score = mx * std::min(ratio, 12.0) / 12.0;
                 if (mx > 0.12 && ratio > 3.0 && score > best.score) {
@@ -256,7 +271,7 @@ struct DvbtReceiver::Impl {
         while (s < base + (int64_t)buf.size() - (int64_t)(6 * P)) s += P;
         while (s - P >= base + 16) s -= P;
         symStart = (double)s;
-        timingAcc = 0; timingDrift = 0; accPhi = accSlope = 0; rhoAvg = 0; lowRun = 0;
+        timingAcc = 0; timingDrift = 0; accPhi = accSlope = 0; rhoAvg = 0; lowRun = 0; tOff = 0; profN = 0; plateauKnown = false;
         epsFrac = -std::arg(best.corr) / (2 * M_PI);   // c = sum y[n] conj(y[n+N]) has phase -2 pi eps
         back = std::min(G / 4, 24);
         fft = std::make_unique<Fft>(N);
@@ -266,9 +281,9 @@ struct DvbtReceiver::Impl {
         intScore.assign((size_t)(2 * intRange + 1), 0.0); intScoreM.assign(intScore.size(), 0.0); intSymbols = 0; intLocked = false; intShift = 0;
         tpsBitsSeen.clear(); tpsBase = 0; prevValid = false; prevWin = INT64_MIN; tpsOk = false; absSym = 0;
         grid.assign((size_t)(K + 2) / 3 + 1, cf32(0, 0)); gridAge.assign(grid.size(), 255);
-        cpRef.assign(continualPilots(mode).size(), cf32(1, 0)); cpRefValid = false; gridFilled = 0;
+        cpRef.assign(continualPilots(mode).size(), cf32(1, 0)); cpRefValid = false; gridFilled = 0; cpHist = 0; ceStats = 0; ceAlpha = 1; ceDelayKnown = false;
         for (int i = 0; i < 4; i++) { hypVotes[i] = 0; hypScore[i] = 0; }
-        fecReset(); streaming = false; phaseCheck = false; postResync = 0;
+        fecReset(); streaming = false; phaseCheck = false; postResync = 0; pend.clear();
         state = 1;
         return true;
     }
@@ -286,14 +301,27 @@ struct DvbtReceiver::Impl {
         cf32 tab[B];
         for (int i = 0; i < B; i++) tab[i] = cf32((float)std::cos(dph * i), (float)std::sin(dph * i));
         const cf32* src = &at(w);
+        // straight into the transform's split real / imaginary arrays (the same values Fft::forward made from fbuf, without its two copies)
+        fre.resize((size_t)N); fim.resize((size_t)N);
+        float* __restrict re = fre.data();
+        float* __restrict im = fim.data();
         for (int i0 = 0; i0 < N; i0 += B) {
             const double a = ph0 + dph * i0;
             const cf32 c0((float)std::cos(a), (float)std::sin(a));
-            for (int j = 0; j < B; j++) fbuf[i0 + j] = src[i0 + j] * (c0 * tab[j]);
+            for (int j = 0; j < B; j++) { const cf32 v = src[i0 + j] * (c0 * tab[j]); re[i0 + j] = v.real(); im[i0 + j] = v.imag(); }
         }
-        fft->forward(fbuf.data());
+        int lg = 0;
+        while ((1 << lg) < N) lg++;
+        fftSplit(re, im, lg, false);
+        if (!intLocked) for (int i = 0; i < N; i++) fbuf[(size_t)i] = cf32(re[i], im[i]);   // the integer search reads the whole unshifted transform
         Y.resize(K);
-        for (int k = 0; k < K; k++) Y[k] = fbuf[(((k + intShift - kc) % N) + N) % N];
+        // carrier k is bin (k + intShift - kc) mod N: at most two contiguous runs of bins (no two divisions per carrier)
+        {
+            const int b0 = (((intShift - kc) % N) + N) % N;
+            const int run1 = std::min(K, N - b0);
+            for (int k = 0; k < run1; k++) Y[(size_t)k] = cf32(re[b0 + k], im[b0 + k]);
+            for (int k = run1; k < K; k++) Y[(size_t)k] = cf32(re[k - run1], im[k - run1]);
+        }
     }
 
     // CP correlation around the expected position: timing error and fractional CFO
@@ -327,6 +355,7 @@ struct DvbtReceiver::Impl {
             ms[d + 6] = m;
             if (m > bestM) { bestM = m; bestD = d; bestC = c; }
         }
+        cpEdgeGain = ms[6] > 0 ? bestM / ms[6] : 1.0;
         double frac = 0;
         if (bestD > -6 && bestD < 6) {
             const double a = ms[bestD + 5], b = ms[bestD + 6], c = ms[bestD + 7];
@@ -375,9 +404,30 @@ struct DvbtReceiver::Impl {
             // Two symbols in a row have collapsed while the receiver was locked: most likely the radio dropped samples (a USB stall) and the
             // timing jumped. Act at once when the boundary has clearly moved; otherwise (a fade, a burst of interference) leave everything as
             // it is and let the normal rule (a dozen collapsed symbols) decide.
-            const int off = bestD >= P / 2 ? bestD - P : bestD;
+            int off = bestD - tOff;
+            off = ((off % P) + P) % P; if (off >= P / 2) off -= P;
             if (!found || std::abs(off) <= 8) return true;
+            // (bounded by the channel's measured delay spread: on a single path a move like this is a loss of whole symbols plus a few samples)
+            const int spread = ceDelayKnown ? (int)std::lround((ceDelayHalf - 48) / 0.7) : 0;
+            if (std::abs(off) <= std::max(16, std::min(G / 16, spread + 16)) && lowRun == 0) {
+                // The peak has walked to the edge of the tracking range, a few dozen samples: under fading multipath the strongest path changes
+                // (a TU6 profile spans 46 samples). No samples are lost and no symbol is skipped: move the window (the channel estimate and
+                // the TPS differential follow its known phase ramp) and carry on, without the hold and the checks that follow a sample loss.
+                // (a gap of whole symbols plus a few samples looks the same: the scattered pilots of the next good symbol tell, and only then
+                // does the full recovery run)
+                symStart += off; placedShift = off; edgeRun = 0; phaseCheck = true; phaseCheckLight = true;
+                if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] timing peak moved by %d samples at sym %llu: window follows\n", off, (unsigned long long)absSym);
+                return true;
+            }
+            // under a strong echo the correlation has a flat top: the point tracked is as good as the best one
+            if (tOff != 0 || plateauKnown) {
+                const int d0 = ((tOff % P) + P) % P;
+                const double e0 = en[(size_t)(d0 + G)] - en[(size_t)d0];
+                const double r0 = e0 > 1e-12 ? std::abs(cum[(size_t)(d0 + G)] - cum[(size_t)d0]) / e0 : 0.0;
+                if (r0 >= 0.85 * bestRho) return true;
+            }
         }
+        profN = 0;
         const int run = lowRun;   // a jump caught on the first collapsed symbol: the boundary one step back still straddles the gap
         lowRun = 0; edgeRun = 0;
         if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] resync%s at sym %llu (rx %lld): best offset %d (rho %.2f, usual %.2f)\n", early ? " (early)" : "", (unsigned long long)absSym, (long long)s, bestD >= P / 2 ? bestD - P : bestD, bestRho, rhoAvg);
@@ -395,7 +445,10 @@ struct DvbtReceiver::Impl {
                 const double rc = e > 1e-12 ? std::abs(cc) / e : 0.0;
                 if (!early || (run != 1 && rc >= 0.7 * bestRho)) bestD -= P;
             }
-            symStart = (double)(s + bestD);
+            // the symbols still waiting for the pilots after them go out now, with what there is: the pilots after a jump are taken at
+            // another window and would not fit them
+            drainAll();
+            symStart = (double)(s + bestD - tOff);
             timingAcc = 0;
             prevValid = false; prevWin = INT64_MIN; winShift = 0;
             if (early) {
@@ -406,8 +459,9 @@ struct DvbtReceiver::Impl {
                 cpTrack(s + bestD, terr, eraw, mag, rho);
                 symStart += std::round(terr);
             } else {
+                drainAll();   // the symbols still waiting for their next pilots: with what there is
                 accPhi = accSlope = 0;
-                cpRefValid = false; std::fill(gridAge.begin(), gridAge.end(), (uint8_t)255); gridFilled = 0;
+                cpRefValid = false; std::fill(gridAge.begin(), gridAge.end(), (uint8_t)255); gridFilled = 0; cpHist = 0; ceDelayKnown = false;
             }
             resyncs++;
             phaseCheck = true; postResync = 2;
@@ -417,7 +471,75 @@ struct DvbtReceiver::Impl {
         return true;
     }
     uint64_t resyncs = 0;
+    double cpEdgeGain = 1;        // the CP correlation's peak against its centre value in the last cpTrack
+    // FFT window placement from the shape of the cyclic-prefix correlation, averaged over symbols. One path: a peak with slopes G wide each
+    // side. A strong echo tau samples later: a flat top tau wide, and the peak sits anywhere on it; a window placed there overlaps the next
+    // symbol of the first path (a 0 dB echo at 0.9 of the guard never decoded). The earliest path starts where the top begins.
+    std::vector<double> prof;
+    std::vector<cd> profCum;
+    int profN = 0, profSkip = 0, placedShift = 0;
+    int64_t profRef = 0; uint64_t profRefSym = 0;
+    bool plateauKnown = false;    // the last profile showed a flat top (a strong echo): edge peaks and resync offsets on it mean nothing
+    void placeWindow(int64_t s) {
+        if (ceNoPlace) return;
+        if (profSkip > 0) { profSkip--; return; }   // the previous symbol still sat at the old window
+        const int R = 2 * G + G / 8;   // a strong echo up to G late puts the first path's rise up to 2 G before the tracked point
+        // The previous symbol's neighbourhood (all of it is in the buffer), on a grid fixed in the input samples from the first symbol of
+        // the average: the window may move meanwhile (the timing loop, a small resync) without smearing what is averaged.
+        if (profN == 0) { profRef = s - (N + G) + tOff; profRefSym = absSym; }
+        const int64_t c = profRef + (int64_t)(absSym - profRefSym) * (N + G);
+        if (c - R < base || c + R + G + N + 1 > end()) return;
+        profCum.resize((size_t)(2 * R + G) + 1);
+        profCum[0] = 0;
+        for (int i = 0; i < 2 * R + G; i++) {
+            const cf32 a = at(c - R + i), b = at(c - R + i + N);
+            profCum[(size_t)i + 1] = profCum[(size_t)i] + cd(a.real(), a.imag()) * std::conj(cd(b.real(), b.imag()));
+        }
+        prof.resize((size_t)(2 * R + 1), 0.0);
+        if (profN == 0) std::fill(prof.begin(), prof.end(), 0.0);
+        for (int d = 0; d <= 2 * R; d++) prof[(size_t)d] += std::abs(profCum[(size_t)(d + G)] - profCum[(size_t)d]);
+        if (++profN < (placements == 0 && !plateauKnown ? 12 : 24)) return;   // (the first answer sooner)
+        profN = 0;
+        int am = 0;
+        for (int d = 1; d <= 2 * R; d++) if (prof[(size_t)d] > prof[(size_t)am]) am = d;
+        const double m = prof[(size_t)am];
+        // The top's level wanders by several per cent over the symbols averaged, so its edge is not found from the top: the earliest path's
+        // correlation rises from zero G samples before its symbol starts, steeply and alone. Where the profile (over its floor: the first
+        // G/8 samples, outside every path's ramp) first reaches a quarter of the peak, a single path is 0.25 G into that ramp.
+        double floorP = 0;
+        for (int d = 0; d < G / 8; d++) floorP += prof[(size_t)d];
+        floorP /= std::max(1, G / 8);
+        if (m < 3 * floorP) return;   // too little signal to tell
+        // (the floor is the magnitude of a sum of unrelated products: it adds to the correlation in power, not in magnitude)
+        const double lvl = std::sqrt(floorP * floorP + 0.0625 * (m * m - floorP * floorP));
+        int d = 0, run = 0;
+        for (; d < am; d++) { run = prof[(size_t)d] >= lvl ? run + 1 : 0; if (run == 3) break; }
+        if (run < 3) return;
+        d -= 2;   // the first of the three
+        if (d < 1) return;   // already above at the left edge: the profile does not reach back far enough
+        const double a = prof[(size_t)(d - 1)], b = prof[(size_t)d];
+        const double dl = d - 1 + (b > a ? (lvl - a) / (b - a) : 1.0);
+        const double x = dl + 0.75 * G - R;
+        const int xi = (int)std::lround(x);
+        const int delta = (int)(c + xi + (N + G) - s);   // the next symbol's start, from the earliest path of the previous one
+        // One path: the rise is 0.75 G before the peak, and the window stays where the peak put it (as it always did). Only a top wider
+        // than that (a strong echo) or a path before the peak moves it the first time.
+        // Once moved, the point tracked wanders freely on the flat top: from then on the window follows the rise alone.
+        plateauKnown = (double)am - dl >= 0.75 * G + std::max(8, G / 16);   // a top wider than one path's: a strong echo
+        if (tOff == 0 && !plateauKnown) return;
+        if (std::abs(delta) < std::max(8, G / 32)) return;
+        if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] earliest path's symbol starts %d samples from the tracked point (peak %d, rise %.0f, sym %llu): FFT window moved by %d\n", xi, am - R, dl - R, (unsigned long long)absSym, delta);
+        // the move is known, so the channel estimate and the TPS differential carry over (they turn by its phase ramp, as for a step of the
+        // timing loop)
+        symStart += delta; tOff -= delta; placements++; profSkip = 1; placedShift = delta;
+        if (std::abs(delta) > G) {   // (cannot happen with a top at most G wide; kept as a guard) rebuild the channel estimate
+            drainAll();
+            accPhi = accSlope = 0;
+            cpRefValid = false; std::fill(gridAge.begin(), gridAge.end(), (uint8_t)255); gridFilled = 0; cpHist = 0; ceDelayKnown = false;
+        }
+    }
     bool streaming = false;       // the error correction has been fed symbols without a break since the last acquisition
+    bool phaseCheckLight = false; // the check after a small move of the window (only a loss it finds starts the hold)
     bool phaseCheck = false;      // after a resync: check once which of the four scattered-pilot positions the next good symbol has
     int postResync = 0;           // frame checks still to come after a resync: the first one is expected to fail (that frame holds the gap)
 
@@ -479,7 +601,7 @@ struct DvbtReceiver::Impl {
         if (s + P + N + 32 > end()) return false;
         if (s - 16 < base) { symStart += P; return true; } // fell behind the buffer: skip
         double terr, eraw, mag, rho;
-        cpTrack(s, terr, eraw, mag, rho);
+        cpTrack(s + tOff, terr, eraw, mag, rho);
         // how reliable is this symbol's correlation? Against its usual strength, from the symbols that were fine
         const bool collapsed = rhoAvg > 0 && absSym > 40 && rho < 0.3 * rhoAvg;
         if (!collapsed) rhoAvg = rhoAvg == 0 ? rho : rhoAvg + (absSym < 200 ? 0.05 : 0.005) * (rho - rhoAvg);
@@ -491,7 +613,9 @@ struct DvbtReceiver::Impl {
         // The correlation peak at the edge of the tracking range in two symbols running: the timing has jumped by more than the loop can follow
         // but less than collapses the correlation (a few hundred samples lost, the rest of a whole symbol), the window now overlaps the next
         // symbol and everything decodes wrong. Same remedy.
-        edgeRun = !collapsed && std::fabs(terr) >= 5.99 ? edgeRun + 1 : 0;
+        // (once the window is placed under a strong echo, an edge peak that stands barely above the centre is the flat top of its
+        // correlation, not a jump; elsewhere a jump of a few hundred samples puts both on the slope, barely apart)
+        edgeRun = !collapsed && std::fabs(terr) >= 5.99 && ((tOff == 0 && !plateauKnown) || cpEdgeGain > 1.05) ? edgeRun + 1 : 0;
         if ((lowRun == 2 || edgeRun == 2) && tpsOk) {
             const double before = symStart;
             if (!resync(s, true)) { if (lowRun) lowRun = 1; else edgeRun = 1; return false; }   // more samples first; this symbol comes round again
@@ -504,7 +628,9 @@ struct DvbtReceiver::Impl {
         // A symbol whose correlation has collapsed says nothing about timing or frequency: noise would walk both loops away (a swing of half a
         // subcarrier was seen on a real recording), so they hold still until the correlation is back or the receiver has resynchronised.
         const bool pullIn = absSym < 500;
-        if (!collapsed) {
+        // Under a strong echo (the window placed from the correlation's shape, tOff != 0) the peak sits anywhere on a flat top: following it
+        // would walk the window (and the loop's drift estimate) at random. The placement keeps the window there; the loop only holds the drift.
+        if (!collapsed && tOff == 0) {
             timingDrift += (pullIn ? 0.0016 : 0.000025) * terr;
             timingAcc += (pullIn ? 0.08 : 0.01) * terr + timingDrift;
         } else timingAcc += timingDrift;
@@ -525,8 +651,12 @@ struct DvbtReceiver::Impl {
         }
         // how far this window moved against the previous one beyond one symbol (the timing loop's steps), for the TPS differential
         winShift = prevWin == INT64_MIN ? 0 : (int)(s - prevWin - P);
-        if (std::abs(winShift) > 16) { winShift = 0; prevValid = false; }   // a skipped symbol: no valid previous one
+        if (std::abs(winShift - placedShift) > 16) { winShift = 0; prevValid = false; }   // a skipped symbol: no valid previous one
+        placedShift = 0;
         prevWin = s;
+        // (takes effect from the next symbol; an average over a collapsed symbol, samples perhaps lost, says nothing: start it again)
+        if (collapsed) profN = 0;
+        else if (tpsOk && absSym % 2 == 0) placeWindow(s);
         transform(s);
         if (!intLocked) {
             // search needs the unshifted transform: the shifted Y is only a re-indexing of fbuf, which is intact after transform()
@@ -600,23 +730,27 @@ struct DvbtReceiver::Impl {
         const int hypBefore = tpsOk ? (int)((absSym - frameStartAbs) % 68) : -1;
         (void)hypBefore;
         int symIdx = tpsOk ? (int)((absSym - frameStartAbs) % 68) : -1;
+        if (!tpsOk && !pend.empty()) drainAll();
         if (!tpsOk && holding) flushHeld(0);
         if (!tpsOk) {
             // channel estimate not meaningful yet: only accumulate the pilot-phase votes and wait for TPS
             return;
         }
         if (phaseCheck && lowRun == 0) {
+            drainAll();   // the symbols from before the gap go out first, ahead of the erasures and the hold
             // the first good symbol after a resync: whole symbols may have gone missing with the lost samples. Move the frame position on by that
             // many and give the error correction the same number of erased symbols, so that its bit stream stays aligned.
             phaseCheck = false;
             const int delta = scatteredPhaseDelta(symIdx);
+            const bool light = phaseCheckLight;
+            phaseCheckLight = false;
             if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] scattered pilot check at sym %llu: the real stream is %d symbol(s) ahead of the count\n", (unsigned long long)absSym, delta);
             if (delta > 0) {
                 if (streaming) for (int i = 0; i < delta; i++) pushErasure((symIdx + i) % 68);
                 frameStartAbs -= (uint64_t)delta; frameRefAbs -= (uint64_t)delta;
                 symIdx = (symIdx + delta) % 68;
             }
-            if (streaming) { holding = true; holdFrom = absSym; }
+            if (streaming && !(light && delta == 0)) { holding = true; holdFrom = absSym; }
         }
         if (lowRun > 0) { if (streaming) pushErasure(symIdx); }   // this symbol's correlation has collapsed: nothing to decode, nothing to learn from
         else estimateAndDecode(symIdx);
@@ -708,6 +842,10 @@ struct DvbtReceiver::Impl {
     }
 
     void pushErasure(int symIdx) {
+        if (ti && !pend.empty()) { Pend p = takePend(); p.symIdx = symIdx; p.erase = true; p.t = (int64_t)absSym; pend.push_back(std::move(p)); return; }
+        pushErasureNow(symIdx);
+    }
+    void pushErasureNow(int symIdx) {
         const int Nd = dataCarriers(mode);
         std::vector<cf32> eq((size_t)Nd, cf32(0, 0));
         std::vector<float> n0((size_t)Nd, 1e6f);
@@ -780,7 +918,7 @@ struct DvbtReceiver::Impl {
                 accSlope += 2 * M_PI * winShift / N;
                 accPhi += 2 * M_PI * (double)intShift * winShift / N;
             }
-            std::vector<cd>& z = ceZ;
+                        std::vector<cd>& z = ceZ;
             z.resize(cp.size());
             cd tot = 0;
             for (size_t i = 0; i < cp.size(); i++) {
@@ -830,39 +968,190 @@ struct DvbtReceiver::Impl {
             const double s2 = std::max(1e-6, e * (16.0 / 9.0) * 1.2); // Y-domain variance; mild correction for the reference's own noise
             sigma2 = 0.9 * sigma2 + 0.1 * s2;
         }
-        // ---- scattered pilots of this symbol refresh one quarter of the grid (carriers 3 * (4j + l mod 4))
+        // ---- how fast does the channel change against the noise? The continual pilots one and two symbols back (in the same derotated
+        // frame) answer it: E|c_l - c_l-1|^2 = 2 r + q and E|c_l - c_l-2|^2 = 2 r + 4 q for a channel that changes smoothly (q: its change
+        // over one symbol, r: the noise of one pilot). That sets how much the scattered pilots are averaged over time below.
+        {
+            ceCv.resize(cp.size());
+            for (size_t i = 0; i < cp.size(); i++) ceCv[i] = Yc[cp[i]] / pilotValue(cp[i]);
+            if (cpHist >= 2 && ceH1.size() == cp.size() && ceH2.size() == cp.size()) {
+                double d1 = 0, d2 = 0;
+                for (size_t i = 0; i < cp.size(); i++) { d1 += std::norm(ceCv[i] - ceH1[i]); d2 += std::norm(ceCv[i] - ceH2[i]); }
+                d1 /= (double)cp.size(); d2 /= (double)cp.size();
+                if (ceStats == 0) { ceD1 = d1; ceD2 = d2; } else { ceD1 += 0.08 * (d1 - ceD1); ceD2 += 0.08 * (d2 - ceD2); }
+                ceStats++;
+            }
+            ceH2.swap(ceH1); ceH1 = ceCv; cpHist = std::min(cpHist + 1, 2);
+            if (ceStats >= 8) {
+                const double r = std::max(1e-12, (4 * ceD1 - ceD2) / 6), q = std::max(0.0, (ceD2 - ceD1) / 3);
+                // The gain a of the average over a grid point's pilots (one every fourth symbol): its noise is r a / (2 - a), and a channel
+                // moving by v per pilot (|v|^2 = 16 q: a smooth change) leaves it (1 - a) / a pilots behind, an error of |v|^2 ((1 - a) / a)^2.
+                // The gain with the least of the two (a Kalman gain for a random walk lags a moving receiver's channel: at 10 Hz in 8K the
+                // MER stopped at 27 dB).
+                double best = 1, bestE = 1e300;
+                for (int i = 1; i <= 20; i++) {
+                    const double a = i / 20.0;
+                    const double e = 16 * q * ((1 - a) / a) * ((1 - a) / a) + r * a / (2 - a);
+                    if (e < bestE) { bestE = e; best = a; }
+                }
+                ceAlpha = std::max(1.0 / 10, best);
+            } else ceAlpha = 1;
+        }
+        // ---- scattered pilots of this symbol refresh one quarter of the grid (carriers 3 * (4j + l mod 4)). A still channel: averaged over
+        // time with the gain above (noise of the estimate down by up to 10 dB, worth up to 1.9 dB of threshold); a fast one: the newest pilot.
         const int l4 = symIdx % 4;
+        if (gridCnt.size() != grid.size()) { gridCnt.assign(grid.size(), 0); gHv.assign(grid.size() * kHist, cf32(0, 0)); gHt.assign(grid.size() * kHist, -1); }
         for (int k = 3 * l4; k < K; k += 12) {
             const int n = k / 3;
-            grid[n] = Yc[k] / pilotValue(k);
+            const cf32 v = Yc[k] / pilotValue(k);
+            if (ceOld || gridAge[n] > 8) { grid[n] = v; gridCnt[n] = 1; }
+            else {
+                gridCnt[n] = (uint16_t)std::min(1000, gridCnt[n] + 1);
+                const float a = (float)std::max(ceAlpha, 1.0 / gridCnt[n]);
+                grid[n] += a * (v - grid[n]);
+            }
+            {   // the last kHist estimates of this grid point and their symbols, newest last (a stale point starts again)
+                cf32* hv = &gHv[(size_t)n * kHist]; int64_t* ht = &gHt[(size_t)n * kHist];
+                if (gridAge[n] > 8) for (int j = 0; j < kHist; j++) ht[j] = -1;
+                for (int j = 0; j + 1 < kHist; j++) { hv[j] = hv[j + 1]; ht[j] = ht[j + 1]; }
+                hv[kHist - 1] = grid[n]; ht[kHist - 1] = (int64_t)absSym;
+            }
             gridAge[n] = 0;
         }
-        // grid points that coincide with continual pilots get the better (smoothed) estimate
-        for (size_t i = 0; i < cp.size(); i++) if (cp[i] % 3 == 0) { grid[cp[i] / 3] = cpRef[i]; gridAge[cp[i] / 3] = 0; }
+        // grid points that coincide with continual pilots get the better (smoothed) estimate (not with the time interpolation: the smoothed
+        // reference lags a fast channel, and those points get a scattered pilot every fourth symbol like all others)
+        if (!ti) for (size_t i = 0; i < cp.size(); i++) if (cp[i] % 3 == 0) { grid[cp[i] / 3] = cpRef[i]; gridAge[cp[i] / 3] = 0; }
         for (auto& a : gridAge) if (a < 250) a++;
         gridFilled++;
-        if (gridFilled < 4) { est.stop(); if (streaming) pushErasure(symIdx); return; }
-        const double tau0 = (double)back + (double)G / 2.0;
+        if (gridFilled < 4) { est.stop(); if (streaming || !pend.empty()) pushErasure(symIdx); return; }
+        if (!ti) { equalise(Yc, symIdx, (int64_t)absSym); return; }
+        // Time interpolation: every grid point gets a pilot every fourth symbol. The symbol kTiDelay back has two pilots on each grid point
+        // before it and two after it (by now): its channel is interpolated between them, not the newest pilot, which for a moving receiver is
+        // up to three symbols stale (at 100 Hz Doppler in 2K: a third of a radian, enough to wreck 16-QAM).
+        Pend pe = takePend();
+        pe.Yc.assign(Yc.begin(), Yc.end()); pe.symIdx = symIdx; pe.t = (int64_t)absSym; pe.erase = false;
+        pend.push_back(std::move(pe));
+        drainPend((int64_t)absSym - kTiDelay);
+    }
+    // the delay line of the time interpolation: symbols (or erasures) in the order they go to the error correction
+    struct Pend { std::vector<cf32> Yc; int symIdx = 0; int64_t t = 0; bool erase = false; };
+    std::deque<Pend> pend;
+    std::vector<Pend> pendSpare;
+    Pend takePend() { if (pendSpare.empty()) return Pend(); Pend p = std::move(pendSpare.back()); pendSpare.pop_back(); return p; }
+    void drainPend(int64_t upTo) {
+        while (!pend.empty() && (pend.front().erase || pend.front().t <= upTo)) {
+            Pend p = std::move(pend.front());
+            pend.pop_front();
+            if (p.erase) pushErasureNow(p.symIdx);
+            else {
+                const size_t M = grid.size();
+                std::vector<cf32>& gi = scrGridT;
+                gi.resize(M);
+                for (size_t n = 0; n < M; n++) {
+                    gi[n] = timeInterp(n, p.t);
+                }
+                equalise(p.Yc, p.symIdx, p.t, &gi);
+            }
+            pendSpare.push_back(std::move(p));
+        }
+    }
+    void drainAll() { drainPend(INT64_MAX); }
+    std::vector<cf32> scrGridT;
+    // Each grid point's last estimates (one every fourth symbol) and when they were taken. The delayed symbol's channel is a cubic through
+    // the two estimates before it and the two after (a straight line between two loses 16 dB of MER at 40 Hz Doppler in 8K: the pilots are
+    // 4.5 ms apart, a path turns by more than a radian in between); a line where fewer are known, the newest where nothing follows.
+    static constexpr int kHist = 5, kTiDelay = 8;
+    std::vector<cf32> gHv;
+    std::vector<int64_t> gHt;
+    cf32 timeInterp(size_t n, int64_t m) const {
+        const cf32* hv = &gHv[n * kHist]; const int64_t* ht = &gHt[n * kHist];
+        int j1 = -1;   // the first estimate after m
+        for (int j = 0; j < kHist; j++) if (ht[j] >= 0 && ht[j] > m) { j1 = j; break; }
+        if (j1 < 0) return grid[n];
+        if (j1 == 0 || ht[j1 - 1] < 0) return hv[j1];
+        if (j1 >= 2 && j1 + 1 < kHist && ht[j1 - 2] >= 0 && ht[j1 + 1] >= 0) {
+            const double t[4] = {(double)ht[j1 - 2], (double)ht[j1 - 1], (double)ht[j1], (double)ht[j1 + 1]};
+            cd acc = 0;
+            for (int a = 0; a < 4; a++) {
+                double w = 1;
+                for (int b = 0; b < 4; b++) if (b != a) w *= ((double)m - t[b]) / (t[a] - t[b]);
+                const cf32 v = hv[j1 - 2 + a];
+                acc += cd(v.real(), v.imag()) * w;
+            }
+            return cf32((float)acc.real(), (float)acc.imag());
+        }
+        const double f = (double)(m - ht[j1 - 1]) / (double)(ht[j1] - ht[j1 - 1]);
+        return hv[j1 - 1] + (hv[j1] - hv[j1 - 1]) * (float)f;
+    }
+    const bool ti = !getenv("DECT2_DVBT_NOTI");   // A/B switch: DECT2_DVBT_NOTI=1 uses the newest pilot on each grid point (as before)
+
+    // ---- equalise one symbol with the channel interpolated from the grid (the current one, or the time-interpolated one for a delayed symbol)
+    void equalise(const std::vector<cf32>& Yc, int symIdx, int64_t tSym, const std::vector<cf32>* gridAt = nullptr) {
+        DECT2_STAGE_VAR(est, "dvbt.chanest");
+        (void)tSym;
+        const auto& cp = continualPilots(mode);
+        const auto& tpsK = tpsCarriers(mode);
+        const int l4 = symIdx % 4;
+        const std::vector<cf32>& gsrc = gridAt ? *gridAt : grid;
+        // The carriers were turned by the running phase ramp (accSlope), which carries every step of the window since the reference was set:
+        // in the turned carriers a path at delay tau sits at tau + accSlope N / 2 pi. The delay window must move with it, or after the window
+        // has moved by a few dozen samples (the timing loop over minutes of clock drift, or one placement under a strong echo) a path falls out
+        // of it and the channel estimate folds it to the wrong delay.
+        const double slopeDelay = accSlope * (double)N / (2 * M_PI);
+        const int slopeD = (int)std::lround(slopeDelay);
+        const double tau0 = (double)back + (double)G / 2.0 + slopeDelay;
         std::vector<cf32>& g = scrGrid;
-        g.assign(grid.begin(), grid.begin() + (ptrdiff_t)std::min(grid.size(), (size_t)(K + 2) / 3));
+        g.assign(gsrc.begin(), gsrc.begin() + (ptrdiff_t)std::min(gsrc.size(), (size_t)(K + 2) / 3));
         g.resize((size_t)(K + 2) / 3, cf32(0, 0));
-        interp.run(g, 3, K, N, tau0, H, 1.0);
+        // the delay window: by default G/2 +- N/6 around the main path (all the pilot grid can tell apart). Once the channel's real delay
+        // spread is known (from its impulse response, measured again every 16 symbols) only that much, with margin: the interpolator then
+        // passes less noise (a single path in 8K: a window of ~100 samples instead of 2730, the estimate's noise down by more than 10 dB).
+        if (!ceNoNarrow && ceDelayKnown) interp.run(g, 3, K, N, (double)back + slopeDelay + ceDelayCentre, H, std::min(1.0, ceDelayHalf / ((double)N / 6.0)));
+        else interp.run(g, 3, K, N, tau0, H, 1.0);
+        if (!ceNoNarrow && (gridFilled == 8 || (gridFilled > 8 && gridFilled % 16 == 0))) {
+            // measured on the full-window estimate (a narrowed one cannot show an echo that has just appeared outside it)
+            if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] chanest sym %llu: alpha %.3f d1 %.3g d2 %.3g sigma2 %.3g window %s %.0f +- %.0f\n", (unsigned long long)absSym, ceAlpha, ceD1, ceD2, sigma2, ceDelayKnown ? "narrow" : "full", ceDelayCentre, ceDelayHalf);
+            std::vector<cf32>& Hw = ceHw;
+            if (ceDelayKnown) interp.run(g, 3, K, N, tau0, Hw, 1.0); else Hw = H;
+            int tMin, tMax;
+            const int lo = std::max(-std::max(G / 2, 64), G / 2 - N / 6), hi = std::min(G * 3 / 2, G / 2 + N / 6);
+            if (delaySpan(Hw, N, lo, hi, back + slopeD, tMin, tMax)) {
+                const double centre = 0.5 * (tMin + tMax), half = 0.5 * (tMax - tMin) * 1.4 + 48;
+                ceDelayKnown = half / ((double)N / 6.0) < 0.9;
+                ceDelayCentre = centre; ceDelayHalf = half;
+            } else ceDelayKnown = false;
+        }
         // ---- equalise the data carriers
-        if (roleMode != mode) { for (int l = 0; l < 4; l++) carrierRoles(mode, l, roleCache[l]); roleMode = mode; }   // the pattern repeats every 4 symbols
-        const std::vector<uint8_t>& roles = roleCache[symIdx % 4];
+        if (roleMode != mode) {   // the pattern repeats every 4 symbols: the data carriers of each of the four, in order
+            for (int l = 0; l < 4; l++) {
+                std::vector<uint8_t> roles;
+                carrierRoles(mode, l, roles);
+                dataIdx[l].clear();
+                for (int k = 0; k < K && k < (int)roles.size(); k++) if (roles[k] == 0) dataIdx[l].push_back(k);
+            }
+            roleMode = mode;
+        }
+        const std::vector<int>& dk = dataIdx[symIdx % 4];
         const int Nd = dataCarriers(mode);
+        if ((int)dk.size() < Nd) return;
         std::vector<cf32>& eq = scrEq;
         std::vector<float>& n0 = scrN0;
         eq.resize((size_t)Nd); n0.resize((size_t)Nd);
-        int di = 0;
-        for (int k = 0; k < K && di < Nd; k++) {
-            if (roles[k] != 0) continue;
-            const float g2 = std::max(1e-9f, std::norm(H[k]));
-            eq[di] = Yc[k] * std::conj(H[k]) / g2;
-            n0[di] = (float)(sigma2 / (2.0 * g2));
-            di++;
+        // the data carriers' channel and value side by side first, then one plain loop over them (the same operations, which now vectorise)
+        hD.resize((size_t)Nd); yD.resize((size_t)Nd);
+        for (int i = 0; i < Nd; i++) { hD[(size_t)i] = H[(size_t)dk[(size_t)i]]; yD[(size_t)i] = Yc[(size_t)dk[(size_t)i]]; }
+        {
+            const cf32* __restrict hp = hD.data();
+            const cf32* __restrict yp = yD.data();
+            cf32* __restrict ep = eq.data();
+            float* __restrict np = n0.data();
+            const double s2 = sigma2;
+            for (int i = 0; i < Nd; i++) {
+                const float g2 = std::max(1e-9f, std::norm(hp[i]));
+                ep[i] = yp[i] * std::conj(hp[i]) / g2;
+                np[i] = (float)(s2 / (2.0 * g2));
+            }
         }
-        if (di != Nd) return;
         est.stop();
         fecPush(eq.data(), n0.data(), symIdx);
         streaming = true;
@@ -886,7 +1175,7 @@ struct DvbtReceiver::Impl {
             for (int k : cp) if (k % 12 != 3 * l4) pilotShow.push_back(Yc[k] / H[k] * 0.75f);
             const int back0 = G / 8;
             irTauMin = -N / 16;
-            impulseResponse(H, N, irTauMin, G + std::max(8, G / 4), back + back0, irDb);
+            impulseResponse(H, N, irTauMin, G + std::max(8, G / 4), back + back0 + (int)std::lround(accSlope * (double)N / (2 * M_PI)), irDb);
             double sn = 0;
             for (int k = 0; k < K; k += 7) sn += std::norm(H[k]);
             sn /= (double)((K + 6) / 7);
@@ -896,11 +1185,22 @@ struct DvbtReceiver::Impl {
     }
     int chDecimV = 1;
     size_t lastTpsK = 0;
-    std::vector<cf32> ceC, ceYc, ceG, ceEq;   // estimateAndDecode()'s work buffers
+    std::vector<cf32> ceC, ceYc, ceCv;   // estimateAndDecode()'s work buffers
+    std::vector<cf32> ceH1, ceH2;     // the continual pilots one and two symbols back (for the noise / channel-change estimate)
+    int cpHist = 0, ceStats = 0;
+    double ceD1 = 0, ceD2 = 0, ceAlpha = 1;
+    std::vector<uint16_t> gridCnt;    // pilots averaged into each grid point since it was last fresh
+    const bool ceOld = getenv("DECT2_DVBT_CE_OLD") != nullptr;   // A/B: the newest pilot only (as before 3.0)
+    const bool ceNoNarrow = getenv("DECT2_DVBT_NONARROW") != nullptr;   // A/B: the full delay window always
+    const bool ceNoPlace = getenv("DECT2_DVBT_NOPLACE") != nullptr;      // A/B: the window where the cyclic-prefix peak puts it
+    uint64_t placements = 0;
+    bool ceDelayKnown = false;
+    double ceDelayCentre = 0, ceDelayHalf = 0;
+    std::vector<cf32> ceHw;
     std::vector<cd> ceZ;
-    std::vector<float> ceN0;
-    std::vector<uint8_t> roleCache[4];
+    std::vector<int> dataIdx[4];   // the data carriers of the four symbol patterns (estimateAndDecode)
     int roleMode = -1;
+    std::vector<cf32> hD, yD;
 
     // ------------------------------------------------------------------ the error correction stage
     // Demapping, Viterbi and Reed-Solomon of one symbol after another. Synchronous by default (feed() returns with everything decoded); with
@@ -1032,6 +1332,8 @@ void DvbtReceiver::configure(double inputRateHz, double bandwidthMhz) {
     I.rateOk = I.resampler.configure(inputRateHz, I.fn, nullptr, carriersK(dvbt::k8K) * I.fn / 8192.0) &&   // the signal fills K carriers: only what folds into them has to be stopped (a kernel half as long at 10 Msps)
                   inputRateHz >= 7.9e6 * (bandwidthMhz / 8.0);
     I.decimate = I.rateOk && !I.resampler.passthrough();
+    I.clk.merged = false;
+    if (I.decimate) { I.clk.setMerged(inputRateHz, I.fn); I.clk.reset(); }
 }
 
 void DvbtReceiver::setLowPriority(bool lp) { p_->lpReq = lp; }   // applied with the next symbol, on the thread that decodes
@@ -1093,7 +1395,8 @@ void DvbtReceiver::feed(const cf32* x, size_t n) {
     {
         DECT2_STAGE("dvbt.resample");
         I.stage.clear();
-        if (I.decimate) I.resampler.process(x, n, I.stage);
+        if (I.decimate && I.clk.merged) I.clk.rs.process(x, n, I.stage);   // resampling and clock correction in one filter
+        else if (I.decimate) I.resampler.process(x, n, I.stage);
         else I.stage.assign(x, x + n);
         I.clk.process(I.stage);
         I.buf.insert(I.buf.end(), I.stage.begin(), I.stage.end());

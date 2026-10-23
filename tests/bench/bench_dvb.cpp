@@ -357,6 +357,16 @@ int main(int argc, char** argv) {
         for (auto& e : st) named += e.second.first;
         for (auto& e : st) printf("     %-24s %7.4f  %5.1f%%  (%llu calls)\n", e.first.c_str(), e.second.first / r.secs, 100 * e.second.first / std::max(1e-9, r.cpuAll), (unsigned long long)e.second.second);
         if (!st.empty()) printf("     %-24s %7.4f  %5.1f%%\n", "(not in a stage)", std::max(0.0, r.cpuAll - named) / r.secs, 100 * std::max(0.0, r.cpuAll - named) / std::max(1e-9, r.cpuAll));
+        {
+            struct rusage ru {};
+            getrusage(RUSAGE_SELF, &ru);
+#ifdef __APPLE__
+            const double mb = (double)ru.ru_maxrss / 1048576.0;   // bytes on macOS
+#else
+            const double mb = (double)ru.ru_maxrss / 1024.0;      // kilobytes on Linux
+#endif
+            printf("     peak memory of the process so far %.0f MB (the %.0f MB signal included)\n", mb, (double)sig.size() / 1048576.0);
+        }
         fflush(stdout);
         if (js) {
             fprintf(js, "%s{\"id\":\"%s\",\"secs\":%.3f,\"cpu_all\":%.5f,\"cpu_feed\":%.5f,\"cpu_busiest\":%.5f,\"packets\":%llu,\"digest\":\"%016llx\",\"stages\":{", first ? "" : ",\n", c.id.c_str(), r.secs,
