@@ -42,6 +42,13 @@ bool parsePrefs(const std::string& text, std::vector<PrefItem>& out);
 // Split into the plain part and the credentials.
 void splitSecretPrefs(const std::vector<PrefItem>& all, std::vector<PrefItem>& plain, std::vector<PrefItem>& secret);
 
+// ---- what a restore may apply ----
+// Allow: applied. Confirm: only after the user ticks that exact key in the UI (network exposure, server addresses, uploads, transmit,
+// paths, consents, anything unknown). Never: dropped (a credential-looking key in the plain part, an odd key name).
+enum class PrefPolicy { Allow, Confirm, Never };
+PrefPolicy prefRestorePolicy(const std::string& key, char type, bool fromSealedBlock);
+void classifyRestorePrefs(const std::vector<PrefItem>& in, bool fromSealedBlock, std::vector<PrefItem>& allow, std::vector<PrefItem>& confirm, std::vector<std::string>& refused);
+
 // ---- the archive ----
 struct Entry { std::string name; std::string data; };
 std::string zipPack(const std::vector<Entry>& entries);
@@ -58,6 +65,10 @@ std::string zipUnpack(const std::string& bytes, std::vector<Entry>& out, const L
 // A name that stays inside the target folder: not empty, not absolute (no leading / or \, no drive letter), no "..", ".", empty parts,
 // backslash, colon, control characters or trailing dot/space in a part.
 bool safeRelPath(const std::string& rel, size_t maxLen = 240);
+
+// False for a path a backup may never write: the folders whose content is loaded as code (codecs/, plugins/ ...) and library or executable
+// extensions. Applied to the manifest check, the plan and the writer.
+bool restorablePath(const std::string& rel);
 
 // ---- manifest ----
 struct Manifest {
