@@ -266,8 +266,8 @@ struct RxTelemetry {
     LtrTelemetry ltr;           // valid when standard == 130 (LTR control channel, engine standard 131)
     EdacsTelemetry edacs;       // valid when standard == 131 (EDACS control channel, engine standard 132)
     SbasTelemetry sbas;         // valid when standard == 151 (SBAS, family 150, engine standard 152)
-    ArgosTelemetry argos;       // valid when standard == 149 (Argos, engine standard 150)
-    SigfoxModeTelemetry sigfoxm;   // valid when standard == 150 (Sigfox, engine standard 151)
+    ArgosTelemetry argos;       // valid when standard == 153 (Argos, engine standard 154)
+    SigfoxModeTelemetry sigfoxm;   // valid when standard == 154 (Sigfox, engine standard 155)
     MilhfTelemetry milhf;       // valid when standard == 146 (HF waveform ID, engine standard 147)
     DgpsTelemetry dgps;         // valid when standard == 122 (DGPS beacon, engine standard 122)
     struct Dvbt {                // DVB-T only: TPS parameters and the channel decoder's statistics

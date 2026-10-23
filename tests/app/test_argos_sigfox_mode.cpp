@@ -1,4 +1,4 @@
-// Argos (family 148, active 149, engine standard 150, slot 143) and Sigfox (family 149, active 150, engine standard 151, slot 144): the tunings
+// Argos (family 152, active 153, engine standard 154, slot 143) and Sigfox (family 153, active 154, engine standard 155, slot 144): the tunings
 // are registered under their numbers with a test signal each, the mode rows and the family count agree, the engine feeds and polls them,
 // the poll slots are not shared, and the panels carry their receive-only notes.
 #include <cstdlib>
@@ -23,8 +23,8 @@ static std::string readFile(const std::string& rel) {
 
 int main() {
     struct M { int fam, act, std, slot; const char* id; const char* name; const char* ui; const char* rx; const char* tel; const char* file; };
-    const M ms[] = {{148, 149, 150, 143, "argos", "Argos", "kArgosUi", "rxArgos_", "argos", "app/argos/argos_ui.cpp"},
-                    {149, 150, 151, 144, "sigfox", "Sigfox", "kSigfoxUi", "rxSfx_", "sigfoxm", "app/sigfox/sigfox_ui.cpp"}};
+    const M ms[] = {{152, 153, 154, 143, "argos", "Argos", "kArgosUi", "rxArgos_", "argos", "app/argos/argos_ui.cpp"},
+                    {153, 154, 155, 144, "sigfox", "Sigfox", "kSigfoxUi", "rxSfx_", "sigfoxm", "app/sigfox/sigfox_ui.cpp"}};
     const std::string table = readFile("app/ui/mode_table.cpp"), modeUi = readFile("app/panels/modeui.cpp"), tel = readFile("core/src/engine/engine_telemetry.cpp");
     const std::string eng = readFile("core/src/engine/engine.cpp"), appH = readFile("app/app.h"), engH = readFile("core/include/dect2/engine/engine.h");
     for (const M& m : ms) {

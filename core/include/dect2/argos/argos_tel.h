@@ -1,4 +1,4 @@
-// Argos receiver telemetry. RxTelemetry::argos, engine standard 150, active standard 149 (family 148). Receive only.
+// Argos receiver telemetry. RxTelemetry::argos, engine standard 154, active standard 153 (family 152). Receive only.
 #pragma once
 #include "dect2/argos/argos_proto.h"
 #include <cstdint>

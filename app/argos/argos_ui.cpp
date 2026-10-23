@@ -24,7 +24,7 @@ struct State {
 };
 State S;
 
-bool live(const App& a) { return a.rx.standard == 149; }   // the engine reports its standard code minus one
+bool live(const App& a) { return a.rx.standard == 153; }   // the engine reports its standard code minus one
 
 void load(App& a) {
     if (!S.loaded) {

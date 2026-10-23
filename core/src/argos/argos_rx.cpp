@@ -28,7 +28,7 @@ using cd = std::complex<double>;
 
 ModeTuning argosTuning() {
     ModeTuning t;
-    t.stdMode = 150;
+    t.stdMode = 154;
     t.id = "argos";
     t.name = "Argos";
     t.minMhz = 401.5;

@@ -1,4 +1,4 @@
-// Sigfox mode telemetry. RxTelemetry::sigfoxm, engine standard 151, active standard 150 (family 149). Receive only.
+// Sigfox mode telemetry. RxTelemetry::sigfoxm, engine standard 155, active standard 154 (family 153). Receive only.
 #pragma once
 #include "dect2/ism/ism_sigfox.h"
 #include <cstdint>

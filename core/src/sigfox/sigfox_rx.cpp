@@ -11,7 +11,7 @@ namespace dect2 {
 
 ModeTuning sigfoxTuning() {
     ModeTuning t;
-    t.stdMode = 151;
+    t.stdMode = 155;
     t.id = "sigfox";
     t.name = "Sigfox";
     t.minMhz = 862.0;

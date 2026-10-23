@@ -562,8 +562,8 @@ std::unique_ptr<ModeSynth> makeModeSynth(int stdMode, const SynthConfig& cfg, do
     case 88: return makeWmbusSynth(cfg, sampleRate);
     case 91: return makeTonesSynth(cfg, sampleRate);
     case 94: return makeSarsatSynth(cfg, sampleRate);
-    case 150: return makeArgosSynth(cfg, sampleRate);
-    case 151: return makeSigfoxSynth(cfg, sampleRate);
+    case 154: return makeArgosSynth(cfg, sampleRate);
+    case 155: return makeSigfoxSynth(cfg, sampleRate);
     case 97: return makeMt63Synth(cfg, sampleRate);
     case 142: return makeArdopSynth(cfg, sampleRate);
     case 115: return makeFsqSynth(cfg, sampleRate);
@@ -700,8 +700,8 @@ std::string modeSummary(const RxTelemetry& t) {
     case 144: return bletrkSummary(t.bletrk);
     case 146: return milhfSummary(t.milhf);
     case 151: return sbasSummary(t.sbas);
-    case 149: return argosSummary(t.argos);
-    case 150: return sigfoxModeSummary(t.sigfoxm);
+    case 153: return argosSummary(t.argos);
+    case 154: return sigfoxModeSummary(t.sigfoxm);
     case 145: return sbSummary(t.satbeacon);
     case 149: return nfcSummary(t.nfc);   // NFC / RFID 13.56 MHz (active standard 149)
     case 57: return ridSummary(t.rid);
