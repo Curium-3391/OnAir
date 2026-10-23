@@ -675,6 +675,10 @@ void toggleFullscreen();
 void handleFullscreenHotkeys();          // F11 and Alt+Enter; ignored while a text field has the keyboard
 std::string adsbJamBody(const std::string& station);   // adsb_ui.cpp: the POST /jam body of the GPS interference cells ("" when there is nothing to share)
 bool adsbFullMap(App& a, ImVec2 disp);           // adsb_ui.cpp: the ADS-B map or radar over the whole window when it is popped out
+bool modeacFullMap(App& a, ImVec2 disp);         // modeac_ui.cpp: the same in Mode A/C (its aircraft, #235)
+// The radio centre (Hz) for a retune that only changes the gain or a radio setting: a.freqMhz, unless a click decodes off the centre
+// (tuneDecode, "Decode offset only"): then the radio stays where it is (#236)
+double settingsRetuneCentreHz(const App& a);
 void receiverLocation(double& lat, double& lon);  // adsb_ui.cpp: the one receiver position (the ADS-B antenna position)
 bool receiverLocationSet();                        // the user has set it (else it is a placeholder)
 void receiverPositionFields(App& a);               // its fields (latitude, longitude, altitude) and the Locate button
