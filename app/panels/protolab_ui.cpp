@@ -6,6 +6,7 @@
 #include "../app.h"
 #include "dect2/common/u8file.h"
 #include "dect2/protolab/protolab.h"
+#include "dect2/modebuilder/modebuilder.h"
 #include "dect2/source/source.h"
 #include <algorithm>
 #include <atomic>
@@ -442,6 +443,70 @@ void crcTab(const pl::Candidate& c) {
     ImGui::TextWrapped("%s", tr("When all packets are the same length, the init value and the XOR-out value cannot be told apart: several pairs fit equally well and the first plain one is shown. A short check value (8 bit) with few packets can fit by chance; the more packets that agree, the better."));
 }
 
+// the candidate as a Mode Builder definition (docs/MODE-BUILDER.md): a starting point the user completes there
+std::string modeDefinitionOf(const pl::Candidate& c, const char* name, double fs) {
+    namespace mb = dect2::modebuilder;
+    mb::Definition d;
+    d.name = name[0] ? name : "unknown protocol";
+    d.id = mb::makeId(d.name);
+    d.description = "From the Protocol lab";
+    d.sampleRate = fs > 0 ? fs : 250000;
+    switch (c.demod) {
+        case pl::Demod::OOK: d.mod = mb::Mod::OOK; break;
+        case pl::Demod::FSK4: d.mod = mb::Mod::FSK; d.order = 4; break;
+        case pl::Demod::PSK2: d.mod = mb::Mod::PSK; d.order = 2; break;
+        case pl::Demod::PSK4: d.mod = mb::Mod::PSK; d.order = 4; break;
+        default: d.mod = mb::Mod::FSK; d.order = 2; break;
+    }
+    d.symbolRate = c.baud > 0 ? std::round(c.baud) : 1000;
+    d.deviationHz = d.mod == mb::Mod::FSK ? d.symbolRate : 0;
+    d.bandwidthHz = std::round(std::min(d.bandwidth(), d.sampleRate * 0.8));
+    d.polarity = c.invert ? mb::Polarity::Inverted : mb::Polarity::Normal;
+    d.lsbFirst = c.lsbFirst;
+    switch (c.coding) {
+        case pl::Coding::NRZI: d.line = mb::Line::NRZI; break;
+        case pl::Coding::ManchesterIEEE: d.line = mb::Line::Manchester; break;
+        case pl::Coding::ManchesterThomas: d.line = mb::Line::ManchesterThomas; break;
+        case pl::Coding::DiffManchester: d.line = mb::Line::DiffManchester; break;
+        case pl::Coding::Hdlc: d.line = mb::Line::NRZI; break;
+        default: d.line = mb::Line::NRZ; break;
+    }
+    const int syncBits = std::min<int>(64, (int)c.sync.sync.size());
+    d.sync.bits = syncBits;
+    for (int i = 0; i < syncBits; i++) d.sync.value = (d.sync.value << 1) | (c.sync.sync[(size_t)i] & 1);
+    if (syncBits == 0) { d.sync.bits = 16; d.sync.value = 0x2DD4; d.description += "; no sync word was found: put it in"; }
+    d.syncMaxErrors = std::min(2, d.sync.bits / 8);
+    const int syncBytes = (syncBits + 7) / 8;
+    size_t minLen = 0;
+    for (const auto& p : c.packets) minLen = minLen ? std::min(minLen, p.size()) : p.size();
+    if (c.coding == pl::Coding::Hdlc) {
+        d.lenMode = mb::LenMode::EndFlag;
+        d.flag = mb::BitPattern{0x7E, 8};
+        d.bitStuffing = true;
+        d.minBytes = 2;
+        d.maxBytes = 400;
+    } else d.fixedBytes = std::max(1, (int)minLen - syncBytes);
+    for (const pl::CrcHit& h : c.crc) {
+        if (h.matches < 3 || h.matches * 10 < h.total * 6) continue;
+        if (h.isChecksum) break;
+        d.crcKind = mb::CrcKind::Crc;
+        d.crc = mb::CrcModel{h.name, h.width, h.poly, h.init, h.xorout, h.refin, h.refout};
+        if (h.name.find("unnamed") != std::string::npos) d.crc.name.clear();
+        d.crcFrom = std::max(0, h.dataStart - syncBytes);
+        d.crcLittle = !h.crcBigEndian;
+        if (h.endSlack > 0) d.crcPosition = std::max(0, h.dataStart - syncBytes + h.coveredBytes);
+        break;
+    }
+    if (!c.whitening.empty()) d.description += "; whitened (" + c.whitening + "): set the scrambler";
+    mb::Field f;
+    f.name = "payload";
+    f.type = mb::FieldType::Hex;
+    f.widthBits = 8 * std::max(1, d.longestFrameBytes() - d.crcBytes());
+    d.fields.push_back(f);
+    d.display.push_back({"", 0, "{_len} bytes {payload}"});
+    return mb::toJson(d);
+}
+
 void exportTab(const pl::Candidate& c) {
     ImGui::SetNextItemWidth(260 * gUi);
     ImGui::InputText(tr("Protocol name"), S.name, sizeof S.name);
@@ -449,6 +514,9 @@ void exportTab(const pl::Candidate& c) {
     if (ImGui::Button(tr("Copy protocol (JSON)"))) ImGui::SetClipboardText(json.c_str());
     ImGui::SameLine();
     if (ImGui::Button(tr("Save protocol..."))) saveText("protocol.json", json);
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Open in Mode Builder"))) modeBuilderOpenText(modeDefinitionOf(c, S.name, S.usedRate));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Turn this result into a decoder: the Mode Builder opens with a definition made from it"));
     const std::string bits = pl::packetText(c);
     if (ImGui::Button(tr("Copy packets as bits"))) ImGui::SetClipboardText(bits.c_str());
     ImGui::SameLine();

@@ -1,0 +1,36 @@
+{
+  "onair_mode": 1,
+  "id": "fsk4-telemetry",
+  "name": "4-FSK telemetry",
+  "description": "Example: 4-FSK 4800 Bd tracker telemetry, whitened (PN9), a length field, three frame types, CRC-16/CCITT-FALSE",
+  "frequency_mhz": 434.5,
+  "sample_rate": 96000,
+  "modulation": { "type": "FSK", "order": 4, "symbol_rate": 4800, "deviation_hz": 2400, "gray": true },
+  "filter": { "bandwidth_hz": 16000 },
+  "line_code": { "type": "NRZ" },
+  "polarity": "auto",
+  "bit_order": "msb",
+  "preamble": { "pattern": "0x22", "bits": 32 },
+  "sync": { "word": "0x5D7F77FD", "bits": 32, "max_errors": 2 },
+  "scrambler": { "type": "additive", "taps": [9, 5], "seed": "0x1FF" },
+  "frame": { "length": { "mode": "length_field", "offset_bits": 0, "width_bits": 8, "adjust": 3, "min_bytes": 8, "max_bytes": 40 } },
+  "fec": { "type": "none" },
+  "crc": { "preset": "CRC-16/CCITT-FALSE", "from_byte": 0 },
+  "fields": [
+    { "name": "length", "offset_bits": 0, "width_bits": 8, "type": "uint", "units": "bytes" },
+    { "name": "type", "offset_bits": 8, "width_bits": 8, "type": "enum", "enum": { "1": "position", "2": "status", "3": "text" } },
+    { "name": "seq", "offset_bits": 16, "width_bits": 8, "type": "uint" },
+    { "name": "lat", "offset_bits": 24, "width_bits": 32, "type": "lat", "scale": 1e-7 },
+    { "name": "lon", "offset_bits": 56, "width_bits": 32, "type": "lon", "scale": 1e-7 },
+    { "name": "alt", "offset_bits": 88, "width_bits": 16, "type": "int", "units": "m" },
+    { "name": "battery", "offset_bits": 24, "width_bits": 8, "type": "uint", "scale": 0.02, "units": "V", "format": "%.2f" },
+    { "name": "flags", "offset_bits": 32, "width_bits": 8, "type": "bitflags", "flags": { "0": "GPS lock", "1": "low battery", "2": "heater on", "7": "test" } },
+    { "name": "text", "offset_bits": 24, "width_bits": 128, "type": "ascii" }
+  ],
+  "display": [
+    { "when": { "field": "type", "equals": 1 }, "template": "#{seq} position {lat} {lon}, {alt} m" },
+    { "when": { "field": "type", "equals": 2 }, "template": "#{seq} status: battery {battery} V, {flags}" },
+    { "when": { "field": "type", "equals": 3 }, "template": "#{seq} text: {text}" },
+    { "template": "#{seq} type {type}, {_len} bytes" }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "onair_mode": 1,
+  "id": "gmsk-conv-beacon",
+  "name": "GMSK satellite beacon",
+  "description": "Example: GMSK 9600 Bd beacon with the K=7 rate 1/2 convolutional code (171, 133), an 8 x 16 bit interleaver and CRC-32",
+  "frequency_mhz": 437.8,
+  "sample_rate": 96000,
+  "modulation": { "type": "GMSK", "symbol_rate": 9600, "bt": 0.5 },
+  "filter": { "bandwidth_hz": 24000 },
+  "line_code": { "type": "NRZ" },
+  "polarity": "auto",
+  "bit_order": "msb",
+  "preamble": { "pattern": "0xAAAAAAAA", "bits": 32 },
+  "sync": { "word": "0x1ACFFC1D", "bits": 32, "max_errors": 3 },
+  "scrambler": { "type": "none" },
+  "frame": { "length": { "mode": "fixed", "bytes": 24 } },
+  "fec": { "type": "convolutional", "k": 7, "polys": ["0o171", "0o133"], "tail": true },
+  "interleaver": { "rows": 8, "cols": 16 },
+  "crc": { "preset": "CRC-32", "from_byte": 0 },
+  "fields": [
+    { "name": "callsign", "offset_bits": 0, "width_bits": 48, "type": "ascii" },
+    { "name": "counter", "offset_bits": 48, "width_bits": 16, "type": "uint" },
+    { "name": "mode", "offset_bits": 64, "width_bits": 8, "type": "enum", "enum": { "0": "safe", "1": "nominal", "2": "payload", "3": "eclipse" } },
+    { "name": "status", "offset_bits": 72, "width_bits": 8, "type": "bitflags", "flags": { "0": "antenna deployed", "1": "solar panel X+", "2": "solar panel X-", "3": "heater", "7": "watchdog reset" } },
+    { "name": "bus_voltage", "offset_bits": 80, "width_bits": 16, "type": "uint", "scale": 0.001, "units": "V", "format": "%.3f" },
+    { "name": "temperature", "offset_bits": 96, "width_bits": 16, "type": "int", "scale": 0.01, "units": "C", "format": "%.2f" },
+    { "name": "uptime", "offset_bits": 112, "width_bits": 32, "type": "uint", "units": "s" },
+    { "name": "rssi", "offset_bits": 144, "width_bits": 32, "type": "float32", "units": "dBm", "format": "%.1f" }
+  ],
+  "display": "{callsign} #{counter} {mode} [{status}] {bus_voltage} V {temperature} C up {uptime} s"
+}

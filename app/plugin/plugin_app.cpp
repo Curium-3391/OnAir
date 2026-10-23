@@ -126,6 +126,7 @@ void init(App& a) {
     P.mgr->attachAutomation();
     if (!P.mgr->safeMode()) P.mgr->startActions();
     a.engine.setPluginSink([](const float* iq, size_t n, double rate) {
+        if (customModeSink(iq, n, rate)) return;   // a custom mode of the Mode Builder runs (modebuilder_ui.cpp)
         std::lock_guard<std::mutex> lk(P.sinkMu);
         if (!P.active) return;
         dp::IqMeta m;
@@ -480,7 +481,7 @@ void pluginFrame(App& a) {
         }
     }
     P.centreHz = a.freqMhz * 1e6;
-    const bool pluginMode = a.family >= dp::kFirstModeNumber;
+    const bool pluginMode = a.family >= dp::kFirstModeNumber && !isCustomFamily(a.family) && a.family != kCustomFamilyBase - 1;   // not the Mode Builder's
     if (!pluginMode) {
         if (P.active) stopActive();
         P.error.clear();

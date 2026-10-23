@@ -176,6 +176,7 @@ static const ModeDef kBuiltinModes[] = {
     {55, "General receiver", 13, IM_COL32(64, 104, 112, 255), "Listen anywhere in the band: NFM, WFM (mono), AM, USB, LSB and CW, click the spectrum to tune, filter width, squelch, AGC, de-emphasis, S-meter and audio recording to WAV", "General receiver: NFM, WFM, AM, USB, LSB and CW anywhere", N_("NFM / AM / SSB / CW"), ImVec4(0.52f, 0.82f, 0.86f, 1), nullptr, "general receiver scanner listen nfm fm wfm am usb lsb ssb cw morse bfo squelch agc s-meter record wav 2m 70cm pmr446 cb shortwave broadcast ham amateur sdr++ gqrx"},
     {41, "Spectrum explorer", 13, IM_COL32(70, 100, 120, 255), "Spectrum explorer: look around the band, measure carriers (bandwidth, power, SNR, symbol rate), sweep a range, LNB offsets, bookmarks; no decoder", "Spectrum explorer: look, measure and sweep", N_("Spectrum, waterfall, sweep"), ImVec4(0.55f, 0.80f, 0.95f, 1), nullptr, "spectrum analyzer analyser sweep waterfall measure bandwidth lnb survey scan"},
     {42, "Spectrum analyser", 13, IM_COL32(70, 100, 140, 255), "Wide sweeping spectrum analyser (1 - 6000 MHz in about a second with a HackRF): live, peak-hold and averaged traces, waterfall, markers, band overlay, CSV export", "Spectrum analyser: fast wide sweeps with markers and band labels", N_("Sweep, 1 - 6000 MHz"), ImVec4(0.55f, 0.75f, 0.98f, 1), nullptr, "spectrum analyser analyzer sweep hackrf_sweep wideband scan peak hold waterfall rf survey"},
+    {19999, "Mode Builder", 16, IM_COL32(70, 128, 112, 255), "Mode Builder: describe a digital protocol (modulation, sync word, frame, FEC, CRC, fields) and decode it without code; your custom modes are listed here", "Mode Builder: decoders built from a description, and the custom modes you registered", N_("Custom decoders"), ImVec4(0.55f, 0.88f, 0.76f, 1), nullptr, "mode builder custom decoder no code json definition user protocol"},
     {999, "Plugins", 14, IM_COL32(100, 110, 130, 255), "Plugins: add decoders and actions without rebuilding OnAir; installed plugins, their permissions and logs", "Plugins: manage the decoder and action plugins you installed", N_("Add-ons"), ImVec4(0.66f, 0.72f, 0.86f, 1), nullptr, "plugins plugin add-on addon extension sdk"},
     {122, "KAAL", 15, IM_COL32(176, 120, 72, 255), "KAAL: a 10 kHz wide digital voice and station-identity link (16 kbit/s voice codec, 16-QAM with LDPC, a sweep signature and a beacon side channel). Receive plays the speech and shows the last beacon (callsign, grid, position, power, text); transmit takes a microphone or a WAV file, to a radio or an IQ file", "KAAL: digital voice with a station beacon, receive and transmit", "KAAL, 10 kHz voice", ImVec4(0.96f, 0.72f, 0.46f, 1), nullptr, "kaal kris custom voice digital beacon callsign grid ldpc 16qam sweep"},
     {123, "KAVB", 15, IM_COL32(176, 120, 72, 255), "KAVB: the video mode of the KAAL family, 1 to 2 MHz wide (700 to 1400 ksym/s single carrier, 16-QAM and 64-QAM with LDPC, a sweep signature, video, audio and data packets in FEC groups). Receive finds the frames and lists the packets with the link numbers and a constellation, counts the payload bytes and can save them to a file; there is no AV1 or Opus decoder in this build, so no picture or sound is shown. Transmit sends a file of bytes or a synthetic test stream, to a radio or an IQ file", "KAVB: KAAL video link, 1-2 MHz wide (no video decoder in this build)", "KAVB, 1-2 MHz video", ImVec4(0.95f, 0.78f, 0.55f, 1), nullptr, "kavb kris custom video av1 opus packets fec data file"},
@@ -205,7 +206,18 @@ bool addPluginModeRow(int family, const std::string& name, const std::string& bl
     kModes[kNumModes++] = ModeDef{family, n, 14, IM_COL32(90, 104, 128, 255), b, b, sb, ImVec4(0.66f, 0.76f, 0.94f, 1)};
     return true;
 }
-const char* const kGroupNames[kNumGroups] = {N_("TV"), N_("BROADCAST RADIO"), N_("AVIATION"), N_("MARITIME"), N_("SATELLITE & NAVIGATION"), N_("TWO-WAY RADIO"), N_("CELLULAR & RAIL"), N_("PAGERS"), N_("IoT & SENSORS"), N_("WEATHER & SCIENCE"), N_("AMATEUR - DIGITAL"), N_("AMATEUR - VOICE & PACKET"), N_("HF UTILITY"), N_("GENERAL & TOOLS"), N_("PLUGINS"), "Kris custom modes"};
+bool addCustomModeRow(int family, const std::string& name, const std::string& blurb, const std::string& sub) {
+    static std::deque<std::string> keep;   // the rows point at these; a deque never moves its elements
+    keep.push_back(name); const char* n = keep.back().c_str();
+    keep.push_back(blurb); const char* b = keep.back().c_str();
+    keep.push_back(sub); const char* sb = keep.back().c_str();
+    for (int i = 0; i < kNumModes; i++)
+        if (kModes[i].family == family) { kModes[i].name = n; kModes[i].blurb = b; kModes[i].tip = b; kModes[i].sub = sb; return true; }   // edited: new texts
+    if (kNumModes >= kModeCapacity) return false;
+    kModes[kNumModes++] = ModeDef{family, n, 16, IM_COL32(70, 128, 112, 255), b, b, sb, ImVec4(0.55f, 0.88f, 0.76f, 1), nullptr, "custom mode builder user"};
+    return true;
+}
+const char* const kGroupNames[kNumGroups] = {N_("TV"), N_("BROADCAST RADIO"), N_("AVIATION"), N_("MARITIME"), N_("SATELLITE & NAVIGATION"), N_("TWO-WAY RADIO"), N_("CELLULAR & RAIL"), N_("PAGERS"), N_("IoT & SENSORS"), N_("WEATHER & SCIENCE"), N_("AMATEUR - DIGITAL"), N_("AMATEUR - VOICE & PACKET"), N_("HF UTILITY"), N_("GENERAL & TOOLS"), N_("PLUGINS"), "Kris custom modes", N_("CUSTOM MODES")};
 // a thin accent per group heading in the mode lists (UI only: nothing stores a group number)
 const ImU32 kGroupCols[kNumGroups] = {
     IM_COL32(92, 188, 220, 255), IM_COL32(92, 210, 148, 255), IM_COL32(132, 160, 240, 255), IM_COL32(80, 170, 210, 255),
@@ -213,4 +225,5 @@ const ImU32 kGroupCols[kNumGroups] = {
     IM_COL32(110, 214, 196, 255), IM_COL32(120, 150, 230, 255), IM_COL32(218, 130, 214, 255), IM_COL32(236, 128, 140, 255),
     IM_COL32(204, 176, 132, 255), IM_COL32(150, 162, 178, 255),
     IM_COL32(150, 170, 210, 255),
-    IM_COL32(236, 160, 84, 255)};
+    IM_COL32(236, 160, 84, 255),
+    IM_COL32(120, 200, 170, 255)};

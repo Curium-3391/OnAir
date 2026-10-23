@@ -1,0 +1,24 @@
+{
+  "onair_mode": 1,
+  "id": "hdlc-fsk-packet",
+  "name": "HDLC-style FSK packets",
+  "description": "Example: 2-FSK 9600 Bd, NRZI, HDLC flags with bit stuffing, LSB first, CRC-16/X-25 (the AX.25 frame check)",
+  "frequency_mhz": 144.8,
+  "sample_rate": 96000,
+  "modulation": { "type": "FSK", "order": 2, "symbol_rate": 9600, "deviation_hz": 3000 },
+  "filter": { "bandwidth_hz": 25000 },
+  "line_code": { "type": "NRZI" },
+  "polarity": "normal",
+  "bit_order": "lsb",
+  "preamble": { "pattern": "0x7E7E7E7E", "bits": 32 },
+  "sync": { "word": "0x7E", "bits": 8, "max_errors": 0 },
+  "scrambler": { "type": "none" },
+  "frame": { "length": { "mode": "end_flag", "flag": "0x7E", "flag_bits": 8, "bit_stuffing": true, "min_bytes": 4, "max_bytes": 64 } },
+  "crc": { "preset": "CRC-16/X-25", "from_byte": 0, "byte_order": "little" },
+  "fields": [
+    { "name": "dest", "offset_bits": 0, "width_bits": 8, "type": "uint", "format": "hex" },
+    { "name": "src", "offset_bits": 8, "width_bits": 8, "type": "uint", "format": "hex" },
+    { "name": "payload", "offset_bits": 16, "width_bits": 16, "type": "hex" }
+  ],
+  "display": "{src} > {dest}: {_len} bytes {_hex}"
+}
