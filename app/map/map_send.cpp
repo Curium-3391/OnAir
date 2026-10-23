@@ -13,6 +13,7 @@
 #endif
 #include "dect2/flarm/flarm_proto.h"
 #include "dect2/gnss/gnss_tel.h"
+#include "dect2/ham/ham_mapfeed.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -20,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <ctime>
 #include <random>
@@ -736,6 +738,70 @@ void voiceToggle(App& s, bool menu) {
     savePrefs(s);
 }
 
+
+// ---- ham contacts (own choice, off until chosen; see core/include/dect2/ham/ham_mapfeed.h) ----
+dect2::ham::mapfeed::Feed gHamFeed;
+dect2::ham::mapfeed::Switches gHamSw;          // refreshed every tick from the settings
+std::map<std::string, std::string> gHamGrids;  // callsign -> locator heard (own station included); bounded
+bool gAskHamConsent = false;
+
+struct TickSink : dect2::ham::mapfeed::Sink {   // adds the due contacts to this tick's ingest post as "ham" tracks
+    std::vector<Track>* out = nullptr; bool online = true;
+    bool post(const std::vector<dect2::ham::mapfeed::Track>& v) override {
+        if (!online || !out) return false;
+        for (const auto& h : v) {
+            if (out->size() >= kMaxTracks) break;
+            Track t; t.kind = "ham"; t.id = h.id; t.label = h.label; t.sub = h.sub; t.src = "ham"; t.extra = h.extra;
+            t.lat = h.lat; t.lon = h.lon; t.age = h.ageSec;
+            out->push_back(std::move(t));
+        }
+        return true;
+    }
+};
+
+void hamToggle(App& s, bool menu) {
+    bool v = s.mapHam;
+    const char* label = tr("Share ham contacts on the map");
+    bool hit = false;
+    if (menu) hit = ImGui::MenuItem(label, nullptr, v);
+    else hit = ImGui::Checkbox(label, &v) && v != s.mapHam;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Decoded FT8, FT4 and WSPR contacts and the QSOs you log: the callsigns, the mode, the band and the time, drawn at the centre of each station's locator square. Off until you choose it."));
+    if (!hit) return;
+    if (!s.mapHam && !s.mapHamConsent) { gAskHamConsent = true; return; }
+    s.mapHam = !s.mapHam;
+    if (!s.mapHam) gHamFeed.clear();
+    savePrefs(s);
+}
+
+void hamPrecisionToggle(App& s, bool menu) {
+    bool v = s.mapHam6;
+    const char* label = tr("Ham contacts: use 6-character locators (about 5 x 2.5 km)");
+    bool hit = menu ? ImGui::MenuItem(label, nullptr, v) : (ImGui::Checkbox(label, &v) && v != s.mapHam6);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("By default a contact is drawn at the centre of its 4-character square (about 110 x 55 km). This draws it at the centre of the 6-character square instead. Your own position is never sent more precisely than your locator."));
+    if (!hit) return;
+    s.mapHam6 = menu ? !s.mapHam6 : v;
+    savePrefs(s);
+}
+
+void hamConsentPopup(App& a) {
+    App& s = rootApp(a);
+    if (gAskHamConsent) { ImGui::OpenPopup("##maphamconsent"); gAskHamConsent = false; }
+    ImGui::SetNextWindowSizeConstraints(ImVec2(420 * gUi, 0), ImVec2(520 * gUi, 400 * gUi));
+    if (!ImGui::BeginPopupModal("##maphamconsent", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::PushTextWrapPos(480 * gUi);
+    ImGui::TextUnformatted(tr("When this is on, the amateur radio contacts you decode (FT8, FT4, WSPR) and the QSOs you log are sent to map.on-air.dev for the public map: the callsigns of both stations, the mode, the band and frequency, the time, and where each station is as the centre of its locator square (4 characters, about 110 x 55 km, unless you choose 6). Your own station is drawn at your locator square, never at an exact location. Logbook notes, signal reports, your QRZ or other account details and your receiver location are not sent. Callsigns are public information, but this is your choice: it needs \"Send data to map server\" to be on as well, repeats are sent once, and you can turn it off at any time in the Server menu."));
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy(ImVec2(0, 8 * gUi));
+    if (ImGui::Button(tr("Share ham contacts"), ImVec2(190 * gUi, 0))) {
+        s.mapHamConsent = true; s.mapHam = true; savePrefs(s);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Not now"), ImVec2(100 * gUi, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 void consentPopup(App& a) {
     App& s = rootApp(a);
     if (gAskConsent) { ImGui::OpenPopup("##mapconsent"); gAskConsent = false; }
@@ -830,6 +896,7 @@ void mapPopups(App& a) {
     roomsPopups(rootApp(a));
     startupQuestion(a);
     consentPopup(a);
+    hamConsentPopup(a);
     connectingPopup();
     retryPopup();
     txOffToast();
@@ -868,6 +935,8 @@ void mapSendServerMenu(App& a) {
     if (rootApp(a).mapSend) msgsToggle(rootApp(a), true);
     if (rootApp(a).mapSend) voiceToggle(rootApp(a), true);
     if (rootApp(a).mapSend) jamToggle(rootApp(a), true);
+    if (rootApp(a).mapSend) hamToggle(rootApp(a), true);
+    if (rootApp(a).mapSend && rootApp(a).mapHam) hamPrecisionToggle(rootApp(a), true);
     ImGui::Separator();
     roomsMenu(rootApp(a), true);
     ImGui::TextDisabled("%s", tr("The map is at map.on-air.dev"));
@@ -883,6 +952,8 @@ void mapSendButton(App& a) {
         if (rootApp(a).mapSend) msgsToggle(rootApp(a), false);
         if (rootApp(a).mapSend) voiceToggle(rootApp(a), false);
         if (rootApp(a).mapSend) jamToggle(rootApp(a), false);
+        if (rootApp(a).mapSend) hamToggle(rootApp(a), false);
+        if (rootApp(a).mapSend && rootApp(a).mapHam) hamPrecisionToggle(rootApp(a), false);
         ImGui::Separator();
         roomsMenu(rootApp(a), false);
         ImGui::TextDisabled("%s", tr("The map is at map.on-air.dev"));
@@ -927,9 +998,33 @@ std::string mapSendStatusLine() {
     return b;
 }
 
+void mapHamRemember(const std::string& call, const std::string& grid) {
+    if (call.empty() || grid.size() < 4) return;
+    if (gHamGrids.size() > 2000) gHamGrids.clear();
+    std::string c = call;
+    for (char& ch : c) ch = (char)std::toupper((unsigned char)ch);
+    gHamGrids[c] = grid;
+}
+
+void mapHamHeard(const char* mode, double rfHz, const std::string& from, const std::string& fromGrid, const std::string& to, double tUtc) {
+    if (!dect2::ham::mapfeed::allowed(gHamSw) || !mode || from.empty() || to.empty()) return;   // off: not even remembered
+    mapHamRemember(from, fromGrid);
+    std::string f = from, t = to;
+    for (char& ch : f) ch = (char)std::toupper((unsigned char)ch);
+    for (char& ch : t) ch = (char)std::toupper((unsigned char)ch);
+    const auto fi = gHamGrids.find(f), ti = gHamGrids.find(t);
+    dect2::ham::mapfeed::Contact c;
+    c.mode = mode; c.freqHz = rfHz; c.from = f; c.to = t; c.tUtc = tUtc;
+    if (fi == gHamGrids.end()) return;   // no locator for the station: no position, no track
+    c.fromGrid = fi->second;
+    if (ti != gHamGrids.end()) c.toGrid = ti->second;
+    gHamFeed.offer(gHamSw, c, (double)std::time(nullptr));
+}
+
 void mapSendTick(App& a) {
     App& s = rootApp(a);
     mapPopups(a);
+    gHamSw = {s.mapSend, s.mapConsent, s.mapHam, s.mapHamConsent};
     if (txActive() || gTxHold) {
         if (s.mapSend) mapPauseForTransmit(s);
         if (txActive()) return;
@@ -967,6 +1062,12 @@ void mapSendTick(App& a) {
         }
     }
     if (s.mapMsgs) attachMsgs(tracks);
+    {   // ham contacts: only with the master switch, its consent and the ham choice with its own consent; queued while the link is down
+        gHamSw = {s.mapSend, s.mapConsent, s.mapHam, s.mapHamConsent};
+        gHamFeed.limits().gridChars = s.mapHam6 ? 6 : 4;
+        TickSink sink; sink.out = &tracks; sink.online = (ph != kRetry);
+        gHamFeed.flush(gHamSw, sink, (double)std::time(nullptr));
+    }
     if (s.mapVoice) attachVoice(tracks);
     const bool ping = gPingNow || needHb || (tracks.empty() && (ph == kConnecting || ph == kRetry));
     if (!gPingNow && !needHb && !tracks.empty()) {

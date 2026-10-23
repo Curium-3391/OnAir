@@ -122,6 +122,8 @@ void logRecord(HamUi& h, const ham::QsoRecord& r) {
     if (hamLogQso(q, err)) {
         h.worked.add(r); h.logged++; h.lastLog = r.call;
         h.lastLogId = hamOps().log.qsos().empty() ? 0 : hamOps().log.qsos().back().id;
+        mapHamRemember(r.myCall, r.myGrid); mapHamRemember(r.call, r.grid);   // the public map's ham contacts (only if chosen): callsigns, locators, mode, frequency; never the RST or notes
+        mapHamHeard(r.mode.c_str(), r.freqHz, r.myCall, std::string(), r.call, r.endUtc > 0 ? r.endUtc : (double)time(nullptr));
         hamToast("Logged " + r.call);
     } else h.status = err;
     h.up.enqueue(r, (long long)time(nullptr));   // queued only; nothing leaves unless a service is on and auto upload is ticked
@@ -471,6 +473,17 @@ void hamPanel(App& a) {
             if (d.mode != h.mode || d.slotUtc <= h.lastFed) continue;
             h.eng.onDecode(now, d.msg, (int)std::lround(d.snrDb), d.slotUtc, d.hz);
             if (!d.call.empty() && d.call == h.eng.dxCall() && !d.grid.empty()) h.dxGrid = d.grid;
+            {   // the public map's ham contacts (Server > Share ham contacts; ignored unless chosen): who is talking to whom, from the message text only
+                const double rf = (d.dialHz > 0 ? d.dialHz : a.freqMhz * 1e6) + d.hz;
+                mapHamRemember(h.call, h.grid);
+                if (d.mode == 3) { if (!d.call.empty() && !d.grid.empty()) mapHamHeard("WSPR", rf, d.call, d.grid, h.call, d.slotUtc); }
+                else {
+                    const ham::ParsedMsg pm = ham::parseMessage(d.msg);
+                    if (!d.call.empty() && !d.grid.empty()) mapHamRemember(d.call, d.grid);
+                    if (pm.kind != ham::ParsedMsg::Cq && pm.kind != ham::ParsedMsg::Other && !pm.from.empty() && !pm.to.empty())
+                        mapHamHeard(ham::hamModeName(d.mode), rf, pm.from, pm.kind == ham::ParsedMsg::Grid ? pm.grid : std::string(), pm.to, d.slotUtc);
+                }
+            }
             { char& k = h.slots[ham::slotIndex(d.slotUtc + 0.01, per)]; if (k != 'T' && k != 'F') k = 'R'; }
             newest = std::max(newest, d.slotUtc);
         }

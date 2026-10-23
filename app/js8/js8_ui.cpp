@@ -143,6 +143,18 @@ void waterfall(App& a, float h) {
 
 void framesView(App& a) {
     const auto& d = a.rx.js8.decodes;
+    {   // the public map's ham contacts (Server > Share ham contacts; ignored unless chosen): directed frames only, callsigns and locators, never the text
+        static double fed = 0;
+        double newest = fed;
+        for (const auto& x : d) {
+            if (x.slotUtc <= fed) continue;
+            newest = std::max(newest, x.slotUtc);
+            if (!x.from.empty() && !x.grid.empty()) mapHamRemember(x.from, x.grid);
+            if (!x.from.empty() && !x.to.empty() && x.to[0] != '@' && x.to != "CQ")
+                mapHamHeard("JS8", (a.freqMhz * 1e6) + x.hz, x.from, x.grid, x.to, x.slotUtc);
+        }
+        fed = newest;
+    }
     if (!ImGui::BeginTable("##js8d", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("UTC"); ImGui::TableSetupColumn(""); ImGui::TableSetupColumn("dB"); ImGui::TableSetupColumn("DT"); ImGui::TableSetupColumn("Hz");
