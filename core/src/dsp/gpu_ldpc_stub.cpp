@@ -14,6 +14,7 @@ const char* GpuLdpc::deviceName() const { return "none"; }
 bool GpuLdpc::decode(const LdpcCode&, const float*, int, int, uint8_t*, uint8_t*, int*, float, bool) { return false; }
 
 bool GpuLdpc::qcAvailable() const { return false; }
-bool GpuLdpc::decodeQc(const QcLdpc&, const float*, int, int, uint8_t*, uint8_t*, int*, float) { return false; }
+bool GpuLdpc::decodeQc(const QcLdpc&, const float*, int, int, uint8_t*, uint8_t*, int*, float, bool) { return false; }
+bool GpuLdpc::boxCorrKernels() const { return false; }
 
 } // namespace dect2

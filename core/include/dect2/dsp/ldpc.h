@@ -33,7 +33,7 @@ public:
     bool decodeFast(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr, float alpha = 0.78f, bool boxCorr = false) const;
 
     // Same layered schedule as decodeFast on saturating 8-bit values (16 or 32 checks per vector instead of 4 or 8). The LLRs are scaled to the 8-bit
-    // range from their own mean (about 16); the normalisation is `alpha` rounded to 1/32 (0.5 .. 1). A frame it does not decode but nearly does (few
+    // range from their own mean (about 16); the normalisation is `alpha` rounded to 1/32 (0.5 .. 26/32). A frame it does not decode but nearly does (few
     // unsatisfied checks) goes on to decodeFast with the same alpha; a damaged frame (a gap in the samples) does not, that would cost more than the
     // frame is worth.
     bool decodeFast8(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters = nullptr, float alpha = 0.8125f, bool boxCorr = false) const;

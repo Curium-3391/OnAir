@@ -114,6 +114,7 @@ static NSString* const kQcSource = @R"MSL(
 #include <metal_stdlib>
 using namespace metal;
 struct QP { int z, rows, cols, punct, sent, info, maxIter, gu0, gd0, gu1, gd1; float alpha, clip; uint msgPer; };
+inline float spNeg(float t) { return max(0.f, max(max(0.6854f - 0.4378f * t, 0.5822f - 0.2689f * t), max(0.3653f - 0.1192f * t, 0.1323f - 0.0293f * t))); }
 
 kernel void qc(constant QP& p [[buffer(0)]], device const int* rowStart [[buffer(1)]], device const int* ecol [[buffer(2)]], device const int* esh [[buffer(3)]],
                device float* msgAll [[buffer(4)]], device const float* llrAll [[buffer(5)]], device uchar* infoAll [[buffer(6)]], device int* res [[buffer(7)]],
@@ -159,12 +160,14 @@ kernel void qc(constant QP& p [[buffer(0)]], device const int* rowStart [[buffer
                     else { min2 = min(min2, max(a, min1)); min1 = min(min1, a); }
                     sg ^= as_type<uint>(q) & 0x80000000u;
                 }
+                // a negative alpha: the two-minimum correction (dect2/dsp/minsum_corr.h) for the edges not holding the smallest input
+                const float c1 = p.alpha < 0.f ? max(0.f, min1 + spNeg(min1 + min2) - spNeg(min2 - min1)) : min1;
                 for (int e = e0; e < e1; e++) {
                     int sh = mm + esh[e]; if (sh >= z) sh -= z;
                     const int vi = ecol[e] * z + sh;
                     const float q = lv[vi] - msg[(ulong)e * z + m];
                     const float a = fabs(q);
-                    const float mg = (a == min1 ? min2 : min1) * p.alpha;
+                    const float mg = (a == min1 ? min2 : c1) * fabs(p.alpha);
                     const float v = as_type<float>(as_type<uint>(mg) | (sg ^ (as_type<uint>(q) & 0x80000000u)));
                     msg[(ulong)e * z + m] = v;
                     lv[vi] = max(-p.clip, min(p.clip, q + v));
@@ -268,6 +271,7 @@ GpuLdpc::~GpuLdpc() = default;
 
 GpuLdpc& GpuLdpc::instance() { static GpuLdpc g; return g; }
 bool GpuLdpc::available() const { return p_->pso != nil; }
+bool GpuLdpc::boxCorrKernels() const { return true; }
 const char* GpuLdpc::deviceName() const { return p_->dev ? p_->dev.name.UTF8String : "none"; }
 
 bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter, uint8_t* hard, uint8_t* ok, int* iters, float alpha, bool boxCorr) {
@@ -320,7 +324,7 @@ bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter
 
 bool GpuLdpc::qcAvailable() const { return available(); }
 
-bool GpuLdpc::decodeQc(const QcLdpc& code, const float* llr, int nb, int maxIter, uint8_t* info, uint8_t* ok, int* iters, float alpha) {
+bool GpuLdpc::decodeQc(const QcLdpc& code, const float* llr, int nb, int maxIter, uint8_t* info, uint8_t* ok, int* iters, float alpha, bool boxCorr) {
     if (!available() || nb <= 0) return nb == 0;
     const int z = code.z, rows = code.blockRows, cols = code.blockCols;
     if (z <= 0 || z > 1024 || rows <= 0 || cols <= rows || (int)code.rowStart.size() != rows + 1 || code.col.size() != code.shift.size() || (int)code.col.size() != code.rowStart.back()) return false;
@@ -372,7 +376,7 @@ bool GpuLdpc::decodeQc(const QcLdpc& code, const float* llr, int nb, int maxIter
             }
             memcpy(s.llr.contents, llr + (size_t)b0 * sent, (size_t)cnt * sent * 4);
             struct { int z, rows, cols, punct, sent, info, maxIter, gu0, gd0, gu1, gd1; float alpha, clip; uint32_t msgPer; } P = {
-                z, rows, cols, code.punctured, sent, infoN, maxIter, code.giveUpIter[0], code.giveUpDiv[0], code.giveUpIter[1], code.giveUpDiv[1], alpha, code.clip, s.msgPer};
+                z, rows, cols, code.punctured, sent, infoN, maxIter, code.giveUpIter[0], code.giveUpDiv[0], code.giveUpIter[1], code.giveUpDiv[1], boxCorr ? -alpha : alpha, code.clip, s.msgPer};
             id<MTLCommandBuffer> cb = [d.queue commandBuffer];
             id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
             [enc setComputePipelineState:d.qcPso];

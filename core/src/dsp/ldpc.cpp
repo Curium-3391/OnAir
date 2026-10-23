@@ -1,6 +1,7 @@
 #include "dect2/dsp/ldpc.h"
 #include "dect2/fec/fec_proto.h"
 #include "dect2/dsp/simd.h"
+#include "dect2/dsp/minsum_corr.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -45,21 +46,9 @@ DECT2_SIMD_BODY void minSumApplyBody(float* __restrict Lj, float* __restrict mj,
 #endif
 
 namespace {
-// log(1 + e^-t) for t >= 0 as the largest of four tangents of the curve (it is convex): at most 0.02 below it, branch free, so the loop below
-// becomes vector code
-inline float softplusNeg(float t) {
-    const float a = std::max(0.6854f - 0.4378f * t, 0.5822f - 0.2689f * t), b = std::max(0.3653f - 0.1192f * t, 0.1323f - 0.0293f * t);
-    return std::max(0.f, std::max(a, b));
-}
-// The two-minimum correction of the min-sum rule (with `boxCorr`): every edge but the one holding the smallest input sees both of the two smallest
-// inputs, and the box-plus of those two, min1 + log(1 + e^-(min1 + min2)) - log(1 + e^-(min2 - min1)), is closer to what belief propagation sends
-// than min1 alone. Measured on the DVB-S2 codes at the threshold: 0.1 to 0.2 dB, and fewer iterations. min1 is replaced in place (it never grows).
+// The two-minimum correction (dect2/dsp/minsum_corr.h) with `boxCorr`: min1 is replaced in place (it never grows)
 DECT2_SIMD_BODY void boxCorrectMin1(float* __restrict min1, const float* __restrict min2, int Z) {
-    for (int m = 0; m < Z; m++) {
-        const float x = min1[m], y = min2[m];
-        const float c = x + softplusNeg(x + y) - softplusNeg(y - x);
-        min1[m] = c > 0.f ? c : 0.f;
-    }
+    for (int m = 0; m < Z; m++) min1[m] = boxMin1(min1[m], min2[m]);
 }
 } // namespace
 
@@ -311,7 +300,9 @@ DECT2_SIMD_BODY void q8Add(int8_t* __restrict dst, const int8_t* __restrict inc,
 DECT2_SIMD_MEMBER_BODY bool LdpcCode::decodeQ8Body(const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters, float alpha, int* unsat, bool boxCorr) const {
     constexpr int Z = 360;
     const int q = q_, G = groups_;
-    const int k32 = std::max(16, std::min(32, (int)std::lround(alpha * 32.f)));
+    // at most 26/32: on the coarse 8-bit scale a weaker normalisation diverges near the threshold (16APSK 4/5 0.1 dB below table 13 with the
+    // correction: 7 failed frames of 80 at 26/32 like the float decoder, 18 at 28/32). The float fallback keeps the caller's alpha.
+    const int k32 = std::max(16, std::min(26, (int)std::lround(alpha * 32.f)));
     // the scale: the mean magnitude of the input becomes about 8 (the min-sum decoder does not care about the scale, only about the resolution)
     float sum = 0;
     for (int i = 0; i < n_; i++) sum += std::fabs(llr[(size_t)i]);

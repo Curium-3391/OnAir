@@ -645,7 +645,8 @@ bool GpuLdpc::decode(const LdpcCode& code, const float* llr, int nb, int maxIter
 
 bool GpuLdpc::qcAvailable() const { return p_->qcReady; }
 
-bool GpuLdpc::decodeQc(const QcLdpc& code, const float* llr, int nb, int maxIter, uint8_t* info, uint8_t* ok, int* iters, float alpha) {
+bool GpuLdpc::boxCorrKernels() const { return false; }   // the GLSL kernels run plain normalised min-sum (no shader compiler to rebuild the SPIR-V yet)
+bool GpuLdpc::decodeQc(const QcLdpc& code, const float* llr, int nb, int maxIter, uint8_t* info, uint8_t* ok, int* iters, float alpha, bool /*boxCorr: plain min-sum here*/) {
     if (!qcAvailable() || nb <= 0) return qcAvailable() && nb == 0;
     const int z = code.z, rows = code.blockRows, cols = code.blockCols;
     if (z <= 0 || z > 1024 || rows <= 0 || cols <= rows || (int)code.rowStart.size() != rows + 1 || code.col.size() != code.shift.size() || (int)code.col.size() != code.rowStart.back()) return false;
