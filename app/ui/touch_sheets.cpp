@@ -214,6 +214,9 @@ void menuSheet(App& a, ImVec2 disp) {
     if (bigButton(hamViewFlag() ? tr("Receive view") : tr("Ham view"), ImVec2(w, 0))) { txViewFlag() = false; hamViewFlag() = !hamViewFlag(); closeSheet(); }
     ImGui::SameLine();
     if (bigButton(tr("Tour"), ImVec2(hw, 0))) { tourStart(a); closeSheet(); }
+    if (bigButton(tr("Lessons"), ImVec2(hw, 0))) { a.lessonsOpen = true; closeSheet(); }
+    ImGui::SameLine();
+    if (bigButton(tr("Concepts (glossary)"), ImVec2(hw, 0))) { a.glossaryOpen = true; closeSheet(); }
     languageButton(a);
     endSheet();
 }

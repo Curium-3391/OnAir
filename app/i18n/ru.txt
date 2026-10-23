@@ -642,7 +642,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	Самолёты
 All set. OnAir will start here:	Всё готово. OnAir запустится здесь:
 Allow remote control (frequency and gain)	Разрешить удалённое управление (частота и усиление)
-Amateur radio	Любительская радиосвязь
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	SDRplay RSP подключён, но SDRplay Hardware API не установлен. Установите его отдельно, даже если SDRconnect уже работает с радиоприёмником.
 Another program is using the HackRF	Другая программа использует HackRF
 Australia and New Zealand	Австралия и Новая Зеландия
@@ -683,7 +682,6 @@ Drag to resize, double click for the automatic size	Перетащите для 
 Drones, 2.4 / 5.8 GHz	Дроны, 2.4 / 5.8 GHz
 Elsewhere	Другие регионы
 Europe	Европа
-FM / DAB radio	Радио FM / DAB
 FM radio	Радио FM
 Files: audio and IQ	Файлы: звук и IQ
 Fill under the line	Заливка под линией
@@ -801,10 +799,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	Поиск
 Seen	Замечено
 Send spots to PSK Reporter (pskreporter.info)	Отправлять споты в PSK Reporter (pskreporter.info)
-Sensors and IoT	Датчики и IoT
 Services	Службы
 Set the LO above 0 MHz.	Задайте LO выше 0 MHz.
-Setup	Настройка
 Setup wizard	Мастер настройки
 Share my radio (rtl_tcp server)	Поделиться моим радио (сервер rtl_tcp)
 Share the radio's samples as an rtl_tcp server	Отдавать отсчёты радио как сервер rtl_tcp
@@ -815,7 +811,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	Скорость (строк в секунду)
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	Споты общедоступны. Нужен действующий позывной радиолюбителя; частота настройки - это частота, на которую настроен приёмник.
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	Прекращает добавлять строки: картинка остаётся, а перетаскивание или колесо на водопаде прокручивают и масштабируют её назад
-Television	Телевидение
 Text size	Размер текста
 Text size %d%%	Размер текста %d%%
 The FreeDV / M17 voice codec (codec2) was not found	Голосовой кодек FreeDV / M17 (codec2) не найден
@@ -854,7 +849,6 @@ This user may not open the radio	Этому пользователю нельз�
 Time constant of the averaged line: longer is calmer	Постоянная времени усреднённой линии: больше - спокойнее
 Tools	Инструменты
 Trace	Трасса
-Trunked and two-way radio	Транкинговая и двусторонняя радиосвязь
 Try another USB port and a short cable.	Попробуйте другой USB-порт и короткий кабель.
 Try another USB port, directly on the computer (not a hub), and a short cable.	Попробуйте другой USB-порт прямо на компьютере (не хаб) и короткий кабель.
 Try another USB port, directly on the computer (not a hub).	Попробуйте другой USB-порт прямо на компьютере (не хаб).
@@ -876,13 +870,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	Волновые буи, КВ
 Weather alerts, 162.55 MHz	Штормовые предупреждения, 162.55 MHz
 Weather pictures, 1.7 GHz	Погодные снимки, 1.7 GHz
-What do you want to receive? Tick anything that interests you.	Что вы хотите принимать? Отметьте всё, что интересно.
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Что прибавить к уровню в dBFS, чтобы получить dBm для этого радио (его калибровка: её показывает известный сигнал на антенном порту). Также в настройках радио.
-Where are you? This picks the right TV standard and FM band.	Где вы находитесь? Это выбирает подходящий стандарт ТВ и диапазон FM.
 Which language do you want OnAir in?	На каком языке вы хотите видеть OnAir?
-Which radio do you have?	Какое у вас радио?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Режим можно сменить в любой момент, а эту настройку запустить снова через Справка > Мастер настройки.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Можно продолжить и без него: синтетический сигнал и файлы IQ работают без оборудования.
 Your callsign	Ваш позывной
 Your locator	Ваш локатор
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Масштаб: колесо мыши (обе оси), Ctrl+колесо (частота), Shift+колесо (уровень).\nCtrl+PageUp / PageDown: сдвиг вида на один экран по частоте. Двойной щелчок: сброс.

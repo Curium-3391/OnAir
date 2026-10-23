@@ -659,7 +659,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	Samoloty
 All set. OnAir will start here:	Wszystko gotowe. OnAir uruchomi się tutaj:
 Allow remote control (frequency and gain)	Zezwól na zdalne sterowanie (częstotliwość i wzmocnienie)
-Amateur radio	Krótkofalarstwo
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Podłączono SDRplay RSP, ale SDRplay Hardware API nie jest zainstalowane. Zainstaluj je osobno, nawet jeśli SDRconnect już działa z tym radiem.
 Another program is using the HackRF	Inny program używa HackRF
 Australia and New Zealand	Australia i Nowa Zelandia
@@ -700,7 +699,6 @@ Drag to resize, double click for the automatic size	Przeciągnij, aby zmienić r
 Drones, 2.4 / 5.8 GHz	Drony, 2.4 / 5.8 GHz
 Elsewhere	Gdzie indziej
 Europe	Europa
-FM / DAB radio	Radio FM / DAB
 FM radio	Radio FM
 Files: audio and IQ	Pliki: dźwięk i IQ
 Fill under the line	Wypełnij pod linią
@@ -818,10 +816,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	Szukaj
 Seen	Widziano
 Send spots to PSK Reporter (pskreporter.info)	Wysyłaj spoty do PSK Reporter (pskreporter.info)
-Sensors and IoT	Czujniki i IoT
 Services	Usługi
 Set the LO above 0 MHz.	Ustaw LO powyżej 0 MHz.
-Setup	Konfiguracja
 Setup wizard	Kreator konfiguracji
 Share my radio (rtl_tcp server)	Udostępnij moje radio (serwer rtl_tcp)
 Share the radio's samples as an rtl_tcp server	Udostępnij próbki radia jako serwer rtl_tcp
@@ -832,7 +828,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	Prędkość (wierszy na sekundę)
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	Spoty są publiczne. Wymagany jest prawidłowy krótkofalarski znak wywoławczy; częstotliwość dial to częstotliwość dostrojenia.
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	Przestań dodawać wiersze: obraz zostaje, a przeciąganie lub kółko na wodospadzie przewija go i powiększa wstecz
-Television	Telewizja
 Text size	Rozmiar tekstu
 Text size %d%%	Rozmiar tekstu %d%%
 The FreeDV / M17 voice codec (codec2) was not found	Nie znaleziono kodeka mowy FreeDV / M17 (codec2)
@@ -871,7 +866,6 @@ This user may not open the radio	Ten użytkownik nie może otworzyć radia
 Time constant of the averaged line: longer is calmer	Stała czasowa uśrednionej linii: dłuższa oznacza spokojniejszą
 Tools	Narzędzia
 Trace	Przebieg
-Trunked and two-way radio	Łączność trunkingowa i radiotelefony
 Try another USB port and a short cable.	Spróbuj innego portu USB i krótkiego kabla.
 Try another USB port, directly on the computer (not a hub), and a short cable.	Spróbuj innego portu USB bezpośrednio w komputerze (nie w hubie) i krótkiego kabla.
 Try another USB port, directly on the computer (not a hub).	Spróbuj innego portu USB bezpośrednio w komputerze (nie w hubie).
@@ -893,13 +887,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	Boje falowe, KF
 Weather alerts, 162.55 MHz	Alerty pogodowe, 162.55 MHz
 Weather pictures, 1.7 GHz	Obrazy pogodowe, 1.7 GHz
-What do you want to receive? Tick anything that interests you.	Co chcesz odbierać? Zaznacz wszystko, co Cię interesuje.
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Co dodać do poziomu w dBFS, aby uzyskać dBm dla tego radia (jego kalibracja: pokazuje ją znany sygnał podany na gniazdo antenowe). Także w ustawieniach radia.
-Where are you? This picks the right TV standard and FM band.	Gdzie jesteś? Na tej podstawie wybierany jest właściwy standard TV i pasmo FM.
 Which language do you want OnAir in?	W jakim języku ma być OnAir?
-Which radio do you have?	Jakie masz radio?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Tryb możesz zmienić w dowolnej chwili, a tę konfigurację uruchomisz ponownie z Pomoc > Kreator konfiguracji.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Możesz kontynuować bez niego: sygnał syntetyczny i pliki IQ działają bez sprzętu.
 Your callsign	Twój znak wywoławczy
 Your locator	Twój lokator
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Powiększenie: kółko myszy (obie osie), Ctrl+kółko (częstotliwość), Shift+kółko (poziom).\nCtrl+PageUp / PageDown: przesuń widok o jeden ekran w częstotliwości. Podwójne kliknięcie: reset.

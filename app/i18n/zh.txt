@@ -666,7 +666,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	飞机
 All set. OnAir will start here:	设置完成。OnAir 将从这里开始：
 Allow remote control (frequency and gain)	允许远程控制（频率和增益）
-Amateur radio	业余无线电
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	已连接 SDRplay RSP，但未安装 SDRplay Hardware API。即使 SDRconnect 已能使用该电台，也请单独安装它。
 Another program is using the HackRF	另一个程序正在使用 HackRF
 Australia and New Zealand	澳大利亚和新西兰
@@ -707,7 +706,6 @@ Drag to resize, double click for the automatic size	拖动调整大小，双击�
 Drones, 2.4 / 5.8 GHz	无人机，2.4 / 5.8 GHz
 Elsewhere	其他地区
 Europe	欧洲
-FM / DAB radio	FM / DAB 广播
 FM radio	FM 广播
 Files: audio and IQ	文件：音频和 IQ
 Fill under the line	填充曲线下方
@@ -825,10 +823,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	搜索
 Seen	最后出现
 Send spots to PSK Reporter (pskreporter.info)	向 PSK Reporter 发送接收报告 (pskreporter.info)
-Sensors and IoT	传感器与物联网
 Services	服务
 Set the LO above 0 MHz.	请将 LO 设置为大于 0 MHz。
-Setup	设置
 Setup wizard	设置向导
 Share my radio (rtl_tcp server)	共享我的电台（rtl_tcp 服务器）
 Share the radio's samples as an rtl_tcp server	将电台的采样作为 rtl_tcp 服务器共享
@@ -839,7 +835,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	速度（每秒行数）
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	接收报告是公开的。需要有效的业余无线电呼号；拨盘频率即当前调谐频率。
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	停止添加新行：画面保持不变，在瀑布图上拖动或使用滚轮可回看并缩放
-Television	电视
 Text size	文字大小
 Text size %d%%	文字大小 %d%%
 The FreeDV / M17 voice codec (codec2) was not found	未找到 FreeDV / M17 语音编解码器 (codec2)
@@ -880,7 +875,6 @@ This user may not open the radio	此用户无权打开电台
 Time constant of the averaged line: longer is calmer	平均曲线的时间常数：越长越平稳
 Tools	工具
 Trace	曲线
-Trunked and two-way radio	集群与对讲无线电
 Try another USB port and a short cable.	请换一个 USB 端口并使用短线缆。
 Try another USB port, directly on the computer (not a hub), and a short cable.	请换一个直接插在电脑上的 USB 端口（不要用集线器），并使用短线缆。
 Try another USB port, directly on the computer (not a hub).	请换一个直接插在电脑上的 USB 端口（不要用集线器）。
@@ -902,13 +896,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	波浪浮标，短波
 Weather alerts, 162.55 MHz	天气警报，162.55 MHz
 Weather pictures, 1.7 GHz	气象图像，1.7 GHz
-What do you want to receive? Tick anything that interests you.	您想接收什么？勾选您感兴趣的任何内容。
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	要加到 dBFS 电平上才能得到这台电台 dBm 的数值（即其校准值：向天线口输入已知信号即可得出）。也可在电台设置中修改。
-Where are you? This picks the right TV standard and FM band.	您在哪里？这将选择合适的电视标准和 FM 频段。
 Which language do you want OnAir in?	您希望使用哪种语言的 OnAir？
-Which radio do you have?	您有哪种电台？
-You can change the mode any time, and run this setup again from Help > Setup wizard.	您可以随时更改模式，也可以从“帮助 > 设置向导”重新运行此设置。
-You can go on without one: the synthetic signal and IQ files work with no hardware.	没有电台也可以继续：合成信号和 IQ 文件无需硬件即可使用。
 Your callsign	您的呼号
 Your locator	您的网格定位符
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	缩放：鼠标滚轮（两个轴）、Ctrl+滚轮（频率）、Shift+滚轮（电平）。\nCtrl+PageUp / PageDown：按一屏频率步进视图。双击：重置。

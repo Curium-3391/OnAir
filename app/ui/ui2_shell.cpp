@@ -194,6 +194,7 @@ void sidebar(App& a) {
         ImGui::Unindent(6 * gUi);
         ImGui::Spacing();
     }
+    tourMark("gain", ImVec2(sideX0, gainY0), ImVec2(sideX1, ImGui::GetCursorScreenPos().y));   // the gain lesson
     if (section(a.fmMode ? N_("Tuner (FM)###Tuner") : a.dabMode ? N_("Tuner (DAB)###Tuner") : N_("Tuner"))) {
         ImGui::Indent(6 * gUi);
         toolbarParts(a, TbTuner, true);
@@ -648,7 +649,14 @@ float menuBar(App& a) {
         if (ImGui::BeginMenu(tr("Help"))) {
             if (ImGui::MenuItem(tr("Credits"))) { a.creditsOpen = true; a.creditsTab = 0; }
             ImGui::Separator();
-            if (ImGui::MenuItem(tr("Setup wizard"))) setupWizardOpen(a);
+            if (ImGui::BeginMenu(tr("Setup and lessons"))) {
+                if (ImGui::MenuItem(tr("Setup wizard"))) setupWizardOpen(a);
+                if (ImGui::MenuItem(tr("Lessons"))) a.lessonsOpen = true;
+                if (ImGui::MenuItem(tr("Continue the lessons"))) lessonsStart(a);
+                if (ImGui::MenuItem(tr("Concepts (glossary)"))) a.glossaryOpen = true;
+                if (ImGui::MenuItem(tr("Checkup"))) a.checkupOpen = true;
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu(tr("Guided tours"))) {
                 if (ImGui::MenuItem(tr("Overview"))) tourStart(a);
                 ImGui::Separator();
@@ -700,6 +708,7 @@ void topBar(App& a, ImVec2 disp) {
         const float W = ImGui::GetContentRegionAvail().x;
         ImGui::SetCursorScreenPos(ImVec2(o.x + 58 * gUi, o.y));
         const float digitsEnd = freqDigits(a);
+        tourMark("freq", ImVec2(o.x - 4 * gUi, o.y), ImVec2(digitsEnd, o.y + 40 * gUi));   // the lessons point at the run button and the digits
         // a narrow window: the level meter and the volume give up width (the meter goes last), then the summary is cut short
         const float sumX = digitsEnd + 34 * gUi;
         float vw = 230 * gUi, mw = 260 * gUi;

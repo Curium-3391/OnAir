@@ -652,7 +652,6 @@ Added to a level in dBFS to give dBm for this radio: feed a known signal into th
 Aircraft	Repülők
 All set. OnAir will start here:	Minden kész. Az OnAir itt indul:
 Allow remote control (frequency and gain)	Távvezérlés engedélyezése (frekvencia és erősítés)
-Amateur radio	Rádióamatőr
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Egy SDRplay RSP csatlakoztatva van, de az SDRplay Hardware API nincs telepítve. Telepítsd külön, még akkor is, ha az SDRconnect már működik a rádióval.
 Another program is using the HackRF	Egy másik program használja a HackRF-et
 Australia and New Zealand	Ausztrália és Új-Zéland
@@ -693,7 +692,6 @@ Drag to resize, double click for the automatic size	Húzással átméretezhető,
 Drones, 2.4 / 5.8 GHz	Drónok, 2,4 / 5,8 GHz
 Elsewhere	Máshol
 Europe	Európa
-FM / DAB radio	FM / DAB rádió
 FM radio	FM rádió
 Files: audio and IQ	Fájlok: hang és IQ
 Fill under the line	Vonal alatti kitöltés
@@ -811,10 +809,8 @@ Saves one zip file with the diagnostics, the log and the last crash report: atta
 Search	Keresés
 Seen	Látva
 Send spots to PSK Reporter (pskreporter.info)	Spotok küldése a PSK Reporternek (pskreporter.info)
-Sensors and IoT	Érzékelők és IoT
 Services	Szolgáltatások
 Set the LO above 0 MHz.	Állítsa a LO-t 0 MHz fölé.
-Setup	Beállítás
 Setup wizard	Beállítási varázsló
 Share my radio (rtl_tcp server)	A rádióm megosztása (rtl_tcp szerver)
 Share the radio's samples as an rtl_tcp server	A rádió mintáinak megosztása rtl_tcp szerverként
@@ -825,7 +821,6 @@ Spectrum: averaging, max hold, peak markers, fill, grid and the unit (dBFS or dB
 Speed (rows a second)	Sebesség (sor másodpercenként)
 Spots are public. A valid amateur radio callsign is required; the dial frequency is the tuned frequency.	A spotok nyilvánosak. Érvényes rádióamatőr hívójel szükséges; a tárcsafrekvencia a behangolt frekvencia.
 Stop adding rows: the picture stays, and drag or the wheel on the waterfall scroll and zoom back through it	A sorok hozzáadásának leállítása: a kép megmarad, a vízesésen húzással vagy görgővel visszagörgethet és nagyíthat
-Television	Televízió
 Text size	Szövegméret
 Text size %d%%	Szövegméret %d%%
 The FreeDV / M17 voice codec (codec2) was not found	A FreeDV / M17 hangkodek (codec2) nem található
@@ -866,7 +861,6 @@ This user may not open the radio	Ez a felhasználó nem nyithatja meg a rádiót
 Time constant of the averaged line: longer is calmer	Az átlagolt vonal időállandója: hosszabb = nyugodtabb
 Tools	Eszközök
 Trace	Görbe
-Trunked and two-way radio	Trönkölt és kétirányú rádió
 Try another USB port and a short cable.	Próbáljon másik USB-portot és rövid kábelt.
 Try another USB port, directly on the computer (not a hub), and a short cable.	Próbáljon másik USB-portot közvetlenül a számítógépen (nem hubon), és rövid kábelt.
 Try another USB port, directly on the computer (not a hub).	Próbáljon másik USB-portot közvetlenül a számítógépen (nem hubon).
@@ -888,13 +882,8 @@ Waterfall: colour map, intensity range, speed and pause (then drag or use the wh
 Wave buoys, HF	Hullámmérő bóják, HF
 Weather alerts, 162.55 MHz	Időjárási riasztások, 162,55 MHz
 Weather pictures, 1.7 GHz	Időjárási képek, 1,7 GHz
-What do you want to receive? Tick anything that interests you.	Mit szeretne venni? Jelölje be, ami érdekli.
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Mit kell hozzáadni a dBFS szinthez, hogy ennek a rádiónak dBm értéket kapjunk (a kalibrációja: egy ismert jel az antennacsatlakozón megmutatja). A rádió beállításaiban is megtalálható.
-Where are you? This picks the right TV standard and FM band.	Hol van? Ez kiválasztja a megfelelő TV-szabványt és FM-sávot.
 Which language do you want OnAir in?	Milyen nyelven szeretné használni az OnAir-t?
-Which radio do you have?	Milyen rádiója van?
-You can change the mode any time, and run this setup again from Help > Setup wizard.	Az üzemmódot bármikor megváltoztathatja, és ezt a beállítást újra futtathatja a Súgó > Beállítási varázsló menüből.
-You can go on without one: the synthetic signal and IQ files work with no hardware.	Folytathatja nélküle is: a szintetikus jel és az IQ-fájlok hardver nélkül is működnek.
 Your callsign	Az Ön hívójele
 Your locator	Az Ön lokátora
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Nagyítás: egérgörgő (mindkét tengely), Ctrl+görgő (frekvencia), Shift+görgő (szint).\nCtrl+PageUp / PageDown: a nézet léptetése egy képernyőnyivel frekvenciában. Dupla kattintás: visszaállítás.

@@ -346,8 +346,10 @@ struct App {
     int wizStep = 0;
     bool setupOpen = false;             // the setup wizard (language, radio, location, goals); Help > Setup wizard
     int setupStep = 0, setupRegion = 0;
-    unsigned setupGoals = 0;            // bit per goal in wizard.cpp
+    unsigned setupGoals = 0;            // bit per learn::Goal (app/ui/learn_logic.h)
+    int setupAntenna = 0;               // learn::Antenna
     char setupLoc[48] = "";             // a Maidenhead locator or coordinates
+    bool lessonsOpen = false, glossaryOpen = false, checkupOpen = false;   // Help > Setup and lessons (learn.cpp)
     double wizStepT = 0;
     float wizX = -1;
     ImVec2 tgMin[8], tgMax[8];   // screen rectangles of the parts of the window the tour points at
@@ -1314,6 +1316,10 @@ void tourMark(const char* id, ImVec2 lo, ImVec2 hi);   // tour.cpp: report where
 void wizEnter(App& a, int step);
 void setupWizardOpen(App& a);                        // wizard.cpp: (re)start the setup wizard
 void setupWizard(App& a, ImVec2 disp);               // wizard.cpp: the window, each frame
+void lessonsStart(App& a, int planPos = -1);         // learn.cpp: the hands-on lessons for the setup's goals (resumes where they were left when planPos < 0)
+void lessonsUi(App& a, ImVec2 disp);                 // learn.cpp: the running lesson (spotlight + card), the Lessons list, the glossary and the checkup windows, each frame
+void selectModeById(App& a, const std::string& id);  // learn.cpp: "fm", "tv" (the region's TV standard), a protocol entry or a mode id; restarts a running receiver
+bool tourAnchor(const char* id, ImVec2& lo, ImVec2& hi);   // tour.cpp: where a part of the window was reported this frame or the last; false when it is not on screen
 void listenWizardOpen(App& a);                       // listen_wizard.cpp: "Get me listening" (Help menu, or a start with no source configured)
 void listenWizard(App& a, ImVec2 disp);              // listen_wizard.cpp: the window, each frame
 #include "dect2/engine/device_claims.h"

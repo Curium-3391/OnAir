@@ -258,6 +258,7 @@ void audioRecordUi(App& a) {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", tr(!can ? "Start the radio first" : "Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)"));
     }
+    tourMark("record", ImGui::GetItemRectMin(), ImGui::GetItemRectMax());   // the recording lesson
     flowNext(6 * gUi);
     ImGui::BeginDisabled(rs.active);
     static const char* const fm[] = {"WAV", "FLAC", "MP3"};
