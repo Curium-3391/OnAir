@@ -25,7 +25,7 @@ namespace {
 using dect2::math::kPi;
 constexpr double kFs = 48000;            // demodulator rate: 10 samples per symbol
 constexpr int kSps = 10;
-constexpr int kTaps = 161, kDelay = 80;   // the symbol filter: low pass, flat to the C4FM band edge (2880 Hz), off by 4 kHz
+constexpr int kTaps = 161, kDelay = 80;   // the symbol filter: low pass to 3 kHz, just above the C4FM band edge (2880 Hz)
 constexpr int kYMask = 32767;
 constexpr double kUnit = 600.0;          // Hz per level
 constexpr size_t kMaxEvents = 200;
@@ -49,6 +49,21 @@ void lsFit(const float* v, const int* s, int n, double& g, double& d) {   // v =
 int nearestLevel(double v) { return v >= 2 ? 3 : v >= 0 ? 1 : v >= -2 ? -1 : -3; }
 int hardDibit(float x) { return p25::symToDibit(nearestLevel(x)); }
 uint64_t bitsVal(const uint8_t* b, int n) { uint64_t v = 0; for (int i = 0; i < n; i++) v = (v << 1) | b[i]; return v; }
+// the 64 code words of a hexbit code (the first sent bit in the top bit), for the soft decision below
+struct HexTab { uint32_t cw[64]; };
+const HexTab& hamTab() { static const HexTab t = [] { HexTab h; for (int v = 0; v < 64; v++) h.cw[v] = p25::hamming10Encode(v); return h; }(); return t; }
+const HexTab& golay18Tab() { static const HexTab t = [] { HexTab h; for (int v = 0; v < 64; v++) h.cw[v] = p25::golay18Encode(v); return h; }(); return t; }
+// maximum likelihood: the hexbit whose code word (n bits) correlates best with the soft values (> 0 a 1)
+int mlHex(const float* sb, int n, const HexTab& t) {
+    int best = 0;
+    float bm = -1e30f;
+    for (int v = 0; v < 64; v++) {
+        float m = 0;
+        for (int k = 0; k < n; k++) m += ((t.cw[v] >> (n - 1 - k)) & 1) ? sb[k] : -sb[k];
+        if (m > bm) { bm = m; best = v; }
+    }
+    return best;
+}
 } // namespace
 
 struct P25Receiver::Impl {
@@ -97,7 +112,9 @@ struct P25Receiver::Impl {
         rstep = fd / kFs;
         M = std::max(8, (int)std::ceil(8.0 * fd / 6000.0 / 2));   // a sharper channel filter than NXDN's: C4FM reaches +-5 kHz
         fir.assign((size_t)nPh * 2 * M, 0.f);
-        const double fc = 8500.0 / std::max(1.0, fd);
+        // the channel filter: +-6 kHz holds the C4FM signal (99 % within +-4 kHz) with a 2-3 kHz tuning error; the wider +-8.5 kHz used before let in
+        // noise that the discriminator turns into symbol errors (about 1.5 dB at the threshold)
+        const double fc = 6000.0 / std::max(1.0, fd);
         for (int ph = 0; ph < nPh; ph++) {
             const double frac = (double)ph / nPh;
             double sum = 0;
@@ -148,7 +165,8 @@ struct P25Receiver::Impl {
     void initFilter() {
         double sum = 0;
         for (int k = 0; k < kTaps; k++) {
-            const double t = k - kDelay, x = 2 * 3600.0 / kFs * t;
+            const double symK = 3000.0;   // 0.625 of the symbol rate: the C4FM pulse ends at 2880 Hz (3600 Hz before: 1 dB more noise)
+            const double t = k - kDelay, x = 2 * symK / kFs * t;
             const double s = t == 0 ? 1.0 : std::sin(kPi * x) / (kPi * x);
             const double w = 0.42 + 0.5 * std::cos(kPi * t / (kDelay + 1)) + 0.08 * std::cos(2 * kPi * t / (kDelay + 1));
             h[k] = (float)(s * w); sum += h[k];
@@ -367,12 +385,14 @@ struct P25Receiver::Impl {
 
     // 24 Hamming words (from 120 dibits taken in six pieces) -> RS(24,k)
     bool lduHex(size_t at0, const int* offs, int k, uint8_t* out) {
-        uint8_t bits[240];
+        // soft decision: each Hamming word is the hexbit whose code word correlates best with the soft values (repairs most double errors
+        // the hard decoder gets wrong), so the Reed-Solomon code sees fewer wrong hexbits
+        float sb[240];
         int n = 0;
         for (int piece = 0; piece < 6; piece++)
-            for (int i = 0; i < 20; i++) { const int dd = hardDibit(dl[at0 + (size_t)offs[piece] + (size_t)i]); bits[n++] = (uint8_t)(dd >> 1); bits[n++] = (uint8_t)(dd & 1); }
+            for (int i = 0; i < 20; i++) { const float x = dl[at0 + (size_t)offs[piece] + (size_t)i]; sb[n++] = -x; sb[n++] = std::fabs(x) - 2.f; }
         uint8_t s[24];
-        for (int w = 0; w < 24; w++) s[w] = (uint8_t)p25::hamming10Decode((uint16_t)bitsVal(bits + 10 * w, 10));
+        for (int w = 0; w < 24; w++) s[w] = (uint8_t)mlHex(sb + 10 * w, 10, hamTab());
         if (!p25::rsDecode(s, 24, k)) return false;
         memcpy(out, s, (size_t)k);
         return true;
@@ -421,10 +441,10 @@ struct P25Receiver::Impl {
     }
 
     void hdu(const Pending& f, size_t P) {
-        uint8_t bits[648];
-        for (int i = 0; i < 324; i++) { const int dd = hardDibit(dl[P + (size_t)i]); bits[2 * i] = (uint8_t)(dd >> 1); bits[2 * i + 1] = (uint8_t)(dd & 1); }
         uint8_t s[36];
-        for (int w = 0; w < 36; w++) { const uint32_t cw = (uint32_t)bitsVal(bits + 18 * w, 18); const int h = p25::golay18Decode(cw); s[w] = (uint8_t)(h >= 0 ? h : (cw >> 12) & 63); }
+        float sb[648];   // soft decision, as in lduHex: the closest of the 64 Golay (18,6) code words
+        for (int i = 0; i < 324; i++) { const float x = dl[P + (size_t)i]; sb[2 * i] = -x; sb[2 * i + 1] = std::fabs(x) - 2.f; }
+        for (int w = 0; w < 36; w++) s[w] = (uint8_t)mlHex(sb + 18 * w, 18, golay18Tab());
         if (!p25::rsDecode(s, 36, 20)) { tel.hduBad++; return; }
         tel.hduOk++;
         p25::Crypto c;

@@ -116,7 +116,9 @@ struct DstarReceiver::Impl {
             rstep = fd / kFs;
             M = std::max(8, (int)std::ceil(5.5 * fd / 5000.0 / 2));
             fir.assign((size_t)nPh * 2 * M, 0.f);
-            const double fc = 7000.0 / std::max(1.0, fd);
+            // the channel filter: +-4.5 kHz holds the GMSK signal (+-3 kHz) with a 2 kHz tuning error; the +-7 kHz used before let in noise that
+            // the discriminator turns into clicks (about 2 dB at the threshold)
+            const double fc = 4500.0 / std::max(1.0, fd);
             for (int ph = 0; ph < nPh; ph++) {
                 const double frac = (double)ph / nPh;
                 double sum = 0;
