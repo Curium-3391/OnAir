@@ -68,6 +68,7 @@
 #include "dect2/js8/js8_rx.h"
 #include "dect2/specx/specx_rx.h"
 #include "sig_ident.h"
+#include "dect2/autodet/autodet.h"
 #include "dect2/specan/specan_rx.h"
 #include "dect2/astro/astro_rx.h"
 #include "dect2/qo100/qo100_rx.h"
@@ -407,6 +408,7 @@ public:
     NxdnReceiver& nxdn() { return rxNxdn_; }   // NXDN: the receiver's own controls and results (the interface reads telemetry through latestRx)
     SpecxReceiver& specx() { return rxSpecx_; }   // spectrum explorer: FFT size and averaging
     sigid::Capture& sigid() { return sigid_; }   // signal identifier: start() a capture of a region of what the receivers see, in any mode
+    autodet::Capture& autodet() { return autodet_; }   // "TV (auto)" / "Digital voice (auto)": start() a capture of what the receivers see, in any mode (autodet.h)
     AstroReceiver& astro() { return rxAstro_; }   // radio astronomy (hydrogen line): FFT size, integration, frequency switching
     SpecanReceiver& specan() { return rxSpecan_; }   // spectrum analyser: range, resolution, averaging (telemetry through latestRx)
     Js8Receiver& js8() { return rxJs8_; }   // JS8Call: the receiver's own controls and results (the interface reads telemetry through latestRx)
@@ -711,6 +713,7 @@ private:
     Js8Receiver rxJs8_;
     SpecxReceiver rxSpecx_;
     sigid::Capture sigid_;
+    autodet::Capture autodet_;
     SpecanReceiver rxSpecan_;
     AstroReceiver rxAstro_;
     bool specanSweep_ = false;   // the HackRF sweeps by itself (spectrum analyser)

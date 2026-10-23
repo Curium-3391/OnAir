@@ -89,6 +89,7 @@ void Engine::ingest(cf32* x, size_t n) {
     if (offResample_) { offBuf_.clear(); offRs_.process(x, n, offBuf_); x = offBuf_.data(); n = offBuf_.size(); }
     if (!n) return;
     if (sigid_.armed()) sigid_.push(x, n);
+    if (autodet_.armed()) autodet_.push(x, n);
     feedSpectrum(x, n);
     if (const int s = secAct_.load(); s >= 0 && s != activeStd_.load()) pushSecondary(x, n);   // the second mode: a copy, before the first receiver
     if (monitor_.enabled()) {   // "Monitor audio": the tuned channel, a copy
