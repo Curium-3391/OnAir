@@ -10,17 +10,17 @@
 #include <string>
 
 namespace cmap {
-enum Map { Classic, Viridis, Inferno, Grey, Turbo, Cividis, Magma, SdrClassic, Ice, Fire, NightRed, HighContrast, Custom, SdrppSmooth, OxideBlue, NumMaps };
+enum Map { Classic, Viridis, Inferno, Grey, Turbo, Cividis, Magma, SdrClassic, Ice, Fire, NightRed, HighContrast, Custom, SdrppSmooth, OxideBlue, NavyHeat, BlueGreen, NumMaps };
 
 inline const char* name(int m) {
     static const char* const n[NumMaps] = {"Classic", "Viridis", "Inferno", "Grey", "Turbo", "Cividis", "Magma", "SDR++ classic", "Ice", "Fire", "Night (red)", "High contrast", "Custom",
-                                           "SDR++ smooth", "Oxide blue"};
+                                           "SDR++ smooth", "Oxide blue", "Navy heat", "Blue green"};
     return n[m < 0 || m >= NumMaps ? 0 : m];
 }
 // reads the same with the common colour blindnesses (perceptually even, one hue ramp or lightness only)
 inline bool colourBlindSafe(int m) { return m == Viridis || m == Cividis || m == Magma || m == Inferno || m == Grey || m == Ice; }
 // the rainbow maps: their brightness goes up and down by design (the custom one may be anything)
-inline bool hueRamp(int m) { return m == Turbo || m == SdrClassic || m == HighContrast || m == Custom || m == SdrppSmooth || m == OxideBlue; }
+inline bool hueRamp(int m) { return m == Turbo || m == SdrClassic || m == HighContrast || m == Custom || m == SdrppSmooth || m == OxideBlue || m == NavyHeat || m == BlueGreen; }
 
 inline uint32_t stopsColor(const float (*s)[3], int n, float v) {   // n colour stops (0..255 per channel), blended linearly
     v *= (float)(n - 1);
@@ -130,7 +130,17 @@ inline uint32_t color(int map, float v) {
     static const float sdrs[9][3] = {{0, 0, 0}, {0, 4, 40}, {0, 12, 110}, {0, 60, 200}, {0, 200, 250}, {255, 245, 40}, {255, 150, 0}, {255, 70, 10}, {255, 255, 255}};
     // the SDRoxide look: deep navy, blue, a bright blue floor-to-signal step, cyan, green, pale green
     static const float oxide[8][3] = {{0, 4, 28}, {0, 12, 80}, {6, 30, 170}, {20, 70, 235}, {30, 150, 250}, {40, 220, 225}, {60, 240, 110}, {225, 255, 220}};
+    // Navy heat: SDR++'s "Classic" map with its 15 evenly spaced stops (the doubled orange and red included, so the hot end is as wide
+    // as there); the pixels of the reference screenshot's waterfall (spectrum-ref-44) lie within 1 RGB step (median) of it
+    static const float navy[15][3] = {{0, 0, 32}, {0, 0, 48}, {0, 0, 80}, {0, 0, 145}, {30, 144, 255}, {255, 255, 255}, {255, 255, 0}, {254, 109, 22},
+                                      {254, 109, 22}, {255, 0, 0}, {255, 0, 0}, {198, 0, 0}, {159, 0, 0}, {117, 0, 0}, {74, 0, 0}};
+    // Blue green: measured on the second reference (spectrum-ref-43, the pixels sorted by brightness, the median colour of each slice): the
+    // floor in a mid blue, signals through a light blue and teal to green; the top end goes on to a pale green-yellow
+    static const float bgreen[10][3] = {{0, 0, 40}, {0, 2, 92}, {0, 5, 128}, {0, 9, 160}, {0, 14, 180}, {8, 96, 188}, {5, 134, 160},
+                                        {2, 154, 102}, {40, 205, 60}, {225, 255, 150}};
     switch (map) {
+    case NavyHeat: return stopsColor(navy, 15, v);
+    case BlueGreen: return stopsColor(bgreen, 10, v);
     case Cividis: return stopsColor(cividis, 9, v);
     case Viridis: return stopsColor(viridis, 9, v);
     case Inferno: return stopsColor(inferno, 9, v);
@@ -170,6 +180,8 @@ inline const TracePreset kTracePresets[] = {
     {"Sky blue (CB safe)", {0.34f, 0.71f, 0.91f}, {0.00f, 0.45f, 0.70f}},
     {"Pink", {1.00f, 0.55f, 0.80f}, {0.70f, 0.15f, 0.45f}},
     {"Light blue", {0.70f, 0.84f, 1.00f}, {0.10f, 0.35f, 0.70f}},   // the SDRoxide look
+    {"Pale cyan", {0.55f, 0.89f, 0.93f}, {0.00f, 0.42f, 0.55f}},    // the SDR++ look (measured on spectrum-ref-44)
+    {"Pale steel", {0.74f, 0.83f, 0.89f}, {0.15f, 0.30f, 0.45f}},   // the Crisp look (spectrum-ref-43)
 };
 constexpr int kNumTracePresets = (int)(sizeof kTracePresets / sizeof *kTracePresets);
 inline const float* traceRgb(int i, bool light) {

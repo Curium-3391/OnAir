@@ -3,6 +3,8 @@
 #include "plot_util.h"
 #include "tune_drag.h"
 #include "spec_axis.h"
+#include "spec_paint.h"
+#include "../state/tune_worker.h"
 #include "dect2/specan/specan_dsp.h"
 
 // Click on the spectrum or the waterfall to tune to that frequency (a drag still pans). The grid follows the mode: FM 0.1 MHz, DMR 12.5 kHz, else 1 kHz.
@@ -235,36 +237,12 @@ const slook::LookSet* specLookActive(const App& a) { return lookOn(a) ? &curLook
 // size, label mode and reference, so their ticks and grid lines are the same
 static plt::Look plotLook(const App& a, bool spectrum) {
     const slook::LookSet& L = curLook(a);
-    plt::Look k;
-    if (L.classic) return k;
-    k.on = true;
-    k.bgTop = v4(L.bgTop); k.bgBottom = v4(L.bgBottom);
-    k.grid = v4(L.grid); k.gridH = L.gridH;
-    k.font = L.monoLabels && a.mono ? a.mono : nullptr;
-    k.fontSize = std::round(ImGui::GetFontSize() * L.labelScale * a.specLabelSize);
-    k.labelMode = a.specAxisLabels >= 0 ? a.specAxisLabels : L.labelMode;
-    k.ref = a.freqMhz;
-    k.label = v4(L.label); k.stripBg = v4(L.stripBg);
-    if (spectrum) k.strip = true;
-    else if (a.specGrid) {
-        k.overV = ImVec4(L.grid.r, L.grid.g, L.grid.b, L.wfGridAlpha);
-        k.overH = ImVec4(L.grid.r, L.grid.g, L.grid.b, L.wfGridHAlpha);
-    }
-    return k;
+    return spaint::plotLook(L, spectrum, a.specGrid, L.monoLabels && a.mono ? a.mono : nullptr, std::round(ImGui::GetFontSize() * L.labelScale * a.specLabelSize),
+                            a.specAxisLabels >= 0 ? a.specAxisLabels : L.labelMode, a.freqMhz);
 }
 
 void specLookBand(const App& a, double x0, double x1, double centre, bool spectrum, bool dragging) {
-    const slook::LookSet& L = curLook(a);
-    if (x1 > x0) {
-        if (spectrum) plt::PlotVBandGradient(x0, x1, v4(L.bandTop), v4(L.bandBottom));
-        else if (L.wfBand.a > 0) plt::PlotVBandGradient(x0, x1, v4(L.wfBand), v4(L.wfBand));
-        const double e[2] = {x0, x1};
-        plt::Spec es; es.LineColor = v4(L.bandEdge, spectrum ? 1.f : L.wfLineAlpha); es.LineWeight = L.bandEdgeW * (dragging ? 2.f : 1.f);
-        plt::PlotInfLines("bandedges", e, 2, es);
-    }
-    const double c[1] = {centre};
-    plt::Spec cs; cs.LineColor = v4(L.centre, spectrum ? 1.f : L.wfLineAlpha); cs.LineWeight = L.centreW;
-    plt::PlotInfLines("centre", c, 1, cs);
+    spaint::band(curLook(a), x0, x1, centre, spectrum, dragging);
 }
 
 void specLookSet(App& a, int look, bool save);
@@ -544,6 +522,7 @@ static void setLinkedDbRange(App& a, float lo, float hi) {
     a.yMin = lo;
     a.yMax = hi;
     a.wf.autoTrack = false;
+    a.specAutoDb = false;   // the user set the range: it stays
     a.wf.minDb = lo;
     a.wf.maxDb = hi;
 }
@@ -742,6 +721,7 @@ void resetSpectrum(App& a) {
     a.yMax = -30.f;
     a.specZoom = 0.f;
     a.wf.autoTrack = true;
+    a.specAutoDb = true;
     if (!a.smooth.empty()) {
         a.wf.fitRange(a.smooth, true);
         a.peak = a.smooth;
@@ -758,14 +738,15 @@ void resetSpectrum(App& a) {
 void wfAutoButton(App& a) {
     const bool on = a.wf.autoTrack;
     if (on) ImGui::PushStyleColor(ImGuiCol_Button, pal::accent(0.55f));
-    if (ImGui::SmallButton(tr("Auto"))) { a.wf.autoTrack = !on; if (a.wf.autoTrack) a.wf.fitRange(a.smooth, true); savePrefs(a); }
+    if (ImGui::SmallButton(tr("Auto"))) { a.wf.autoTrack = a.specAutoDb = !on; if (a.wf.autoTrack) a.wf.fitRange(a.smooth, true); savePrefs(a); }
     if (on) ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keep the waterfall range on the noise floor and the strongest signal (click again to stop following)"));
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keep the spectrum and waterfall ranges on the noise floor of the view (click again to stop following; moving Min or Max stops it too)"));
 }
 
 // The waterfall colours that live outside the Waterfall: the custom gradient (the setting wfCustom) and, with "each mode its own colours"
 // on, the map the mode used last (wfMapMode<family>). Called every frame before the waterfall is drawn.
 static void waterfallColourSync(App& a) {
+    Waterfall::themeMode() = pal::wfMode();
     static std::string applied = "\x01";
     if (a.wfCustom != applied) {
         applied = a.wfCustom;
@@ -791,6 +772,8 @@ void specLookSet(App& a, int look, bool save) {
     const slook::LookSet& L = curLook(a);
     if (L.classic) { a.traceColor = 0; a.specLine = 1.2f; a.specFill = true; a.wf.map = -1; }
     else { a.traceColor = L.tracePreset; a.specLine = L.traceWeight; a.specFill = L.fill; if (L.wfMap >= 0) a.wf.map = L.wfMap; }
+    a.wf.autoBelow = L.wfBelow; a.wf.autoSpan = L.wfSpan;   // where the look puts the noise floor in its map
+    if (a.wf.autoTrack && !a.smooth.empty()) a.wf.fitRange(a.smooth, true);
     a.wf.palette();
     if (save) { if (a.wfPerMode) setWaterfallMap(a, a.wf.map); else savePrefs(a); }
 }
@@ -924,9 +907,10 @@ void wfDisplayPopup(App& a) {
     if (ImGui::Checkbox(tr("Smooth noise (2D low-pass)"), &a.wfLowPass)) savePrefs(a);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Softens the speckle of the noise: each point is averaged with its neighbours across and in time. Off by default: it also softens the weakest narrow signals."));
     if (a.wf.autoTrack) {
-        if (levelSlider(tr("Auto: under the floor"), &a.wf.autoBelow, 0.f, 30.f, "%.0f dB", 6.f, tr("How far under the noise floor the colours start (the floor is the 20th percentile of the spectrum; double click: 6 dB)"))) a.wf.fitRange(a.smooth, true);
+        const slook::LookSet& L = curLook(a);
+        if (levelSlider(tr("Auto: under the floor"), &a.wf.autoBelow, 0.f, 40.f, "%.0f dB", L.wfBelow, tr("How far under the noise floor the colours start: more lifts the noise into brighter colours (the floor is followed over about 2 s; double click: the look's value)"))) a.wf.fitRange(a.smooth, true);
         if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
-        if (levelSlider(tr("Auto: headroom"), &a.wf.autoHeadroom, -10.f, 30.f, "%.0f dB", 2.f, tr("How far over the strongest signal the colours end (at most 45 dB over the floor; double click: 2 dB)"))) a.wf.fitRange(a.smooth, true);
+        if (levelSlider(tr("Auto: range"), &a.wf.autoSpan, 20.f, 120.f, "%.0f dB", L.wfSpan, tr("How many dB the colours span from their start: a signal this far over the start is at the hot end (double click: the look's value)"))) a.wf.fitRange(a.smooth, true);
         if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
     }
     if (ImGui::Checkbox(tr("Each mode keeps its own colours"), &a.wfPerMode)) {
@@ -937,10 +921,11 @@ void wfDisplayPopup(App& a) {
     ImGui::Separator();
     ImGui::TextDisabled("%s", tr("Detail (columns across the band)"));
     {
-        static const int det[] = {0, 16384, 32768, Waterfall::kMaxCols};
-        for (int i = 0; i < 4; i++) {
+        static const int det[] = {-1, 0, 16384, 32768, Waterfall::kMaxCols};
+        for (int i = 0; i < 5; i++) {
             if (i) ImGui::SameLine(0, 4 * gUi);
-            char lb[24]; if (det[i] == 0) snprintf(lb, sizeof lb, "%s", tr("Standard")); else snprintf(lb, sizeof lb, "%dk", det[i] / 1024);
+            char lb[24];
+            if (det[i] < 0) snprintf(lb, sizeof lb, "%s", tr("Auto")); else if (det[i] == 0) snprintf(lb, sizeof lb, "%s", tr("Standard")); else snprintf(lb, sizeof lb, "%dk", det[i] / 1024);
             if (ImGui::RadioButton(lb, a.wf.detail == det[i])) { a.wf.detail = det[i]; savePrefs(a); }
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Finer columns keep narrow signals sharp when zoomed in (NFM, SSB, DMR, TETRA). Up to 64k columns (32 MB); never more than the FFT has bins."));
@@ -1217,7 +1202,7 @@ static void dragRetune(App& a) {
     if (a.touchUi || ov == 0 || !a.engine.running() || a.second.drawing) return;
     const bool file = !a.devices.empty() && a.devIdx >= 0 && a.devIdx < (int)a.devices.size() && (a.devices[a.devIdx].kind == DeviceInfo::File || a.devices[a.devIdx].isAudio());
     if (file) return;
-    const double d = pacer.step(ov, glfwGetTime());
+    const double d = pacer.step(ov, glfwGetTime(), 0.033);   // every frame or so: the tuning thread coalesces what the radio cannot keep up with
     if (d == 0) return;
     double lo = 0.001, hi = dect2::kMaxTuneMhz;
     if (a.family >= 6) if (const ModeTuning* mt = modeTuning(a.family + 2)) { lo = mt->minMhz; hi = mt->maxMhz; }
@@ -1228,7 +1213,7 @@ static void dragRetune(App& a) {
     if (std::fabs(r.centre - centre) < 1e-9) return;
     a.tune.centerHz = r.centre * 1e6;
     a.freqMhz = r.tuned;
-    { tunestat::RetuneTimer rtm(tuneStats()); a.engine.retune(a.tune); }
+    { tunestat::RetuneTimer rtm(tuneStats()); tunework::post(a.engine, a.tune, false); }   // the driver call on the tuning thread
     a.engine.setDecodeShiftHz((r.tuned - r.centre) * 1e6);
     a.peak.clear(); a.minPk.clear();
     dragSaved = false;
@@ -1308,7 +1293,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
         plotMin = plt::GetPlotPos(); plotSize = plt::GetPlotSize();
         if (!rangeEdited) {
             const plt::Rect lim = plt::GetPlotLimits();
-            if (std::fabs(lim.Y.Min - a.yMin) > 0.01 || std::fabs(lim.Y.Max - a.yMax) > 0.01) { a.yMin = setMin = (float)lim.Y.Min; a.yMax = setMax = (float)lim.Y.Max; }
+            if (std::fabs(lim.Y.Min - a.yMin) > 0.01 || std::fabs(lim.Y.Max - a.yMax) > 0.01) { a.yMin = setMin = (float)lim.Y.Min; a.yMax = setMax = (float)lim.Y.Max; a.specAutoDb = false; }
         }
         if (plt::IsPlotHovered() && dbRangeKeys(a)) savePrefs(a);
         if (!a.smooth.empty()) {
@@ -1327,12 +1312,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
             const int passes = a.specSmoothTrace >= 0 ? a.specSmoothTrace : L.smoothPasses;
             auto traceLine = [&](const std::vector<float>& y, bool useMin, int smooth) {
                 if (!look) { plt::envelope(y, x0, dx, vis.X.Min, vis.X.Max, wpx, ex, ey); return; }
-                static std::vector<float> t;
-                ex.clear(); ey.clear();
-                if (!slook::decimate(y.data(), y.size(), x0, dx, vis.X.Min, vis.X.Max, lookPx, L.interp, useMin, t)) return;
-                slook::smoothPasses(t, smooth);
-                const double cw = (vis.X.Max - vis.X.Min) / lookPx;
-                for (int c = 0; c < lookPx; c++) { ex.push_back(vis.X.Min + (c + 0.5) * cw); ey.push_back(t[(size_t)c]); }
+                spaint::traceXY(y.data(), y.size(), x0, dx, vis, lookPx, L.interp, useMin, smooth, ex, ey);
             };
             ImVec4 holdC = lightBg ? ImVec4(0.45f, 0.46f, 0.48f, 0.8f) : ImVec4(0.55f, 0.56f, 0.58f, 0.8f);   // grey hold lines
             if (a.holdColor >= 0) { const float* hc = cmap::traceRgb(a.holdColor, lightBg); holdC = ImVec4(hc[0], hc[1], hc[2], 0.75f); }
@@ -1352,14 +1332,15 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
                 plt::PlotLine("live", ex.data(), ey.data(), (int)ex.size(), ls);
             }
             traceLine(a.smooth, false, passes);
-            if (a.specFill && !ex.empty()) {
-                // a look's fill: its own alpha at the trace, fading to its bottom alpha (SDR++: a solid translucent area)
-                const float ft = look ? std::max(0.08f, L.fill ? L.fillTop : 0.30f) : 0.18f, fb = look ? (L.fill ? L.fillBottom : 0.06f) : 0.03f;
-                plt::Spec fs; fs.FillColor = ImVec4(trc.x, trc.y, trc.z, ft); fs.FillFade = look ? std::max(0.001f, 1.f - fb / ft) : 0.85f; fs.LineColor = ImVec4(0, 0, 0, 0);
-                plt::PlotShaded("fill", ex.data(), ey.data(), (int)ex.size(), vis.Y.Min, fs);
+            if (look) spaint::trace(ex, ey, trc, a.specLine, a.specFill, L.fill ? L.fillTop : 0.30f, L.fill ? L.fillBottom : 0.06f, vis.Y.Min);
+            else {
+                if (a.specFill && !ex.empty()) {
+                    plt::Spec fs; fs.FillColor = ImVec4(trc.x, trc.y, trc.z, 0.18f); fs.FillFade = 0.85f; fs.LineColor = ImVec4(0, 0, 0, 0);
+                    plt::PlotShaded("fill", ex.data(), ey.data(), (int)ex.size(), vis.Y.Min, fs);
+                }
+                plt::Spec ss; ss.LineColor = trc; ss.LineWeight = a.specLine;
+                plt::PlotLine("spectrum", ex.data(), ey.data(), (int)ex.size(), ss);
             }
-            plt::Spec ss; ss.LineColor = trc; ss.LineWeight = a.specLine;
-            plt::PlotLine("spectrum", ex.data(), ey.data(), (int)ex.size(), ss);
             if (a.specNfMarker && ey.size() >= 16) {   // the noise floor of the view: a dashed line with its level at the left
                 static std::vector<float> nf; nf.assign(ey.begin(), ey.end());
                 const float fl = slook::percentile(nf, 0.2);
@@ -1562,20 +1543,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
             if (full) a.wf.viewImg->update(0, 0, v.stride, v.rowsAlloc, v.px.data());
             else for (int r : dirty) a.wf.viewImg->update(0, r, v.stride, 1, v.px.data() + (size_t)r * v.stride);
         }
-        if (a.wf.viewImg && v.cols > 0 && a.wf.rows > 0) {
-            ImTextureID tex = a.wf.viewImg->texture();
-            const double vx0 = x0 + (x1 - x0) * v.c0 / W, vx1 = x0 + (x1 - x0) * v.c1 / W;
-            const float u1 = (float)v.cols / texW;
-            const long long R = a.wf.rows - 1, gN = R / v.k;
-            const int w = v.rowOf(gN);
-            // row r takes y from -(R - r) - 1 - frac to -(R - r) - frac: the newest group's top is that of its last row (still to come
-            // while it fills: above the plot, clipped), the older groups below it, the ring's rows w..ring-1 then 0..w-1
-            const double top = -(double)(R - (gN * v.k + v.k - 1)) - frac, midY = top - (double)(v.ring - w) * v.k;
-            plt::PlotImage("a", tex, plt::Point(vx0, midY), plt::Point(vx1, top), ImVec2(0, (float)w / H), ImVec2(u1, (float)v.ring / H));
-            if (w > 0) plt::PlotImage("b", tex, plt::Point(vx0, midY - (double)w * v.k), plt::Point(vx1, midY), ImVec2(0, 0), ImVec2(u1, (float)w / H));
-            const float vNew = (w + 0.5f) / H;   // the gap above (a whole group in): the newest group, stretched
-            if (top < 0) plt::PlotImage("top", tex, plt::Point(vx0, top), plt::Point(vx1, 0), ImVec2(0, vNew), ImVec2(u1, vNew));
-        }
+        if (a.wf.viewImg) spaint::wfImage(v, a.wf.viewImg->texture(), texW, H, x0, x1, W, a.wf.rows, frac);
         channelBand(a, false);
         markerLayer(a, false);
         plotMin = plt::GetPlotPos(); plotSize = plt::GetPlotSize();
@@ -1653,6 +1621,10 @@ void spectrumWaterfall(App& a, float& frac, bool drag) {
         dragRetune(a);   // a drag on the waterfall that runs past the band retunes too (its overflow is gone once the next plot begins)
     };
     if (wfFirst) { wfPart(); specPart(); } else { specPart(); wfPart(); }
+    {   // the part of the band in view: the auto ranges follow its noise floor (a zoom onto a crowded part keeps its own floor dark)
+        const double fsM = sampleRateMhz(a), lo = radioCenterMhz(a) - fsM / 2;
+        if (fsM > 0 && gXHi > gXLo) { a.wf.viewU0 = (gXLo - lo) / fsM; a.wf.viewU1 = (gXHi - lo) / fsM; }
+    }
     ImGui::GetWindowDrawList()->AddLine(ImVec2(p.x, y), ImVec2(p.x + w, y), hot ? IM_COL32(200, 200, 200, 160) : IM_COL32(110, 110, 110, 110), hot ? 2.f : 1.f);
     if (sliderCol > 0) dbRangeSliders(a, ImVec2(p.x + w, p.y + stripH), sliderCol, std::max(40.f, h - stripH));
     // DECT2_FPS=1: what the spectrum and the waterfall cost on the CPU per frame (building their draw lists), every 2 seconds on stderr

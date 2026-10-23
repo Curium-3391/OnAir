@@ -8,6 +8,7 @@
 #include "dect2/general/general_gen.h"
 #include "dect2/general/general_rx.h"
 #include "dect2/general/general_tel.h"
+#include "state/freq_model.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -123,16 +124,12 @@ void setListen(App& a, double hz) {
     const double rc = radioCenterMhz(a) * 1e6;
     double lo, hi;
     edges(lo, hi);
-    const bool sticky = a.tuningMode == 1;
-    const double bandLo = rc - 0.45 * fs, bandHi = rc + 0.45 * fs;
-    if (!sticky && (hz + lo < bandLo || hz + hi > bandHi)) {
+    const fmodel::ListenPlan p = fmodel::planListen(hz, rc, fs, lo, hi, a.tuningMode == 1);
+    if (p.retune) {
         S.chanOff = 0;
         tuneFreq(a, hz / 1e6);
         S.lastDial = a.freqMhz;
-    } else {
-        if (sticky) hz = std::min(bandHi, std::max(bandLo, hz));
-        S.chanOff = hz - a.freqMhz * 1e6;
-    }
+    } else S.chanOff = p.vfoHz - a.freqMhz * 1e6;
     save();
 }
 double snap(double hz) { const double s = stepHz(); return std::round(hz / s) * s; }
@@ -570,6 +567,7 @@ void synth(App& a, bool& changed) {
 
 // ---- the Memory panel (app/memory): the listening frequency and the options a memory keeps for this mode
 double generalListenHz(const App& a) { load(); return listenHz(a); }
+void generalSetListenHz(App& a, double hz) { load(); setListen(a, hz); }   // the big readout: the VFO inside the band, the radio only past its edge
 void generalRecallHz(App& a, double hz) { load(); S.chanOff = 0; a.freqMhz = hz / 1e6; S.lastDial = a.freqMhz; save(); }   // the channel back on the dial, the dial on hz
 // ---- the remote API (app/platform/remote_api_app.cpp): the demodulator and the squelch of the General receiver
 int generalApiDemod() { load(); return S.demod; }

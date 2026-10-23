@@ -2,6 +2,7 @@
 // restart when the sample rate has to change.
 #include "dect2/engine/engine.h"
 #include "engine_internal.h"
+#include "engine_ctl.h"
 #include "dect2/source/converter.h"
 #include "dect2/net/share.h"
 #include "dect2/engine/device_claims.h"
@@ -59,6 +60,7 @@ TuneSettings Engine::hwTune(const TuneSettings& t) const {
 }
 
 bool Engine::retune(const TuneSettings& tune) {
+    std::lock_guard<std::recursive_mutex> ctl(engineControlMutex());   // the tuning thread and the UI's start / stop take turns
     if (!src_) return false;
     std::string err;
     holdDelivery(300);
@@ -123,6 +125,7 @@ bool Engine::restartIfRateChanged(const TuneSettings& tune) {
 }
 
 bool Engine::retuneReset(const TuneSettings& tune) {
+    std::lock_guard<std::recursive_mutex> ctl(engineControlMutex());
     if (!src_) return false;
     std::string err;
     holdDelivery(300);

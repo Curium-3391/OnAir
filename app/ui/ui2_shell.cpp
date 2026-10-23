@@ -4,6 +4,7 @@
 #include "transcribe/transcribe_app.h"
 #include "dect2/dsp/baseband_filter.h"
 #include "ui2_internal.h"
+#include "../state/listen_freq.h"
 #include "../codec/speech_codec_ui.h"
 #include "../voice/voice_monitor_ui.h"
 #include "ui_common.h"
@@ -348,7 +349,7 @@ void statusLine(App& a) {
         const auto textW = [&](const std::string& s, ImFont* f, float sz) { ImGui::PushFont(f, sz); const float w = ImGui::CalcTextSize(s.c_str()).x; ImGui::PopFont(); return w; };
         const std::string capF = upper(tr("Frequency")), capM = upper(tr("Mode")), capR = upper(tr("Receiver")), capS2 = upper(tr("State")), capC = "CPU";
         const std::string stateTxt = tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped");
-        const statusstrip::FreqParts fp = statusstrip::splitFreq(a.freqMhz);
+        const statusstrip::FreqParts fp = statusstrip::splitFreq(listenMhz(a));   // the listening frequency (the VFO), as the big readout
         const std::string rxTxt = std::to_string(a.rxId), mhzTxt = " MHz";
         char pc[16]; snprintf(pc, sizeof pc, "%.0f%%", cpuPct);
         const float lampW = 9 * gUi, barW = 44 * gUi, mhzSz = valS * 0.62f;

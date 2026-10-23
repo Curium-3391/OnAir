@@ -3,6 +3,7 @@
 #include "../../app/gfx/spec_look.h"
 #include "../../app/gfx/colormap.h"
 #include "../../app/gfx/wf_view.h"
+#include "../../app/gfx/spec_pipe.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -133,7 +134,14 @@ int main() {
     {   // the looks and their maps
         check(lookSet(OnAir).classic && !lookSet(SdrPP).classic && !lookSet(SdrOxide).classic && std::string(lookSet(99).name) == "OnAir classic", "looks");
         check(lookSet(SdrPP).fill && !lookSet(SdrOxide).fill && lookSet(SdrPP).strip && lookSet(SdrOxide).monoLabels, "look traits");
-        check(lookSet(SdrPP).wfMap == cmap::SdrppSmooth && lookSet(SdrOxide).wfMap == cmap::OxideBlue && kMapSdrppSmooth == cmap::SdrppSmooth && kMapOxide == cmap::OxideBlue, "look maps");
+        check(lookSet(SdrPP).wfMap == cmap::NavyHeat && lookSet(SdrOxide).wfMap == cmap::BlueGreen && kMapSdrppSmooth == cmap::SdrppSmooth && kMapOxide == cmap::OxideBlue
+              && kMapNavyHeat == cmap::NavyHeat && kMapBlueGreen == cmap::BlueGreen, "look maps (measured on the references)");
+        check(std::string(cmap::kTracePresets[kTracePaleCyan].name) == "Pale cyan" && std::string(cmap::kTracePresets[kTracePaleSteel].name) == "Pale steel", "measured trace colours");
+        // Navy heat is SDR++'s Classic: navy floor (0,0,32), white at 5/14, yellow at 6/14, dark red at the top
+        check(cmap::color(cmap::NavyHeat, 0.f) == 0xFF200000u && cmap::color(cmap::NavyHeat, 5.f / 14) == 0xFFFFFFFFu && cmap::color(cmap::NavyHeat, 6.f / 14) == 0xFF00FFFFu, "navy heat stops");
+        const uint32_t bg = cmap::color(cmap::BlueGreen, 0.2f);
+        check(((bg >> 16) & 255) > 100 && ((bg >> 8) & 255) < 20 && (bg & 255) < 5, "blue green: a mid blue floor");
+        check(lookSet(SdrPP).wfBelow < lookSet(SdrOxide).wfBelow && lookSet(SdrPP).wfSpan > 40 && lookSet(SdrOxide).specBelow > lookSet(SdrPP).specBelow, "floor places");
         check(kTraceLightBlue < cmap::kNumTracePresets && std::string(cmap::kTracePresets[kTraceLightBlue].name) == "Light blue" && std::string(cmap::kTracePresets[kTraceCyan].name) == "Cyan", "look trace presets");
         check(std::string(cmap::name(cmap::SdrppSmooth)) == "SDR++ smooth" && std::string(cmap::name(cmap::OxideBlue)) == "Oxide blue", "map names");
         const uint32_t s0 = cmap::color(cmap::SdrppSmooth, 0.f), s1 = cmap::color(cmap::SdrppSmooth, 1.f), o0 = cmap::color(cmap::OxideBlue, 0.02f);
@@ -160,6 +168,28 @@ int main() {
         float ofdm = 0; for (int i = 8192 * 40 / 100; i < 8192 * 48 / 100; i++) ofdm += d[(size_t)i];
         ofdm /= 8192 * 8 / 100.f;
         check(ofdm > fl + 15 && ofdm < fl + 40, "demo: the OFDM block");
+    }
+    {   // the pipeline steps (spec_pipe.h): the floor, its tracker, the floor-anchored range, the levels
+        std::vector<float> s(4096, -100.f), scr;
+        for (size_t i = 0; i < s.size(); i++) s[i] = -100.f + (float)(i % 7) * 0.5f;   // noise between -100 and -97
+        for (size_t i = 1000; i < 3000; i++) s[i] = -60.f;                           // a block over half the band
+        const float fl = spipe::noiseFloor(s.data(), s.size(), scr);
+        check(fl >= -100.f && fl <= -99.f, "floor: the low part of the noise, not the block");
+        spipe::FloorTracker t;
+        check(t.update(-90.f, 0.25f) == -90.f, "tracker: the first value at once");
+        const float a1 = t.update(-80.f, 0.25f);
+        check(a1 > -90.f && a1 < -88.f, "tracker: a step is followed slowly (2 s)");
+        check(t.update(-40.f, 0.25f) == -40.f, "tracker: a jump of more than 15 dB at once");
+        float lo, hi;
+        spipe::floorRange(-100.f, 3.f, 80.f, lo, hi);
+        check(lo == -103.f && hi == -23.f, "floor range");
+        std::vector<uint8_t> l(4);
+        const float row[8] = {-103, -103, -63, -103, -23, -20, -200, -103};
+        spipe::levelsRow(row, 8, 4, -103.f, -23.f, l.data());
+        check(l[0] == 0 && l[1] == 128 && l[2] == 255 && l[3] == 0, "levels: the highest bin of each column, clamped");
+        std::vector<float> sm(3, 0.f); const float in[3] = {10, 10, 10};
+        spipe::emaStep(sm.data(), in, 3, 1.f / 30, 0.f);
+        check(sm[0] == 10.f, "ema: tau 0 is the raw frame");
     }
     if (fails) { printf("%d failed\n", fails); return 1; }
     printf("spec_look: all passed\n");

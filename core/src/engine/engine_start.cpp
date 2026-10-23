@@ -2,6 +2,7 @@
 // starts the worker threads. The long body is split into small steps called in the original order.
 #include "dect2/engine/engine.h"
 #include "dect2/automation/engine.h"
+#include "engine_ctl.h"
 #include "engine_internal.h"
 #include "dect2/source/converter.h"
 #include "dect2/net/share.h"
@@ -31,6 +32,7 @@
 namespace dect2 {
 
 bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOptions& file) {
+    std::lock_guard<std::recursive_mutex> ctl(engineControlMutex());
     stop();
     noTuneOffset_ = dev.kind == DeviceInfo::Audio;   // a sound card has no radio to tune off the DC spike: the signal is where the IF centre puts it (0 Hz)
     ring_.clear();
@@ -669,15 +671,21 @@ void Engine::checkRateAndResetState(const DeviceInfo& dev, const TuneSettings& t
 
 // Logs the started source, then starts the spectrum and analysis threads and the secondary receiver
 void Engine::announceAndRun(const DeviceInfo& dev, const TuneSettings& tune) {
-    char b[160];
+    char b[200];
+    // the radio's own frequency when a converter moves it (the status bar shows this line: it must say which frequency it is)
+    auto hwNote = [&](const TuneSettings& t) {
+        const double hw = hwTune(t).centerHz;
+        if (std::fabs(hw - t.centerHz) < 1) return std::string();
+        char x[64]; snprintf(x, sizeof x, " (hardware %.3f MHz)", hw / 1e6); return std::string(x);
+    };
     snprintf(b, sizeof b, "source started: %s  fs=%.4f Msps", dev.name.c_str(), rate_.load() / 1e6);
     log(b);
     if (dev.isGeneric()) {
-        snprintf(b, sizeof b, "tuned %.3f MHz  gain %.0f dB", tune.centerHz / 1e6, tune.gainDb);
+        snprintf(b, sizeof b, "radio centre %.3f MHz%s  gain %.0f dB", tune.centerHz / 1e6, hwNote(tune).c_str(), tune.gainDb);
         log(b);
     }
     if (dev.kind == DeviceInfo::HackRF) {
-        snprintf(b, sizeof b, "tuned %.3f MHz  LNA %d dB  VGA %d dB  amp %s", tune.centerHz / 1e6, tune.lnaDb, tune.vgaDb, tune.ampOn ? "on" : "off");
+        snprintf(b, sizeof b, "radio centre %.3f MHz%s  LNA %d dB  VGA %d dB  amp %s", tune.centerHz / 1e6, hwNote(tune).c_str(), tune.lnaDb, tune.vgaDb, tune.ampOn ? "on" : "off");
         log(b);
     }
     tSpec_ = tRx_ = 0; nSamp_ = 0;

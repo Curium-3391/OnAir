@@ -1,6 +1,8 @@
 // Several receivers at once: see receivers.h and docs/multi-sdr.md.
 #include "receivers.h"
 #include "rxbar.h"
+#include "tune_worker.h"
+#include "listen_freq.h"
 #include "adsb/adsb_acars.h"
 #include "transcribe/transcribe_app.h"
 #include "dect2/engine/device_claims.h"
@@ -159,7 +161,7 @@ void strip(App& first, ImVec2 disp, float h) {
     float x = 0;
     for (App* r : all) {
         const char* mn = modeName(*r);
-        std::string t = all.size() == 1 ? "RX " + std::to_string(r->rxId) : rxbar::label(r->rxId, mn, r->freqMhz);   // one receiver: its mode and frequency are in the status strip
+        std::string t = all.size() == 1 ? "RX " + std::to_string(r->rxId) : rxbar::label(r->rxId, mn, listenMhz(*r));   // one receiver: its mode and frequency are in the status strip
         const float tw = ImGui::CalcTextSize(t.c_str()).x;
         const float w = rxbar::chipWidth(tw, 12 * gUi + 14 * gUi + btn * (r->rxId > 1 ? 2.f : 1.f), minChip, maxChip);
         chips.push_back({r, std::move(t), x, w});
@@ -199,7 +201,7 @@ void strip(App& first, ImVec2 disp, float h) {
         const float room = c.w - 12 * gUi - 14 * gUi - btn * (r->rxId > 1 ? 2.f : 1.f);
         std::string t = c.txt;
         if (ImGui::CalcTextSize(t.c_str()).x > room) {
-            const std::string fq = rxbar::label(r->rxId, "", r->freqMhz);
+            const std::string fq = rxbar::label(r->rxId, "", listenMhz(*r));
             t = std::string(c.txt);
             int n = (int)t.size();
             while (n > 4 && ImGui::CalcTextSize(rxbar::ellipsize(t, n).c_str()).x > room) n--;
@@ -227,7 +229,7 @@ void strip(App& first, ImVec2 disp, float h) {
             else {
                 const DeviceInfo* di = r->devIdx >= 0 && r->devIdx < (int)r->devices.size() ? &r->devices[r->devIdx] : nullptr;
                 ImGui::BeginTooltip();
-                ImGui::Text("RX %d: %s, %.3f MHz", r->rxId, modeName(*r), r->freqMhz);
+                ImGui::Text("RX %d: %s, %.3f MHz", r->rxId, modeName(*r), listenMhz(*r));
                 ImGui::TextColored(run ? pal::okGreen() : grey, "%s", run ? tr("Receiving") : tr("Stopped"));
                 if (di) ImGui::Text(tr("Radio: %s"), di->name.c_str());
                 ImGui::EndTooltip();
@@ -323,6 +325,7 @@ void receiversFrame(App& first, ImVec2 disp) {
         App* r = receiverById(id);
         if (!r) continue;
         { PrefScope ps(id); savePrefs(*r); }
+        tunework::forget(r->engine);   // its tuning thread ends before the engine goes
         r->engine.stop();
         r->engine.flushResults();
         gExtra[id - 2].reset();
@@ -354,6 +357,7 @@ void receiversFrame(App& first, ImVec2 disp) {
 void receiversShutdown(App& first) {
     tx::shutdown();
     mapSendShutdown();
+    tunework::shutdown();   // every tuning thread ends (a retune still pending is dropped: the radio stops anyway)
     for (int id = 2; id <= kMaxReceivers; id++) if (App* r = gExtra[id - 2].get()) {
         { PrefScope ps(id); savePrefs(*r); }
         r->engine.stop();
