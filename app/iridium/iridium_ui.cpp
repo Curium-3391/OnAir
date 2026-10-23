@@ -5,6 +5,7 @@
 #include "../adsb/adsb_map.h"
 #include "dect2/iridium/iridium_tel.h"
 #include "dect2/iridium/iridium_voice.h"
+#include "iridium_extra_ui.h"
 #include "dect2/codec/codec_registry.h"
 #include "../codec/speech_codec_ui.h"
 #include <algorithm>
@@ -20,7 +21,7 @@ using dect2::IridiumTelemetry;
 
 struct State {
     bool loaded = false;
-    int view = 0;                    // 0 map, 1 messages, 2 ring alerts, 3 bursts, 4 calls
+    int view = 0;                    // 0 map, 1 messages, 2 ring alerts, 3 bursts, 4 calls, 5 ACARS, 6 packets, 7 pager (iridium_extra_ui.cpp)
     int listen = 0;                  // voice: -1 off, 0 first call with sound, else the call id
     int selSat = -1;                 // the selected satellite, -1 = none
     int selMsg = -1;                 // index into messages, newest = 0
@@ -365,7 +366,7 @@ void scatter(App& a, ImVec2 size, bool legend = true) {
 
 void ringAlerts(App& a) {
     const IridiumTelemetry& t = a.rx.iridium;
-    { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%zu ring alerts kept, %llu TMSIs paged in all (the identities are not kept)", t.ringAlerts.size(), (unsigned long long)t.pagedTotal); ImGui::PopTextWrapPos(); }
+    { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%zu ring alerts kept, %llu TMSIs paged in all (the identities are on the Pager tab)", t.ringAlerts.size(), (unsigned long long)t.pagedTotal); ImGui::PopTextWrapPos(); }
     if (!ImGui::BeginTable("##iri_ra", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Time"); ImGui::TableSetupColumn("Sat"); ImGui::TableSetupColumn("Beam"); ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
@@ -507,9 +508,12 @@ void panels(App& a) {
 
 void tab(App& a) {
     loadState();
-    subNav("iriv", S.view, {"Map", "Messages", "Ring alerts", "Bursts", "Calls"});
+    subNav("iriv", S.view, {"Map", "Messages", "Ring alerts", "Bursts", "Calls", "ACARS", "Packets", "Pager"});
     const float W = ImGui::GetContentRegionAvail().x, H = ImGui::GetContentRegionAvail().y;
     if (S.view == 4) { callsView(a); return; }
+    if (S.view == 5) { iridiumui::acarsView(a); return; }
+    if (S.view == 6) { iridiumui::packetsView(a); return; }
+    if (S.view == 7) { iridiumui::pagerView(a); return; }
     if (S.view == 1) { messages(a, W, H); return; }
     if (S.view == 2) { ringAlerts(a); return; }
     if (S.view == 3) {

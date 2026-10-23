@@ -334,6 +334,7 @@ void decodeRa(const Bits& d, IridiumFrame& f, bool guessed) {
         bool allOnes = true;
         for (int k = 0; k < 42; k++) if (!b[63 + 42 * i + k]) { allOnes = false; break; }
         if (allOnes) break;
+        f.tmsis.push_back(uint32_t(rd(b, 63 + 42 * i, 32)));
         n++;
     }
     f.paged = n;
@@ -652,7 +653,7 @@ std::vector<IridiumPagerMessage> IridiumMsgAssembler::expire(double timeSec) {
             if (!m.sent) {
                 bool all;
                 IridiumPagerMessage p;
-                p.ric = m.ric; p.seq = m.seq; p.timeSec = m.time; p.complete = false;
+                p.ric = m.ric; p.seq = m.seq; p.timeSec = m.time; p.complete = false; p.fmt = m.fmt;
                 p.text = printable(joinMsg(this, m.fmt, m.parts, m.have, all));
                 out.push_back(p);
             }
@@ -690,7 +691,7 @@ std::vector<IridiumPagerMessage> IridiumMsgAssembler::feed(const IridiumFrame& f
         if (good) {
             m.sent = true;
             IridiumPagerMessage p;
-            p.ric = m.ric; p.seq = m.seq; p.timeSec = timeSec; p.complete = true;
+            p.ric = m.ric; p.seq = m.seq; p.timeSec = timeSec; p.complete = true; p.fmt = m.fmt;
             p.text = printable(text);
             out.push_back(p);
         }

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dect2 {
@@ -30,8 +31,9 @@ struct IridiumRingAlert {            // IRA
     int sat = -1, beam = -1;
     bool hasPos = false;
     double lat = 0, lon = 0, altKm = 0;   // as the frame carries it: the satellite (hundreds of km) or the beam centre (near 0)
-    int paged = 0;                   // TMSIs paged (the identities are not kept)
+    int paged = 0;                   // TMSIs paged
     double freqHz = 0;
+    std::vector<uint32_t> tmsis;     // the paged temporary identities (at most 12 per alert)
 };
 
 struct IridiumIbcInfo {              // IBC
@@ -46,14 +48,88 @@ struct IridiumPagerMsg {             // MSG, assembled over its parts
     int ric = -1, seq = -1;
     std::string text;
     bool complete = false;
+    int fmt = -1;                    // 5 alphanumeric, 3 numeric, -1 unknown
 };
 
-struct IridiumAcarsMsg {             // ACARS carried in short burst data (IDA frames joined), Phase B
+struct IridiumAcarsMsg {             // ACARS carried in short burst data (IDA frames joined), Phase B + extra
     double time = 0;
-    bool downlink = true;            // true: from the satellite (to the aircraft)
+    bool downlink = true;            // Iridium direction: true = from the satellite (to the aircraft)
     char mode = 0, ack = 0, blockId = 0;
     std::string reg, label, seq, flight, text;
-    bool more = false;               // another block follows
+    bool more = false;               // another block follows (ETB) and has not arrived
+    // added by the ACARS layer (iridium_acars.h)
+    uint64_t serial = 0;             // grows by one per listed message
+    int64_t wall = 0;                // wall clock when decoded
+    double freqHz = 0;
+    int regKind = 0;                 // 0 none, 1 tail number, 2 24-bit ICAO address in hex, 3 other
+    uint32_t icao = 0;               // when regKind is 2, or an ADS-C airframe group gave it
+    int crc = 0;                     // block check: 0 not present, 1 matches, 2 does not match
+    int parity = 0;                  // 0 no parity bits used, 1 odd parity all right, 2 parity errors
+    int blocks = 1;                  // blocks joined into this message
+    int repeats = 0;                 // retransmissions of the same block that were dropped
+    std::string labelText;           // what the label means, "" when unknown
+    std::string decoded;             // OOOI times and airports, ADS-C groups in words
+    bool hasPos = false;             // a position report from the aircraft (aero_pos.h)
+    double lat = 0, lon = 0;
+    bool hasAlt = false;
+    int altFt = 0;
+    std::string posKind;
+    double updated = 0;              // receiver time of the last block joined into it
+    std::vector<std::string> blockKeys;   // the blocks seen (retransmission check), at most 8
+};
+
+struct IridiumAircraft {             // an aircraft heard on Iridium ACARS
+    std::string reg;                 // as the messages give it (dots removed)
+    std::string flight;
+    uint32_t icao = 0;
+    std::string lastLabel;
+    uint32_t messages = 0;
+    double freqHz = 0;
+    double lastHeard = 0;            // receiver time, seconds
+    bool hasPos = false;
+    double lat = 0, lon = 0;
+    bool hasAlt = false;
+    int altFt = 0;
+    bool hasTrack = false;
+    double trackDeg = 0;
+    bool hasSpeed = false;
+    double speedKt = 0;
+    std::string posKind;
+    double posTime = 0;              // receiver time
+    int64_t posWall = 0;
+    uint32_t positions = 0;
+    std::vector<std::pair<double, double>> track;   // oldest first, at most 24
+};
+
+struct IridiumPacketRec {            // a joined IDA packet (short burst data), for the packet dump
+    uint64_t serial = 0;
+    double time = 0, freqHz = 0;
+    int64_t wall = 0;
+    bool downlink = true;
+    int fragments = 0;
+    bool complete = true;
+    int sbdType = -1;                // 0x0600, 0x76xx, -1 not short burst data
+    uint32_t length = 0;             // bytes of the whole packet
+    std::string hex;                 // first 256 bytes
+    std::string status;              // "ACARS new", "ACARS repeat", "ACARS joined", "SBD", "not SBD", "incomplete"
+    uint64_t acarsSerial = 0;        // the listed ACARS message, 0 when none
+};
+
+struct IridiumFrameRec {             // one demodulated data frame (IDA, IIP, IIQ, IIR, IIU, IMS, ITL, MSG), for the packet dump
+    uint64_t serial = 0;
+    double time = 0, freqHz = 0;
+    int64_t wall = 0;
+    bool downlink = true;
+    uint8_t type = 0;                // IridiumType
+    bool ok = false;                 // codes checked out
+    bool crcOk = false;
+    int corrected = 0;
+    int ctr = -1;                    // IDA counter
+    bool cont = false;               // IDA: another part follows
+    uint32_t length = 0;             // payload bytes
+    std::string hex;                 // first 64 bytes
+    uint64_t packet = 0;             // IridiumPacketRec::serial it was joined into, 0 = not (yet) assembled
+    std::string status;              // "ok", "code failed", "crc failed", "ok, no start"
 };
 
 struct IridiumMapPoint {             // positions for the map, from ring alerts
@@ -115,7 +191,13 @@ struct IridiumTelemetry {
     std::vector<IridiumMapPoint> positions;    // newest last, at most 500
     std::vector<IridiumBurstDot> scatter;      // at most 2000
     uint64_t sbdPackets = 0;                   // IDA packets joined (short burst data)
-    std::vector<IridiumAcarsMsg> acars;        // newest last, at most 50
+    std::vector<IridiumAcarsMsg> acars;        // newest last, at most 200
+    std::vector<IridiumAircraft> aircraft;     // most recently heard last, at most 100
+    std::vector<IridiumPacketRec> packets;     // newest last, at most 300
+    std::vector<IridiumFrameRec> frameDump;    // newest last, at most 600
+    uint64_t acarsSerial = 0;                  // serial of the newest listed ACARS message
+    uint64_t acarsDuplicates = 0;              // retransmitted blocks dropped
+    uint64_t acarsCrcBad = 0, acarsParityBad = 0;
 };
 
 inline std::string iridiumSummary(const IridiumTelemetry& t) {

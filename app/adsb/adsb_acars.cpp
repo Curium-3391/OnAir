@@ -4,8 +4,10 @@
 #include "dect2/acars/acars_rx.h"
 #include "dect2/hfdl/hfdl_rx.h"
 #include "dect2/vdl2/vdl2_rx.h"
+#include "dect2/iridium/iridium_rx.h"
 #include <ctime>
 #include <map>
+#include <set>
 #include <unordered_map>
 
 namespace acarslog {
@@ -15,7 +17,7 @@ namespace {
 dect2::AcarsLog gLog;       // the interesting ones
 dect2::AcarsLog gAllLog;    // everything with a readable label (Show all messages)
 bool gShowAll = false;
-struct Seen { uint64_t seq[3] = {0, 0, 0}, serial[3] = {0, 0, 0}; };
+struct Seen { uint64_t seq[4] = {0, 0, 0, 0}, serial[3] = {0, 0, 0}; std::set<uint64_t> done; };
 std::map<int, Seen> gSeen;                    // per receiver slot
 std::unordered_map<uint32_t, int> gCounts;    // ICAO > number of interesting messages (badge)
 std::unordered_map<std::string, int> gHolders;   // normalised callsign > aircraft that have it
@@ -83,6 +85,22 @@ void pollReceiver(App& rx) {
                 put(id, "HFDL", m.wallTime, m.freqHz, m.label, m.acarsText, m.flight, !m.uplink);
             }
             s.serial[2] = top;
+        }
+    }
+    {   // Iridium ACARS (short burst data): whole messages only; the telemetry list is updated in place when a block joins, so serials are remembered
+        dect2::IridiumTelemetry t;
+        if (rx.engine.iridium().telemetry(t, s.seq[3])) {
+            s.seq[3] = t.seq;
+            std::set<uint64_t> alive;
+            for (const auto& m : t.acars) {
+                alive.insert(m.serial);
+                if (m.more || s.done.count(m.serial)) continue;
+                s.done.insert(m.serial);
+                dect2::AcarsIdent id;
+                id.reg = m.regKind == 2 ? std::string() : m.reg; id.flight = m.flight; id.icao = m.icao;
+                put(id, "Iridium", m.wall, m.freqHz, m.label, m.text, m.flight, !m.downlink);   // the log's "downlink" is aircraft to ground
+            }
+            for (auto it = s.done.begin(); it != s.done.end();) it = alive.count(*it) ? std::next(it) : s.done.erase(it);
         }
     }
 }
