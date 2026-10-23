@@ -1503,8 +1503,8 @@ static void wfScaleBar(const App& a, ImVec2 plotMin, ImVec2 plotSize) {
     dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(150, 155, 160, 90));
     const ImU32 tc = IM_COL32(200, 205, 210, 190);
     ImFont* font = ImGui::GetFont();
-    dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, hi).x, y0 - fs * 0.5f), tc, hi);
-    dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, lo).x, y1 - fs * 0.5f), tc, lo);
+    dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, hi).x, y0), tc, hi);   // under the unit, beside the hot end
+    dl->AddText(font, fs, ImVec2(x0 - 4 * u - font->CalcTextSizeA(fs, FLT_MAX, 0, lo).x, y1 - fs), tc, lo);
     dl->AddText(font, fs, ImVec2(x0 - tw - 4 * u, y0 - fs - 2 * u), tc, a.specDbm ? "dBm" : "dB");
 }
 

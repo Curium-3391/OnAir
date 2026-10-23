@@ -216,7 +216,7 @@ int main() {
             }
             slook::decimate(sm.data(), n, -fs / 2e6, fs / 1e6 / n, -fs / 2e6, fs / 2e6, px, InterpCubic, false, col);
             const double r = spipe::roughness(col.data(), col.size());
-            std::vector<float> c(col), scr; const float fl = spipe::noiseFloor(c.data(), c.size(), scr);
+            std::vector<float> c(col); std::nth_element(c.begin(), c.begin() + (long)c.size() / 2, c.end()); const float fl = c[c.size() / 2];   // the median column
             lo = std::min(lo, fl); hi = std::max(hi, fl);
             char w[96]; snprintf(w, sizeof w, "smooth trace at %zu bins (roughness %.2f dB)", n, r);
             check(r < 1.5, w);
