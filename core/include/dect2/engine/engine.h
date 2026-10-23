@@ -126,6 +126,7 @@
 #include "dect2/eloran/eloran_engine.h"
 #include "dect2/nfc/nfc_engine.h"
 #include "dect2/mpt1327/mpt1327_engine.h"
+#include "dect2/isdbs/isdbs_rx.h"
 #include "dect2/fusion/fusion_rx.h"
 #include "dect2/ltr/ltr_rx.h"
 #include "dect2/edacs/edacs_rx.h"
@@ -471,6 +472,7 @@ public:
     ElektroReceiver& elektro() { return rxEl_; }   // Elektro-L HRIT / LRIT / GGAK (telemetry through latestRx)
     ElLoranReceiver& eloran() { return rxEloran_; }   // eLoran / Loran-C (WIP): GRI, stations, arrival times (telemetry through latestRx)
     NfcReceiver& nfc() { return rxNfc_; }   // NFC / RFID 13.56 MHz: frame log, tag table, NDEF (telemetry through latestRx)
+    IsdbsReceiver& isdbs() { return rxIsdbs_; }   // ISDB-S (BS satellite TV): stream selection (telemetry through latestRx; the packets go to the TV player like DVB-S)
     MptReceiver& mpt1327() { return rxMpt_; }   // MPT1327 trunking control channel (WIP): messages and channel table (telemetry through latestRx)
     FusionReceiver& fusion() { return rxFusion_; }   // Yaesu Fusion (WIP): callsigns and slow data, the speech codec plug-in (telemetry through latestRx)
     LtrReceiver& ltr() { return rxLtr_; }   // LTR control channel (telemetry through latestRx)
@@ -770,6 +772,7 @@ private:
     ElLoranReceiver rxEloran_;
     NfcReceiver rxNfc_;
     MptReceiver rxMpt_;
+    IsdbsReceiver rxIsdbs_;
     FusionReceiver rxFusion_;
     LtrReceiver rxLtr_;
     EdacsReceiver rxEdacs_;

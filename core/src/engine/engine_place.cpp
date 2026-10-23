@@ -193,6 +193,7 @@ void Engine::configureReceiver(int a, double r) {
     case 153: rxArgos_.configure(r); break;
     case 154: rxSfx_.configure(r); break;
     case 145: rxSb_.configure(r); break;
+    case 155: rxIsdbs_.configure(r); break;
     case 130: rxLtr_.configure(r); break;
     case 131: rxEdacs_.configure(r); break;
     case 156: rxMarineVhf_.configure(r); break;
@@ -323,6 +324,7 @@ void Engine::placeReceiver(int a, double o, double centreHz, double dialHz, doub
     case 153: rxArgos_.setSignalOffset(o); rxArgos_.setDialHz(dialHz); break;
     case 154: rxSfx_.setSignalOffset(o); rxSfx_.setDialHz(dialHz); break;
     case 145: rxSb_.setSignalOffset(o); rxSb_.setCenterHz(centreHz); break;
+    case 155: rxIsdbs_.setSignalOffset(o); rxIsdbs_.setCenterHz(centreHz); break;
     case 130: rxLtr_.setSignalOffset(o); rxLtr_.setCenterHz(centreHz); break;
     case 131: rxEdacs_.setSignalOffset(o); rxEdacs_.setCenterHz(centreHz); break;
     case 156: rxMarineVhf_.setSignalOffset(o); rxMarineVhf_.setCenterHz(centreHz); rxMarineVhf_.setDialHz(dialHz); break;
