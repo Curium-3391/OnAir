@@ -289,6 +289,7 @@ struct RxTelemetry {
         double viterbiMargin = 0, secSinceTps = 0;
         int symbolIdx = 0;
         uint64_t fecDropped = 0;   // symbols the error correction thread was too slow for (pipelined receiver: dropped, the decoder restarted)
+        bool viterbiOnGpu = false; // the Viterbi runs on the GPU (GpuViterbi), not on the CPU
     } dvbt;
     struct Isdbt {               // ISDB-T only: the TMCC parameters and the statistics of the three layers
         bool tmccOk = false;

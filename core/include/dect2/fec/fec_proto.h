@@ -24,6 +24,16 @@ int rs120Decode(uint8_t* word120);
 // branch metrics). Identical results from the NEON, SSE2, AVX2, portable and Rust implementations.
 void viterbiRange(const int8_t* soft, size_t steps, std::vector<uint8_t>& bits, long* metricOut);
 
+// The same code with 8-bit saturating path metrics (16 states per vector) and two independent runs stepped side by side (their chains of
+// dependent operations interleave): about twice the speed of viterbiRange on NEON. Not the same results: the soft values must be at most
+// +-31 (kViterbi8Max; renormalised every second step, so no metric of a surviving path saturates) and a hopeless path's metric saturates at
+// the floor. With soft values scaled to a mean of about 14 its bit error rate matches viterbiRange's within the statistics of 16 million bits
+// (tests/fec/test_viterbi8_ber.cpp). b may be null (one run). Only where viterbi8x2Available() (NEON builds); DVB-T uses it, ISDB-T keeps the
+// bit-exact decoder.
+constexpr int kViterbi8Max = 31;
+bool viterbi8x2Available();
+void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB);
+
 // DVB-T2 BCH (EN 302 755 section 6.1.1): normal frames GF(2^16), short frames GF(2^14), t = 1..12. Bits are one per byte (0 or 1), first bit = highest power.
 class Bch {
 public:

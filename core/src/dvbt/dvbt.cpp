@@ -595,10 +595,17 @@ void bitDeinterleaveLp(const float* in, int mod, int words, float* out) {
 }
 
 // llr * scale, rounded to nearest and limited to +-127
-static void quantise(const float* llr, size_t n, float scale, int8_t* q) {
+static void quantise(const float* llr, size_t n, float scale, int8_t* q, int limit = 127) {
     size_t j = 0;
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
     const float32x4_t sc = vdupq_n_f32(scale);
+    if (limit < 127) {   // (the 8-bit decoder's range; the full range below keeps exactly what the exact decoder always got)
+        const int8x8_t hi = vdup_n_s8((int8_t)limit), lo = vdup_n_s8((int8_t)-limit);
+        for (; j + 8 <= n; j += 8) {
+            const int32x4_t a = vcvtaq_s32_f32(vmulq_f32(vld1q_f32(llr + j), sc)), b = vcvtaq_s32_f32(vmulq_f32(vld1q_f32(llr + j + 4), sc));
+            vst1_s8(q + j, vmax_s8(vmin_s8(vqmovn_s16(vcombine_s16(vqmovn_s32(a), vqmovn_s32(b))), hi), lo));
+        }
+    }
     for (; j + 8 <= n; j += 8) {
         const int32x4_t a = vcvtaq_s32_f32(vmulq_f32(vld1q_f32(llr + j), sc)), b = vcvtaq_s32_f32(vmulq_f32(vld1q_f32(llr + j + 4), sc));
         vst1_s8(q + j, vqmovn_s16(vcombine_s16(vqmovn_s32(a), vqmovn_s32(b))));
@@ -610,20 +617,21 @@ static void quantise(const float* llr, size_t n, float scale, int8_t* q) {
         _mm_storel_epi64((__m128i*)(q + j), _mm_packs_epi16(_mm_packs_epi32(a, b), _mm_setzero_si128()));
     }
 #endif
+    const float lim = (float)limit;
     for (; j < n; j++) {
-        const float v = std::max(-127.f, std::min(127.f, llr[j] * scale));
+        const float v = std::max(-lim, std::min(lim, llr[j] * scale));
         q[j] = (int8_t)(int)(v + (v < 0 ? -0.5f : 0.5f));
     }
 }
 
-void Viterbi::depuncture(const float* llr, size_t n, int rate, int phase, std::vector<int8_t>& soft, float scale) {
+void Viterbi::depuncture(const float* llr, size_t n, int rate, int phase, std::vector<int8_t>& soft, float scale, int limit) {
     static const int kPat[5][7] = {{3, 0, 0, 0, 0, 0, 0}, {3, 2, 0, 0, 0, 0, 0}, {3, 2, 1, 0, 0, 0, 0}, {3, 2, 1, 2, 1, 0, 0}, {3, 2, 2, 2, 1, 2, 1}};
     static const int kLen[5] = {1, 2, 3, 5, 7};
     const int k = kLen[rate];
     // quantise everything first (a plain loop the compiler vectorises), then spread the values over the two outputs of each step
     static thread_local std::vector<int8_t> q;
     q.resize(n);
-    quantise(llr, n, scale, q.data());
+    quantise(llr, n, scale, q.data(), limit);
     int ones = 0;
     for (int j = 0; j < k; j++) ones += (kPat[rate][j] & 1) + ((kPat[rate][j] >> 1) & 1);
     // whole puncturing periods: the position in the output period (2k values) of each of the `ones` input values, from this phase
@@ -672,12 +680,35 @@ void Viterbi::depuncture(const float* llr, size_t n, int rate, int phase, std::v
     soft.resize(out);
 }
 
-void Viterbi::decode(const std::vector<int8_t>& soft, std::vector<uint8_t>& out, int threads, long* metric) {
+void Viterbi::decode(const std::vector<int8_t>& soft, std::vector<uint8_t>& out, int threads, long* metric, bool fast8) {
     const size_t steps = soft.size() / 2;
     out.assign(steps, 0);
     const size_t C = 16384, L = 192;
     const size_t chunks = (steps + C - 1) / C;
     std::vector<long> metrics(chunks, 0);
+    if (fast8 && fecp::viterbi8x2Available()) {
+        // the 8-bit decoder takes two chunks per call (two independent trellises stepped side by side); the same chunks and overlaps
+        const size_t pairs = (chunks + 1) / 2;
+        auto work2 = [&](size_t pi) {
+            DECT2_STAGE("dvbt.viterbi");
+            size_t lo[2] = {0, 0}, hi[2] = {0, 0}, a[2] = {0, 0}, b[2] = {0, 0};
+            const size_t n = std::min<size_t>(2, chunks - 2 * pi);
+            for (size_t k = 0; k < n; k++) {
+                a[k] = (2 * pi + k) * C; b[k] = std::min(steps, a[k] + C);
+                lo[k] = a[k] > L ? a[k] - L : 0; hi[k] = std::min(steps, b[k] + L);
+            }
+            static thread_local std::vector<uint8_t> bits0, bits1;
+            long m0 = 0, m1 = 0;
+            fecp::viterbiRange8x2(soft.data() + 2 * lo[0], hi[0] - lo[0], n > 1 ? soft.data() + 2 * lo[1] : nullptr, n > 1 ? hi[1] - lo[1] : 0, bits0, bits1, &m0, &m1);
+            metrics[2 * pi] = m0;
+            std::copy(bits0.begin() + (ptrdiff_t)(a[0] - lo[0]), bits0.begin() + (ptrdiff_t)(b[0] - lo[0]), out.begin() + (ptrdiff_t)a[0]);
+            if (n > 1) { metrics[2 * pi + 1] = m1; std::copy(bits1.begin() + (ptrdiff_t)(a[1] - lo[1]), bits1.begin() + (ptrdiff_t)(b[1] - lo[1]), out.begin() + (ptrdiff_t)a[1]); }
+        };
+        if (threads <= 1 || pairs <= 1) { for (size_t p = 0; p < pairs; p++) work2(p); }
+        else ThreadPool::shared().parallelFor(pairs, work2, (size_t)threads - 1);
+        if (metric) { long s2 = 0; for (long m : metrics) s2 += m; *metric = s2; }
+        return;
+    }
     auto work = [&](size_t ci) {
         DECT2_STAGE("dvbt.viterbi");
         const size_t a = ci * C, b = std::min(steps, a + C);

@@ -477,7 +477,7 @@ if(APPLE)
 else()
   # no GPU decoder yet (stub), audio through miniaudio
   if(WIN32)
-    target_sources(dect2core PRIVATE core/src/dsp/gpu_ldpc_d3d11.cpp core/src/dsp/gpu_viterbi_stub.cpp core/src/tv/conceal_d3d11.cpp core/src/audio/audioout_native.cpp core/src/audio/audioout_miniaudio.cpp core/src/audio/audioin_miniaudio.cpp)   # Direct3D 11 compute
+    target_sources(dect2core PRIVATE core/src/dsp/gpu_ldpc_d3d11.cpp core/src/dsp/gpu_viterbi_d3d11.cpp core/src/tv/conceal_d3d11.cpp core/src/audio/audioout_native.cpp core/src/audio/audioout_miniaudio.cpp core/src/audio/audioin_miniaudio.cpp)   # Direct3D 11 compute
     pkg_check_modules(AVDEVICE libavdevice)
     if(AVDEVICE_FOUND)
       target_sources(dect2core PRIVATE core/src/audio/videoin_ffmpeg.cpp)
@@ -794,6 +794,12 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_viterbi_simd tests/fec/test_viterbi_simd.cpp)   # the vector K = 7 Viterbi against a scalar copy of the trellis
   target_link_libraries(test_viterbi_simd PRIVATE dect2core)
   add_test(NAME viterbi_simd COMMAND test_viterbi_simd)
+  add_executable(test_viterbi8_ber tests/fec/test_viterbi8_ber.cpp)   # the 8-bit DVB-T Viterbi's bit error rate against the exact decoder's
+  target_link_libraries(test_viterbi8_ber PRIVATE dect2core)
+  add_test(NAME viterbi8_ber COMMAND test_viterbi8_ber)
+  add_executable(test_viterbi_gpu tests/fec/test_viterbi_gpu.cpp)   # the GPU Viterbi (Metal) against the exact CPU decoder; passes where there is no GPU
+  target_link_libraries(test_viterbi_gpu PRIVATE dect2core)
+  add_test(NAME viterbi_gpu COMMAND test_viterbi_gpu)
   add_executable(bench_spectrum tests/bench/bench_spectrum.cpp)
   target_link_libraries(bench_spectrum PRIVATE dect2core)
   # sensitivity / lock-time sweep of every mode with a test signal (docs/SENSITIVITY.md; not a ctest test: minutes per mode)

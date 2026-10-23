@@ -194,3 +194,53 @@ top and is not measured here.
   about 26.8 M steps/s x ~70 instructions = 1.9 G instructions/s, about 0.5-0.6 of a Pi 4 core; DVB-T in all about 1.1-1.3 cores, so real time
   on a Pi 4 needs the Viterbi workers on a second core. DVB-T2 32K 256-QAM: the LDPC alone about 3.7 G instructions/s (2.5 iterations, 925
   blocks/s), about one Pi 4 core; two to three cores in all.
+
+## Third pass: the whole app, the 8-bit Viterbi and the GPU (perf2-dvbt-030)
+
+### The app measured
+
+`dect2` (the GUI app, a renamed copy so it has its own settings) started with `--hidden --mute --file <8 MHz DVB-T at 10 Msps> --rate 10
+--dvbtonly` and the DVB-T/T2 family set in its preferences (family 0, standard 2), the recording looped in real time; process CPU as
+top / Activity Monitor show it: (utime + stime) difference over 60 s of wall time after a 20 s start, 100% = one core. "Panels": the default
+layout (Overview: spectrum, waterfall, constellations); "no panels": `--tab Log` in front. Three rounds back to back, median.
+With `--hidden` the main window is drawn into an invisible window, so the GPU's drawing of the panels costs less than on screen; the CPU
+side of the UI (ImGui, the plots' vertex building) is all there.
+
+Measured 16:49-17:10 (load average 5-12 at the start; others' jobs rose to 96 by the end; base and new alternated, so both saw the same):
+
+| | integ-30 (base) | perf2-dvbt-030 (new) | |
+|---|---|---|---|
+| App, default panels (median of 3: 67.9 / 71.1 / 70.8, and 47.5 / 50.1 / 49.6) | 70.8% | 49.6% | -30% |
+| App, Log tab in front (68.6 / 67.3 / 69.9, and 46.6 / 47.6 / 50.1) | 68.6% | 47.6% | -31% |
+| Headless dect2cli, same file, real time, nice 19 (81.4 / 59.4 / 81.9, and 63.6 / 51.2 / 39.9) | 81.4% | 51.2% | noisy |
+
+Arclamp's figure for the same case on his machine: 89% (117% before his work). The panels cost about 2 points with a hidden window: the
+CPU side of the drawing is small; most of the rest is the receiver. Where the new app's time goes (5 s `sample` while playing): the
+receiver thread 50% of the process (Viterbi 9%, resampler 6%, demapper 5.5%, channel estimate 4%), eight Viterbi workers 2.5-3% each,
+the spectrum thread 10%, the file source thread 10% (8-bit to float; integ-30 now converts per format), the UI thread 6%.
+
+### What changed
+
+- **8-bit Viterbi with two runs side by side** (fecp::viterbiRange8x2, NEON): 16 states per vector, saturating 8-bit metrics renormalised
+  every second step, soft values scaled to a mean of 14 within +-31, two independent chunks interleaved so their dependent chains overlap.
+  About twice the 16-bit decoder's speed. Not bit-identical; tests/fec/test_viterbi8_ber.cpp checks the bit error rate against the exact
+  decoder near the waterfall (rate 1/2 at 2.0 / 2.5 dB, 2/3 at 3.0 / 3.5 / 4.0 dB, 2-3 million bits each): within 4% of the error count
+  plus 3 sigma, which is about 0.015 dB at these slopes; measured: equal within the statistics (e.g. 2/3 at 3.5 dB: 1394 / 1356 errors).
+  DVB-T uses it; ISDB-T keeps the exact decoder (it is compared bit for bit with the Rust one).
+- **GPU Viterbi for DVB-T** (GpuViterbi, Metal; new Direct3D 11 backend): when the computer has a GPU and the compute mode is Auto (the
+  default) or GPU, each block's chunks go to the GPU in one dispatch; the GPU gives the exact 16-bit decoder's bits (tests/fec/test_viterbi_gpu.cpp
+  compares bits and path metric). The toolbar's COMPUTE control (Auto / GPU / CPU) now also covers the DVB-T Viterbi and its tooltip says
+  which stage runs on which device. DECT2_NOGPU=1 keeps everything on the CPU.
+- File source: the 8-bit formats are converted in a loop of their own (the per-sample format switch kept it scalar).
+- Spectrum thread: its block copies are reused instead of allocated per block; `Engine::setSpectrumBlocksPerFrame(n)` /
+  DECT2_SPEC_BLOCKS caps the FFT blocks averaged per display frame (16 = every sample at 10 Msps with 32768 bins).
+- DVB-T resampler: 14 lobes (32 taps) instead of 16 (36): worst in-band error -42 dB, at the band-edge carriers only.
+- DVB-T equaliser: one reciprocal per carrier instead of two float and one double division.
+
+### Left, and the GPU
+
+- The Viterbi (8-bit, two runs) is still the largest single cost of DVB-T: about a third of the process with its workers.
+- The GPU Viterbi for DVB-T is wired (compute mode GPU) but EXPERIMENTAL: Auto keeps DVB-T on the CPU until it has been measured in the app;
+  the Direct3D 11 backend has never run on a Windows GPU here and is off unless DECT2_GPU_VITERBI_D3D11=1; no Vulkan backend (no SPIR-V
+  compiler on the build machines; the LDPC one shows the pattern). The T2 LDPC runs on the GPU in Auto (the default) where there is one.
+- DVB-C: serial recurrences (timing loop, equaliser taps, carrier phase) set its cost; nothing further that keeps the stream identical.

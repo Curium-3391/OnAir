@@ -227,7 +227,7 @@ public:
     std::string sourceNote() const { std::lock_guard<std::mutex> lk(noteMu_); return retuneNote_.empty() ? note_ : retuneNote_; }
     // A live radio that has stopped delivering samples (unplugged, or its USB connection broke). A HackRF is reopened when it comes back.
     bool radioLost() const { return radioLost_; }
-    void setComputeMode(int m) { rx_.setComputeMode(m); rxDvbs_.setComputeMode(m); rxDtmb_.setComputeMode(m); }
+    void setComputeMode(int m) { rx_.setComputeMode(m); rxT_.setComputeMode(m); rxDvbs_.setComputeMode(m); rxDtmb_.setComputeMode(m); }
     void selectPlp(int id) { rx_.selectPlp(id); }
     // Which standard to decode: 0 = automatic (alternates between DVB-T2 and DVB-T until one locks), 1 = DVB-T2, 2 = DVB-T, 3 = ATSC, 4 = DAB, 5 = ATSC 3.0, 6 = ISDB-T, 7 = FM,
     // 8 = DVB-S/S2, 9 = DTMB, 10 = analog TV, 11 = DMR, 12 = DRM, 13 = ADS-B, 14 = GNSS,
@@ -274,6 +274,8 @@ public:
     bool latestSpectrum(SpectrumFrame& out, uint64_t lastSeq);
     // no spectrum fft when headless, autobw needs it
     void setSpectrumEnabled(bool on) { analyzer_.setTransform(on); }
+    // display cost: FFT blocks averaged per spectrum frame (16 = every sample at 10 Msps; 4 = a quarter of the FFT work, a noisier trace)
+    void setSpectrumBlocksPerFrame(int n) { analyzer_.setBlocksPerFrame((size_t)(n < 1 ? 1 : n)); }
     // The impulse noise blanker on the samples, before the spectrum and every decoder (#264; off by default). threshold: times the mean
     // magnitude; widthUs: the blank after a click. nbBlankedPct: the share of samples blanked over the last second or so.
     void setNoiseBlanker(bool on, float threshold, float widthUs) { nbThr_ = threshold; nbWidthUs_ = widthUs; nbOn_ = on; nbDirty_ = true; }
