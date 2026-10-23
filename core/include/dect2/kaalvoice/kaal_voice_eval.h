@@ -3,6 +3,8 @@
 // Metrics (reference vs decoded, time-aligned):
 //   snr      waveform SNR in dB over the whole signal
 //   segSnr   mean of per-20 ms SNRs clamped to [-10, 35] dB, over active frames only
+//   snrLow / segSnrLow  the same on the low band only (16 kHz input: both signals low-passed at 3.8 kHz). A parametric high band
+//            (noise with the right envelope) has no waveform match, so for 16 kHz speech these are the waveform-coding scores
 //   lsd      log-spectral distance in dB (32 ms Hann frames, active frames), whole band; lsdLow below 3.7 kHz, lsdHigh above
 //   bld      bark loudness disturbance: per frame, critical-band powers -> loudness (power^0.23), absolute difference with a
 //            0.25 dead-zone, added energy weighted x2 against missing energy (PESQ-like idea, NOT calibrated to MOS); lower is better
@@ -19,6 +21,7 @@ namespace eval {
 
 struct Metrics {
     double snr = 0, segSnr = 0, lsd = 0, lsdLow = 0, lsdHigh = 0, bld = 0;
+    double snrLow = 0, segSnrLow = 0;   // 16 kHz signals: SNR of the band below 3.8 kHz (both low-passed); = snr at 8 kHz
     int delay = 0;       // alignment used (samples)
     int frames = 0;      // active frames scored
 };

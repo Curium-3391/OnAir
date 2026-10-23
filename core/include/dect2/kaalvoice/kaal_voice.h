@@ -29,11 +29,11 @@ enum class CodecId : uint8_t {
     KV4 = 4,          // this codec
 };
 
-// Speech payload rates per slot (bits per 20 ms in brackets). The four-slot KAAL PHY uses K4_8 / K6_0 / K8_0; HQ12 / HQ16 are the
-// single-slot high-quality profiles.
-enum class Profile : uint8_t { K4_8 = 0, K6_0 = 1, K8_0 = 2, HQ12 = 3, HQ16 = 4, Count = 5 };
-int profileBitsPer20ms(Profile p);     // 96, 120, 160, 240, 320
-const char* profileName(Profile p);    // "4.8", "6.0", "8.0", "12", "16"
+// Speech payload rates per slot (bits per 20 ms in brackets). The four-slot KAAL v4 PHY (docs/KAAL-SLOTS.md) carries 40 ms payloads:
+// V80 = K8_0, V60 = K6_0, V48 = K4_8, V32R = K3_2. HQ12 / HQ16 are single-slot high-quality profiles.
+enum class Profile : uint8_t { K4_8 = 0, K6_0 = 1, K8_0 = 2, HQ12 = 3, HQ16 = 4, K3_2 = 5, Count = 6 };
+int profileBitsPer20ms(Profile p);     // 96, 120, 160, 240, 320, 64
+const char* profileName(Profile p);    // "4.8", "6.0", "8.0", "12", "16", "3.2"
 
 enum class FrameType : uint8_t { Speech = 0, Sid = 1, NoData = 2 };
 
@@ -48,6 +48,9 @@ struct Config {
     bool dtx = true;                // encoder: voice activity detection + discontinuous transmission
     bool noiseSuppress = false;     // encoder: input noise suppression (adds 8 ms of delay)
     bool postfilter = true;         // decoder: adaptive formant / pitch postfilter
+    // Fixed-size containers (the KAAL v4 slots): every Speech and Sid frame is payloadBytes long and its first bit tells them apart
+    // (0 speech, 1 SID); speech then has payloadBits - 1 bits. NoData stays empty (the slot carries data instead).
+    bool inBandType = false;
 };
 
 struct Info {
@@ -60,7 +63,7 @@ struct Info {
     int delaySamples = 0;           // decoder output lags the encoder input by this many samples (noise suppressor included)
 };
 
-// Checks a configuration; payloadBits (custom) must lie in [72 * frameMs / 20, 400 * frameMs / 20].
+// Checks a configuration; payloadBits (custom) must lie in [64 * frameMs / 20, 400 * frameMs / 20] (64 needs 40 ms frames).
 bool valid(const Config& c, std::string* why = nullptr);
 Info info(const Config& c);
 // The frame type a received payload length stands for (out-of-band typing): 0 -> NoData, sidBytes -> Sid, payloadBytes -> Speech.

@@ -360,6 +360,15 @@ Metrics compare(const std::vector<int16_t>& ref, const std::vector<int16_t>& dec
         sc++;
     }
     m.segSnr = sc ? ss / sc : 0;
+    m.snrLow = m.snr;
+    m.segSnrLow = m.segSnr;
+    if (fs == 16000) {
+        const std::vector<int16_t> r8 = downsample2(std::vector<int16_t>(ref.begin(), ref.begin() + n));
+        const std::vector<int16_t> y8 = downsample2(std::vector<int16_t>(dec.begin() + delay, dec.begin() + delay + n));
+        const Metrics l = compare(r8, y8, 8000, 0);
+        m.snrLow = l.snr;
+        m.segSnrLow = l.segSnr;
+    }
     // spectral measures, 32 ms Hann frames, hop 16 ms
     const int N = fs == 8000 ? 256 : 512, hop = N / 2;
     std::vector<float> win((size_t)N);

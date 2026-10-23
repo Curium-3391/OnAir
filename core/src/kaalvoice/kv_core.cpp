@@ -2,6 +2,8 @@
 #include "kv_core.h"
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 namespace dect2 {
 namespace kaalvoice {
@@ -13,7 +15,8 @@ const int kHbEdge[kHbBands + 1] = {36, 41, 47, 54, 61, 69, 80};
 namespace {
 const Tier kTiers[] = {
     // minBits20  L  lsf res lag0 lagD gp gc   high band {on, gain, shape, time}       postfilter num/den/ltp
-    {72,  80, 22, 1, 7, 4, 3, 4, {true, 5, 0, 0}, 0.55, 0.72, 0.50},
+    {60,  80, 20, 1, 7, 3, 3, 3, {true, 4, 0, 0}, 0.55, 0.72, 0.50},
+    {80,  80, 22, 1, 7, 4, 3, 4, {true, 5, 0, 0}, 0.55, 0.72, 0.50},
     {110, 80, 24, 2, 8, 4, 3, 4, {true, 5, 1, 0}, 0.55, 0.72, 0.50},
     {140, 40, 26, 2, 8, 4, 3, 4, {true, 5, 1, 0}, 0.60, 0.75, 0.40},
     {200, 40, 28, 2, 8, 5, 4, 5, {true, 5, 2, 2}, 0.65, 0.75, 0.30},
@@ -72,9 +75,11 @@ bool makeProf(const Config& c, Prof& P, std::string* why, const Tier* ov) {
     if (c.sampleRate != 8000 && c.sampleRate != 16000) return fail("sample rate must be 8000 or 16000");
     if (c.frameMs != 20 && c.frameMs != 40) return fail("frame length must be 20 or 40 ms");
     if ((int)c.profile < 0 || c.profile >= Profile::Count) return fail("unknown profile");
-    const int B = c.payloadBits > 0 ? c.payloadBits : profileBitsPer20ms(c.profile) * c.frameMs / 20;
-    const int B20 = B * 20 / c.frameMs;
-    if (B20 < 72 || B20 > 400) return fail("payload bits per 20 ms must be in [72, 400]");
+    const int Bc = c.payloadBits > 0 ? c.payloadBits : profileBitsPer20ms(c.profile) * c.frameMs / 20;
+    const int B20 = Bc * 20 / c.frameMs;
+    if (B20 < 64 || B20 > 400) return fail("payload bits per 20 ms must be in [64, 400]");
+    if (B20 < 72 && c.frameMs != 40) return fail("below 72 bits per 20 ms the frame must be 40 ms");
+    const int B = Bc - (c.inBandType ? 1 : 0);   // the type bit
     const Tier* t = &kTiers[0];
     for (int i = 0; i < kNTiers; i++)
         if (B20 >= kTiers[i].minBits20) t = &kTiers[i];
@@ -211,8 +216,8 @@ void unpackFrame(const Prof& P, const uint8_t* in, uint32_t bad, FrameQ& q, bool
 namespace {
 // Mean LSFs (radians) and the standard deviation of the inter-frame prediction residual, measured on the repo's speech sample and
 // the synthetic test speech (tools/kaalvoice_bench --lsfstats).
-const double kLsfMean[kP] = {0.270, 0.480, 0.830, 1.180, 1.500, 1.810, 2.110, 2.380, 2.660, 2.900};
-const double kLsfSig[kP] = {0.045, 0.060, 0.080, 0.085, 0.085, 0.085, 0.080, 0.075, 0.070, 0.060};
+const double kLsfMean[kP] = {0.220, 0.370, 0.560, 0.870, 1.260, 1.530, 1.860, 2.140, 2.440, 2.680};
+const double kLsfSig[kP] = {0.064, 0.095, 0.140, 0.137, 0.140, 0.136, 0.104, 0.095, 0.070, 0.062};
 const double kStepFactor[7] = {0.0, 1.596, 0.996, 0.586, 0.335, 0.188, 0.104};
 constexpr double kLsfGap = 0.025;
 }  // namespace
@@ -462,7 +467,7 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
     }
 
     // LSF quantisation
-    double lsfQ[kP], midQ[kP], midU[kP];
+    double lsfQ[kP], midQ[kP] = {}, midU[kP] = {};
     LsfQ::quantise(P, lsfU, st_.lsfPrev, q.lsf, lsfQ);
     if (P.halves == 2) {
         int bi = 0;
@@ -631,6 +636,19 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         }
         sq.gp = bgi;
         sq.gc = bgj;
+        if (getenv("KVDBG")) {   // DEBUG
+            static double sx = 0, sa = 0, sf = 0, sq2 = 0;
+            const double xx = dot(x, x, L);
+            const double ea = xx - xy * xy / yy;   // acb only, optimal gain
+            // joint optimal gains
+            const double det = yy * zz - yz * yz;
+            double gpo = 0, gco = 0;
+            if (det > 1e-9) { gpo = (xy * zz - xz * yz) / det; gco = (xz * yy - xy * yz) / det; }
+            const double ef = xx - 2 * gpo * xy - 2 * gco * xz + gpo * gpo * yy + 2 * gpo * gco * yz + gco * gco * zz;
+            sx += xx; sa += ea; sf += ef; sq2 += xx + be;
+            static int cnt = 0;
+            if (++cnt % 200 == 0) fprintf(stderr, "wSNR acb %.2f full %.2f quant %.2f | gpo %.2f gp %.2f gco %.1f gc %.1f\n", 10*std::log10(sx/sa), 10*std::log10(sx/sf), 10*std::log10(sx/sq2), gpo, gpLevel(P.gpBits,bgi), gco, gcv[bgj]);
+        }
         const double gp = gpLevel(P.gpBits, bgi), gc = gcv[bgj];
         for (int i = 3; i > 0; i--) st_.gcHist[i] = st_.gcHist[i - 1];
         st_.gcHist[0] = gcLevel(P.gcBits, bgj);
@@ -640,12 +658,20 @@ void CoreEncoder::encode(const float* in8, FrameQ& q) {
         for (int n = 0; n < L; n++) u[n] = (float)gp * exc[pos + n] + (float)gc * c[n];
         std::memcpy(exc + pos, u, sizeof(float) * (size_t)L);
         float w[80];
+        if (getenv("KVDBG")) {
+            float m[kP], sy[80];
+            std::memcpy(m, st_.syn, sizeof m);
+            iirA(aq[s], u, sy, L, m);
+            static double se = 0, sx = 0;
+            for (int n = 0; n < L; n++) { se += (frame[s * L + n] - sy[n]) * (frame[s * L + n] - sy[n]); sx += frame[s * L + n] * frame[s * L + n]; }
+            static int cnt = 0;
+            if (++cnt % 200 == 0) fprintf(stderr, "enc local SNR %.2f\n", 10 * std::log10(sx / se));
+        }
         cascade(aq[s], a1[s], a2[s], u, w, L, st_.syn, errIir_);
     }
     std::memmove(exc, exc + N, sizeof(float) * kExcHist);
     std::memmove(wsp_, wsp_ + N, sizeof(float) * H);
-    for (int i = 0; i < kP; i++) { st_.lsfPrev[i] = lsfQ[i]; lsfUnqPrev_[i] = lsfU[i]; }
-    for (int i = 0; i < kP; i++) lsfOut_[i] = lsfU[i];
+    for (int i = 0; i < kP; i++) { st_.lsfPrev[i] = lsfQ[i]; lsfUnqPrev_[i] = lsfU[i]; lsfOut_[i] = lsfU[i]; }
 }
 
 // ---------------------------------------------------------------- decoder
@@ -679,7 +705,7 @@ void CoreDecoder::restart(const double* lsf) {
 void CoreDecoder::decode(const FrameQ* q, const bool* fcbBad, bool pf, float* out) {
     const Prof& P = P_;
     const int N = P.N8, L = P.L, sh = P.S / P.halves;
-    double lsfQ[kP], midQ[kP];
+    double lsfQ[kP], midQ[kP] = {};
     const bool lost = q == nullptr;
     if (lost) {
         lost_++;

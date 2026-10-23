@@ -134,24 +134,27 @@ class CoreEncoder {
 public:
     explicit CoreEncoder(const Prof& P);
     void reset();
-    // x: N8 + kLA new samples are taken as: the frame [0, N8) and the look-ahead [N8, N8 + kLA) relative to the coded frame.
-    // The caller passes a pointer to the start of the frame inside a buffer with at least kLPCPast samples of history before it.
-    void encode(const float* frame, FrameQ& q, double* lsfOut);
+    // in8: N8 new 8 kHz samples. The coded frame lags them by kLA (look-ahead).
+    void encode(const float* in8, FrameQ& q);
     // Restart after DTX: both sides reset excitation, gain prediction and set the LSF predictor to `lsf`.
     void restart(const double* lsf);
     double voicing() const { return voicing_; }   // open-loop pitch correlation of the last frame (0..1)
     double residualDb() const { return resDb_; }   // LP residual power of the last frame (dB), for the SID
-    static constexpr int kPast = 80;               // history needed before the frame
+    const double* lsfUnq() const { return lsfOut_; }   // unquantised end-of-frame LSF of the last frame
+    const float* codedFrame() const { return sp_ + kPast; }   // the 8 kHz samples of the frame just coded
+    static constexpr int kPast = 80;               // history kept before the frame
 private:
+    int openLoop(const float* w, int n);
     const Prof& P_;
     CoreState st_;
-    double lsfUnqPrev_[kP];
-    float wsp_[kPitMax + kMaxN8 + 8];   // weighted speech history + frame (open-loop pitch)
+    double lsfUnqPrev_[kP], lsfOut_[kP] = {};
+    float sp_[kPast + kMaxN8 + kLA];
+    float wsp_[kPitMax + 1 + kMaxN8];   // weighted speech history + frame (open-loop pitch)
     float wFirMem_[kP], wIirMem_[kP];   // weighting filter memories for the weighted speech
     float errIir_[kP];                  // weighted-synthesis IIR (1/A(z/g2)) memory of the error path
-    float synW_[kP];                    // FIR A(z/g1) memory of the error path (past decoded samples = st_.syn)
-    double voicing_ = 0, resDb_ = 0;
-    bool first_ = true;
+    double phi_[80 * 80];
+    double voicing_ = 0, resDb_ = 0, olVoicing_ = 0;
+    int olPrev_ = 60;
 };
 
 class CoreDecoder {
@@ -170,12 +173,12 @@ private:
     CoreState st_;
     Rng rng_;
     int lost_ = 0;
-    double gpLast_ = 0, gcDbLast_ = 0, voicing_ = 0;
+    double gpLast_ = 0, voicing_ = 0;
     // postfilter state
     float pfRes_[kPitMax + 2 + kMaxN8];
     float pfFir_[kP], pfIir_[kP];
     float pfTilt_ = 0;
-    double pfAgc_ = 1.0;
+    double pfAgc_ = 1.0, mute_ = 1.0;
 };
 
 // ---- high band (16 kHz) ----
@@ -186,10 +189,11 @@ public:
     // hb: frameMs * 16 samples of the high-band signal; fills q.hb[0..halves)
     void encode(const float* hb, FrameQ& q);
     double levelDb() const { return lvl_; }   // mean high-band power (dB per bin) of the last frame (SID)
+    double tiltDb() const { return tilt_; }   // spectral tilt (dB from the band middle to the top band) of the last frame
 private:
     const Prof& P_;
     float hist_[kHbM];
-    double lvl_ = 0;
+    double lvl_ = 0, tilt_ = 0;
 };
 class HbDecoder {
 public:
