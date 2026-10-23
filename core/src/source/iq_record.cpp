@@ -1,6 +1,7 @@
 #include "dect2/common/thread_name.h"
 #include "dect2/common/u8file.h"
 #include "dect2/source/iq_record.h"
+#include "dect2/source/bluefile.h"
 #include "dect2/files/files_proto.h"
 #include "dect2/engine/mode_tuning.h"
 #include <algorithm>
@@ -35,6 +36,11 @@ std::string recordingFileName(const std::string& modeId, double centerHz, double
     char b[160];
     snprintf(b, sizeof b, "onair_%s_%.3fMHz_%.9gMsps_%s.%s", id.c_str(), centerHz / 1e6, rateHz / 1e6, stamp, fmt == FileFormat::CF32 ? "cf32" : "cs8");
     return b;
+}
+
+std::string blueRecordingName(const std::string& name) {
+    const size_t d = name.find_last_of('.');
+    return (d == std::string::npos ? name : name.substr(0, d)) + ".tmp";
 }
 
 const char* sigmfDatatype(FileFormat fmt) { return fmt == FileFormat::CF32 ? "cf32_le" : fmt == FileFormat::CU8 ? "cu8" : "ci8_le"; }
@@ -75,6 +81,20 @@ bool IqRecorder::start(const std::string& path, FileFormat fmt, double rateHz, s
     stop();
     if (fmt != FileFormat::CS8 && fmt != FileFormat::CF32) { err = "only 8-bit signed and float files can be recorded"; return false; }
     if (rateHz <= 0) { err = "the radio has no sample rate yet"; return false; }
+    const bool asBlue = blue::isBlueExtension(path);
+    if (asBlue) {
+        blue::WriteSpec ws;
+        ws.complex = true; ws.kind = fmt == FileFormat::CF32 ? 'F' : 'B'; ws.sampleRate = rateHz; ws.centerHz = centerHz_; ws.description = sigmfDesc_;
+        auto* w = new blue::Writer;
+        if (!w->open(path, ws, err)) { delete w; return false; }
+        blue_ = w;
+        fmt_ = fmt; rate_ = rateHz; path_ = path;
+        { std::lock_guard<std::mutex> lk(mu_); q_.clear(); qBytes_ = 0; stopReq_ = false; samples_ = bytes_ = dropped_ = 0; error_.clear(); }
+        sigmfPath_.clear();
+        active_ = true;
+        th_ = dect2::namedThread("onair-iqrec", [this] { writerLoop(); });
+        return true;
+    }
     try {
         const std::filesystem::path p = dect2::u8file(path);
         if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path());
@@ -141,7 +161,8 @@ void IqRecorder::writerLoop() {
         std::vector<uint8_t> blk = std::move(q_.front());
         q_.pop_front();
         lk.unlock();
-        const bool ok = fwrite(blk.data(), 1, blk.size(), (FILE*)file_) == blk.size();
+        std::string werr;
+        const bool ok = blue_ ? static_cast<blue::Writer*>(blue_)->writeBytes(blk.data(), blk.size(), werr) : fwrite(blk.data(), 1, blk.size(), (FILE*)file_) == blk.size();
         lk.lock();
         qBytes_ -= blk.size();
         if (!ok) {
@@ -155,7 +176,7 @@ void IqRecorder::writerLoop() {
 }
 
 void IqRecorder::stop() {
-    if (!th_.joinable() && !file_) return;
+    if (!th_.joinable() && !file_ && !blue_) return;
     {
         std::lock_guard<std::mutex> lk(mu_);
         stopReq_ = true;
@@ -164,6 +185,7 @@ void IqRecorder::stop() {
     cv_.notify_all();
     if (th_.joinable()) th_.join();
     if (file_) { fclose((FILE*)file_); file_ = nullptr; writeSigmf(true); }
+    if (blue_) { auto* w = static_cast<blue::Writer*>(blue_); std::string e; if (!w->close(e)) { std::lock_guard<std::mutex> lk(mu_); error_ = e; } delete w; blue_ = nullptr; }
 }
 
 RecordingStats IqRecorder::stats() const {

@@ -73,7 +73,7 @@ int fixRegion(int v) { return v == 1 || v == 2 ? v : 0; }
 int fixDeemph(int v) { return v == 75 ? 75 : 50; }
 int fixChanKhz(int v) { return v > 0 ? std::min(300, std::max(100, v)) : 0; }
 int fixTone(int v) { return std::max(-6, std::min(6, v)); }
-int fixRecFormat(int v) { return v == 1 ? 1 : 0; }
+int fixRecFormat(int v) { return v == 1 || v == 2 ? v : 0; }
 
 // Every plain setting, in the order of the settings file's sections. Keys are the names stored on disk: never rename one.
 const std::vector<PrefKey>& keyTable() {

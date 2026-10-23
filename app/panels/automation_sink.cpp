@@ -152,8 +152,8 @@ std::pair<bool, std::string> doOnUi(App& a, const Pending& p) {
         int sec = std::max(1, std::min(3600, atoi(get("seconds").c_str())));
         if (!a.engine.running()) return {false, "the receiver is not running"};
         if (a.engine.recordingStats().active) { gIqStop = std::max(gIqStop, now + sec); return {true, "already recording: extended"}; }
-        const dect2::FileFormat f = a.recFormat == 1 ? dect2::FileFormat::CF32 : dect2::FileFormat::CS8;
-        const std::string path = plat::dataDir() + "/recordings/" + a.engine.recordingName(f);
+        const dect2::FileFormat f = a.recFormat >= 1 ? dect2::FileFormat::CF32 : dect2::FileFormat::CS8;
+        const std::string path = plat::dataDir() + "/recordings/" + (a.recFormat == 2 ? dect2::blueRecordingName(a.engine.recordingName(f)) : a.engine.recordingName(f));
         std::string err;
         if (!a.engine.startRecording(path, f, err)) { a.engine.log("automation: recording failed: " + err); return {false, err}; }
         a.recDonePath.clear();

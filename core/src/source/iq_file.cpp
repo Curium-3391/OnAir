@@ -1,6 +1,7 @@
 #include "dect2/common/u8file.h"
 #include "dect2/source/iq_file.h"
 #include "dect2/files/files_proto.h"
+#include "dect2/source/bluefile.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -119,10 +120,51 @@ bool probeWav(const std::string& path, IqFileInfo& out, std::string& err) {
     return false;
 }
 
+bool probeBlue(const std::string& path, IqFileInfo& out, std::string& err, bool allowConvert) {
+    blue::Info b;
+    if (!blue::probe(path, b, err)) return false;
+    if (b.sampleRate <= 0) { err = "the BLUE file does not give a sample rate (xdelta): " + path; return false; }
+    IqFileInfo r;
+    r.blue = true;
+    r.sampleRate = b.sampleRate;
+    r.centerHz = b.centerHz;
+    r.numSamples = b.samples;
+    r.description = b.description + (b.truncated ? (b.description.empty() ? "" : ", ") + std::string("file is shorter than its header says") : "");
+    r.dataPath = path;
+    // complex int8 / int16 / float32 play from the file itself, in the file's byte order
+    const bool direct = b.complex && (b.kind == 'B' || b.kind == 'I' || b.kind == 'F');
+    if (direct) {
+        r.format = b.kind == 'B' ? FileFormat::CS8 : b.kind == 'I' ? FileFormat::CI16 : FileFormat::CF32;
+        r.bigEndian = b.dataBig && b.kind != 'B';
+        r.offsetBytes = b.dataStart;
+        r.endBytes = b.dataStart + b.dataBytes;
+        out = r;
+        return true;
+    }
+    // everything else (real data plays as I with Q = 0): a cf32 copy, reused while the source is unchanged
+    r.format = FileFormat::CF32;
+    r.converted = true;
+    r.offsetBytes = 0; r.endBytes = 0;
+    if (!allowConvert) { out = r; return true; }
+    std::error_code ec;
+    const auto stamp = std::filesystem::last_write_time(fsPath(path), ec).time_since_epoch().count();
+    const uint64_t h = std::hash<std::string>{}(path) ^ ((uint64_t)stamp * 1099511628211ull) ^ (b.dataBytes * 31ull);
+    char nm[64];
+    snprintf(nm, sizeof nm, "onair-blue-%016llx.cf32", (unsigned long long)h);
+    const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec) / nm;
+    const std::string tmpS = tmp.string();
+    const uint64_t want = b.samples * 8;
+    if (!(std::filesystem::exists(tmp, ec) && std::filesystem::file_size(tmp, ec) == want) && !blue::convertToCf32(path, tmpS, err)) return false;
+    r.dataPath = tmpS;
+    out = r;
+    return true;
+}
+
 } // namespace
 
-bool probeIqFile(const std::string& path, IqFileInfo& out, std::string& err) {
+bool probeIqFile(const std::string& path, IqFileInfo& out, std::string& err, bool allowConvert) {
     err.clear();
+    if (blue::isBlueExtension(path)) return probeBlue(path, out, err, allowConvert);
     if (endsWith(path, ".sigmf-meta")) return probeSigmf(path, "", out, err);
     if (endsWith(path, ".sigmf-data")) {
         const std::string meta = path.substr(0, path.size() - strlen(".sigmf-data")) + ".sigmf-meta";
@@ -130,6 +172,7 @@ bool probeIqFile(const std::string& path, IqFileInfo& out, std::string& err) {
         return probeSigmf(meta, path, out, err);
     }
     if (endsWith(path, ".wav")) return probeWav(path, out, err);
+    if (!endsWith(path, ".cs8") && !endsWith(path, ".cu8") && !endsWith(path, ".cf32") && blue::hasMagic(path)) return probeBlue(path, out, err, allowConvert);   // a BLUE file under another name
     return false;
 }
 
@@ -138,7 +181,7 @@ std::vector<RecordingListing> listRecordingFiles(const std::string& dir) {
     std::error_code ec;
     const std::filesystem::path d = fsPath(dir);
     if (!std::filesystem::is_directory(d, ec)) return out;
-    static const char* const kRaw[] = {".cs8", ".cu8", ".cf32", ".ci16", ".cu16", ".wav"};
+    static const char* const kRaw[] = {".cs8", ".cu8", ".cf32", ".ci16", ".cu16", ".wav", ".tmp", ".prm", ".blue", ".bluefile"};
     std::vector<std::string> names;
     for (std::filesystem::directory_iterator it(d, ec), end; !ec && it != end; it.increment(ec))
         if (it->is_regular_file(ec)) names.push_back(it->path().filename().string());
@@ -160,15 +203,17 @@ std::vector<RecordingListing> listRecordingFiles(const std::string& dir) {
         r.fileName = n; r.path = path; r.sigmf = meta;
         IqFileInfo info; std::string err;
         std::string dataPath = path;
-        if (probeIqFile(path, info, err)) {
+        if (probeIqFile(path, info, err, false)) {
+            r.blue = info.blue;
             r.format = info.format; r.sampleRate = info.sampleRate; r.centerHz = info.centerHz; r.mode = info.description;
             dataPath = info.dataPath;
             const uint64_t size = std::filesystem::file_size(fsPath(dataPath), ec);
             ec.clear();
             const uint64_t end = info.endBytes ? info.endBytes : size;
-            if (end > info.offsetBytes && r.sampleRate > 0) r.seconds = (double)((end - info.offsetBytes) / bytesPerSample(r.format)) / r.sampleRate;
+            if (info.numSamples && r.sampleRate > 0) r.seconds = (double)info.numSamples / r.sampleRate;
+            else if (end > info.offsetBytes && r.sampleRate > 0) r.seconds = (double)((end - info.offsetBytes) / bytesPerSample(r.format)) / r.sampleRate;
         } else {
-            if (!err.empty() || meta) continue;   // a WAV or SigMF that cannot be played: not listed
+            if (!err.empty() || meta || blue::isBlueExtension(n)) continue;   // a WAV or SigMF that cannot be played: not listed
             r.format = guessFormat(path);          // a raw file: the rate and format its name says
             r.sampleRate = guessSampleRate(path);
             const uint64_t size = std::filesystem::file_size(fsPath(path), ec);

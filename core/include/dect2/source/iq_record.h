@@ -28,6 +28,8 @@ struct RecordingStats {
 std::string recordingFileName(const std::string& modeId, double centerHz, double rateHz, FileFormat fmt);
 // The short name of an engine standard as used in recording names ("dvb", "fm", "dab", ...)
 std::string recordingModeId(int stdMode);
+// The same name with the BLUE extension ("...Msps_<stamp>.tmp"): the recorder writes an X-Midas BLUE file for it
+std::string blueRecordingName(const std::string& name);
 
 // SigMF (what IQEngine reads): the metadata file next to a recording. datatype: cs8 ri8, cu8 ru8_le, cs16 ri16_le, cf32 cf32_le.
 struct SigmfInfo {
@@ -50,6 +52,8 @@ public:
     // description: the sidecar's description (the mode id the recording was made in, read back by the recording library)
     void setSigmf(bool on, double centerHz = 0, std::string description = "") { sigmf_ = on; centerHz_ = centerHz; sigmfDesc_ = std::move(description); }
     // Opens the file (creating its folder) and starts the writer thread. Only CS8 and CF32 can be recorded.
+    // A path ending .tmp / .blue / .prm is written as an X-Midas BLUE file (bluefile.h: complex int8 / float32, rate and centre in the header
+    // and keywords); no SigMF files are made for it.
     bool start(const std::string& path, FileFormat fmt, double rateHz, std::string& err);
     void stop();
     bool active() const { return active_.load(std::memory_order_relaxed); }
@@ -75,6 +79,7 @@ private:
     std::string error_;
     std::thread th_;
     void* file_ = nullptr;   // FILE*
+    void* blue_ = nullptr;   // blue::Writer* when the recording is a BLUE file
     bool sigmf_ = false;
     double centerHz_ = 0;
     std::string sigmfPath_, sigmfWhen_, sigmfDesc_;

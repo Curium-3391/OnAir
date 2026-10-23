@@ -12,8 +12,9 @@
 
 namespace dect2 {
 
-enum class IqFileFormat { SigmfCf32 = 0, SigmfCi16 = 1, SigmfCs8 = 2, RawCf32 = 3, WavIq16 = 4 };
-constexpr int kIqFileFormats = 5;
+enum class IqFileFormat { SigmfCf32 = 0, SigmfCi16 = 1, SigmfCs8 = 2, RawCf32 = 3, WavIq16 = 4,
+                         BlueCf32 = 5, BlueCi16 = 6, BlueCs8 = 7 };   // X-Midas BLUE (.tmp): complex float / int16 / int8, rate and centre in the header
+constexpr int kIqFileFormats = 8;
 const char* iqFileFormatName(IqFileFormat f);   // "SigMF cf32", ...
 // "onair_tx_<mode>_<MHz>MHz_<rate>sps_<yyyymmdd-hhmmss>" without an extension
 std::string iqFileBaseName(const std::string& modeId, double centerHz, double rateHz);
@@ -58,6 +59,7 @@ private:
     IqFileTxConfig cfg_;
     double rate_ = 0;
     void* f_ = nullptr;   // FILE*
+    void* blue_ = nullptr;   // blue::Writer* for the BLUE formats
     std::atomic<uint64_t> samples_{0}, bytes_{0};
     std::chrono::steady_clock::time_point t0_;
     bool started_ = false;
