@@ -3,6 +3,8 @@
 // old codecs' wrapper encodes three frames per frame, so their RTF is about 3x what a streaming encoder would need). No listening test: the numbers are SNR / spectral distances only.
 //
 //   kaalvoice_bench [--wav file.wav]... [--out dir] [--quick] [--lsfstats]
+// --enhance: decoder-side enhancer on vs off per profile, decode-only CPU (docs/KAAL-ENHANCE.md); --ablate adds one row per stage
+// removed, noise reduction and 3 % loss; --persignal prints every signal.
 // --out writes every decoded signal as a WAV next to the reference, --lsfstats prints the LSF statistics the quantiser is built on.
 #include "dect2/kaalvoice/kaal_voice.h"
 #include "dect2/kaalvoice/kaal_voice_eval.h"

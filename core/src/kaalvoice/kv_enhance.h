@@ -25,8 +25,10 @@ struct EnhTier {
     double tilt;         // tilt compensation factor
     double fill;         // energy restoration: noise power relative to the pulse power, at zero voicing
     double bwe;          // high band: largest harmonic share
+    double restoreDb;    // energy restoration: level the waveform-matching gains lose on average (low band, dB)
 };
 const EnhTier& enhTierOf(const Prof& P);
+EnhTier* enhTierTable(int* n);   // the tier table (the tuning tool changes it; read once per Enhancer)
 
 class Enhancer {
 public:
@@ -66,7 +68,7 @@ private:
     double hbLs_[kHbBands];
     bool hbHave_;
     // output
-    float last_[2];
+    float last_[2];                      // last output sample, mean |step| of the last 1 ms
     double env_;                         // output RMS of the recent past
     double noiseDb_;
     // noise reduction (optional)

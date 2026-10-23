@@ -8,6 +8,8 @@
 //   lsd      log-spectral distance in dB (32 ms Hann frames, active frames), whole band; lsdLow below 3.7 kHz, lsdHigh above
 //   bld      bark loudness disturbance: per frame, critical-band powers -> loudness (power^0.23), absolute difference with a
 //            0.25 dead-zone, added energy weighted x2 against missing energy (PESQ-like idea, NOT calibrated to MOS); lower is better
+//   levelBias / levelErr  signed / absolute frame-power difference (dB, active frames): the loudness distortion
+//   stoi     simplified STOI-like envelope correlation (an intelligibility proxy, not the reference STOI)
 // Test signals: a cascade formant synthesiser (glottal pulses, 5 formants with coarticulation, fricatives, stops, pauses, F0
 // declination and jitter) for several voices; vowels and fricatives alone; background noise.
 #pragma once

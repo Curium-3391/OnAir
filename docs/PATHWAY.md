@@ -136,3 +136,14 @@ Tag v0.2.9 (9e6b74a6), merged into main (7fe4c99d with the wide-bank test fix). 
 
 ## 2026-10-23: KAAL voice codec 4 (KV4)
 Branch kaal-codec-030. New own speech codec for the four KAAL v4 voice slots, separate module core/src/kaalvoice (interface core/include/dect2/kaalvoice/kaal_voice.h, docs/KAAL-CODEC.md); no PHY/framing file touched. 8 kHz analysis-by-synthesis core (KLT-predictive LSF quantiser, fractional pitch, pyramid-VQ pulse codebook, joint gains, postfilter) + parametric 3.6-8 kHz high band with time envelope; profiles 3.2/4.8/6.0/8.0 (the V32R/V48/V60/V80 budgets of docs/KAAL-SLOTS.md: 40 ms payloads, in-band speech/SID bit) and HQ12/HQ16; VAD/DTX with 40-bit SID and comfort noise, concealment, importance classes A/B/C, optional input noise suppressor. Old KaalCodec3 / KaalCodec v0.1 behind the same FrameCodec interface, bit-exact. Objective scores only (no listening): KV4 8 kbit/s about equals old 12 kbit/s on low-band SNR with lower loudness disturbance; HQ16 beats old 16k on the synthetic set, old 16k keeps the better BLD on the real narrow-band sample. Deterministic (own math, -ffp-contract=off): same golden digest on arm64 and x86-64. RTF about 0.01 per stream on the Mac; Pi 4 not measured. Tests: kaalvoice_roundtrip, _robust, _dtx, _golden; tool kaalvoice_bench. Not done: wiring into the KAAL v4 TX/RX (PHY agent), a listening test, a Pi 4 measurement.
+
+## 2026-10-23: KV4 decoder-side speech enhancer (step 1, classical)
+Branch kaal-enhance-030 (on kaal-codec-030). Receiver-only enhancer for KV4, bit stream unchanged (core/src/kaalvoice/kv_enhance.*,
+docs/KAAL-ENHANCE.md): adaptive pitch + formant post-filter with tilt compensation (replaces the core postfilter when on), loudness
+restoration, high-band envelope smoothing + low-fluctuation noise, harmonic high-band extension from the rectified excitation, comfort-noise
+shaping, de-click after losses, optional Wiener NR (+5 ms). Config::enhance (auto on for 3.2/4.8/6.0) and enhanceStages bits per stage;
+ExternalPostFilter slot with decoder side information for a later neural post-filter. Objective only (no listening): BLD, LSD, LSDhi and
+level error better at every profile (3.2: BLD 0.203 -> 0.187, |level| 1.92 -> 1.64 dB), STOI-like score -0.001 .. +0.003; still far from
+the old 16 kbit/s codec on STOI~/LSD. Decoder CPU 0.0031 per stream on the Mac (Pi 4 estimate 4 slots 0.06-0.10 of a core, not measured).
+Enhanced-output digest equal on arm64 and x86-64; the plain decoder's golden digest unchanged. New metrics in kaal_voice_eval (stoi,
+levelBias, levelErr), kaalvoice_bench --enhance [--ablate]. Not done: a listening test, the neural post-filter (step 2).
