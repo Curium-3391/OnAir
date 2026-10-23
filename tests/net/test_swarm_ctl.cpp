@@ -278,7 +278,7 @@ static void testSockets() {
     // garbage and abuse
     {
         std::string e2;
-        sock_t s = dect2::tcpConnect("127.0.0.1", port, 2000, e2);
+        dect2::sock_t s = dect2::tcpConnect("127.0.0.1", port, 2000, e2);
         CHECK(s != dect2::kBadSock, "connect for abuse");
         dect2::sockRecvTimeout(s, 1500);
         const char* junk = "GET / HTTP/1.1\r\n\r\n";

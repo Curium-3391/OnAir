@@ -141,3 +141,7 @@ Pure logic only, no sockets yet: core/include/dect2/net/swarm.h + core/src/net/s
 
 ## 2026-10-23 LAN swarm part 2
 Pairing secret is now 160 bits (32 base32 chars) so a recorded exchange cannot be guessed offline; offer() refuses anything else. Added swarm_net.cpp (UDP multicast, TTL 1, private interfaces only, POSIX), app/panels/swarm_ui.cpp (View > LAN swarm, opt-in with preview), docs/LAN-SWARM.md with the NEEDS BUILD/TEST list. Nothing built or run in this step (battery rule); only swarm_net.cpp and swarm.cpp passed -fsyntax-only.
+
+
+## 2026-10-23 LAN swarm part 3
+Control channel (OACTL1: encrypt-then-MAC from the token, AES-256-CTR + HMAC-SHA256, per-direction keys, strict sequence), pairing over TCP, command whitelist, pooled results and tracks, coordinated scan protocol, memory sync, Windows interface enumeration, swarm window with pairing and control buttons, stable node id and load figure. Library files compiled; the first full compile found one test typo (fixed); tests not yet run (builds paused for integration). Not done: scanner hookup, gain/rate in the app host, map drawing, TLS. See docs/LAN-SWARM.md.
