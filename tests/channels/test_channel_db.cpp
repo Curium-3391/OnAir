@@ -49,7 +49,17 @@ int main() {
         // a body as GitHub renders an issue form
         CHECK(parseIssueBody("### Scan result\n\n" + body, p, err) && p.rows.size() == 2, "form body");
         CHECK(!parseIssueBody("mode: fm\ncountry: DE\n", p, err), "no block");
-        CHECK(urlEncode("a b&c/d,é") == "a%20b%26c%2Fd%2C%C3%A9", "url encode");
+        {   // a national DAB multiplex: repeated names and "?" are not sent (the list refused such submissions as "text too long")
+            Submission m = s; m.rows.clear();
+            std::vector<std::string> names = {"?", "??"};
+            for (int i = 0; i < 300; i++) names.push_back("Station " + std::to_string(i % 120));
+            m.rows.push_back(mk(222.064, "D1 National", names, 10.0, "DAB"));
+            const std::string b = issueBody(m);
+            Submission q; std::string e2;
+            CHECK(parseIssueBody(b, q, e2) && q.rows.size() == 1 && q.rows[0].services.size() == 120, "multiplex names once each: %zu %s", q.rows.empty() ? 0 : q.rows[0].services.size(), e2.c_str());
+            CHECK(b.find("?|") == std::string::npos && b.find("|?") == std::string::npos, "no ? placeholder");
+        }
+        CHECK(urlEncode("a b&c/d,é") =="a%20b%26c%2Fd%2C%C3%A9", "url encode");
         auto u = submissionUrls(s);
         CHECK(u.size() == 1 && u[0].find("https://github.com/adswill/OnAir-channels/issues/new?template=submit.yml&title=") == 0, "one link");
         // many rows with long services: services cut first, then split
