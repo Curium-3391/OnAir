@@ -16,8 +16,13 @@ namespace panel {
 inline float labelW() { return ImGui::CalcTextSize("Auto gain").x + 10.f * gUi; }
 
 // a small heading with a thin rule to the right: "Level", "Corrections", "Antenna power", "Radio", "Record", "Listen"
+// where the first row below an open collapsible section's header starts (set by section()): a sub-heading there needs no gap above it
+inline float gSectionTopY = -1.f;
+inline int gSectionTopFrame = -1;
+
 inline void subHeading(const char* text) {
-    ImGui::Dummy(ImVec2(0, 2 * gUi));
+    const bool first = gSectionTopFrame == ImGui::GetFrameCount() && std::fabs(ImGui::GetCursorPosY() - gSectionTopY) < 1.f;
+    if (!first) ImGui::Dummy(ImVec2(0, 2 * gUi));
     ImGui::AlignTextToFramePadding();
     const ImVec2 p = ImGui::GetCursorScreenPos();
     ImGui::TextDisabled("%s", text);

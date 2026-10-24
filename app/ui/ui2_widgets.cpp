@@ -2,6 +2,7 @@
 // digits, the run button, section headings, meters, splitters, tiles and the faceplate modules).
 // Split from ui2.cpp; the shared declarations are in ui2_internal.h.
 #include <functional>
+#include "panel_layout.h"
 #include "ui2_internal.h"
 #include "setpos_guard.h"
 #include "../state/listen_freq.h"
@@ -258,6 +259,7 @@ bool section(const char* title, bool openByDefault) {
     ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(1, 1, 1, 0.045f));
     const bool open = typo::collapsingHeader(trw(title), openByDefault ? ImGuiTreeNodeFlags_DefaultOpen : 0);
     ImGui::PopStyleColor();
+    if (open) { panel::gSectionTopY = ImGui::GetCursorPosY(); panel::gSectionTopFrame = ImGui::GetFrameCount(); }
     return open;
 }
 
@@ -286,7 +288,8 @@ void volumeControl(App& a, float w) {
         a.engine.player().setMuted(a.muted); a.engine.dabAudio().setMuted(a.muted);
     }
     ImGui::SameLine(0, 6 * gUi);
-    ImGui::SetNextItemWidth(w - 34 * gUi - ImGui::GetFrameHeight() - 4 * gUi);
+    // the speaker, the slider and three icon buttons (each one frame high, 4 apart) all fit in w: the slider takes what is left
+    ImGui::SetNextItemWidth(std::max(30.f * gUi, w - 4 * ImGui::GetFrameHeight() - 18 * gUi));
     float vol = a.volume * 100.f;
     if (ImGui::SliderFloat("##vol", &vol, 0, 100, "%.0f %%")) { a.volume = vol / 100.f; a.engine.player().setVolume(a.volume); a.engine.dabAudio().setVolume(a.volume); a.engine.setWideVolume(a.volume); }
     if (ImGui::IsItemHovered() && a.family == 9) ImGui::SetTooltip("%s", tr("DMR voice is played when an AMBE+2 codec plug-in is installed (DMR panel, ? button); the volume applies to it."));

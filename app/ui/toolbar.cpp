@@ -258,7 +258,7 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
     if (ImGui::IsItemDeactivatedAfterEdit()) retune = true, a.agcOn = false;
     if (!vertical) flowNext();
     if (ImGui::Checkbox(tr("Amp"), &a.tune.ampOn)) retune = true, a.agcOn = false;
-    if (a.tune.ampOn) { if (!vertical) flowNext(6 * gUi); else ImGui::SameLine(0, 8 * gUi); agcAmpWarning(a); }   // beside a manual Amp switch that is on: the amp can be damaged by strong signals
+    if (a.tune.ampOn) { if (!vertical) flowNext(6 * gUi); agcAmpWarning(a); }   // the side panel: on its own row, wrapped   // beside a manual Amp switch that is on: the amp can be damaged by strong signals
     }
     if (!vertical) flowNext();   // the side panel: Auto gain has its own row under the sliders
     // Auto gain (docs/AUTOGAIN.md): Off / Auto / Optimise once / Safe start, its settings, and the live ADC meter strip under it
