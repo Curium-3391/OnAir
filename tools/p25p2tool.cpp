@@ -193,7 +193,8 @@ int main(int argc, char** argv) {
     std::vector<cf32> x;
     if (!readCf32(argv[2], x)) { fprintf(stderr, "cannot read %s\n", argv[2]); return 1; }
     const double rate = atof(argv[3]);
-    printf("%s: %zu samples, %.2f s\n", argv[2], x.size(), x.size() / rate);
+    fputs(argv[2], stdout);   // the path as it is (never a format)
+    printf(": %zu samples, %.2f s\n", x.size(), x.size() / rate);
     if (!strcmp(argv[1], "cc")) {
         const int loops = argc > 5 ? std::max(1, atoi(argv[5])) : 1;   // the recording again and again: a long run in one receiver
         return runCc(x, rate, argc > 4 ? atof(argv[4]) : 0, loops);

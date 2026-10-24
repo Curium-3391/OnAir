@@ -479,7 +479,7 @@ struct P25p2Receiver::Impl {
         if (vtap) vtap(ci + 1, bits, clear);
         if (c.encrypted) { tel.encryptedSkipped++; offer(ci, true); return; }   // reported (and listed in the voice monitor), never decoded
         if (!c.cryptoKnown) {
-            if (held[ci].size() < 2 * 18) { Frame f; std::memcpy(f.fr, fr, sizeof f.fr); held[ci].push_back(f); }
+            if (held[ci].size() < 2 * 18) { Frame f; std::copy_n(&fr[0][0], 4 * 24, &f.fr[0][0]); held[ci].push_back(f); }
             return;
         }
         play(ci, fr);

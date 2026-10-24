@@ -157,6 +157,7 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
     if (!d.follow) { skip(d.reason, false); return; }
     if (g.freqHz <= 0) { skip("channel frequency not known yet (no identifier update heard)", false); return; }
     const bool p2 = g.tdma && !g.dmr;
+    const int p2Slot = p2 ? g.slot : -1;   // the Phase 2 time slot of the call (-1: Phase 1)
     if (p2 && !cfg_.followPhase2) { skip("P25 Phase 2 call: Phase 2 following is off", false); return; }
     const int prio = d.priority;
     auto lowest = [&](bool hoppedOnly, bool anyOnly) -> Slot* {
@@ -174,16 +175,19 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
         noticed_.push_back({g.freqHz, now});
         note(text);
     };
+    // one Phase 2 call at a time inside the capture (the engine has one Phase 2 receiver to run beside the control channel): the running one
+    // gives way to a higher priority call, else this call does not get in
+    auto phase2Room = [&]() {
+        for (Slot& x : slots_) {
+            if (!x.used || x.hopped || !x.tdma) continue;
+            if (effPrio(prio) >= effPrio(x.prio)) return false;
+            close(x, log, now, "preempted by a higher priority call");
+        }
+        return true;
+    };
     const bool captured = inSpan(g.freqHz);
     if (captured && (p2 || slices_)) {
-        if (p2) {   // one Phase 2 call at a time inside the capture: the engine has one Phase 2 receiver to run beside the control channel
-            for (Slot& x : slots_) {
-                if (!x.used || x.hopped || !x.tdma) continue;
-                if (effPrio(prio) < effPrio(x.prio)) { close(x, log, now, "preempted by a higher priority call"); break; }
-                skip("busy: one Phase 2 call at a time inside the capture", true);
-                return;
-            }
-        }
+        if (p2 && !phase2Room()) { skip("busy: one Phase 2 call at a time inside the capture", true); return; }
         Slot* s = freeSlot();
         if (!s) {
             Slot* v = lowest(false, false);
@@ -193,7 +197,7 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
         s->used = true; s->hopped = false; s->tdma = p2; s->callId = id; s->prio = prio; s->freqHz = g.freqHz; s->startSec = s->lastSec = now;
         Action a;
         a.kind = Action::OpenSlice; a.callId = id; a.slice = (int)(s - slots_.data()); a.freqHz = g.freqHz;
-        a.tdma = p2; a.slot = p2 ? g.slot : -1;
+        a.tdma = s->tdma; a.slot = p2Slot;
         out_.push_back(a);
         if (cfg_.record) {
             Action rs;
@@ -233,7 +237,7 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
     s->used = true; s->hopped = true; s->tdma = p2; s->callId = id; s->prio = prio; s->freqHz = g.freqHz; s->startSec = s->lastSec = now;
     Action a;
     a.kind = Action::Retune; a.callId = id; a.freqHz = g.freqHz;
-    a.tdma = p2; a.slot = p2 ? g.slot : -1;
+    a.tdma = s->tdma; a.slot = p2Slot;
     out_.push_back(a);
     radioHz_ = g.freqHz;
     if (cfg_.record) {

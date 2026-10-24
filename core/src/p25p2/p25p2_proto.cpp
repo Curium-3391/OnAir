@@ -1,6 +1,7 @@
 // P25 Phase 2 protocol pieces (see p25p2_proto.h for what is established and what is this program's own layout).
 #include "dect2/p25p2/p25p2_proto.h"
 #include "dect2/p25/p25_proto.h"
+#include <algorithm>
 #include <cstring>
 
 namespace dect2 {
@@ -197,18 +198,18 @@ void essEncode(int algId, int keyId, const uint8_t mi[9], uint8_t essB[16], uint
         sym[i] = (uint8_t)v;
     }
     p25::rsEncode(sym, 44, 16);
-    memcpy(essB, sym, 16);
-    memcpy(essA, sym + 16, 28);
+    std::copy_n(sym, 16, essB);
+    std::copy_n(sym + 16, 28, essA);
 }
 
 bool essDecode(uint8_t essB[16], const uint8_t essA[28], int& algId, int& keyId, uint8_t mi[9], int* fixed) {
     uint8_t sym[44];
-    memcpy(sym, essB, 16);
-    memcpy(sym + 16, essA, 28);
+    std::copy_n(essB, 16, sym);
+    std::copy_n(essA, 28, sym + 16);
     int errs = 0;
     if (!p25::rsDecode(sym, 44, 16, &errs)) return false;
     if (fixed) *fixed = errs;
-    memcpy(essB, sym, 16);
+    std::copy_n(sym, 16, essB);
     algId = (essB[0] << 2) | (essB[1] >> 4);
     if (algId == 0) algId = kAlgClear;
     keyId = ((essB[1] & 0x0F) << 12) | (essB[2] << 6) | essB[3];

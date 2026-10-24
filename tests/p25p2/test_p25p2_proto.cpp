@@ -2,6 +2,7 @@
 // places, the ESS (RS(44,16)), and the MAC PDU codewords (Reed-Solomon + CRC) with errors and their builders. The burst layer follows the on-air layout
 // (p25p2_proto.h); the MAC PDU codewords are this program's own: for them the test proves the encoder and the decoder agree, nothing more.
 #include "dect2/p25p2/p25p2_proto.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -46,7 +47,7 @@ int main() {
             CHECK(p25p2::duidGet(b) == duid && (p25p2::duidWord(duid) >> 4) == duid, "duid %d", duid);
             for (int bit = 0; bit < 8; bit++) {
                 uint8_t e[180];
-                std::memcpy(e, b, sizeof e);
+                std::copy_n(b, 180, e);
                 e[p25p2::kDuidPos[bit / 2]] ^= (uint8_t)(bit & 1 ? 1 : 2);
                 CHECK(p25p2::duidGet(e) == duid, "duid %d with bit %d wrong", duid, bit);
             }
@@ -102,12 +103,12 @@ int main() {
             for (auto& v : mi) v = (uint8_t)rng();
             p25p2::essEncode(alg, key, mi, b, a);
             uint8_t b2[16], mi2[9];
-            std::memcpy(b2, b, 16);
+            std::copy_n(b, 16, b2);
             int alg2 = 0, key2 = 0, fixed = -1;
             if (p25p2::essDecode(b2, a, alg2, key2, mi2, &fixed) && alg2 == alg && key2 == key && std::memcmp(mi, mi2, 9) == 0 && fixed == 0) ok++;
-            std::memcpy(b2, b, 16);
+            std::copy_n(b, 16, b2);
             uint8_t a2[28];
-            std::memcpy(a2, a, 28);
+            std::copy_n(a, 28, a2);
             std::set<int> pos;
             while (pos.size() < 14) pos.insert((int)(rng() % 44));
             for (int p : pos) { uint8_t& s = p < 16 ? b2[p] : a2[p - 16]; s ^= (uint8_t)(1 + rng() % 63); }
