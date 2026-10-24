@@ -421,6 +421,92 @@ void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std
     if (nb) { rest(B, b, nb, t); v8finish(B, nb, bitsB, metricB); }
 }
 }   // namespace dect2::fecp
+// ------------------------------------------------------------------------------------------------------------------------------------------
+// The same 8-bit decoder on x86-64 with AVX2 (32 states per register, runtime dispatch): states 0..31 in N0, 32..63 in N1; new states j and j+32
+// come from old 2j and 2j+1 (byte shuffle + 64-bit unpack + qword permute). Same arithmetic, tie rule and decision words as the NEON code above.
+#elif defined(DECT2_VIT_AVX2)
+namespace dect2::fecp {
+namespace {
+#define V8A __attribute__((target("avx2")))
+struct V8Tab {
+    int8_t sx[32], sy[32];
+    V8Tab() { for (int j = 0; j < 32; j++) { const unsigned r = (unsigned)(2 * j); sx[j] = __builtin_parity(r & 0x79) ? -1 : 1; sy[j] = __builtin_parity(r & 0x5B) ? -1 : 1; } }
+};
+const V8Tab& v8tab() { static V8Tab t; return t; }
+struct V8Run {
+    __m256i N0, N1;
+    uint64_t* dec = nullptr;
+    long off = 0;
+};
+V8A inline __attribute__((always_inline)) void v8step(V8Run& r, __m256i sx, __m256i sy, __m256i evod, int8_t a, int8_t b, uint64_t* dec) {
+    const __m256i M = _mm256_add_epi8(_mm256_sign_epi8(_mm256_set1_epi8(a), sx), _mm256_sign_epi8(_mm256_set1_epi8(b), sy));
+    const __m256i s0 = _mm256_shuffle_epi8(r.N0, evod), s1 = _mm256_shuffle_epi8(r.N1, evod);
+    const __m256i A = _mm256_permute4x64_epi64(_mm256_unpacklo_epi64(s0, s1), 0xD8), B = _mm256_permute4x64_epi64(_mm256_unpackhi_epi64(s0, s1), 0xD8);
+    const __m256i p0 = _mm256_adds_epi8(A, M), p1 = _mm256_subs_epi8(B, M), r0 = _mm256_subs_epi8(A, M), r1 = _mm256_adds_epi8(B, M);
+    r.N0 = _mm256_max_epi8(p0, p1); r.N1 = _mm256_max_epi8(r0, r1);
+    const uint32_t lo = (uint32_t)_mm256_movemask_epi8(_mm256_cmpgt_epi8(p1, p0)), hi = (uint32_t)_mm256_movemask_epi8(_mm256_cmpgt_epi8(r1, r0));
+    *dec = (uint64_t)lo | ((uint64_t)hi << 32);
+}
+V8A inline __attribute__((always_inline)) void v8renorm(V8Run& r) {
+    __m256i x = _mm256_max_epi8(r.N0, r.N1);
+    __m128i y = _mm_max_epi8(_mm256_castsi256_si128(x), _mm256_extracti128_si256(x, 1));
+    y = _mm_max_epi8(y, _mm_srli_si128(y, 8)); y = _mm_max_epi8(y, _mm_srli_si128(y, 4)); y = _mm_max_epi8(y, _mm_srli_si128(y, 2)); y = _mm_max_epi8(y, _mm_srli_si128(y, 1));
+    const int8_t top = (int8_t)_mm_cvtsi128_si32(y);
+    r.off += top;
+    const __m256i m = _mm256_set1_epi8(top);
+    r.N0 = _mm256_subs_epi8(r.N0, m); r.N1 = _mm256_subs_epi8(r.N1, m);
+}
+V8A void v8finish(V8Run& r, size_t steps, std::vector<uint8_t>& bits, long* metric) {
+    alignas(32) int8_t pm[64];
+    _mm256_store_si256((__m256i*)pm, r.N0); _mm256_store_si256((__m256i*)(pm + 32), r.N1);
+    int state = 0, bm = pm[0];
+    for (int s = 1; s < 64; s++) if (pm[s] > bm) { bm = pm[s]; state = s; }
+    bits.assign(steps, 0);
+    for (size_t t = steps; t-- > 0;) {
+        bits[t] = (uint8_t)(state >> 5);
+        state = ((state & 31) << 1) | (int)((r.dec[t] >> state) & 1);
+    }
+    if (metric) *metric = r.off + bm;
+}
+V8A void rest(V8Run& r, const int8_t* s, size_t n, size_t from, __m256i sx, __m256i sy, __m256i evod) {
+    for (size_t k = from; k < n; k++) {
+        v8step(r, sx, sy, evod, s[2 * k], s[2 * k + 1], r.dec + k);
+        if ((k - from) & 1) v8renorm(r);
+    }
+}
+V8A void run8x2Avx2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB) {
+    if (!b) nb = 0;
+    const V8Tab& T = v8tab();
+    const __m256i sx = _mm256_loadu_si256((const __m256i*)T.sx), sy = _mm256_loadu_si256((const __m256i*)T.sy);
+    const __m256i evod = _mm256_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15, 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15);
+    static thread_local std::vector<uint64_t> dA, dB;
+    if (dA.size() < na) dA.resize(na);
+    if (dB.size() < nb) dB.resize(nb);
+    V8Run A, B;
+    A.N0 = A.N1 = B.N0 = B.N1 = _mm256_setzero_si256();
+    A.dec = dA.data(); B.dec = dB.data();
+    const size_t both = std::min(na, nb) & ~(size_t)1;
+    size_t t = 0;
+    for (; t < both; t += 2) {
+        v8step(A, sx, sy, evod, a[2 * t], a[2 * t + 1], A.dec + t);
+        v8step(B, sx, sy, evod, b[2 * t], b[2 * t + 1], B.dec + t);
+        v8step(A, sx, sy, evod, a[2 * t + 2], a[2 * t + 3], A.dec + t + 1);
+        v8step(B, sx, sy, evod, b[2 * t + 2], b[2 * t + 3], B.dec + t + 1);
+        v8renorm(A); v8renorm(B);
+    }
+    rest(A, a, na, t, sx, sy, evod);
+    v8finish(A, na, bitsA, metricA);
+    if (nb) { rest(B, b, nb, t, sx, sy, evod); v8finish(B, nb, bitsB, metricB); }
+}
+bool haveAvx2() { static const bool v = __builtin_cpu_supports("avx2"); return v; }
+}   // namespace
+bool viterbi8x2Available() { return haveAvx2(); }
+void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB) {
+    if (haveAvx2()) { run8x2Avx2(a, na, b, nb, bitsA, bitsB, metricA, metricB); return; }
+    viterbiRange(a, na, bitsA, metricA);
+    if (b) viterbiRange(b, nb, bitsB, metricB);
+}
+}   // namespace dect2::fecp
 #else
 namespace dect2::fecp {
 bool viterbi8x2Available() { return false; }
