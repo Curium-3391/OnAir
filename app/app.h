@@ -76,6 +76,7 @@ using namespace dect2;
 #include "gfx/waterfall.h"
 
 extern std::string gForceTab;
+extern bool gSpectrumInShell;   // the Unified layout draws the spectrum and waterfall itself: a mode's tab must not draw a second one
 
 // ------------------------------------------------------------------ app state
 
@@ -289,7 +290,12 @@ struct App {
     float touchScale = 1.35f; // the touch interface's own text scale, on top of uiTextScale: 1.0 .. 2.0
     float uiTextScale = 1.f;  // View > Text size: 0.8 .. 2.0, on top of the display scale (Ctrl +, Ctrl -, Ctrl 0)
     float splitSide = 0, splitRight = 0, splitBottom = 0, splitDock = 0, splitBot2 = 0;   // dragged panel sizes in unscaled points (0 = automatic): sidebar, instruments, lower row; scope layout: instruments, lower row
-    int uiTheme = 1;          // its palette: 0 terminal, 1 instrument, 2 mono
+    int uiTheme = 1;          // its palette: 0 terminal, 1 instrument, 2 mono, 3 Dev A (graphite), 4 Dev B (terminal green)
+    bool kitGallery = false;      // dev: --kitgallery
+    bool layoutUnified = false;   // Settings > Display > Layout: Unified = spectrum and waterfall always above the decoded views (main_tabs.cpp); off = Classic tabs
+    bool sideCollapsed = false;   // Unified layout: the left controls panel is a thin icon rail
+    int uniSide = 0;              // Unified layout on a wide window: 0 automatic, 1 spectrum above, 2 spectrum on the left
+    std::string uniSplit;         // Unified layout: per mode "family=share,collapsed;..." (remembered splitter positions)
     std::string uiLang;       // the interface language chosen in View > Language ("de", "lt" ...), empty: the system's
     int dtmbBwMhz = 8;        // DTMB channel width: 8 MHz (China, Hong Kong), 6 MHz (Cuba)
     int isdbtBwMhz = 6;       // ISDB-T channel width: 6 MHz (Japan, the Americas), 7, 8 MHz (the Maldives); 0 = automatic

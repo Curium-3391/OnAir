@@ -90,7 +90,9 @@ GLFWwindow* createMainWindow(int argc, char** argv) {
         gfx::windowHints();
         glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);   // a fullscreen main window stays up when another window or monitor is clicked (#71)
         if (hidden) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-        window = glfwCreateWindow(1500, 900, "OnAir", nullptr, nullptr);
+        int winW = 1500, winH = 900;
+        if (const char* ws = getenv("ONAIR_WINSIZE")) sscanf(ws, "%dx%d", &winW, &winH);   // dev: the size of a --shot window, e.g. 1000x700
+        window = glfwCreateWindow(winW, winH, "OnAir", nullptr, nullptr);
         if (!window && gfx::levelCount() > 1) fprintf(stderr, "no %s context; trying the next lower version\n", gfx::levelName());
     }
     if (!window) {

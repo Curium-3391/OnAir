@@ -220,6 +220,20 @@ void sidebar(App& a) {
         if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
         ImGui::SameLine(0, 4 * gUi);
         wfAutoButton(a);
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Layout")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+        {
+            const char* lay[2] = {tr("Classic"), tr("Unified")};
+            int cur = a.layoutUnified ? 1 : 0;
+            if (kit::combo("##layoutsel", &cur, lay, 2)) { a.layoutUnified = cur == 1; savePrefs(a); }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Unified: the spectrum and waterfall stay on screen above the decoded views (F6 folds them)"));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Look")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+        {
+            static const char* lk[3] = {N_("Classic"), N_("Dev A"), N_("Dev B")};
+            const char* names[3] = {tr(lk[0]), tr(lk[1]), tr(lk[2])};
+            int cur = a.uiTheme == 3 ? 1 : a.uiTheme == 4 ? 2 : 0;
+            if (kit::combo("##looksel", &cur, names, 3)) { a.uiTheme = cur == 0 ? 1 : 2 + cur; savePrefs(a); }
+        }
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Palette")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
@@ -305,9 +319,19 @@ void sidebar(App& a) {
 }
 
 // height of the labelled cells of the status strip: caption row + value row + padding (follows the text size)
-float statusStripBlockHeight() {
+// The real line heights of the two sizes (measured with the fonts pushed, so a high-DPI font whose line is taller than its size still fits).
+struct StripLines { float cap, val; };
+static StripLines stripLines() {
     const float fs = ImGui::GetFontSize();
-    return std::max(ImGui::GetFrameHeight(), fs * 0.78f + fs * 1.3f + 8 * gUi);
+    StripLines l;
+    ImGui::PushFont(nullptr, fs * 0.78f); l.cap = std::max(fs * 0.78f, ImGui::GetTextLineHeight()); ImGui::PopFont();
+    ImFont* f = typo::fonts().monoBold ? typo::fonts().monoBold : nullptr;
+    ImGui::PushFont(f, fs * 1.3f); l.val = std::max(fs * 1.3f, ImGui::GetTextLineHeight()); ImGui::PopFont();
+    return l;
+}
+float statusStripBlockHeight() {
+    const StripLines l = stripLines();
+    return std::max(ImGui::GetFrameHeight(), l.cap + l.val + 8 * gUi);   // 3 above the caption, 2 between, 3 below the value
 }
 
 // the status strip: labelled cells (frequency, mode, receiver, state, CPU level, mute), then the rate / level / load / log fields separated by rules
@@ -360,7 +384,8 @@ void statusLine(App& a) {
         limit = stripR - w.mute - gap;
         ImDrawList* dl2 = ImGui::GetWindowDrawList();
         float x = stripX0;
-        const float capY = stripY0 + 3 * gUi, valY = capY + capS + 2 * gUi, valH = valS;
+        const StripLines sl2 = stripLines();
+        const float capY = stripY0 + 3 * gUi, valY = capY + sl2.cap + 2 * gUi, valH = sl2.val, lhRatio = sl2.val / valS;
         const auto box = [&](float cw, float& cx) { const ImVec2 a0(cx, stripY0), b0(cx + cw, stripY0 + blockH);
             dl2->AddRectFilled(a0, b0, u32(T.bg), rnd); dl2->AddRect(a0, b0, u32(T.edge), rnd, 0, 1.f); return a0; };
         const auto caption = [&](float cx, const std::string& s) {
@@ -374,7 +399,7 @@ void statusLine(App& a) {
             ImGui::PushFont(f, sz); dl2->AddText(ImVec2(cx + (cw - tw) * 0.5f, vy), col, s.c_str()); ImGui::PopFont();
         };
         const float rowY = pl.captions ? valY : stripY0 + (blockH - valH) * 0.5f;
-        const auto rowYFor = [&](float sz) { return rowY + (valH - sz) * 0.5f; };
+        const auto rowYFor = [&](float sz) { return rowY + (valH - sz * lhRatio) * 0.5f; };
         {   // FREQUENCY: first three digits in the accent, the rest bright, MHz small and dim
             const float cw = pl.captions ? w.freq.cap : w.freq.bare;
             const ImVec2 o = box(cw, x);
@@ -516,8 +541,8 @@ static void viewMenu(App& a) {
         if (ImGui::MenuItem(tr("Full screen"), "F11", gWindow && glfwGetWindowMonitor(gWindow))) toggleFullscreen();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Fill the display, hiding the taskbar (F11 or Alt+Enter). The same shortcut leaves it."));
         ImGui::Separator();
-        static const char* names[3] = {N_("Terminal palette"), N_("Instrument palette"), N_("Mono palette")};
-        for (int t = 0; t < 3; t++) if (ImGui::MenuItem(tr(names[t]), nullptr, a.uiTheme == t)) { a.uiTheme = t; savePrefs(a); }
+        static const char* names[5] = {N_("Terminal palette"), N_("Instrument palette"), N_("Mono palette"), N_("Dev A (graphite)"), N_("Dev B (terminal green)")};
+        for (int t = 0; t < 5; t++) if (ImGui::MenuItem(tr(names[t]), nullptr, a.uiTheme == t)) { a.uiTheme = t; savePrefs(a); }
         themeChoice(a, true);
         accentMenu();
         typographyChoice(true);
@@ -789,14 +814,9 @@ void topBar(App& a, ImVec2 disp) {
 }
 
 void bottomBar(App& a, ImVec2 disp) {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, kRail);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10 * gUi, 4 * gUi));
-    ImGui::BeginChild("##statusbar", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::PopStyleVar();
-    ImGui::GetWindowDrawList()->AddLine(ImGui::GetWindowPos(), ImVec2(ImGui::GetWindowPos().x + disp.x, ImGui::GetWindowPos().y), u32(kEdge));
+    kit::statusBarBegin(disp.x);
     statusLine(a);
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    kit::statusBarEnd();
 }
 
 void tgRect(App& a, int id) { a.tgMin[id] = ImGui::GetWindowPos(); a.tgMax[id] = ImVec2(a.tgMin[id].x + ImGui::GetWindowSize().x, a.tgMin[id].y + ImGui::GetWindowSize().y); }
