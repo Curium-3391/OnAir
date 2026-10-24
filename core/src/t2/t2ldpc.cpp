@@ -15,9 +15,17 @@
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
 #include <arm_neon.h>
 #endif
+#if defined(DECT2_X86_DISPATCH)
+#include <immintrin.h>
+#endif
 
 namespace dect2 {
 
+#if defined(DECT2_X86_DISPATCH)
+#define DECT2_NOT_X86 false
+#else
+#define DECT2_NOT_X86 true
+#endif
 namespace {
 constexpr int Z = 360;
 constexpr float kBig = 1e4f;
@@ -152,6 +160,73 @@ inline void layerBlocked(const LayerSrc* src, int nc, float* mr, float alpha) {
 }
 #endif
 
+#if defined(DECT2_X86_DISPATCH)
+// The AVX2 twin of layerBlocked: the same per-element operations in the same order (so the same decisions and iteration counts), eight
+// checks per vector, kV8 vectors per block (24 checks; 360 = 15 blocks), min-sum state in registers across the connections.
+struct LayerSrcX { float* p; int shift; };
+constexpr int kV8 = 3, kBlk8 = 8 * kV8;
+static_assert(Z % kBlk8 == 0, "block width");
+static inline float* blockPtr8(const LayerSrcX& c, int m0, float* tmp) {
+    int a = m0 - c.shift;
+    if (a < 0) a += Z;
+    if (a + kBlk8 <= Z) return c.p + a;
+    for (int l = 0; l < kBlk8; l++) { int i = a + l; if (i >= Z) i -= Z; tmp[l] = c.p[i]; }
+    return nullptr;
+}
+template <bool kFirst>
+DECT2_AVX2_TARGET static void layerBlockedAvx2(const LayerSrcX* src, int nc, float* mr, float alpha) {
+    const __m256 al = _mm256_set1_ps(alpha), big = _mm256_set1_ps(1e30f);
+    const __m256 signMask = _mm256_castsi256_ps(_mm256_set1_epi32((int)0x80000000u));
+    alignas(32) float Lb[64 * kBlk8];
+    for (int m0 = 0; m0 < Z; m0 += kBlk8) {
+        __m256 m1[kV8], m2[kV8], sg[kV8];
+        __m256i ix[kV8];
+        for (int v = 0; v < kV8; v++) { m1[v] = big; m2[v] = big; ix[v] = _mm256_set1_epi32(-1); sg[v] = _mm256_setzero_ps(); }
+        for (int j = 0; j < nc; j++) {
+            float tmp[kBlk8];
+            const float* sp = blockPtr8(src[j], m0, tmp);
+            if (!sp) sp = tmp;
+            const float* mj = mr + (size_t)j * Z + m0;
+            const __m256i jv = _mm256_set1_epi32(j);
+            for (int v = 0; v < kV8; v++) {
+                __m256 x = _mm256_loadu_ps(sp + 8 * v);
+                if (!kFirst) x = _mm256_sub_ps(x, _mm256_loadu_ps(mj + 8 * v));
+                _mm256_store_ps(Lb + j * kBlk8 + 8 * v, x);
+                const __m256 a = _mm256_andnot_ps(signMask, x);
+                const __m256 lt = _mm256_cmp_ps(a, m1[v], _CMP_LT_OQ);
+                m2[v] = _mm256_blendv_ps(_mm256_min_ps(m2[v], a), m1[v], lt);
+                ix[v] = _mm256_castps_si256(_mm256_blendv_ps(_mm256_castsi256_ps(ix[v]), _mm256_castsi256_ps(jv), lt));
+                m1[v] = _mm256_min_ps(m1[v], a);
+                sg[v] = _mm256_xor_ps(sg[v], _mm256_and_ps(x, signMask));
+            }
+        }
+        for (int j = 0; j < nc; j++) {
+            const __m256i jv = _mm256_set1_epi32(j);
+            float* mj = mr + (size_t)j * Z + m0;
+            float tmp[kBlk8];
+            float* dp = blockPtr8(src[j], m0, tmp);
+            alignas(32) float d[kBlk8];
+            for (int v = 0; v < kV8; v++) {
+                const __m256 x = _mm256_load_ps(Lb + j * kBlk8 + 8 * v);
+                const __m256 isMin = _mm256_castsi256_ps(_mm256_cmpeq_epi32(ix[v], jv));
+                const __m256 mag = _mm256_mul_ps(_mm256_blendv_ps(m1[v], m2[v], isMin), al);
+                const __m256 nm = _mm256_or_ps(mag, _mm256_xor_ps(sg[v], _mm256_and_ps(x, signMask)));
+                const __m256 old = kFirst ? _mm256_setzero_ps() : _mm256_loadu_ps(mj + 8 * v);
+                _mm256_storeu_ps(mj + 8 * v, nm);
+                const __m256 inc = _mm256_sub_ps(nm, old);
+                if (dp) _mm256_storeu_ps(dp + 8 * v, _mm256_add_ps(_mm256_loadu_ps(dp + 8 * v), inc));
+                else _mm256_store_ps(d + 8 * v, inc);
+            }
+            if (!dp) {
+                int a = m0 - src[j].shift;
+                if (a < 0) a += Z;
+                for (int l = 0; l < kBlk8; l++) { int i = a + l; if (i >= Z) i -= Z; src[j].p[i] += d[l]; }
+            }
+        }
+    }
+}
+#endif
+
 struct Work {
     std::vector<float> inf, par, msg, L, min1, min2;
     std::vector<int> idx1;
@@ -161,6 +236,7 @@ struct Work {
 };
 Work& work() { static thread_local Work w; return w; }
 
+template <bool kAvx>
 DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters, float alpha) {
     const int q = code.q(), G = code.groups(), k = code.k(), n = code.n();
     const auto& layers = code.layers();
@@ -182,10 +258,10 @@ DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& 
     w.min1.resize(Z); w.min2.resize(Z); w.idx1.resize(Z); w.sg.resize(Z);
     w.infS.resize((size_t)G * Z); w.parS.resize((size_t)q * Z);
     float* min1 = w.min1.data(); float* min2 = w.min2.data(); int* idx1 = w.idx1.data(); uint32_t* sg = w.sg.data();
-#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+#if (defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)) || defined(DECT2_X86_DISPATCH)
     // the layers whose connections all reach different groups take the blocked path (layerBlocked)
     w.blockable.assign((size_t)q, 0);
-    for (int r = 0; r < q && q > 1; r++) {
+    for (int r = 0; r < q && q > 1 && (kAvx || DECT2_NOT_X86); r++) {
         const auto& cn = layers[(size_t)r];
         bool ok = cn.size() + 2 <= 64;
         for (size_t a = 0; a < cn.size() && ok; a++) for (size_t b = a + 1; b < cn.size() && ok; b++) ok = cn[a].group != cn[b].group;
@@ -208,6 +284,19 @@ DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& 
                 float* mr = w.msg.data() + w.base[(size_t)r];
                 if (first) layerBlocked<true>(src, nc, mr, alpha);
                 else layerBlocked<false>(src, nc, mr, alpha);
+                P(q - 1)[-1] = kBig;
+                continue;
+            }
+#endif
+#if defined(DECT2_X86_DISPATCH)
+            if (kAvx && w.blockable[(size_t)r]) {
+                LayerSrcX src[64];
+                for (size_t j = 0; j < cn.size(); j++) src[j] = {inf + (size_t)cn[j].group * Z, cn[j].shift};
+                src[cn.size()] = {P(r), 0};
+                src[cn.size() + 1] = {r > 0 ? P(r - 1) : P(q - 1) - 1, 0};
+                float* mr = w.msg.data() + w.base[(size_t)r];
+                if (first) layerBlockedAvx2<true>(src, nc, mr, alpha);
+                else layerBlockedAvx2<false>(src, nc, mr, alpha);
                 P(q - 1)[-1] = kBig;
                 continue;
             }
@@ -286,7 +375,7 @@ DECT2_SIMD_BODY bool decodeBody(const LdpcCode& code, const std::vector<float>& 
 }
 #if defined(DECT2_X86_DISPATCH)
 DECT2_AVX2_TARGET bool decodeAvx2(const LdpcCode& code, const std::vector<float>& llr, int maxIter, std::vector<uint8_t>& hard, int* iters, float alpha) {
-    return decodeBody(code, llr, maxIter, hard, iters, alpha);
+    return decodeBody<true>(code, llr, maxIter, hard, iters, alpha);
 }
 #endif
 } // namespace
@@ -297,7 +386,7 @@ bool t2LdpcDecode(const LdpcCode& code, const std::vector<float>& llr, int maxIt
 #if defined(DECT2_X86_DISPATCH)
     if (cpuHasAvx2()) return decodeAvx2(code, llr, maxIter, hard, iters, alpha);
 #endif
-    return decodeBody(code, llr, maxIter, hard, iters, alpha);
+    return decodeBody<false>(code, llr, maxIter, hard, iters, alpha);
 }
 
 } // namespace dect2
