@@ -104,7 +104,16 @@ ImU32 scoreColour(double sc) {
     return IM_COL32((int)(230 * (1 - t) + 40 * t), (int)(70 + 150 * t), (int)(60 + 30 * t), 255);
 }
 
+static void mainTabsInner(App& a, bool unified);
+#include "main_tabs_unified.inc"
+
 void mainTabs(App& a) {
+    if (a.layoutUnified && pal::dev()) { unifiedCentre(a, [&a] { mainTabsInner(a, true); }); return; }
+    mainTabsInner(a, false);
+}
+
+static void mainTabsInner(App& a, bool unified) {
+    if (unified && gForceTab == "Overview") gForceTab.clear();
     // a narrow pane: the tabs get less padding (the bar takes it from the style when it begins, each tab when it is added), so that they keep
     // their whole names instead of being cut short or scrolled out of view
     gTightTabs = ImGui::GetContentRegionAvail().x < 760 * gUi;
@@ -112,7 +121,7 @@ void mainTabs(App& a) {
     const bool bar = ImGui::BeginTabBar("tabs", pal::dev() ? ImGuiTabBarFlags_DrawSelectedOverline : 0);
     if (gTightTabs) ImGui::PopStyleVar();
     if (bar) {
-        if (tabItem(N_("Overview"), Ic::Grid)) { adsbmap::FullScope fs(&a, [&a]{ overviewTab(a); }); overviewTab(a); ImGui::EndTabItem(); }
+        if (!unified && tabItem(N_("Overview"), Ic::Grid)) { adsbmap::FullScope fs(&a, [&a]{ overviewTab(a); }); overviewTab(a); ImGui::EndTabItem(); }
         if (const ModeUi* mu = modeUi(a.family)) {   // a mode added after FM: its own tabs
             if (mu->tab && tabItem(mu->tabName ? mu->tabName : "Mode", mu->tabIcon)) { adsbmap::FullScope fs(&a, [&a, mu]{ mu->tab(a); }); mu->tab(a); ImGui::EndTabItem(); }
             else if (!mu->tab && mu->stream && tabItem(N_("TV"), Ic::Tv)) { adsbmap::FullScope fs(&a, [&a]{ tvTab(a); }); tvTab(a); ImGui::EndTabItem(); }

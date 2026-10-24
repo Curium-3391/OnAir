@@ -557,7 +557,7 @@ void tick(App& a) {
 
 void tab(App& a) {
     controls(a);
-    spectrumWaterfall(a, specWaterfallSplit(), false);
+    if (!gSpectrumInShell) spectrumWaterfall(a, specWaterfallSplit(), false);
 }
 
 void receiver(App& a) {

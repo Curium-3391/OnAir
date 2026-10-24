@@ -220,6 +220,22 @@ void sidebar(App& a) {
         if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
         ImGui::SameLine(0, 4 * gUi);
         wfAutoButton(a);
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Layout")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+        if (ImGui::BeginCombo("##layoutsel", a.layoutUnified ? tr("Unified") : tr("Classic"))) {
+            if (ImGui::Selectable(tr("Classic"), !a.layoutUnified)) { a.layoutUnified = false; savePrefs(a); }
+            if (ImGui::Selectable(tr("Unified"), a.layoutUnified)) { a.layoutUnified = true; savePrefs(a); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Unified: the spectrum and waterfall stay on screen above the decoded views (F6 folds them)"));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Look")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+        {
+            static const char* lk[3] = {N_("Classic"), N_("Dev A"), N_("Dev B")};
+            const int cur = a.uiTheme == 3 ? 1 : a.uiTheme == 4 ? 2 : 0;
+            if (ImGui::BeginCombo("##looksel", tr(lk[cur]))) {
+                for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(lk[i]), cur == i)) { a.uiTheme = i == 0 ? 1 : 2 + i; savePrefs(a); }
+                ImGui::EndCombo();
+            }
+        }
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Palette")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
@@ -508,8 +524,8 @@ static void viewMenu(App& a) {
         if (ImGui::MenuItem(tr("Full screen"), "F11", gWindow && glfwGetWindowMonitor(gWindow))) toggleFullscreen();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Fill the display, hiding the taskbar (F11 or Alt+Enter). The same shortcut leaves it."));
         ImGui::Separator();
-        static const char* names[3] = {N_("Terminal palette"), N_("Instrument palette"), N_("Mono palette")};
-        for (int t = 0; t < 3; t++) if (ImGui::MenuItem(tr(names[t]), nullptr, a.uiTheme == t)) { a.uiTheme = t; savePrefs(a); }
+        static const char* names[5] = {N_("Terminal palette"), N_("Instrument palette"), N_("Mono palette"), N_("Dev A (graphite)"), N_("Dev B (terminal green)")};
+        for (int t = 0; t < 5; t++) if (ImGui::MenuItem(tr(names[t]), nullptr, a.uiTheme == t)) { a.uiTheme = t; savePrefs(a); }
         themeChoice(a, true);
         accentMenu();
         typographyChoice(true);

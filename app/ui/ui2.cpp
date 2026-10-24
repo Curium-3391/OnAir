@@ -14,11 +14,39 @@ void bodyParent(App& a, float bodyH, ImVec2 disp) {
     // a narrow window (a laptop at 125 or 150 %): the side panel and the list on the right give up width before the spectrum does
     float sideW = std::floor(std::max(244.f * gUi, std::min(296.f * gUi, disp.x * 0.24f)));
     if (a.splitSide > 0) sideW = std::floor(clampPx(a.splitSide * gUi, 170 * gUi, disp.x * 0.5f));
+    const bool rail = a.layoutUnified && a.sideCollapsed;   // Unified layout: the controls panel folded to a rail of icons
+    if (rail) sideW = std::floor(34 * gUi);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kRail);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8 * gUi, 6 * gUi));
     ImGui::BeginChild("##side", ImVec2(sideW, bodyH), ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::PopStyleVar();
-    sidebar(a);
+    if (rail) {
+        const float bs = 22 * gUi;
+        auto iconBtn = [&](const char* id, Ic ic, const char* tip, bool on) {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 1 * gUi);
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            const bool hit = ImGui::InvisibleButton(id, ImVec2(bs, bs));
+            const bool hov = ImGui::IsItemHovered();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            if (hov) dl->AddRectFilled(p, ImVec2(p.x + bs, p.y + bs), ImGui::GetColorU32(ImGuiCol_ButtonHovered));
+            icons::draw(ic, ImVec2(p.x + bs * 0.5f, p.y + bs * 0.5f), bs * 0.62f, on ? u32(kAccent) : u32(hov ? kBright : kDim), dl);
+            if (hov) ImGui::SetTooltip("%s", tr(tip));
+            return hit;
+        };
+        if (iconBtn("##railExpand", Ic::Right, "Show the controls panel", false)) { a.sideCollapsed = false; savePrefs(a); }
+        const bool run = a.engine.running();
+        if (iconBtn("##railRun", run ? Ic::Stop : Ic::Play, run ? "Stop (Space)" : "Start (Space)", run)) { if (run) a.engine.stop(); else startReceiver(a); }
+        if (iconBtn("##railTune", Ic::Sliders, "Source, gain and tuner: show the panel", false)) { a.sideCollapsed = false; savePrefs(a); }
+    } else {
+        if (a.layoutUnified) {   // the fold button, a thin row on top
+            const float w = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + w - 18 * gUi);
+            if (ImGui::SmallButton("<<##railFold")) { a.sideCollapsed = true; savePrefs(a); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Fold the controls panel to icons"));
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2 * gUi);
+        }
+        sidebar(a);
+    }
     ImGui::EndChild();
     ImGui::PopStyleColor();
     {

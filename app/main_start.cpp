@@ -163,6 +163,7 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
         }
         if (std::string(argv[i]) == "--ui2") app.newUi = true;
         if (std::string(argv[i]) == "--lang" && i + 1 < argc) i18n::set(argv[++i]);   // dev: the interface in this language (not saved)
+        if (std::string(argv[i]) == "--layout" && i + 1 < argc) app.layoutUnified = std::string(argv[++i]) == "unified";   // dev: classic | unified, not saved
         if (std::string(argv[i]) == "--theme" && i + 1 < argc) app.uiTheme = atoi(argv[++i]);
         if (std::string(argv[i]) == "--light") app.lightUi = true;   // dev: View > Theme > Light
         if (std::string(argv[i]) == "--touch") app.touchUi = true;   // the touch interface (not saved)

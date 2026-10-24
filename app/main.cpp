@@ -43,6 +43,7 @@ struct CpuGate {
 #endif
 
 std::string gForceTab;
+bool gSpectrumInShell = false;
 std::string gCrashNote;   // set when the last run crashed: shown once in a small window
 
 gfx::Backend* gGfx = nullptr;

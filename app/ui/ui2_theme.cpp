@@ -29,6 +29,23 @@ void loadTheme(int n) {
         const ImU32 t[5] = {IM_COL32(150, 150, 150, 255), IM_COL32(70, 70, 70, 255), IM_COL32(100, 100, 100, 255), IM_COL32(170, 170, 170, 255), IM_COL32(235, 235, 235, 255)};
         for (int k = 0; k < 5; k++) T.tone[k] = t[k];
         T.flair = false;
+    } else if (n == 3 || n == 4) {
+        // Dev A (graphite, after a dark code editor) and Dev B (terminal): flat greys, ONE accent for what is selected, colour elsewhere only for meaning
+        auto c8 = [](int r, int g, int b) { return ImVec4(r / 255.f, g / 255.f, b / 255.f, 1); };
+        if (n == 3) {
+            T.bg = c8(30, 30, 30); T.rail = c8(37, 37, 38); T.edge = c8(60, 60, 60);
+            T.text = c8(204, 204, 204); T.dim = c8(133, 133, 133); T.bright = c8(240, 240, 240); T.accent = c8(59, 130, 196);
+            T.frame = c8(24, 24, 24); T.button = c8(51, 51, 52); T.plotBg = c8(18, 18, 18);
+        } else {
+            T.bg = c8(12, 12, 12); T.rail = c8(26, 26, 26); T.edge = c8(51, 51, 51);
+            T.text = c8(200, 200, 200); T.dim = c8(120, 120, 120); T.bright = c8(235, 235, 235); T.accent = c8(127, 217, 98);
+            T.frame = c8(8, 8, 8); T.button = c8(34, 34, 34); T.plotBg = c8(6, 6, 6);
+        }
+        const ImVec4 s[8] = {T.accent, c8(210, 160, 70), c8(200, 90, 80), c8(150, 150, 150), c8(120, 170, 210), c8(180, 130, 190), c8(110, 180, 150), c8(230, 230, 230)};
+        for (int k = 0; k < 8; k++) T.series[k] = s[k];
+        auto u = [](const ImVec4& v, float m) { return IM_COL32((int)(v.x * 255 * m), (int)(v.y * 255 * m), (int)(v.z * 255 * m), 255); };
+        T.tone[0] = u(T.accent, 0.85f); T.tone[1] = u(T.accent, 0.30f); T.tone[2] = u(T.accent, 0.50f); T.tone[3] = u(T.accent, 0.75f); T.tone[4] = u(T.accent, 1.0f);
+        T.flair = false;
     } else {
         T.bg = ImVec4(0.045f, 0.045f, 0.044f, 1); T.rail = ImVec4(0.037f, 0.037f, 0.036f, 1); T.edge = ImVec4(0.175f, 0.172f, 0.165f, 1);
         T.text = ImVec4(0.82f, 0.81f, 0.78f, 1); T.dim = ImVec4(0.46f, 0.45f, 0.42f, 1); T.bright = ImVec4(0.96f, 0.95f, 0.92f, 1); T.accent = ImVec4(0.86f, 0.65f, 0.30f, 1);
@@ -188,6 +205,7 @@ static void applyUiThemeBase(App& a) {
     pal::dev() = a.newUi;
     if (a.newUi) loadTheme(a.uiTheme);
     pal::wfMode() = !a.newUi ? 0 : a.uiTheme == 2 ? 1 : 2;
+    const bool devLook = a.newUi && a.uiTheme >= 3;
     a.wf.palette();
     // the colour map needs a tighter range to show the noise floor as dark; the classic range comes back when switching back
     if (a.newUi && a.wf.minDb == -100 && a.wf.maxDb == -32) { a.wf.minDb = -88; a.wf.maxDb = -36; }
@@ -211,6 +229,26 @@ static void applyUiThemeBase(App& a) {
     c[ImGuiCol_Text] = kText; c[ImGuiCol_TextDisabled] = kDim; c[ImGuiCol_MenuBarBg] = kRail;
     c[ImGuiCol_TableRowBgAlt] = ImVec4(1, 0.95f, 0.85f, 0.02f); c[ImGuiCol_TableHeaderBg] = ImVec4(0, 0, 0, 0); c[ImGuiCol_TableBorderLight] = kEdge; c[ImGuiCol_TableBorderStrong] = kEdge;
     c[ImGuiCol_TextSelectedBg] = ImVec4(0.86f, 0.65f, 0.30f, 0.30f);
+    if (devLook) {   // Dev A / Dev B: tool-window look, flat fills, 1 px lines, tight rows, the accent marks the selection only
+        auto fade = [](const ImVec4& v, float al) { return ImVec4(v.x, v.y, v.z, al); };
+        auto mixc = [](const ImVec4& a, const ImVec4& b, float t) { return ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, 1); };
+        s.FrameRounding = 0; s.GrabRounding = 0; s.ScrollbarSize = 11 * gUi; s.GrabMinSize = 7 * gUi;
+        s.FramePadding = ImVec2(5 * gUi, 2 * gUi); s.ItemSpacing = ImVec2(6 * gUi, 3 * gUi); s.TabBarOverlineSize = 2 * gUi; s.TabBarBorderSize = 1;
+        c[ImGuiCol_PopupBg] = T.rail; c[ImGuiCol_MenuBarBg] = T.rail; c[ImGuiCol_WindowBg] = T.bg;
+        c[ImGuiCol_TitleBg] = T.rail; c[ImGuiCol_TitleBgActive] = T.rail; c[ImGuiCol_TitleBgCollapsed] = T.rail;
+        const ImVec4 hov = mixc(T.button, T.bright, 0.10f), sel = mixc(T.bg, T.accent, 0.22f);
+        c[ImGuiCol_Button] = T.button; c[ImGuiCol_ButtonHovered] = hov; c[ImGuiCol_ButtonActive] = mixc(T.button, T.accent, 0.5f);
+        c[ImGuiCol_FrameBgHovered] = mixc(T.frame, T.bright, 0.08f); c[ImGuiCol_FrameBgActive] = mixc(T.frame, T.accent, 0.25f);
+        c[ImGuiCol_Header] = fade(T.accent, 0.20f); c[ImGuiCol_HeaderHovered] = fade(T.bright, 0.08f); c[ImGuiCol_HeaderActive] = fade(T.accent, 0.35f);
+        c[ImGuiCol_Tab] = T.rail; c[ImGuiCol_TabHovered] = hov; c[ImGuiCol_TabSelected] = sel;   // editor tabs: flat, the selected one filled
+        c[ImGuiCol_TabDimmed] = T.rail; c[ImGuiCol_TabDimmedSelected] = sel; c[ImGuiCol_TabSelectedOverline] = T.accent; c[ImGuiCol_TabDimmedSelectedOverline] = T.edge;
+        c[ImGuiCol_SliderGrab] = mixc(T.dim, T.text, 0.4f); c[ImGuiCol_SliderGrabActive] = T.accent; c[ImGuiCol_CheckMark] = T.accent;
+        c[ImGuiCol_ScrollbarBg] = T.bg; c[ImGuiCol_ScrollbarGrab] = T.button; c[ImGuiCol_ScrollbarGrabHovered] = hov; c[ImGuiCol_ScrollbarGrabActive] = T.accent;
+        c[ImGuiCol_SeparatorHovered] = T.accent; c[ImGuiCol_SeparatorActive] = T.accent;
+        c[ImGuiCol_TextSelectedBg] = fade(T.accent, 0.35f); c[ImGuiCol_TableRowBgAlt] = ImVec4(0, 0, 0, 0); c[ImGuiCol_TableHeaderBg] = T.rail;
+        c[ImGuiCol_TableBorderLight] = fade(T.edge, 0.6f); c[ImGuiCol_TableBorderStrong] = T.edge;
+        pal::accentRef() = T.accent;
+    }
     plt::Style& p = plt::GetStyle();
     for (int i = 0; i < 8; i++) p.AutoColors[i] = T.series[i];
     p.PlotBg = T.plotBg; p.Border = kEdge; p.Grid = ImVec4(0.72f, 0.72f, 0.70f, 0.10f); p.Text = ImVec4(T.dim.x + 0.1f, T.dim.y + 0.1f, T.dim.z + 0.1f, 1);
