@@ -11009,6 +11009,24 @@ void ImGui::KeepAliveID(ImGuiID id)
 // declare their minimum size requirement to ItemSize() and provide a larger region to ItemAdd() which is used drawing/interaction.
 // THIS IS IN THE PERFORMANCE CRITICAL PATH (UNTIL THE CLIPPING TEST AND EARLY-RETURN)
 IM_MSVC_RUNTIME_CHECKS_OFF
+bool gOnAirIdCheck = false;
+int gOnAirIdConflicts = 0;
+static void OnAirIdCheckItem(ImGuiWindow* window, ImGuiID id, const ImRect& bb)
+{
+    static int frame = -1;
+    static ImVector<ImU64> seen;
+    ImGuiContext& g = *GImGui;
+    if (frame != g.FrameCount) { frame = g.FrameCount; seen.clear(); }
+    const ImU64 key = ((ImU64)window->ID << 32) ^ (ImU64)id ^ ((ImU64)id << 17);
+    for (int i = 0; i < seen.Size; i++)
+        if (seen[i] == key) {
+            gOnAirIdConflicts++;
+            fprintf(stderr, "IDCHECK conflict: window '%s' id 0x%08x at (%.0f,%.0f) size (%.0f,%.0f)\n", window->Name, (unsigned)id, bb.Min.x, bb.Min.y, bb.GetWidth(), bb.GetHeight());
+            return;
+        }
+    seen.push_back(key);
+}
+
 bool ImGui::ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb_arg, ImGuiItemFlags extra_flags)
 {
     ImGuiContext& g = *GImGui;
@@ -11026,6 +11044,8 @@ bool ImGui::ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb_arg, ImGu
     if (id != 0)
     {
         KeepAliveID(id);
+        if (gOnAirIdCheck && (g.LastItemData.ItemFlags & ImGuiItemFlags_AllowDuplicateId) == 0)   // OnAir test hook, DECT2_IDCHECK=1
+            OnAirIdCheckItem(window, id, bb);
 
         // Directional navigation processing
         // Runs prior to clipping early-out

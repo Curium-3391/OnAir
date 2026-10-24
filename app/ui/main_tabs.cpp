@@ -84,7 +84,7 @@ void streamTab(App& a) {
 void routeTab(App& a, const std::string& name) {
     struct R { const char* old; const char* tab; int tv, rx, st; };
     static const R map[] = {
-        {"Player", "TV", 0, -1, -1}, {"Guide", "TV", 1, -1, -1}, {"Teletext", "TV", 2, -1, -1},
+        {"Player", "TV", 0, -1, -1}, {"Guide", "TV", 1, -1, -1}, {"Recordings", "TV", 2, -1, -1}, {"Teletext", "TV", 3, -1, -1},
         {"Overview", "Overview", -1, -1, -1}, {"Spectrum", "Overview", -1, -1, -1}, {"Waterfall", "Overview", -1, -1, -1}, {"Constellations", "Overview", -1, -1, -1},
         {"Sync", "Receiver", -1, 0, -1}, {"Signalling", "Receiver", -1, 1, -1}, {"FEC", "Receiver", -1, 2, -1}, {"Frame map", "Receiver", -1, 3, -1},
         {"Channel", "Receiver", -1, 4, -1}, {"Impulse response", "Receiver", -1, 4, -1}, {"SNR per carrier", "Receiver", -1, 4, -1},

@@ -256,6 +256,10 @@ static void shutdownApp(App& app, gfx::Backend* gfxBackend, GLFWwindow* window) 
     dect2::crash::startupDone();   // a quick clean exit (the --shot runs) is not a failed start
 }
 
+extern bool gOnAirIdCheck;      // third_party/imgui/imgui.cpp (test hook)
+extern int gOnAirIdConflicts;
+static bool gIdCheckFailed = false;
+
 int main(int argc, char** argv) {
     dect2::crash::install();   // first: a crash from here on leaves a report
 #ifdef __linux__
@@ -317,6 +321,10 @@ int main(int argc, char** argv) {
     // are for developers, so users do not get a popup over the window. The recovery message still goes to the debug log.
     io.ConfigErrorRecoveryEnableAssert = false;
     io.ConfigErrorRecoveryEnableTooltip = false;
+    // ImGui's red 'Programmer error: N visible items with conflicting ID' box is for developers: off for users. DECT2_IDCHECK=1 (tests) keeps it on,
+    // prints every duplicate ID per frame to stderr and makes a --shot run exit with status 3 when there was one.
+    gOnAirIdCheck = getenv("DECT2_IDCHECK") != nullptr;
+    io.ConfigDebugHighlightIdConflicts = gOnAirIdCheck;
 
 
     ImGui_ImplGlfw_InitForOther(window, true);
@@ -376,10 +384,11 @@ int main(int argc, char** argv) {
             popOutPresent();
             if (shotNow) {
                 shotReport(app);
+                if (gOnAirIdCheck && gOnAirIdConflicts > 0) { fprintf(stderr, "IDCHECK: %d duplicate-ID items\n", gOnAirIdConflicts); gIdCheckFailed = true; }
                 glfwSetWindowShouldClose(window, 1);
             }
         }
     }
     shutdownApp(app, gfxBackend, window);
-    return 0;
+    return gIdCheckFailed ? 3 : 0;
 }
