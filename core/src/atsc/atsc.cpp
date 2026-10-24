@@ -1,5 +1,7 @@
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
 #include <arm_neon.h>
+#elif defined(__SSE2__) && !defined(DECT2_NO_SIMD)
+#include <emmintrin.h>
 #endif
 #include "dect2/atsc/atsc.h"
 #include "dect2/fec/fec_proto.h"
@@ -243,6 +245,55 @@ void viterbiLanes(const float* xt, int n, uint8_t* dec, int* fin) {
     for (int l = 0; l < kLanes; l++) {
         int state = 0;
         for (int s = 1; s < 8; s++) if (pm[s][l >> 2][l & 3] < pm[state][l >> 2][l & 3]) state = s;
+        fin[l] = state;
+    }
+}
+#elif defined(__SSE2__) && !defined(DECT2_NO_SIMD)
+static_assert(kLanes == 12, "three SSE vectors of four lanes");
+// The same arithmetic as the portable loop below (bit-exact: the same adds, compares and minimums), with SSE2 intrinsics: the state metrics stay in registers.
+void viterbiLanes(const float* xt, int n, uint8_t* dec, int* fin) {
+    __m128 pm[8][3];
+    for (int s = 0; s < 8; s++) for (int v = 0; v < 3; v++) pm[s][v] = _mm_setzero_ps();
+    const __m128i two = _mm_set1_epi32(2);
+    for (int t = 0; t < n; t++) {
+        const float* xv = xt + (size_t)t * kLanes;
+        const __m128 x0 = _mm_loadu_ps(xv), x1 = _mm_loadu_ps(xv + 4), x2 = _mm_loadu_ps(xv + 8);
+        __m128 d[8][3];
+        for (int s = 0; s < 8; s++) {
+            const __m128 lv = _mm_set1_ps((float)(2 * s - 7));
+            const __m128 a0 = _mm_sub_ps(x0, lv), a1 = _mm_sub_ps(x1, lv), a2 = _mm_sub_ps(x2, lv);
+            d[s][0] = _mm_mul_ps(a0, a0); d[s][1] = _mm_mul_ps(a1, a1); d[s][2] = _mm_mul_ps(a2, a2);
+        }
+        uint8_t* dp = dec + (size_t)t * 8 * kLanes;
+        __m128 nm[8][3], mn[3] = {_mm_set1_ps(1e30f), _mm_set1_ps(1e30f), _mm_set1_ps(1e30f)};
+        for (int ns = 0; ns < 8; ns++) {
+            __m128i dv[3];
+            for (int v = 0; v < 3; v++) {
+                const __m128 m0 = _mm_add_ps(pm[kVit.from[ns][0]][v], d[kVit.sym[ns][0]][v]);
+                const __m128 m1 = _mm_add_ps(pm[kVit.from[ns][1]][v], d[kVit.sym[ns][1]][v]);
+                const __m128 m2 = _mm_add_ps(pm[kVit.from[ns][2]][v], d[kVit.sym[ns][2]][v]);
+                const __m128 m3 = _mm_add_ps(pm[kVit.from[ns][3]][v], d[kVit.sym[ns][3]][v]);
+                const __m128i b01 = _mm_castps_si128(_mm_cmplt_ps(m1, m0)), b23 = _mm_castps_si128(_mm_cmplt_ps(m3, m2));
+                const __m128 a = _mm_min_ps(m0, m1), c = _mm_min_ps(m2, m3);
+                const __m128i cw = _mm_castps_si128(_mm_cmplt_ps(c, a));
+                nm[ns][v] = _mm_min_ps(a, c);
+                mn[v] = _mm_min_ps(mn[v], nm[ns][v]);
+                const __m128i hi = _mm_add_epi32(two, _mm_srli_epi32(b23, 31)), lo = _mm_srli_epi32(b01, 31);
+                dv[v] = _mm_or_si128(_mm_and_si128(cw, hi), _mm_andnot_si128(cw, lo));
+            }
+            const __m128i p01 = _mm_packs_epi32(dv[0], dv[1]), p2 = _mm_packs_epi32(dv[2], dv[2]);
+            const __m128i b = _mm_packus_epi16(p01, p2);   // bytes 0..7 = lanes 0..7, bytes 8..11 = lanes 8..11
+            _mm_storel_epi64((__m128i*)(dp + ns * kLanes), b);
+            const int32_t w = _mm_cvtsi128_si32(_mm_srli_si128(b, 8));
+            memcpy(dp + ns * kLanes + 8, &w, 4);
+        }
+        for (int s = 0; s < 8; s++) for (int v = 0; v < 3; v++) pm[s][v] = _mm_sub_ps(nm[s][v], mn[v]);
+    }
+    alignas(16) float f[8][kLanes];
+    for (int s = 0; s < 8; s++) for (int v = 0; v < 3; v++) _mm_store_ps(&f[s][4 * v], pm[s][v]);
+    for (int l = 0; l < kLanes; l++) {
+        int state = 0;
+        for (int s = 1; s < 8; s++) if (f[s][l] < f[state][l]) state = s;
         fin[l] = state;
     }
 }
