@@ -96,7 +96,7 @@ void syncContext(App& a) {
     loadSettings();
     const DeviceInfo& d = a.devices[(size_t)a.devIdx];
     const double fs = a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate;
-    const std::string ctx = radioKeyOf(d) + "|" + std::to_string(engineStd(a)) + "|" + std::to_string((long)(a.tune.bandwidthMhz * 1e6)) + "|" + std::to_string((long)fs);
+    const std::string ctx = radioKeyOf(d) + "|" + std::to_string(engineStd(a)) + "|" + std::to_string((long)(a.tune.bandwidthMhz * 1e6)) + "|" + std::to_string((long)fs) + "|" + ag::bandIdFor(a.freqMhz * 1e6);
     s.set.ampAllowed = agcAmpAllowed(a);
     s.set.stageMask = (uint32_t)plat::prefs().getI(maskKey(a).c_str(), (long)0xffffffffL);
     if (ctx == s.ctx) { s.c.setSettings([&] { ag::AgSettings x = s.set; x.mode = s.run; return x; }()); return; }
@@ -104,7 +104,7 @@ void syncContext(App& a) {
     s.prof = ag::radioProfileFor(d);
     ag::AgSettings x = s.set;
     x.mode = s.run;
-    s.c.configure(s.prof, ag::modeTargetFor(engineStd(a), a.tune.bandwidthMhz * 1e6, fs), x);
+    s.c.configure(s.prof, ag::modeTargetFor(engineStd(a), a.tune.bandwidthMhz * 1e6, fs, a.freqMhz * 1e6), x);
     if (s.run != ag::AgMode::Off) {
         const ag::StagePlan p = ag::planFromTune(s.prof, a.tune);
         s.c.start(ImGui::GetTime(), p.totalDb, p.ampOn, &p);
@@ -354,6 +354,7 @@ void gear() {
 // ------------------------------------------------------------------------------------------------------------------------------ the API
 bool autogainStep(App& a) {
     AgUi& s = S();
+    bool forced = false;
     if (!radioOk(a) || !a.engine.running()) {
         if (s.oneShot != ag::AgMode::Off) { s.oneShot = ag::AgMode::Off; s.run = ag::AgMode::Off; s.c.stop(); }
         return false;
@@ -368,12 +369,30 @@ bool autogainStep(App& a) {
     }
     if (std::fabs(a.freqMhz - s.ctxFreq) > 1e-9) {   // a retune: Auto acquires afresh; a one-shot is cancelled (it measured another channel)
         s.ctxFreq = a.freqMhz;
-        if (s.run == ag::AgMode::Auto) { const ag::StagePlan p = ag::planFromTune(s.prof, a.tune); s.c.start(ImGui::GetTime(), p.totalDb, p.ampOn, &p); }
+        if (s.run == ag::AgMode::Auto) {
+            // the gain remembered for this radio, mode and band is applied at once (no search); otherwise the quick search runs
+            const ag::GainMemoryEntry* me = s.mem.entries().count(memKey(a)) ? &s.mem.entries().at(memKey(a)) : nullptr;
+            if (me && (!me->plan.ampOn || s.set.ampAllowed) && me->plan.db.size() == s.prof.stages.size()) {
+                ag::AgCommand rc; rc.plan = me->plan; rc.why = "remembered gain for this band";
+                applyCmd(a, rc);
+                const ag::StagePlan p = ag::planFromTune(s.prof, a.tune);
+                s.c.start(ImGui::GetTime(), p.totalDb, p.ampOn, &p);
+                s.c.skipQuickSearch();
+                a.engine.log("auto gain: remembered gain for this band");
+                forced = true;
+            } else { const ag::StagePlan p = ag::planFromTune(s.prof, a.tune); s.c.start(ImGui::GetTime(), p.totalDb, p.ampOn, &p); }
+        }
         else if (s.oneShot != ag::AgMode::Off) { startMode(a, ag::AgMode::Off); a.agcOn = s.undoAgc; s.result = "stopped: the frequency changed"; s.resultAt = ImGui::GetTime(); }
     }
     ag::AgCommand cmd;
     const bool ch = s.c.tick(input(a), cmd);
     if (ch) applyCmd(a, cmd);
+    if (s.run == ag::AgMode::Auto && s.c.takeBracketDone()) {   // the quick search's result is remembered for this radio, mode and band
+        ag::GainMemoryEntry e;
+        e.plan = s.c.current(); e.metric = s.c.bestMetric(); e.metricName = "quick search"; e.when = (int64_t)time(nullptr);
+        s.mem.put(memKey(a), e);
+        saveSettings();
+    }
     // a one-shot that finished: the result, undo, memory
     if (s.oneShot != ag::AgMode::Off && !s.c.active()) {
         s.result = s.c.resultText();
@@ -391,7 +410,7 @@ bool autogainStep(App& a) {
         a.agcOn = s.undoAgc;   // Auto goes on again if it was on (it starts from the result)
     }
     if (ch && s.run == ag::AgMode::Auto) a.engine.log("auto gain: " + cmd.why);
-    return ch;
+    return ch || forced;
 }
 
 void autogainMeterOnly(App& a) {   // Off: the meters still run
@@ -483,6 +502,21 @@ void autogainMeters(App& a) {
             if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("The noise floor is %.1f dB above the ADC's own noise (%.1f dBFS per bin). Below about %.0f dB more gain buys sensitivity; far above it, gain only costs headroom."),
                                                           m.adcMarginDb, m.floorDbfs, s.c.target().marginGoalDb);
         }
+    }
+    if (s.run == ag::AgMode::Auto && !s.c.explanation().empty()) {   // one line on why the gain is what it is, the reasons in the tooltip
+        ImGui::SameLine(0, 8 * gUi);
+        ImGui::TextColored(pal::heading(), "%s", s.c.bracketing() ? tr("Auto gain: searching ...") : s.c.explanation().c_str());
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(tr("Why this gain?"));
+            ImGui::Separator();
+            for (const auto& r : s.c.reasons()) ImGui::BulletText("%s", r.c_str());
+            ImGui::TextDisabled("%s", tr(s.c.target().why));
+            ImGui::EndTooltip();
+        }
+        ImGui::SameLine(0, 6 * gUi);
+        if (ImGui::SmallButton(tr("Re-optimise"))) s.c.reoptimise();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Searches 4-6 gains again (about 3 s) and keeps the best one for this mode and band. Auto does this by itself at start, after a retune and in a new band."));
     }
     const auto adv = s.c.advice();
     if (!adv.empty()) {

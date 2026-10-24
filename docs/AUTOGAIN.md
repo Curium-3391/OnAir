@@ -131,6 +131,32 @@ overload. Optimise once and Safe start never switch it.
 * **Web server / remote API** (read-only): `/status` carries `"autogain"`: mode, phase, radio, target, gain, per-stage dB, meters
   (headroom, peak, rms, crest, clipped %, floor, margin, channel SNR, overload, intermodulation), advice and the last changes.
 
+## 7. Smart Auto (3.1): band bias, quick search, explanation
+
+* **Band bias** (`modeTargetFor(..., freqHz)`, `bandIdFor`): the frequency changes the mode's target. HF (< 30 MHz): the band's own noise is far above the
+  radio's and shortwave stations are strong, so +3 dB headroom, a lower sensitivity goal, linear stages. FM broadcast band (87.5-108 MHz): +3 dB
+  headroom for every mode but FM, linear stages. TV VHF / UHF and the mobile bands: +2 dB and no sensitivity-first split for narrow modes. 30-87.5 and
+  108-174 MHz: +1 dB. Above 1 GHz (L-band, microwave; not ADS-B, GNSS or wide spans): sensitivity split, 2 dB less headroom, a higher noise-floor goal.
+  The band's one-line reason is part of the explanation below. A change of band reconfigures the target and searches again.
+* **Quick search** (`AgSettings::quickStart`, `bracketSec`): Auto starts, and starts again after a retune, a band change or **Re-optimise**, with a
+  bracketing search: from the first settled measurement it estimates the gain at which the ADC headroom meets its target (a clean front end gains 1 dB
+  per dB) and measures 4-6 gains around it, ascending, each for 150 ms after the radio's own settling time (about 3 s in all). A clip, a headroom under
+  0.5 dB or an intermodulation product against the step below (rises more than the gain: `imdCompare`) stops the climb at once. The winner is chosen
+  as Optimise once chooses (the mode's MER / SNR while it locks, else the channel SNR or the sensitivity measure; within 0.5 dB the headroom closest to
+  the target). The lowest gain that overloaded becomes a soft ceiling for 60 s, so the slow loop does not climb into it. Then the normal loop tracks
+  (dead band, hysteresis, rate limits, instant back-off on a clip; unchanged).
+* **Memory**: the quick search's result is stored per radio, mode and band (`GainMemory`, key `radio|mode|band`); on a retune into a band with an
+  exact entry the gain is applied at once and the search is skipped (the loop still tracks and backs off). An entry with the amp on is not used
+  without the amp permission.
+* **Explanation**: `AutoGainController::explanation()`, e.g. *Gain set to 32 dB: strong FM stations nearby, kept headroom*, with the reasons list
+  (`reasons()`: the band, a strong neighbour, intermodulation, compression, an overload, a weak signal, "antenna noise far above the ADC's", the last
+  change) in the **Why this gain?** tooltip and a **Re-optimise** button next to the line, under the meters.
+* The amp rules are unchanged: the search uses the current amp state and never switches it.
+
+Tests: `test_autogain_smart` (ctest `autogain_smart`): the band targets; five radios (HackRF, RTL-SDR, Airspy, SDRplay, Pluto) from the bottom, middle
+and top of their range in five scenes (weak signal beside strong stations, empty UHF, FM band with strong stations, a DVB-T2 channel with a neighbour,
+quiet L-band), each result compared with the exhaustively found best safe SNR; bursts; a drifting level; Re-optimise and the memory skip.
+
 ## 6. Tests
 
 `test_autogain` (ctest `autogain`, about 5 s): every profile (steps ascending, notes, the amp the user's); detection (Blog V4 by name,

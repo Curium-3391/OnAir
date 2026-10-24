@@ -1,5 +1,7 @@
 # Auto gain (AGC)
 
+> Auto gain was made smarter in 3.1 (band bias, quick search, explanation line, Re-optimise): see section 7 of [AUTOGAIN.md](AUTOGAIN.md).
+>
 > The app now uses the unified auto gain of [AUTOGAIN.md](AUTOGAIN.md) (Off / Auto / Optimise once / Safe start). SmartAgc below stays in
 > core and is still tested; the amp permission switch (`agcamp.<radio>`) is shared.
 
