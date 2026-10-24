@@ -99,8 +99,11 @@ class BundleTests(unittest.TestCase):
         cmake = fake_bin / "cmake"
         cmake.write_text('#!/bin/sh\nif [ "$1" = "--build" ]; then exit 42; fi\n')
         cmake.chmod(0o755)
+        ffmpeg = self.root / "ffmpeg"
+        (ffmpeg / "lib").mkdir(parents=True)
+        (ffmpeg / "lib/libavcodec.a").write_text("")
         result = subprocess.run(["bash", str(script), "0.0.0"], capture_output=True, text=True,
-                                env={**os.environ, "PATH": str(fake_bin) + ":" + os.environ["PATH"]})
+                                env={**os.environ, "PATH": str(fake_bin) + ":" + os.environ["PATH"], "FFMPEG_PREFIX": str(ffmpeg)})
         self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
         self.assertEqual(marker.read_text(), "preserve until a successful build")
 
