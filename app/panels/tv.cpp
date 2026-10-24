@@ -497,9 +497,8 @@ static void multiChannelTable(App& a) {
     ImGui::TableSetupColumn(tr(sat ? "Transponder MHz" : "Channel MHz"));
     if (sat) ImGui::TableSetupColumn(tr("Msym/s"));
     ImGui::TableSetupColumn(tr("State"));
-    if (sat) ImGui::TableSetupColumn(tr("Mode"));
     ImGui::TableSetupColumn(tr("Services")); ImGui::TableSetupColumn(tr(sat ? "MER dB" : "SNR dB"));
-    ImGui::TableSetupColumn(tr("Load")); if (!sat) ImGui::TableSetupColumn(tr("Network"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(tr("Load")); if (sat) ImGui::TableSetupColumn(tr("Mode")); else ImGui::TableSetupColumn(tr("Network"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const TvChannelRow& r : rows) {
         ImGui::TableNextRow();
@@ -509,11 +508,12 @@ static void multiChannelTable(App& a) {
         else if (ImGui::Selectable(b, r.selected, ImGuiSelectableFlags_SpanAllColumns) && r.running) a.engine.selectTvChannel(r.slot);
         if (sat) { ImGui::TableNextColumn(); ImGui::Text("%.2f", r.symbolRate / 1e6); }
         ImGui::TableNextColumn(); ImGui::TextUnformatted(!r.occupied && !r.running ? tr("empty") : !r.running ? tr("waiting") : r.locked ? tr("locked") : r.state > 0 ? tr("partial") : tr("searching"));
-        if (sat) { ImGui::TableNextColumn(); if (r.running && !r.detail.empty()) ImGui::TextUnformatted(r.detail.c_str()); else ImGui::TextDisabled("-"); }
         ImGui::TableNextColumn(); if (r.running) ImGui::Text("%d", r.services); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); if (r.running && r.locked) ImGui::Text("%.1f", r.snrDb); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); if (r.running) ImGui::Text("%.0f %%", r.cpuPct); else ImGui::TextDisabled("-");
-        if (!sat) { ImGui::TableNextColumn(); ImGui::TextUnformatted(r.network.c_str()); }
+        ImGui::TableNextColumn();
+        if (sat) { if (r.running && !r.detail.empty()) ImGui::TextUnformatted(r.detail.c_str()); else ImGui::TextDisabled("-"); }
+        else ImGui::TextUnformatted(r.network.c_str());
     }
     ImGui::EndTable();
     ImGui::Spacing();

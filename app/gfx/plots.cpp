@@ -389,6 +389,7 @@ void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
     const float w = sz.x + 2 * ImGui::GetStyle().FramePadding.x, m = 4 * gUi;
     const float x = plotMin.x + plotSize.x - gBwBtnW - w - m;
     if (x < plotMin.x + 40 * gUi || plotSize.y < sz.y + 2 * m) return;   // no room
+    gWideBtnW = w + m;   // the buttons to its left (Spectrum, Identify, labels) make room
     const ImVec2 keep = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2(x, plotMin.y + m));
     const bool on = a.mtvOn && ws.usable;
@@ -403,7 +404,11 @@ void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
         for (const TvChannelRow& r : a.rx.tvChannels) if (r.running) n++;
         char cb[32]; snprintf(cb, sizeof cb, "%d decoders", n);
         const ImVec2 cs = ImGui::CalcTextSize(cb);
-        if (x - cs.x - 10 * gUi > plotMin.x) ImGui::GetWindowDrawList()->AddText(ImVec2(x - cs.x - 8 * gUi, plotMin.y + m + 2 * gUi), IM_COL32(245, 190, 70, 255), cb);
+        if (plotSize.y > 3 * sz.y + 6 * m) {   // under the row of buttons, at the right edge
+            const ImVec2 q(plotMin.x + plotSize.x - cs.x - 10 * gUi, plotMin.y + m + sz.y + 2 * ImGui::GetStyle().FramePadding.y + 4 * gUi);
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(q.x - 4 * gUi, q.y - 1 * gUi), ImVec2(q.x + cs.x + 4 * gUi, q.y + cs.y + 1 * gUi), IM_COL32(20, 22, 26, 200), 3.f * gUi);
+            ImGui::GetWindowDrawList()->AddText(q, IM_COL32(245, 190, 70, 255), cb);
+        }
     }
     if (ws.usable && ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##mtvpop");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {

@@ -47,7 +47,7 @@ struct MultiService {
 };
 
 // A transponder followed over successive looks at the spectrum (DVB-S/S2); id is stable while it stays
-struct Track {
+struct TpTrack {
     int id = 0;
     Transponder tp;
     int seen = 0;      // looks in a row that found it
@@ -95,7 +95,7 @@ private:
     void mtvDeliver(int slot, const uint8_t* pk, size_t n, double secs, const TsSnapshot& snap);   // a receiver thread: the selected slot's packets go on
     void startSlot(const SlotPower& p);
     void evaluateSat();
-    void startSat(const Track& t);
+    void startSat(const TpTrack& t);
     void stopSlot(size_t i);   // under mu_
     Slot* find(int slot);
 
@@ -113,7 +113,7 @@ private:
     Sink sink_;
     std::mutex sinkMu_;
     int lastSelPolled_ = INT_MIN / 2;
-    std::vector<Track> tracks_;   // sat: the transponders followed over time (under mu_)
+    std::vector<TpTrack> tracks_;   // sat: the transponders followed over time (under mu_)
     int nextId_ = 1;
 };
 

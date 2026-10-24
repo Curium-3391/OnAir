@@ -324,7 +324,7 @@ std::vector<TvChannelRow> MultiTv::channels() {
     std::vector<TvChannelRow> v;
     const int sel = sel_.load();
     if (o_.sat) {
-        for (const Track& tr : tracks_) {
+        for (const TpTrack& tr : tracks_) {
             if (tr.seen < 2 && !find(tr.id)) continue;
             TvChannelRow r;
             r.slot = tr.id; r.sat = true; r.offsetHz = tr.tp.centerHz; r.levelDb = tr.tp.levelDb; r.aboveDb = tr.tp.snrDb; r.occupied = tr.absent == 0;
@@ -418,7 +418,7 @@ std::vector<int> MultiTv::runningSlots() {
 std::vector<Transponder> MultiTv::lastTransponders() {
     std::lock_guard<std::mutex> lk(mu_);
     std::vector<Transponder> v;
-    for (const Track& t : tracks_) if (t.absent == 0) v.push_back(t.tp);
+    for (const TpTrack& t : tracks_) if (t.absent == 0) v.push_back(t.tp);
     return v;
 }
 
@@ -431,12 +431,12 @@ void MultiTv::evaluateSat() {
     const std::vector<Transponder> found = detectTransponders(scan_.spectrumDb(), o_.spanRate, tp);
     {
         std::lock_guard<std::mutex> lk(mu_);
-        for (Track& t : tracks_) t.absent++;
+        for (TpTrack& t : tracks_) t.absent++;
         for (const Transponder& f : found) {
             if (f.clipped) continue;   // runs into the edge of the capture: its other half is not here
-            Track* best = nullptr;
+            TpTrack* best = nullptr;
             double bd = 1e30;
-            for (Track& t : tracks_) {
+            for (TpTrack& t : tracks_) {
                 const double d = std::fabs(t.tp.centerHz - f.centerHz), tol = std::max(0.25 * std::min(t.tp.bwHz, f.bwHz), 150e3);
                 if (d < tol && d < bd) { best = &t; bd = d; }
             }
@@ -448,12 +448,12 @@ void MultiTv::evaluateSat() {
                 if (!running) best->tp = f;           // a running receiver keeps the centre it was started at; the table shows the measurement
                 else { best->tp.levelDb = f.levelDb; best->tp.snrDb = f.snrDb; }
             } else {
-                Track t; t.id = nextId_++; t.tp = f; t.seen = 1; t.absent = 0;
+                TpTrack t; t.id = nextId_++; t.tp = f; t.seen = 1; t.absent = 0;
                 tracks_.push_back(t);
             }
         }
         // a track that was not seen for 4 looks starts counting again; the long absent ones go (never a running one with a lock)
-        for (Track& t : tracks_) if (t.absent >= 2 && !find(t.id)) t.seen = 0;
+        for (TpTrack& t : tracks_) if (t.absent >= 2 && !find(t.id)) t.seen = 0;
     }
     // stop receivers whose transponder has gone and that never locked; drop dead tracks
     for (;;) {
@@ -462,7 +462,7 @@ void MultiTv::evaluateSat() {
             std::lock_guard<std::mutex> lk(mu_);
             for (size_t i = 0; i < live_.size(); i++) {
                 int ab = 0;
-                for (const Track& t : tracks_) if (t.id == live_[i]->pos.index) ab = t.absent;
+                for (const TpTrack& t : tracks_) if (t.id == live_[i]->pos.index) ab = t.absent;
                 if (ab >= kAbsentEvals && !(live_[i]->haveTel && live_[i]->dtel.state >= 2)) { victim = i; break; }
             }
         }
@@ -479,13 +479,13 @@ void MultiTv::evaluateSat() {
             else i++;
         }
     }
-    std::vector<Track> want;
+    std::vector<TpTrack> want;
     {
         std::lock_guard<std::mutex> lk(mu_);
-        for (const Track& t : tracks_) if (t.absent == 0 && t.seen >= 2 && !find(t.id)) want.push_back(t);
+        for (const TpTrack& t : tracks_) if (t.absent == 0 && t.seen >= 2 && !find(t.id)) want.push_back(t);
     }
-    std::sort(want.begin(), want.end(), [](const Track& a, const Track& b) { return a.tp.snrDb > b.tp.snrDb; });
-    for (const Track& t : want) {
+    std::sort(want.begin(), want.end(), [](const TpTrack& a, const TpTrack& b) { return a.tp.snrDb > b.tp.snrDb; });
+    for (const TpTrack& t : want) {
         size_t cnt;
         { std::lock_guard<std::mutex> lk(mu_); cnt = live_.size(); }
         if ((int)cnt >= std::max(1, o_.maxChannels)) break;
@@ -493,7 +493,7 @@ void MultiTv::evaluateSat() {
     }
 }
 
-void MultiTv::startSat(const Track& t) {
+void MultiTv::startSat(const TpTrack& t) {
     auto s = std::make_unique<Slot>();
     s->pos.index = t.id; s->pos.offsetHz = t.tp.centerHz; s->owner = this; s->tp = t.tp;
     // as the secondary DVB-S receiver of the engine: 3.2 samples per symbol, 2 Msps at least, never more than the capture has
