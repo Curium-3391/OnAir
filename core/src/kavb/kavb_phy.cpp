@@ -208,7 +208,13 @@ cf chirpUnit(double symPos, double periodSyms) {
         cyc = kChirpSpan * (-v + 2.0 * v * v / periodSyms);
     }
     const double a = 6.283185307179586 * cyc;
+#if defined(__GLIBC__)
+    double sn, cs;
+    sincos(a, &sn, &cs);   // glibc: the same values as sin and cos separately, one range reduction
+    return cf(static_cast<float>(cs), static_cast<float>(sn));
+#else
     return cf(static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a)));
+#endif
 }
 
 // ---- transmitter -------------------------------------------------------------------------------------------------------------------------------------------------

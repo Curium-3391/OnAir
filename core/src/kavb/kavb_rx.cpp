@@ -79,9 +79,24 @@ Fit pilotFit(const std::vector<cf>& s, const Profile& p) {
     double bestM = -1, bestW = wc;
     std::vector<double> mets(2 * nsteps + 1);
     int bi = 0;
-    for (int i = -nsteps; i <= nsteps; i++) {
-        mets[i + nsteps] = std::abs(sumAt(wc + i * kStep));
-        if (mets[i + nsteps] > bestM) { bestM = mets[i + nsteps]; bestW = wc + i * kStep; bi = i + nsteps; }
+    {   // the scan: each term's phasor at the first trial is made once and then turned by its own step per trial (a complex product instead of a cos and a sin per term and trial)
+        const size_t nv = v.size();
+        std::vector<double> ar(nv), ai(nv), sr(nv), si(nv);
+        for (size_t t = 0; t < nv; t++) {
+            const std::complex<double> a0 = std::complex<double>(v[t]) * std::polar(1.0, -(wc - nsteps * kStep) * pos[t]), st = std::polar(1.0, -kStep * pos[t]);
+            ar[t] = a0.real(); ai[t] = a0.imag(); sr[t] = st.real(); si[t] = st.imag();
+        }
+        for (int i = -nsteps; i <= nsteps; i++) {
+            double accR = 0, accI = 0;
+            for (size_t t = 0; t < nv; t++) {
+                accR += ar[t]; accI += ai[t];
+                const double nr = ar[t] * sr[t] - ai[t] * si[t];
+                ai[t] = ar[t] * si[t] + ai[t] * sr[t];
+                ar[t] = nr;
+            }
+            mets[i + nsteps] = std::sqrt(accR * accR + accI * accI);
+            if (mets[i + nsteps] > bestM) { bestM = mets[i + nsteps]; bestW = wc + i * kStep; bi = i + nsteps; }
+        }
     }
     if (bi > 0 && bi < 2 * nsteps) {
         const double m0 = mets[bi - 1], m1 = mets[bi], m2 = mets[bi + 1];
