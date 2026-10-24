@@ -24,7 +24,7 @@ HAMLIB_CMAKE=OFF
 for f in "$P/bin"/libhamlib*.dll "$P/bin"/hamlib.dll; do [ -f "$f" ] && HAMLIB_CMAKE=ON && break; done
 GEN=""; command -v ninja >/dev/null 2>&1 && GEN="-G Ninja"   # Ninja plus ccache (CMake picks it up) make a repeat build several times faster
 cmake --fresh $GEN -S . -B $BUILD "-DCMAKE_TOOLCHAIN_FILE=$PWD/packaging/windows/mingw-toolchain.cmake" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_BUILD_TESTS=ON -DDECT2_HAVE_HAMLIB=$HAMLIB_CMAKE -DDECT2_WITH_SOAPY=ON -DONAIR_WIN_SOAPY=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/dev/null
-cmake --build $BUILD -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" --target dect2 dect2cli dect2scan
+cmake --build $BUILD -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" --target dect2 dect2cli dect2scan onair-server
 OUT=${ONAIR_WIN_OUT:-$BUILD/OnAir-$VERSION-windows-x64}
 ZIP=${OUT%/}.zip
 SETUP=${OUT%/}-setup.exe
@@ -33,6 +33,8 @@ S=x86_64-w64-mingw32-strip
 $S -o "$OUT/OnAir.exe" $BUILD/dect2.exe
 $S -o "$OUT/onair-cli.exe" $BUILD/dect2cli.exe
 $S -o "$OUT/onair-scan.exe" $BUILD/dect2scan.exe
+$S -o "$OUT/onair-server.exe" $BUILD/onair-server.exe   # the headless server (OnAir Web)
+[ -f "$OUT/onair-server.exe" ] || { echo "error: onair-server.exe is missing from $OUT"; exit 1; }
 # generic radios: SoapySDR (a DLL). Its RTL-SDR and Airspy modules are not shipped: the native drivers of the same name always win and hide them.
 cp "$P/bin/libSoapySDR.dll" "$OUT/"
 # the radios OnAir drives by itself: their libraries next to the program (nothing to install). FTD3XX.dll is FTDI's USB 3 driver library that the
@@ -80,6 +82,7 @@ python3 tools/package/scrub_paths.py "$OUT"   # no build-machine paths in the sh
 tools/package/check_win_dlls.sh "$OUT" || { echo "error: the DLLs of $OUT do not fit together (see above)"; exit 1; }
 cp LICENSE "$OUT/LICENSE.txt"
 tools/package/check_lgpl_bundle.sh "$OUT/OnAir.exe" || exit 1   # fails if FFmpeg inside is a GPL build
+tools/package/check_lgpl_bundle.sh "$OUT/onair-server.exe" || exit 1
 tools/package/add_license_files.sh "$OUT"   # THIRD_PARTY.md, LICENSES/, LICENSE-NOTICES-BINARIES.md (licence of every bundled DLL, source offer)
 cat > "$OUT/README.txt" <<'TXT'
 OnAir - DVB-T2 / DVB-T / ATSC / DAB receiver (Windows 10 or 11, 64-bit)
@@ -96,6 +99,7 @@ PlutoSDR: install the PlutoSDR Windows drivers from Analog Devices (wiki.analog.
 Video is decoded on the graphics chip and the error correction runs on the GPU when the computer has a suitable one (switchable in the player panel).
 No radio? The tour (first start, or the "Tour" button) plays a demo signal.
 onair-cli.exe and onair-scan.exe are command-line tools (run them from a terminal).
+onair-server.exe is OnAir without a window, for OnAir Web: run  onair-server.exe --web --web-lan  in a terminal (docs/headless-server.md).
 TXT
 ABS_ZIP=$(cd "$(dirname "$ZIP")" && pwd)/$(basename "$ZIP")   # before the cd below: $ZIP is relative to the repo
 rm -f "$ABS_ZIP"; (cd "$(dirname "$OUT")" && zip -qr "$ABS_ZIP" "$(basename "$OUT")")

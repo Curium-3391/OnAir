@@ -78,6 +78,7 @@ Section "OnAir"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\OnAir"
   CreateShortcut "$SMPROGRAMS\OnAir\OnAir.lnk" "$INSTDIR\OnAir.exe"
+  CreateShortcut "$SMPROGRAMS\OnAir\OnAir Web server.lnk" "$WINDIR\System32\cmd.exe" '/k ""$INSTDIR\onair-server.exe" --web --web-lan"' "$INSTDIR\onair-server.exe"   ; console window with the headless server (docs/ONAIR-WEB.md)
   CreateShortcut "$SMPROGRAMS\OnAir\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\OnAir.lnk" "$INSTDIR\OnAir.exe"
 SectionEnd

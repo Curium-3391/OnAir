@@ -2184,6 +2184,12 @@ if(DECT2_BUILD_APP AND NOT APPLE)
     add_dependencies(dect2 onair-plugin-host ${ONAIR_PLUGIN_TARGETS})   # the packages build --target dect2 and install the plug-in helper and the examples next to it
   endif()
   install(PROGRAMS $<TARGET_FILE:onair-plugin-host> DESTINATION ${CMAKE_INSTALL_LIBDIR}/onair)
+  # the headless server (docs/headless-server.md, docs/ONAIR-WEB.md) and its systemd unit (installed, not enabled: the admin turns it on)
+  if(TARGET dect2)
+    add_dependencies(dect2 onair-server)
+  endif()
+  install(PROGRAMS $<TARGET_FILE:onair-server> DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES packaging/linux/onair-server.service DESTINATION lib/systemd/system)
   if(DECT2_BUILD_PLUGIN_EXAMPLES)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/plugins/ DESTINATION ${CMAKE_INSTALL_LIBDIR}/onair/plugins USE_SOURCE_PERMISSIONS)
   endif()
@@ -2250,7 +2256,7 @@ endif()
 
 if(DECT2_COPY_RUNTIME_DLLS AND MINGW)
   get_filename_component(DECT2_RUNTIME_DLL_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)   # the MSYS2 (or mingw-w64) bin folder holds every DLL the programs link to
-  foreach(t dect2 dect2cli dect2scan)
+  foreach(t dect2 dect2cli dect2scan onair-server)
     if(TARGET ${t})
       add_custom_command(TARGET ${t} POST_BUILD
         COMMAND ${CMAKE_COMMAND} "-DEXE=$<TARGET_FILE:${t}>" "-DSEARCH_DIR=${DECT2_RUNTIME_DLL_DIR}" "-DOBJDUMP=${CMAKE_OBJDUMP}"

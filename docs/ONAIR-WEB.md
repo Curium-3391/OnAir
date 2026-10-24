@@ -19,6 +19,18 @@ Because every listener only cuts its own few bins out of the shared transform, t
 
 ## Quick start (your own network)
 
+After installing OnAir, `onair-server` is already on your computer; nothing else to download:
+
+| System | Where it is | Start it with |
+|---|---|---|
+| macOS (.dmg) | inside the app: `/Applications/OnAir.app/Contents/MacOS/onair-server` | `/Applications/OnAir.app/Contents/MacOS/onair-server --web --web-lan` |
+| Linux (.deb) | `/usr/bin/onair-server` (on the PATH), plus an optional systemd unit, installed but not enabled | `onair-server --web --web-lan` |
+| Linux (portable .tar.gz) | `bin/onair-server` in the unpacked folder | `./bin/onair-server --web --web-lan` |
+| Windows (installer) | `C:\Program Files\OnAir\onair-server.exe`; Start menu: "OnAir Web server" | `"C:\Program Files\OnAir\onair-server.exe" --web --web-lan` |
+| Windows (zip) | `onair-server.exe` next to `OnAir.exe` | run it from a terminal in that folder |
+
+Then, with the right path for your system:
+
 ```
 onair-server --web --web-lan --device test      # the built-in test signal; drop --device test for your radio
 ```

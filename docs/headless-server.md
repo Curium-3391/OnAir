@@ -6,6 +6,18 @@ Status: built and tested with the synthetic test signal and fake clients only. *
 
 ## Quick start
 
+After installing OnAir, `onair-server` is already on your computer; nothing else to download:
+
+| System | Where it is | Start it with |
+|---|---|---|
+| macOS (.dmg) | inside the app: `/Applications/OnAir.app/Contents/MacOS/onair-server` | `/Applications/OnAir.app/Contents/MacOS/onair-server --web --web-lan` |
+| Linux (.deb) | `/usr/bin/onair-server` (on the PATH), plus an optional systemd unit, installed but not enabled | `onair-server --web --web-lan` |
+| Linux (portable .tar.gz) | `bin/onair-server` in the unpacked folder | `./bin/onair-server --web --web-lan` |
+| Windows (installer) | `C:\Program Files\OnAir\onair-server.exe`; Start menu: "OnAir Web server" | `"C:\Program Files\OnAir\onair-server.exe" --web --web-lan` |
+| Windows (zip) | `onair-server.exe` next to `OnAir.exe` | run it from a terminal in that folder |
+
+Without `--web`, the control page alone:
+
 ```
 onair-server                      # this computer only: http://127.0.0.1:8765/
 onair-server --lan                # other computers too: makes a token, saves it, prints it
@@ -67,7 +79,7 @@ Plain `key=value` lines, `#` for comments. Default place: `~/.config/onair/serve
 
 ## Running it all the time
 
-**Linux (systemd).** `packaging/linux/onair-server.service` has the steps in its header: a system user in `plugdev`, the binary in `/usr/local/bin`, the settings and the token in `/var/lib/onair`. `journalctl -u onair-server` shows the log.
+**Linux (systemd).** `packaging/linux/onair-server.service` has the steps in its header: a system user in `plugdev`, the binary in `/usr/bin` (the .deb installs the binary and the unit, not enabled; `systemctl enable --now onair-server` after the one-time setup in the unit header), the settings and the token in `/var/lib/onair`. `journalctl -u onair-server` shows the log.
 
 **Raspberry Pi.** The same; use a 64-bit OS and a Pi 4 or better for the heavier modes (DVB-T2 needs far more CPU than FM or ADS-B). `--share-rtltcp` makes it a network radio for other computers as well.
 
