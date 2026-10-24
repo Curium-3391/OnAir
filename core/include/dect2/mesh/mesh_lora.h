@@ -160,6 +160,8 @@ public:
     // the demodulator keeps its own
     Demod(const Params& p, double fsChan, int searchFftPerSymbol = 1, std::shared_ptr<ChipStream> shared = nullptr);
     ~Demod();
+    static inline bool softOn = true;           // soft-decision decoding of the Hamming codewords (switch for comparisons)
+    static inline int searchStride = 1;          // 2: only every second window searches for a preamble (half the search cost; costs reliability: off)
     const Params& params() const;
     void reset(int64_t fromSample);
     void process(const ChanBuf& buf, std::vector<RxFrame>& out);

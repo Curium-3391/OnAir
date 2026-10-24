@@ -24,7 +24,7 @@ static int sweep(int argc, char** argv) {
     const size_t len = argc > 7 ? (size_t)atoi(argv[7]) : 20;
     const int frames = argc > 8 ? atoi(argv[8]) : 30;
     const double fo = argc > 9 ? atof(argv[9]) : 0;
-    lora::Params p; p.sf = sf; p.bwHz = bw; p.cr = cr; p.preamble = 8; p.ldro = lora::autoLdro(sf, bw);
+    lora::Params p; p.sf = sf; p.bwHz = bw; p.cr = cr; p.preamble = getenv("LORA_PRE") ? atoi(getenv("LORA_PRE")) : 8; p.ldro = lora::autoLdro(sf, bw);
     double prevSnr = 0, prevFrac = 1, thr = 99;
     const double start = floorFor(sf) + 4 + fo;
     int lowRuns = 0;
@@ -33,6 +33,7 @@ static int sweep(int argc, char** argv) {
         Trial t;
         t.p = p; t.rate = gRateX * bw; t.off = 0; t.cfoHz = cfo; t.sroPpm = sro; t.snrDb = snr; t.frames = frames; t.len = len;
         t.seed = (uint32_t)(sf * 1000 + (int)((snr + 40) * 2));
+        if (const char* e = getenv("LORA_BURST")) sscanf(e, "%lf,%lf", &t.burstDuty, &t.burstDb);
         int dec = 0; lora::DemodStats stt;
         const int ok = runTrial(t, nullptr, &dec, &stt);
         const double fr = (double)ok / frames;
@@ -95,6 +96,7 @@ static int cpu(int argc, char** argv) {
 }
 
 
+#ifdef LORA_NEW
 // 8 LoRaWAN-style channels (200 kHz apart, 125 kHz) in a 2 Msps capture, frames of different SFs and carrier offsets on all of them:
 // how many come out right, and the CPU time of the bank. LORA_NOFD=1 uses one channel filter per channel instead of the shared FFT.
 static int multi(int argc, char** argv) {
@@ -189,14 +191,21 @@ static int fdcheck(int, char**) {
     }
     return 0;
 }
+#endif
 
 int main(int argc, char** argv) {
+#ifdef LORA_NEW
     if (const char* e = getenv("LORA_RATIO")) lora::Channelizer::kMinRatio = atof(e);
+    if (const char* e = getenv("LORA_SOFT")) lora::Demod::softOn = atoi(e) != 0;
+    if (const char* e = getenv("LORA_STRIDE")) lora::Demod::searchStride = atoi(e);
+#endif
     if (const char* e = getenv("LORA_RATE_X")) gRateX = atof(e);
     if (argc >= 5 && !strcmp(argv[1], "sweep")) return sweep(argc, argv);
     if (argc >= 2 && !strcmp(argv[1], "cpu")) return cpu(argc, argv);
+#ifdef LORA_NEW
     if (argc >= 2 && !strcmp(argv[1], "fdcheck")) return fdcheck(argc, argv);
     if (argc >= 2 && !strcmp(argv[1], "multi")) return multi(argc, argv);
+#endif
     printf("usage: lora_bench sweep sf bwKhz cr [cfoHz sroPpm len frames floorOffsetDb] | cpu [secs]\n");
     return 1;
 }

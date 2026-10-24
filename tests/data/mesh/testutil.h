@@ -65,6 +65,7 @@ struct Trial {
     double resetAt = -1;         // reset the demodulator at this time
     uint32_t seed = 1;
     double noiseRms = 0.05;
+    double burstDuty = 0, burstDb = 0;   // bursts of extra noise, one symbol long, covering this fraction of the time, burstDb above the noise
 };
 inline int runTrial(const Trial& t, std::vector<lora::RxFrame>* outFrames = nullptr, int* decoded = nullptr, lora::DemodStats* stats = nullptr) {
     std::mt19937 g(t.seed);
@@ -83,6 +84,17 @@ inline int runTrial(const Trial& t, std::vector<lora::RxFrame>* outFrames = null
         fr.push_back(f);
     }
     auto x = render(fr, at + 0.05, t.rate, t.noiseRms, t.seed * 7 + 1);
+    if (t.burstDuty > 0) {
+        std::mt19937 gb(t.seed * 13 + 5);
+        const size_t len = (size_t)(lora::symbolSeconds(t.p.sf, t.p.bwHz) * t.rate);
+        const size_t nb = (size_t)(t.burstDuty * (double)x.size() / (double)len);
+        genutil::NoiseSource nsb(t.seed * 31 + 3);
+        const float sg = (float)(t.noiseRms * std::pow(10.0, t.burstDb / 20) / std::sqrt(2.0));
+        for (size_t i = 0; i < nb; i++) {
+            const size_t at0 = gb() % (x.size() - len);
+            nsb.add(x.data() + at0, len, sg);
+        }
+    }
     if (t.dc != 0) for (auto& v : x) v += cf32((float)t.dc, (float)(-0.5 * t.dc));
     if (t.gapAt >= 0) {
         const size_t a = (size_t)(t.gapAt * t.rate), b = std::min(x.size(), (size_t)((t.gapAt + t.gapSec) * t.rate));

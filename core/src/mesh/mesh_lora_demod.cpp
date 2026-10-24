@@ -219,6 +219,7 @@ struct Demod::Impl {
     std::vector<cf32> mixed;
     std::shared_ptr<ChipStream> cs;   // the chip-rate stream the search reads
     bool ownCs = true;
+    int stride = 1;              // search windows: every stride-th (a preamble of 8 symbols has enough for 3 of them at stride 2)
     int64_t ochip = 0;           // chip index of the search grid's origin (origin = ochip x rho)
     DemodStats st;
 
@@ -248,6 +249,7 @@ struct Demod::Impl {
     void startFd() { if (p.implicitHdr) fd.startImplicit(sf, p.ldro, p.implicitLen, p.cr, p.crc); else fd.start(sf, p.ldro); }
 
     Impl(const Params& pp, double fsChan, std::shared_ptr<ChipStream> shared) : p(pp), sf(pp.sf), N(1 << pp.sf), fs(fsChan), rho(fsChan / pp.bwHz) {
+        stride = std::max(1, Demod::searchStride);
         ownCs = !shared || std::fabs(shared->rho() - rho) > 1e-9;
         cs = ownCs ? std::make_shared<ChipStream>(rho) : shared;
         dnRe.resize(N); dnIm.resize(N);
@@ -398,6 +400,7 @@ void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
             if (!sfd(b)) { st.syncBad++; toSearch(winStart(preEnd)); }
             continue;
         }
+        if (state == Search && stride > 1 && (win % stride) != 0) { win++; continue; }   // only every stride-th window looks for a preamble
         if (winChip(win) + N > cs->end()) return;
         if (winChip(win) < cs->begin()) { win++; continue; }    // history was dropped: skip
         fetch(winChip(win), 1);
@@ -436,7 +439,7 @@ void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
                     for (int j = 0; j < 3; j++) for (int k = 0; k < N; k++) preAcc[k] += hist[(size_t)j][k];
                     kUp = (int)(std::max_element(preAcc.begin(), preAcc.end()) - preAcc.begin());
                     preLevel = bestQ;
-                    preFirst = win - 2;
+                    preFirst = win - 2 * stride;
                     preEnd = -1;
                 }
             }
@@ -457,7 +460,7 @@ void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
             } else if (win - preFirst >= 80) {
                 toSearch(winStart(win));                // a steady carrier, not a frame
                 continue;
-            } else if (win - preFirst < kMinPreWins) {
+            } else if (win - preFirst < kMinPreWins + 2 * (stride - 1)) {
                 toSearch(winStart(win));                // three windows with nothing after them: noise, not a preamble
                 continue;
             } else {
@@ -685,7 +688,7 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
     }
     const int k = ss.bin[0];
     const double q = pw[(size_t)k] / mean;
-    if (sigPw > 0) fd.pushSoft(ss); else fd.push((uint16_t)k);
+    if (sigPw > 0 && Demod::softOn) fd.pushSoft(ss); else fd.push((uint16_t)k);
     // Carrier offset (cfoTrack > 0): the phase of the peak bin advances by 2 pi times the carrier offset (in bins) from symbol to
     // symbol (the chirps' phase is continuous and returns to zero at every symbol start), once the mixer's own phase at the window
     // start is added back. Moving the window by x chips turns the phase by x / 2 cycles (lastAdj). The offset comes out modulo one
