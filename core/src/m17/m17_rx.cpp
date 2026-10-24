@@ -116,7 +116,7 @@ struct M17Receiver::Impl {
             // the channel filter: windowed sinc, 8 kHz cut, about 5 kHz transition
             M = std::max(8, (int)std::ceil(5.5 * fd / 5000.0 / 2));
             fir.assign((size_t)nPh * 2 * M, 0.f);
-            const double fc = 8000.0 / fd;
+            const double fc = 5500.0 / fd;
             for (int ph = 0; ph < nPh; ph++) {
                 const double frac = (double)ph / nPh;
                 double sum = 0;
