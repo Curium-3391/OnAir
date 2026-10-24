@@ -9,12 +9,86 @@
 #endif
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <memory>
+#include <mutex>
 #include "dect2/common/window.h"
 
 namespace dect2 {
 
 namespace {
 double besselI0(double x) { return dect2::window::besselI0(x, 40, 0.0); }
+
+// Kaiser window value of the tap at distance x (|x| < half): the same expression as ever
+inline double winAt(double x, int half, double beta, double i0b) {
+    return std::fabs(x) < half ? besselI0(beta * std::sqrt(1.0 - (x / half) * (x / half))) / i0b : 0.0;
+}
+
+#ifdef DECT2_ER_AVX2
+// Four taps at a time: the same IEEE operations in the same order as winAt / window::besselI0 (division, multiplication, addition and the
+// square root are correctly rounded in a vector as in a scalar; no FMA is available in this target, so nothing is contracted): the same bits.
+__attribute__((target("avx2")))
+void windowRowAvx2(const double* x, int n, int half, double beta, double i0b, double* w) {
+    const __m256d vh = _mm256_set1_pd((double)half), vb = _mm256_set1_pd(beta), vi = _mm256_set1_pd(i0b), one = _mm256_set1_pd(1.0);
+    const __m256d sign = _mm256_set1_pd(-0.0);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        const __m256d xv = _mm256_loadu_pd(x + i);
+        const __m256d r = _mm256_div_pd(xv, vh);
+        const __m256d z = _mm256_mul_pd(vb, _mm256_sqrt_pd(_mm256_sub_pd(one, _mm256_mul_pd(r, r))));
+        __m256d s = one, t = one;
+        for (int k = 1; k < 40; k++) {
+            const __m256d q = _mm256_div_pd(z, _mm256_set1_pd(2.0 * k));
+            t = _mm256_mul_pd(t, _mm256_mul_pd(q, q));
+            s = _mm256_add_pd(s, t);
+        }
+        const __m256d val = _mm256_div_pd(s, vi);
+        const __m256d inside = _mm256_cmp_pd(_mm256_andnot_pd(sign, xv), vh, _CMP_LT_OQ);
+        _mm256_storeu_pd(w + i, _mm256_and_pd(val, inside));
+    }
+    for (; i < n; i++) w[i] = winAt(x[i], half, beta, i0b);
+}
+#endif
+
+void windowRow(const double* x, int n, int half, double beta, double i0b, double* w) {
+#ifdef DECT2_ER_AVX2
+    static const bool avx2 = __builtin_cpu_supports("avx2");
+    if (avx2) { windowRowAvx2(x, n, half, beta, i0b, w); return; }
+#endif
+    for (int i = 0; i < n; i++) w[i] = winAt(x[i], half, beta, i0b);
+}
+
+// The filter bank: (phases + 1) rows of `stride` taps. Row p' = phases - p is row p read backwards (x -> -x exactly: the positions are dyadic,
+// and the window and the sinc are even and computed from |x|-symmetric operations), so only half the rows are evaluated; each row is still
+// normalised by its own sum taken in tap order, as before.
+std::vector<float> buildBank(double down, int half, int taps, int stride, int phases) {
+    const double fc = 0.5 * down * 0.97;
+    std::vector<float> bank((size_t)(phases + 1) * (size_t)stride, 0.f);
+    const double beta = 8.0, i0b = besselI0(beta);
+    std::vector<double> x((size_t)taps), w((size_t)taps), t((size_t)taps), u((size_t)taps);
+    for (int p = 0; p <= phases / 2; p++) {
+        const double tau = (double)p / phases;
+        for (int k = 0; k < taps; k++) x[(size_t)k] = (k - (half - 1)) - tau;
+        windowRow(x.data(), taps, half, beta, i0b, w.data());
+        double sum = 0;
+        for (int k = 0; k < taps; k++) {
+            const double xk = x[(size_t)k];
+            const double sc = xk == 0 ? 1.0 : std::sin(2 * M_PI * fc * xk) / (2 * M_PI * fc * xk);
+            t[(size_t)k] = 2 * fc * sc * w[(size_t)k];
+            sum += t[(size_t)k];
+        }
+        float* row = &bank[(size_t)p * (size_t)stride];
+        for (int k = 0; k < taps; k++) row[k] = (float)(t[(size_t)k] / sum);
+        const int q = phases - p;
+        if (q != p) {
+            double sum2 = 0;
+            for (int k = 0; k < taps; k++) { u[(size_t)k] = t[(size_t)(taps - 1 - k)]; sum2 += u[(size_t)k]; }
+            float* row2 = &bank[(size_t)q * (size_t)stride];
+            for (int k = 0; k < taps; k++) row2[k] = (float)(u[(size_t)k] / sum2);
+        }
+    }
+    return bank;
+}
 }
 
 bool ExactResampler::configure(double inRate, double outRate, int lobes) {
@@ -23,28 +97,32 @@ bool ExactResampler::configure(double inRate, double outRate, int lobes) {
     step_ = inRate / outRate;
     pass_ = std::fabs(ratio - 1.0) < 1e-12;
     if (pass_) { reset(); return true; }
-    const double down = std::min(1.0, ratio);
-    const double fc = 0.5 * down * 0.97;
-    half_ = (int)std::ceil((double)lobes / down);
+    down_ = std::min(1.0, ratio);
+    half_ = (int)std::ceil((double)lobes / down_);
     taps_ = 2 * half_;
     stride_ = (taps_ + 7) & ~7;   // a multiple of the vector width of the dot product below
-    bank_.assign((size_t)(phases_ + 1) * (size_t)stride_, 0.f);
-    const double beta = 8.0, i0b = besselI0(beta);
-    std::vector<double> t((size_t)taps_);
-    for (int p = 0; p <= phases_; p++) {
-        const double tau = (double)p / phases_;
-        double sum = 0;
-        for (int k = 0; k < taps_; k++) {
-            const double x = (k - (half_ - 1)) - tau;
-            const double w = std::fabs(x) < half_ ? besselI0(beta * std::sqrt(1.0 - (x / half_) * (x / half_))) / i0b : 0.0;
-            const double sc = x == 0 ? 1.0 : std::sin(2 * M_PI * fc * x) / (2 * M_PI * fc * x);
-            t[(size_t)k] = 2 * fc * sc * w;
-            sum += t[(size_t)k];
-        }
-        for (int k = 0; k < taps_; k++) bank_[(size_t)p * (size_t)stride_ + (size_t)k] = (float)(t[(size_t)k] / sum);
-    }
+    // The bank is built when the first samples arrive (every receiver of the engine is configured at start, most are never fed) and shared
+    // between resamplers of the same ratio and length.
+    bank_.reset();
     reset();
     return true;
+}
+
+void ExactResampler::ensureBank() {
+    if (bank_) return;
+    struct Key { double down; int half; bool operator<(const Key& o) const { return down != o.down ? down < o.down : half < o.half; } };
+    static std::mutex mu;
+    static std::map<Key, std::weak_ptr<const std::vector<float>>> cache;
+    const Key key{down_, half_};
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        auto it = cache.find(key);
+        if (it != cache.end()) { bank_ = it->second.lock(); if (bank_) return; }
+    }
+    auto b = std::make_shared<const std::vector<float>>(buildBank(down_, half_, taps_, stride_, phases_));
+    std::lock_guard<std::mutex> lk(mu);
+    auto& slot = cache[key];
+    if (auto o = slot.lock()) bank_ = o; else { slot = b; bank_ = b; }
 }
 
 void ExactResampler::reset() {
@@ -188,12 +266,13 @@ void ExactResampler::process(const cf32* in, size_t n, std::vector<cf32>& out) {
         float* pr = &re_[at]; float* pi = &im_[at];
         for (size_t i = 0; i < n; i++) { pr[i] = in[i].real(); pi[i] = in[i].imag(); }
     }
+    ensureBank();
     const long avail = (long)re_.size();
     const double endPos = (double)(avail - stride_ + half_);   // outputs are made while pos < endPos: the dot product still fits in the input
     const size_t first = out.size();
     out.resize(first + (size_t)std::max(0.0, std::ceil((endPos - pos_) / step_)) + 2);
     cf32* o = out.data() + first;
-    const size_t produced = resampleLoop(re_.data(), im_.data(), bank_.data(), stride_, phases_, half_ - 1, avail, pos_, step_, o);
+    const size_t produced = resampleLoop(re_.data(), im_.data(), bank_->data(), stride_, phases_, half_ - 1, avail, pos_, step_, o);
     out.resize(first + produced);
     // drop what is no longer needed, keeping the history the next output needs
     const long keepFrom = (long)std::floor(pos_) - (half_ - 1);

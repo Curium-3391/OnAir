@@ -2,6 +2,7 @@
 // sample rate is not a small rational multiple of the radio's (a rational approximation is tens of ppm off at 10 Msps).
 #pragma once
 #include "dect2/common/ring.h"
+#include <memory>
 #include <vector>
 
 namespace dect2 {
@@ -28,7 +29,9 @@ private:
     bool pass_ = true;
     double step_ = 1.0;        // input samples per output sample
     int half_ = 16, taps_ = 32, stride_ = 32, phases_ = 2048;
-    std::vector<float> bank_;  // (phases + 1) x stride
+    double down_ = 1.0;
+    std::shared_ptr<const std::vector<float>> bank_;  // (phases + 1) x stride, built on first use (ensureBank), shared by equal ratios
+    void ensureBank();
     std::vector<float> re_, im_;   // buffered input (with history)
     double pos_ = 0;           // position of the next output sample, in input samples counted from re_[0]
 };
