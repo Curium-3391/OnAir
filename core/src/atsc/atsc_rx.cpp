@@ -871,7 +871,7 @@ struct Core {
         int L() const { return kNFf + NP + 1; }
     };
     Taps eqLast;               // the taps used for the telemetry
-    int cleanFields = 0;
+    int cleanFields = 0, reuseTick = 0;
     std::vector<float> prevS, prevLv, prevY;
     int64_t prevBase = 0, prevF0 = 0;
     bool havePrev = false;
@@ -1114,7 +1114,11 @@ struct Core {
         double snr = 0;
         if (usePrev) {
             const View pview{&prevS, prevBase, prevF0};
-            trained = trainDFE(view, pview, fsLv, prevLv, prevY, 1e-5, tp);
+            // A channel that has been decoding cleanly for a while changes slowly: the decision feedback taps are solved afresh every fourth field
+            // only (a 190-unknown least squares over thousands of rows: the largest cost of the receiver), the fields between use the last ones.
+            // Any trouble (equaliser SNR under 9 dB, damaged packets) clears cleanFields and the next field solves again.
+            if (cleanFields >= 6 && (++reuseTick & 3) != 0 && eqLast.ok && eqLast.B > 0 && snrAvg >= 20.0) { tp = eqLast; trained = true; }
+            else { reuseTick = 0; trained = trainDFE(view, pview, fsLv, prevLv, prevY, 1e-5, tp); }
             if (!trained) trained = trainFF(view, fsLv, tp);
         } else trained = trainFF(view, fsLv, tp);
         tLs += now() - tM0;
