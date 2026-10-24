@@ -20,6 +20,7 @@ struct Params {
     int cr = 5;                  // 5..8 for 4/5..4/8
     int preamble = 16;           // up-chirps before the sync word
     uint8_t syncWord = 0x2B;
+    std::vector<uint8_t> moreSync;   // further sync words tried by the same demodulator (one preamble search serves all of them)
     bool ldro = false;           // low data rate optimisation
     bool crc = true;
     bool implicitHdr = false;    // no header: the length (implicitLen), coding rate (cr) and CRC (crc) are agreed beforehand (plain LoRa links)
@@ -58,12 +59,23 @@ struct Header {
     bool crc = false, ok = false;
 };
 
+// Soft information of one demodulated symbol: its strongest bins with their log-likelihoods (ln I0 of the noncoherent envelope),
+// and the level a bin outside the list is assumed to have. Used by FrameDecoder::pushSoft for soft Hamming decoding.
+struct SoftSym {
+    static constexpr int M = 4;
+    uint16_t bin[M] = {};
+    float m[M] = {};
+    float floorM = 0;
+    int n = 0;
+};
+
 // Turns data symbol bins back into bytes: push() each bin in order; after 8 the header is known, after needed() the payload.
 class FrameDecoder {
 public:
     void start(int sf, bool ldro);
     void startImplicit(int sf, bool ldro, int len, int cr, bool crc);   // implicit header: no header nibbles, the settings are known
     void push(uint16_t bin);
+    void pushSoft(const SoftSym& s);                           // the bin is s.bin[0]; the rest feeds the soft decoding of every codeword
     int pushed() const { return n_; }
     bool headerDone() const { return n_ >= 8; }
     const Header& header() const { return hdr_; }
@@ -71,13 +83,17 @@ public:
     bool done() const { return hdr_.ok && n_ >= need_; }
     // after done(): the payload, whether its CRC was right, and how many codewords needed a correction
     bool finish(std::vector<uint8_t>& payload, bool& crcOk, int& corrected);
+    bool softFixed() const { return fixed_; }                  // the CRC was only right after the soft list search (a few uncertain symbols replaced)
 private:
-    void block(const uint16_t* bins, int cwLen, int sfApp, bool reduced);
+    void block(size_t at, int cwLen, int sfApp, bool reduced);
+    bool assemble(const std::vector<uint8_t>& nib, std::vector<uint8_t>& payload, bool& crcOk) const;
     int sf_ = 11, n_ = 0, need_ = 8, corrected_ = 0, hn_ = 5;   // hn_: header nibbles in front of the payload (5, or 0 implicit)
-    bool ldro_ = false, implicit_ = false;
+    bool ldro_ = false, implicit_ = false, fixed_ = false;
     Header hdr_;
     std::vector<uint16_t> bins_;
+    std::vector<SoftSym> soft_;
     std::vector<uint8_t> nib_;
+    void blockInto(const std::vector<SoftSym>* sft, size_t at, int cwLen, int sfApp, bool reduced, std::vector<uint8_t>& nib, int& corr) const;
 };
 
 // Frame samples for the test signal: adds the frame's waveform (amplitude amp) to out[k] for sample times t0 + k / rate.
@@ -104,6 +120,7 @@ struct RxFrame {
     double cfoRateHzS = 0;
     double sfoPpm = 0;           // clock offset measured over the frame
     double snrDb = 0;            // in the LoRa bandwidth
+    int softFixed = 0;           // 1: the frame's CRC only came out right after the soft-decision list search
     double levelDb = 0;          // signal power, dB relative to full scale at the channel output
     double startSample = 0;      // start of the frame (its preamble of the configured length), channel samples since the start
     double endSample = 0;
@@ -115,12 +132,33 @@ struct DemodStats {
     uint64_t preambles = 0, syncBad = 0, headerBad = 0, frames = 0, crcBad = 0;
 };
 
+// The channel resampled once at the chip rate (chip m sits at channel sample m x rho; cubic interpolation): every spreading factor of a
+// channel searches its preambles on this one stream instead of interpolating its own windows.
+class ChanBuf;
+class ChipStream {
+public:
+    explicit ChipStream(double rho) : rho_(rho) {}
+    double rho() const { return rho_; }
+    void extend(const ChanBuf& b);                             // appends the chips the buffer holds enough samples for
+    int64_t begin() const { return base_; }
+    int64_t end() const { return base_ + (int64_t)re_.size(); }
+    const float* re(int64_t m) const { return re_.data() + (m - base_); }
+    const float* im(int64_t m) const { return im_.data() + (m - base_); }
+    void trimToSample(int64_t keepSample);                     // forgets the chips before this channel sample
+private:
+    double rho_;
+    int64_t base_ = 0;
+    std::vector<float> re_, im_;
+};
+
 // Demodulator of one spreading factor on one channel. The channel samples arrive at fsChan (>= 2 x bandwidth) with the channel at 0 Hz.
 // process() consumes what it can of the samples the channel buffer holds and returns finished frames.
 class ChanBuf;
 class Demod {
 public:
-    Demod(const Params& p, double fsChan, int searchFftPerSymbol = 1);
+    // shared: a stream made by the owner of the channel and extended/trimmed by it (several spreading factors on one channel); otherwise
+    // the demodulator keeps its own
+    Demod(const Params& p, double fsChan, int searchFftPerSymbol = 1, std::shared_ptr<ChipStream> shared = nullptr);
     ~Demod();
     const Params& params() const;
     void reset(int64_t fromSample);
@@ -152,6 +190,8 @@ private:
 class Channelizer {
 public:
     // offsetHz: where the channel sits in the input; bwHz: LoRa bandwidth; output rate = inRate / decim with decim = floor(inRate / (3 bw))
+    static inline double kMinRatio = 2.0;   // output rate >= kMinRatio x bandwidth
+    static int decimFor(double inRate, double bwHz);
     Channelizer(double inRate, double offsetHz, double bwHz);
     double outRate() const { return outRate_; }
     int decim() const { return decim_; }
@@ -167,6 +207,7 @@ private:
     std::vector<float> taps_, taps2_;
     std::vector<float> re_, im_, ore_, oim_, re2_, im2_;
     std::vector<cf32> tmp_;
+    std::vector<float> tr_, ti_, sr_, si_;   // mixer phasor tables
     int64_t nIn_ = 0;            // input samples mixed so far
 };
 

@@ -1925,6 +1925,8 @@ if(DECT2_BUILD_TESTS)
   # Mesh packet layers (Meshtastic, MeshCore, LoRaWAN, LoRa APRS, MeshCom): golden-vector test in two parts (tests/mesh/test_mesh_proto_rs.cpp, rs_part2_mesh.cpp) and a mutation run
   add_executable(test_mesh_proto_rs tests/mesh/test_mesh_proto_rs.cpp tests/mesh/rs_part2_mesh.cpp)
   add_executable(fuzz_mesh_proto tests/mesh/fuzz_mesh_proto.cpp)
+  add_executable(lora_bench tests/mesh/lora_bench.cpp)   # LoRa receiver benchmark: 90 % packet success thresholds against SNR (offsets optional) and CPU cost of the channel bank
+  target_link_libraries(lora_bench PRIVATE dect2core)
   foreach(_t test_mesh_proto_rs fuzz_mesh_proto)
     target_include_directories(${_t} PRIVATE core/include core/src/mesh)
     target_link_libraries(${_t} PRIVATE dect2core)

@@ -1,5 +1,6 @@
 // LoRa coding chain and the test signal's frame waveform. Sources are named in mesh_lora.h.
 #include "dect2/mesh/mesh_lora.h"
+#include <algorithm>
 #include <cmath>
 #include "dect2/common/bits.h"
 
@@ -148,9 +149,9 @@ std::vector<uint16_t> encode(const Params& p, const uint8_t* payload, size_t n) 
 }
 
 void FrameDecoder::start(int sf, bool ldro) {
-    sf_ = sf; ldro_ = ldro; n_ = 0; need_ = 8; corrected_ = 0; hn_ = 5; implicit_ = false;
+    sf_ = sf; ldro_ = ldro; n_ = 0; need_ = 8; corrected_ = 0; hn_ = 5; implicit_ = false; fixed_ = false;
     hdr_ = Header();
-    bins_.clear(); nib_.clear();
+    bins_.clear(); nib_.clear(); soft_.clear();
 }
 
 void FrameDecoder::startImplicit(int sf, bool ldro, int len, int cr, bool crc) {
@@ -164,30 +165,86 @@ void FrameDecoder::startImplicit(int sf, bool ldro, int len, int cr, bool crc) {
     }
 }
 
-void FrameDecoder::block(const uint16_t* bins, int cwLen, int sfApp, bool reduced) {
+namespace {
+// codeword table: kEnc[cr][nibble]
+const uint8_t (*encTable())[16] {
+    static uint8_t t[9][16];
+    static bool init = false;
+    if (!init) {
+        for (int cr = 5; cr <= 8; cr++) for (int v = 0; v < 16; v++) t[cr][v] = hammingEncode((uint8_t)v, cr);
+        init = true;
+    }
+    return t;
+}
+} // namespace
+
+// One interleaver block of cwLen symbols starting at symbol `at`: hard decisions, or (when the soft list is there) the maximum-
+// likelihood codeword per row from the per-bit log-likelihood ratios of the symbols' strongest bins.
+void FrameDecoder::blockInto(const std::vector<SoftSym>* sft, size_t at, int cwLen, int sfApp, bool reduced, std::vector<uint8_t>& nib, int& corr) const {
     const uint32_t N = 1u << sf_;
-    uint8_t cw[12] = {};
+    if (!sft || sft->size() < at + (size_t)cwLen) {
+        uint8_t cw[12] = {};
+        for (int i = 0; i < cwLen; i++) {
+            const uint32_t x = (bins_[at + (size_t)i] + N - 1) % N;
+            const uint32_t v = reduced ? gray(((x + 2) >> 2) & ((1u << sfApp) - 1)) : gray(x);
+            for (int j = 0; j < sfApp; j++) {
+                const int r = ((i - j - 1) % sfApp + sfApp) % sfApp;
+                cw[r] |= (uint8_t)(((v >> (sfApp - 1 - j)) & 1) << (cwLen - 1 - i));
+            }
+        }
+        for (int r = 0; r < sfApp; r++) {
+            int e = 0;
+            nib.push_back(hammingDecode(cw[r], cwLen, &e));
+            if (e) corr++;
+        }
+        return;
+    }
+    float L[12][8] = {};
     for (int i = 0; i < cwLen; i++) {
-        const uint32_t x = (bins[i] + N - 1) % N;
-        const uint32_t v = reduced ? gray(((x + 2) >> 2) & ((1u << sfApp) - 1)) : gray(x);
+        const SoftSym& s = (*sft)[at + (size_t)i];
+        float b1[12], b0[12];
+        for (int j = 0; j < sfApp; j++) b1[j] = b0[j] = s.floorM;
+        for (int c = 0; c < s.n; c++) {
+            const uint32_t x = (s.bin[c] + N - 1) % N;
+            const uint32_t v = reduced ? gray(((x + 2) >> 2) & ((1u << sfApp) - 1)) : gray(x);
+            for (int j = 0; j < sfApp; j++) {
+                float& t = ((v >> (sfApp - 1 - j)) & 1) ? b1[j] : b0[j];
+                if (s.m[c] > t) t = s.m[c];
+            }
+        }
         for (int j = 0; j < sfApp; j++) {
             const int r = ((i - j - 1) % sfApp + sfApp) % sfApp;
-            cw[r] |= (uint8_t)(((v >> (sfApp - 1 - j)) & 1) << (cwLen - 1 - i));
+            float l = b1[j] - b0[j];
+            l = l > 1e4f ? 1e4f : l < -1e4f ? -1e4f : l;
+            L[r][cwLen - 1 - i] = l;
         }
     }
+    const uint8_t(*enc)[16] = encTable();
     for (int r = 0; r < sfApp; r++) {
-        int e = 0;
-        nib_.push_back(hammingDecode(cw[r], cwLen, &e));
-        if (e) corrected_++;
+        int best = 0; float bs = -1e30f;
+        unsigned hard = 0;
+        for (int b = 0; b < cwLen; b++) if (L[r][b] > 0) hard |= 1u << b;
+        for (int v = 0; v < 16; v++) {
+            const unsigned e = enc[cwLen][v];
+            float sc = 0;
+            for (int b = 0; b < cwLen; b++) if ((e >> b) & 1) sc += L[r][b];
+            if (sc > bs) { bs = sc; best = v; }
+        }
+        if (enc[cwLen][best] != hard) corr++;
+        nib.push_back((uint8_t)best);
     }
+}
+
+void FrameDecoder::block(size_t at, int cwLen, int sfApp, bool reduced) {
+    blockInto(soft_.empty() ? nullptr : &soft_, at, cwLen, sfApp, reduced, nib_, corrected_);
 }
 
 void FrameDecoder::push(uint16_t bin) {
     bins_.push_back(bin);
     n_++;
-    if (n_ == 8 && implicit_) block(bins_.data(), 8, headerSfApp(sf_), sf_ >= 7);
+    if (n_ == 8 && implicit_) block(0, 8, headerSfApp(sf_), sf_ >= 7);
     else if (n_ == 8) {
-        block(bins_.data(), 8, headerSfApp(sf_), sf_ >= 7);
+        block(0, 8, headerSfApp(sf_), sf_ >= 7);
         const uint8_t n0 = nib_[0], n1 = nib_[1], n2 = nib_[2], n3 = nib_[3], n4 = nib_[4];
         hdr_.len = n0 << 4 | n1;
         hdr_.crc = n2 & 1;
@@ -201,21 +258,69 @@ void FrameDecoder::push(uint16_t bin) {
     }
 }
 
-bool FrameDecoder::finish(std::vector<uint8_t>& payload, bool& crcOk, int& corrected) {
-    payload.clear(); crcOk = false;
-    if (!done()) return false;
-    const int sfApp = ldro_ ? sf_ - 2 : sf_;
-    for (int at = 8; at + hdr_.cr <= n_; at += hdr_.cr) block(bins_.data() + at, hdr_.cr, sfApp, ldro_);
+void FrameDecoder::pushSoft(const SoftSym& s) {
+    soft_.push_back(s);
+    push(s.bin[0]);
+}
+
+bool FrameDecoder::assemble(const std::vector<uint8_t>& nib, std::vector<uint8_t>& payload, bool& crcOk) const {
     const size_t len = (size_t)hdr_.len;
-    if (nib_.size() < (size_t)hn_ + 2 * len + (hdr_.crc ? 4 : 0)) return false;
+    crcOk = false;
+    if (nib.size() < (size_t)hn_ + 2 * len + (hdr_.crc ? 4 : 0)) return false;
     payload.resize(len);
-    for (size_t i = 0; i < len; i++) payload[i] = (uint8_t)((nib_[(size_t)hn_ + 2 * i] | nib_[(size_t)hn_ + 1 + 2 * i] << 4) ^ whitening(i));
+    for (size_t i = 0; i < len; i++) payload[i] = (uint8_t)((nib[(size_t)hn_ + 2 * i] | nib[(size_t)hn_ + 1 + 2 * i] << 4) ^ whitening(i));
     if (hdr_.crc) {
         const size_t c = (size_t)hn_ + 2 * len;
-        const uint16_t got = (uint16_t)(nib_[c] | nib_[c + 1] << 4 | nib_[c + 2] << 8 | nib_[c + 3] << 12);
+        const uint16_t got = (uint16_t)(nib[c] | nib[c + 1] << 4 | nib[c + 2] << 8 | nib[c + 3] << 12);
         crcOk = got == payloadCrc(payload.data(), len);
     }
-    corrected = corrected_;
+    return true;
+}
+
+bool FrameDecoder::finish(std::vector<uint8_t>& payload, bool& crcOk, int& corrected) {
+    payload.clear(); crcOk = false; fixed_ = false;
+    if (!done()) return false;
+    const int sfApp = ldro_ ? sf_ - 2 : sf_;
+    const size_t hdrN = (size_t)headerSfApp(sf_);
+    std::vector<uint8_t> nib(nib_.begin(), nib_.begin() + (long)std::min(hdrN, nib_.size()));
+    int corr = corrected_;
+    const std::vector<SoftSym>* sft = soft_.empty() ? nullptr : &soft_;
+    for (int at = 8; at + hdr_.cr <= n_; at += hdr_.cr) blockInto(sft, (size_t)at, hdr_.cr, sfApp, ldro_, nib, corr);
+    if (!assemble(nib, payload, crcOk)) return false;
+    if (hdr_.crc && !crcOk && sft) {
+        // List decoding on the CRC: the K least certain symbols (smallest gap between their two strongest bins) are put to their
+        // runner-up bin in every combination; the cheapest combination whose CRC is right wins. 16 CRC bits against 63 tries.
+        constexpr int K = 6;
+        std::vector<std::pair<float, int>> marg;
+        for (int s = 8; s < n_; s++) {
+            const SoftSym& q = soft_[(size_t)s];
+            if (q.n >= 2) marg.push_back({q.m[0] - q.m[1], s});
+        }
+        std::sort(marg.begin(), marg.end());
+        const int kk = (int)std::min<size_t>(K, marg.size());
+        std::vector<SoftSym> work = soft_;
+        float bestCost = 1e30f; std::vector<uint8_t> bestPay; int bestCorr = corr;
+        for (int mask = 1; mask < (1 << kk); mask++) {
+            float cost = 0;
+            for (int t = 0; t < kk; t++) {
+                const int s = marg[(size_t)t].second;
+                work[(size_t)s] = soft_[(size_t)s];
+                if (mask >> t & 1) {
+                    SoftSym& w = work[(size_t)s];
+                    w.bin[0] = soft_[(size_t)s].bin[1]; w.m[0] = 0; w.n = 1; w.floorM = -1e9f;
+                    cost += marg[(size_t)t].first;
+                }
+            }
+            if (cost >= bestCost) continue;
+            std::vector<uint8_t> nb(nib_.begin(), nib_.begin() + (long)std::min(hdrN, nib_.size()));
+            int cc = corrected_;
+            for (int at = 8; at + hdr_.cr <= n_; at += hdr_.cr) blockInto(&work, (size_t)at, hdr_.cr, sfApp, ldro_, nb, cc);
+            std::vector<uint8_t> pay; bool ok = false;
+            if (assemble(nb, pay, ok) && ok) { bestCost = cost; bestPay = pay; bestCorr = cc; }
+        }
+        if (!bestPay.empty()) { payload = bestPay; crcOk = true; corr = bestCorr; fixed_ = true; }
+    }
+    corrected = corr;
     return true;
 }
 

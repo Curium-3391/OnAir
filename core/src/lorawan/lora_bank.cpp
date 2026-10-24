@@ -13,14 +13,16 @@ constexpr size_t kBlock = 4096;
 struct Bank::Impl {
     struct Dec {
         std::unique_ptr<lora::Demod> dm;
-        size_t stat = 0;
+        std::vector<size_t> stat;          // one row per sync word searched (one preamble search serves all of them)
+        std::vector<int> syncs;
         int sf = 0, sync = 0;
         bool inverted = false;
         lora::DemodStats seen;
     };
     struct Chan {
         std::unique_ptr<lora::Channelizer> ch;
-        lora::ChanBuf buf, bufInv;           // bufInv: the conjugated samples (inverted IQ), only filled when a decoder wants them
+        lora::ChanBuf buf, bufInv;
+        std::shared_ptr<lora::ChipStream> cs, csInv;     // chip-rate streams shared by the spreading factors of the channel           // bufInv: the conjugated samples (inverted IQ), only filled when a decoder wants them
         bool wantInv = false;
         std::vector<Dec> decs;
         size_t index = 0;
@@ -47,14 +49,18 @@ struct Bank::Impl {
                 for (size_t i = 0; i < tmp.size(); i++) tmp[i] = std::conj(c.buf.at(before + (int64_t)i)[0]);
                 c.bufInv.append(tmp.data(), tmp.size());
             }
+            c.cs->extend(c.buf);
+            if (c.wantInv) c.csInv->extend(c.bufInv);
             int64_t keep = c.buf.end(), keepInv = c.bufInv.end();
             for (Dec& d : c.decs) {
                 frames.clear();
                 const lora::ChanBuf& b = d.inverted ? c.bufInv : c.buf;
                 d.dm->process(b, frames);
-                DecoderStat& st = stats[d.stat];
                 const lora::DemodStats& ds = d.dm->stats();
-                st.preambles = ds.preambles; st.frames = ds.frames; st.crcBad = ds.crcBad; st.headerBad = ds.headerBad; st.syncBad = ds.syncBad;
+                for (size_t si : d.stat) {
+                    DecoderStat& st = stats[si];
+                    st.preambles = ds.preambles; st.headerBad = ds.headerBad; st.syncBad = ds.syncBad;
+                }
                 d.seen = ds;
                 for (auto& f : frames) {
                     const double t = (f.startSample * c.ch->decim() - c.ch->delayIn()) / rate;   // channels start with the bank: sample 0
@@ -64,15 +70,20 @@ struct Bank::Impl {
                     if (dup) continue;
                     recent.push_back({f.payload, t, c.index, d.sf, d.inverted});
                     if (recent.size() > 16) recent.erase(recent.begin());
+                    size_t row = 0;
+                    for (size_t si = 0; si < d.syncs.size(); si++) if (d.syncs[si] == f.syncWord) row = si;
+                    stats[d.stat[row]].frames++;
+                    if (f.hdr.crc && !f.crcOk) stats[d.stat[row]].crcBad++;
                     Decoded o;
-                    o.chan = c.index; o.sf = d.sf; o.sync = d.sync; o.bwHz = cfg[c.index].bwHz; o.offsetHz = c.offsetHz; o.inverted = d.inverted;
+                    o.chan = c.index; o.sf = d.sf; o.sync = d.syncs[row]; o.bwHz = cfg[c.index].bwHz; o.offsetHz = c.offsetHz; o.inverted = d.inverted;
                     o.sec = t; o.f = std::move(f);
                     out.push_back(std::move(o));
                 }
                 (d.inverted ? keepInv : keep) = std::min(d.inverted ? keepInv : keep, d.dm->oldestNeeded());
             }
             c.buf.trim(keep);
-            if (c.wantInv) c.bufInv.trim(keepInv);
+            c.cs->trimToSample(keep);
+            if (c.wantInv) { c.bufInv.trim(keepInv); c.csInv->trimToSample(keepInv); }
         }
         nProc += (int64_t)n;
     }
@@ -105,25 +116,33 @@ void Bank::configure(double inputRate, const std::vector<Channel>& chans) {
             ch->index = ci; ch->offsetHz = c.offsetHz;
             ch->buf.clear(0); ch->bufInv.clear(0);
             ch->wantInv = c.invertedIq;
+            ch->cs = std::make_shared<lora::ChipStream>(ch->ch->outRate() / c.bwHz);
+            ch->csInv = std::make_shared<lora::ChipStream>(ch->ch->outRate() / c.bwHz);
             m.inBandChans++;
         }
         for (int inv = 0; inv < 2; inv++) {
             if (inv ? !c.invertedIq : !c.normalIq) continue;
-            for (int sf : c.sfs) for (int sw : c.syncs) {
-                DecoderStat st;
-                st.chan = ci; st.sf = sf; st.sync = sw; st.inverted = inv != 0; st.inBand = inBand;
-                m.stats.push_back(st);
+            if (c.syncs.empty()) continue;
+            for (int sf : c.sfs) {
+                Impl::Dec d;
+                d.sf = sf; d.inverted = inv != 0; d.sync = c.syncs[0];
+                for (int sw : c.syncs) {
+                    DecoderStat st;
+                    st.chan = ci; st.sf = sf; st.sync = sw; st.inverted = inv != 0; st.inBand = inBand;
+                    m.stats.push_back(st);
+                    d.stat.push_back(m.stats.size() - 1);
+                    d.syncs.push_back(sw);
+                }
                 if (!active) continue;
                 lora::Params p;
-                p.sf = sf; p.bwHz = c.bwHz; p.syncWord = (uint8_t)sw; p.preamble = c.preamble;
+                p.sf = sf; p.bwHz = c.bwHz; p.syncWord = (uint8_t)c.syncs[0]; p.preamble = c.preamble;
+                for (size_t si = 1; si < c.syncs.size(); si++) p.moreSync.push_back((uint8_t)c.syncs[si]);
                 p.ldro = lora::autoLdro(sf, c.bwHz);
                 p.cfoTrack = c.cfoTrack; p.carrierHz = c.carrierHz;
-                Impl::Dec d;
-                d.dm = std::make_unique<lora::Demod>(p, ch->ch->outRate());
+                d.dm = std::make_unique<lora::Demod>(p, ch->ch->outRate(), 1, inv ? ch->csInv : ch->cs);
                 d.dm->reset(0);
-                d.stat = m.stats.size() - 1; d.sf = sf; d.sync = sw; d.inverted = inv != 0;
                 ch->decs.push_back(std::move(d));
-                m.running++;
+                m.running += c.syncs.size();
             }
         }
     }

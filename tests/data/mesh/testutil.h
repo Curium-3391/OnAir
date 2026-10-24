@@ -38,7 +38,7 @@ struct Chain {
     lora::ChanBuf buf;
     lora::Demod dm;
     std::vector<lora::RxFrame> frames;
-    Chain(double rate, double offsetHz, const lora::Params& p) : ch(rate, offsetHz, p.bwHz), dm(p, rate / std::max(1, (int)std::floor(rate / (3.0 * p.bwHz) + 1e-9))) {
+    Chain(double rate, double offsetHz, const lora::Params& p) : ch(rate, offsetHz, p.bwHz), dm(p, rate / lora::Channelizer::decimFor(rate, p.bwHz)) {
         dm.reset(0);
     }
     void feed(const cf32* x, size_t n) {

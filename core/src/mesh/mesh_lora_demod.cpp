@@ -20,6 +20,14 @@ using dect2::math::kPi;
 using cd = std::complex<double>;
 
 double besselI0(double x) { return dect2::window::besselI0(x, 60, 0.0); }
+// ln I0(x): the log-likelihood of a noncoherently detected bin (Abramowitz & Stegun 9.8.1, 9.8.2)
+float lnI0(float x) {
+    if (x < 3.75f) {
+        const float t = x / 3.75f, t2 = t * t;
+        return std::log(1.f + t2 * (3.5156229f + t2 * (3.0899424f + t2 * (1.2067492f + t2 * (0.2659732f + t2 * (0.0360768f + t2 * 0.0045813f))))));
+    }
+    return x - 0.5f * std::log(6.2831853f * x) + 0.125f / x;
+}
 double kaiserBeta(double a) { return a > 50 ? 0.1102 * (a - 8.7) : a > 21 ? 0.5842 * std::pow(a - 21, 0.4) + 0.07886 * (a - 21) : 0; }
 } // namespace
 
@@ -36,6 +44,7 @@ void ChanBuf::trim(int64_t keepFrom) {
 
 namespace {
 constexpr int kMixBlock = 4096;
+constexpr int kMinPreWins = 4;   // windows a preamble must hold before the sync word is looked for
 }
 
 namespace {
@@ -60,8 +69,10 @@ std::vector<float> kaiserLowpass(double fp, double fs, double rate, double att) 
 }
 } // namespace
 
+int Channelizer::decimFor(double inRate, double bwHz) { return std::max(1, (int)std::floor(inRate / (kMinRatio * bwHz) + 1e-9)); }
+
 Channelizer::Channelizer(double inRate, double offsetHz, double bwHz) : inRate_(inRate), offsetHz_(offsetHz), bwHz_(bwHz) {
-    decim_ = std::max(1, (int)std::floor(inRate / (3.0 * bwHz) + 1e-9));
+    decim_ = decimFor(inRate, bwHz);
     outRate_ = inRate / decim_;
     // Two stages. The second, at the channel rate, passes the LoRa band plus room for a carrier error and stops 0.3 bw further
     // (noise beyond would fold in when the search samples at the chip rate). The first only keeps the decimation from folding
@@ -91,15 +102,26 @@ void Channelizer::process(const cf32* x, size_t n, ChanBuf& buf) {
         const double ph0 = std::fmod(w * (double)(blk * kMixBlock), 2 * kPi);
         const size_t r0 = re_.size();
         re_.resize(r0 + run); im_.resize(r0 + run);
-        // phasor recurrence in double inside the block, started from the exact phase of the block's sample `off`
-        cd z = std::polar(1.0, ph0 + w * (double)off);
-        const cd step = std::polar(1.0, w);
-        for (size_t k = 0; k < run; k++) {
-            const cf32 v = x[i + k];
-            const float zr = (float)z.real(), zi = (float)z.imag();
-            re_[r0 + k] = v.real() * zr - v.imag() * zi;
-            im_[r0 + k] = v.real() * zi + v.imag() * zr;
-            z *= step;
+        // the phasor of sample j in the block is P(block) x S[j / 16] x T[j % 16], tables of float phasors (vectorisable, no recurrence)
+        if (tr_.empty()) {
+            tr_.resize(16); ti_.resize(16); sr_.resize(kMixBlock / 16); si_.resize(kMixBlock / 16);
+            for (int k = 0; k < 16; k++) { const cd t = std::polar(1.0, w * k); tr_[(size_t)k] = (float)t.real(); ti_[(size_t)k] = (float)t.imag(); }
+            for (int g = 0; g < kMixBlock / 16; g++) { const cd t = std::polar(1.0, w * 16.0 * g); sr_[(size_t)g] = (float)t.real(); si_[(size_t)g] = (float)t.imag(); }
+        }
+        const cd pb = std::polar(1.0, ph0);
+        const float pbr = (float)pb.real(), pbi = (float)pb.imag();
+        float* orr = re_.data() + r0; float* oii = im_.data() + r0;
+        const cf32* xs = x + i;
+        for (size_t j0 = (size_t)off, k = 0; k < run;) {
+            const size_t g = j0 >> 4, l0 = j0 & 15, cnt = std::min<size_t>(16 - l0, run - k);
+            const float gr = pbr * sr_[g] - pbi * si_[g], gi = pbr * si_[g] + pbi * sr_[g];
+            for (size_t l = 0; l < cnt; l++) {
+                const float zr = gr * tr_[l0 + l] - gi * ti_[l0 + l], zi = gr * ti_[l0 + l] + gi * tr_[l0 + l];
+                const float xr = xs[k + l].real(), xi = xs[k + l].imag();
+                orr[k + l] = xr * zr - xi * zi;
+                oii[k + l] = xr * zi + xi * zr;
+            }
+            k += cnt; j0 += cnt;
         }
         i += run;
         nIn_ += (int64_t)run;
@@ -129,6 +151,59 @@ void Channelizer::process(const cf32* x, size_t n, ChanBuf& buf) {
     im_.erase(im_.begin(), im_.begin() + used);
 }
 
+// ------------------------------------------------------------------ chip stream
+
+namespace {
+const float* cubicTable() {
+    static const std::vector<float> t = [] {
+        std::vector<float> v(257 * 4);
+        for (int r = 0; r <= 256; r++) {
+            const float f = (float)r / 256.f;
+            v[(size_t)r * 4 + 0] = -f * (f - 1) * (f - 2) / 6; v[(size_t)r * 4 + 1] = (f + 1) * (f - 1) * (f - 2) / 2;
+            v[(size_t)r * 4 + 2] = -(f + 1) * f * (f - 2) / 2; v[(size_t)r * 4 + 3] = (f + 1) * f * (f - 1) / 6;
+        }
+        return v;
+    }();
+    return t.data();
+}
+} // namespace
+
+void ChipStream::extend(const ChanBuf& b) {
+    // chip m needs samples floor(m rho) - 1 .. floor(m rho) + 2
+    int64_t m = end();
+    if (re_.empty()) { const int64_t first = (int64_t)std::ceil(((double)b.begin() + 2) / rho_); if (first > m) { base_ = first; m = first; } }
+    else if ((double)m * rho_ - 2 < (double)b.begin()) {            // the buffer dropped what the next chip needs: restart there
+        re_.clear(); im_.clear();
+        m = base_ = (int64_t)std::ceil(((double)b.begin() + 2) / rho_);
+    }
+    const double lastPos = (double)b.end() - 4;
+    if ((double)m * rho_ > lastPos) return;
+    const int64_t mEnd = (int64_t)std::floor(lastPos / rho_);
+    if (mEnd < m) return;
+    const size_t n = (size_t)(mEnd - m + 1), r0 = re_.size();
+    re_.resize(r0 + n); im_.resize(r0 + n);
+    const float* tab = cubicTable();
+    for (size_t i = 0; i < n; i++) {
+        const double p = (double)(m + (int64_t)i) * rho_;
+        const int64_t n0 = (int64_t)p;
+        const int r = (int)((p - (double)n0) * 256.0 + 0.5);
+        const float* w = tab + (size_t)r * 4;
+        const cf32* x = b.at(n0 - 1);
+        re_[r0 + i] = w[0] * x[0].real() + w[1] * x[1].real() + w[2] * x[2].real() + w[3] * x[3].real();
+        im_[r0 + i] = w[0] * x[0].imag() + w[1] * x[1].imag() + w[2] * x[2].imag() + w[3] * x[3].imag();
+    }
+}
+
+void ChipStream::trimToSample(int64_t keepSample) {
+    const int64_t keepChip = (int64_t)std::floor((double)keepSample / rho_);
+    if (keepChip <= base_) return;
+    const int64_t drop = std::min<int64_t>(keepChip - base_, (int64_t)re_.size());
+    if (drop < (1 << 14) && drop * 4 < (int64_t)re_.size()) return;
+    re_.erase(re_.begin(), re_.begin() + drop);
+    im_.erase(im_.begin(), im_.begin() + drop);
+    base_ += drop;
+}
+
 // ------------------------------------------------------------------ demodulator
 
 struct Demod::Impl {
@@ -142,12 +217,16 @@ struct Demod::Impl {
     int K = 0;
     std::vector<float> sincTab;
     std::vector<cf32> mixed;
+    std::shared_ptr<ChipStream> cs;   // the chip-rate stream the search reads
+    bool ownCs = true;
+    int64_t ochip = 0;           // chip index of the search grid's origin (origin = ochip x rho)
     DemodStats st;
 
     enum State { Search, Preamble, Data } state = Search;
     double origin = 0;           // channel sample of chip 0 of the search grid
     int64_t win = 0;             // next window of the grid
     std::vector<std::vector<float>> hist;   // power spectra of the last 3 windows (normalised to their mean)
+    std::vector<float> s3;       // sum of the three spectra in hist (kept incrementally while searching)
     std::vector<float> preAcc;   // sum of the preamble's spectra
     int histN = 0;
     int kUp = 0;
@@ -162,13 +241,15 @@ struct Demod::Impl {
     double loopInt = 0;
     double posS0 = 0;              // the data start (a frame that fails its CRC is demodulated again from here)
     int retried = 0;
-    double snrLin = 0, levelLin = 0;
+    double snrLin = 0, levelLin = 0, sigPw = 0;   // sigPw: a preamble peak's power in the spectrum's units (soft decoding)
     double frameStart = 0;
     uint8_t syncSeen = 0;
     FrameDecoder fd;
     void startFd() { if (p.implicitHdr) fd.startImplicit(sf, p.ldro, p.implicitLen, p.cr, p.crc); else fd.start(sf, p.ldro); }
 
-    Impl(const Params& pp, double fsChan) : p(pp), sf(pp.sf), N(1 << pp.sf), fs(fsChan), rho(fsChan / pp.bwHz) {
+    Impl(const Params& pp, double fsChan, std::shared_ptr<ChipStream> shared) : p(pp), sf(pp.sf), N(1 << pp.sf), fs(fsChan), rho(fsChan / pp.bwHz) {
+        ownCs = !shared || std::fabs(shared->rho() - rho) > 1e-9;
+        cs = ownCs ? std::make_shared<ChipStream>(rho) : shared;
         dnRe.resize(N); dnIm.resize(N);
         for (int i = 0; i < N; i++) {
             const double ph = 2 * kPi * ((double)i * i / (2.0 * N) - 0.5 * i);
@@ -177,6 +258,7 @@ struct Demod::Impl {
         re.resize(N); im.resize(N); pw.resize(N);
         hist.assign(3, std::vector<float>(N));
         preAcc.assign(N, 0.f);
+        s3.assign(N, 0.f);
         // interpolator: -6 dB at bw/2, transition +-0.1 bw, 50 dB
         const double fc = 0.5 / rho, df = 0.2 / rho;
         K = (int)std::ceil((50 - 7.95) / (14.36 * df)) + 1;
@@ -202,51 +284,72 @@ struct Demod::Impl {
     double lastSample(double t0, double step) const { return t0 + (N - 1) * step + K / 2 + 3; }
     double firstSample(double t0) const { return t0 - K / 2 - 2; }
 
-    // cheap: cubic interpolation, no mixing (search)
-    bool extractFast(const ChanBuf& b, double t0) {
-        if (t0 - 2 < (double)b.begin() || t0 + (N - 1) * rho + 3 >= (double)b.end()) return false;
-        for (int i = 0; i < N; i++) {
-            const double t = t0 + i * rho;
-            const int64_t n0 = (int64_t)std::floor(t);
-            const float f = (float)(t - (double)n0);
-            const cf32* x = b.at(n0 - 1);
-            const float cm = -f * (f - 1) * (f - 2) / 6, c0 = (f + 1) * (f - 1) * (f - 2) / 2, c1 = -(f + 1) * f * (f - 2) / 2, c2 = (f + 1) * f * (f - 1) / 6;
-            const cf32 v = cm * x[0] + c0 * x[1] + c1 * x[2] + c2 * x[3];
-            re[i] = v.real(); im[i] = v.imag();
-        }
+    // the N chips from chip index c0 of the shared stream; fuse: +1 / -1 also removes an up-chirp / down-chirp (the next spectrum() call
+    // with the same direction skips its own de-chirp pass)
+    int fused = 0;
+    bool fetch(int64_t c0, int fuse) {
+        fused = 0;
+        if (c0 < cs->begin() || c0 + N > cs->end()) return false;
+        const float* sr = cs->re(c0); const float* si = cs->im(c0);
+        if (fuse) {
+            const float* dr = dnRe.data(); const float* di = dnIm.data();
+            const float sg = fuse < 0 ? -1.f : 1.f;
+            for (int i = 0; i < N; i++) { const float vr = sr[i], vi = si[i], cr = dr[i], ci = sg * di[i]; re[i] = vr * cr - vi * ci; im[i] = vr * ci + vi * cr; }
+        } else { std::copy(sr, sr + N, re.begin()); std::copy(si, si + N, im.begin()); }
+        fused = fuse;
         return true;
     }
 
     // accurate: mix out cfo (bins), low-pass to the LoRa band and resample at t0 + i * step
+    std::vector<float> mre, mim;
+    static float dot8(const float* h, const float* x, int K) {
+        float acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        int k = 0;
+        for (; k + 8 <= K; k += 8) for (int l = 0; l < 8; l++) acc[l] += h[k + l] * x[k + l];
+        float s = ((acc[0] + acc[4]) + (acc[1] + acc[5])) + ((acc[2] + acc[6]) + (acc[3] + acc[7]));
+        for (; k < K; k++) s += h[k] * x[k];
+        return s;
+    }
     bool extract(const ChanBuf& b, double t0, double step, double cfo) {
         const int64_t lo = (int64_t)std::floor(firstSample(t0)), hi = (int64_t)std::ceil(lastSample(t0, step));
         if (lo < b.begin() || hi >= b.end()) return false;
         const size_t len = (size_t)(hi - lo + 1);
-        mixed.resize(len);
+        mre.resize(len); mim.resize(len);
         const double w = -2 * kPi * cfo / (N * rho);          // radians per channel sample
-        cd z = std::polar(1.0, std::fmod(w * (double)lo, 2 * kPi));
-        const cd stp = std::polar(1.0, w);
+        // mixer: the phasor of sample k is polar(w (lo + 16 g)) x polar(w l) for k = 16 g + l (one sine per 16 samples)
+        float tr[16], ti[16];
+        for (int l = 0; l < 16; l++) { const cd t = std::polar(1.0, w * l); tr[l] = (float)t.real(); ti[l] = (float)t.imag(); }
         const cf32* x = b.at(lo);
-        for (size_t k = 0; k < len; k++) { mixed[k] = x[k] * cf32((float)z.real(), (float)z.imag()); z *= stp; }
+        for (size_t k0 = 0; k0 < len; k0 += 16) {
+            const cd g = std::polar(1.0, std::fmod(w * (double)(lo + (int64_t)k0), 2 * kPi));
+            const float gr = (float)g.real(), gi = (float)g.imag();
+            const size_t cnt = std::min<size_t>(16, len - k0);
+            for (size_t l = 0; l < cnt; l++) {
+                const float zr = gr * tr[l] - gi * ti[l], zi = gr * ti[l] + gi * tr[l];
+                const float xr = x[k0 + l].real(), xi = x[k0 + l].imag();
+                mre[k0 + l] = xr * zr - xi * zi; mim[k0 + l] = xr * zi + xi * zr;
+            }
+        }
         for (int i = 0; i < N; i++) {
             const double t = t0 + i * step - (double)lo;
             int64_t n0 = (int64_t)std::floor(t);
             int r = (int)std::lround((t - (double)n0) * kP);
             const float* h = &sincTab[(size_t)r * K];
-            const cf32* s = &mixed[(size_t)(n0 - K / 2 + 1)];
-            float ar = 0, ai = 0;
-            for (int k = 0; k < K; k++) { ar += h[k] * s[k].real(); ai += h[k] * s[k].imag(); }
-            re[i] = ar; im[i] = ai;
+            const size_t o = (size_t)(n0 - K / 2 + 1);
+            re[i] = dot8(h, &mre[o], K); im[i] = dot8(h, &mim[o], K);
         }
         return true;
     }
 
     // de-chirp (up: remove an up-chirp; else remove a down-chirp) and FFT; fills pw, returns the mean power
     float spectrum(bool up, bool keep = false) {
-        for (int i = 0; i < N; i++) {
-            const float a = re[i], c = im[i], dr = dnRe[i], di = up ? dnIm[i] : -dnIm[i];
-            re[i] = a * dr - c * di; im[i] = a * di + c * dr;
+        if (fused != (up ? 1 : -1)) {
+            for (int i = 0; i < N; i++) {
+                const float a = re[i], c = im[i], dr = dnRe[i], di = up ? dnIm[i] : -dnIm[i];
+                re[i] = a * dr - c * di; im[i] = a * di + c * dr;
+            }
         }
+        fused = 0;
         if (keep) { yRe = re; yIm = im; }
         fftSplit(re.data(), im.data(), sf, false);
         double s = 0;
@@ -267,10 +370,14 @@ struct Demod::Impl {
 
     void toSearch(double from) {
         state = Search;
-        origin = from; win = 0; histN = 0; preEnd = -1;
+        ochip = (int64_t)std::ceil(from / rho - 1e-6);
+        origin = (double)ochip * rho; win = 0; histN = 0; preEnd = -1;
+        std::fill(s3.begin(), s3.end(), 0.f);
+        for (auto& v : hist) std::fill(v.begin(), v.end(), 0.f);
     }
 
     double winStart(int64_t w) const { return origin + (double)w * N * rho; }
+    int64_t winChip(int64_t w) const { return ochip + w * N; }
 
     bool sfd(const ChanBuf& b);
     void dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out);
@@ -278,6 +385,7 @@ struct Demod::Impl {
 };
 
 void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
+    if (ownCs) cs->extend(b);
     for (int guard = 0; guard < 100000; guard++) {
         if (state == Data) {
             if (std::ceil(lastSample(posS, chipS)) + 1 >= (double)b.end()) return;
@@ -290,23 +398,31 @@ void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
             if (!sfd(b)) { st.syncBad++; toSearch(winStart(preEnd)); }
             continue;
         }
-        const double t0 = winStart(win);
-        if (t0 + N * rho + 4 >= (double)b.end()) return;
-        if (t0 - 2 < (double)b.begin()) { win++; continue; }    // history was dropped: skip
-        extractFast(b, t0);
+        if (winChip(win) + N > cs->end()) return;
+        if (winChip(win) < cs->begin()) { win++; continue; }    // history was dropped: skip
+        fetch(winChip(win), 1);
         const float mean = spectrum(true);
         std::vector<float>& h = hist[(size_t)(win % 3)];
-        for (int k = 0; k < N; k++) h[k] = pw[k] / mean;
+        {
+            const float inv = 1.f / mean;
+            float* hp = h.data(); float* sp = s3.data(); const float* pp = pw.data();
+            for (int k = 0; k < N; k++) { const float v = pp[k] * inv; sp[k] += v - hp[k]; hp[k] = v; }
+        }
         histN++;
         if (state == Search) {
             if (histN >= 3) {
                 // three windows in a row with their energy in the same pair of bins
                 const auto& a = hist[0]; const auto& bb = hist[1]; const auto& c = hist[2];
                 int best = 0; float bestQ = 0;
-                for (int k = 0; k < N; k++) {
-                    const int k1 = (k + 1) & (N - 1);
-                    const float q = (a[k] + bb[k] + c[k] + a[k1] + bb[k1] + c[k1]) / 3.f;
-                    if (q > bestQ) { bestQ = q; best = k; }
+                {
+                    const float* sp = s3.data();
+                    float mq = 0;
+                    for (int k = 0; k < N - 1; k++) { const float q = sp[k] + sp[k + 1]; mq = q > mq ? q : mq; }
+                    { const float q = sp[N - 1] + sp[0]; mq = q > mq ? q : mq; }
+                    bestQ = mq / 3.f;
+                    if (bestQ > 7.5f) {
+                        for (int k = 0; k < N; k++) { const float q = (sp[k] + sp[(k + 1) & (N - 1)]) / 3.f; if (q >= mq / 3.f) { best = k; break; } }
+                    }
                 }
                 bool each = true;
                 for (int j = 0; j < 3; j++) {
@@ -341,6 +457,9 @@ void Demod::Impl::run(const ChanBuf& b, std::vector<RxFrame>& out) {
             } else if (win - preFirst >= 80) {
                 toSearch(winStart(win));                // a steady carrier, not a frame
                 continue;
+            } else if (win - preFirst < kMinPreWins) {
+                toSearch(winStart(win));                // three windows with nothing after them: noise, not a preamble
+                continue;
             } else {
                 preEnd = win;
             }
@@ -355,7 +474,7 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
     // the down-chirp's bin on the (unaligned) grid: every window that holds a part of the 2.25 down-chirps puts it in the same bin
     std::vector<float> dacc(N, 0.f);
     for (int64_t v = e; v <= e + 3; v++) {
-        if (!extractFast(b, winStart(v))) return false;
+        if (!fetch(winChip(v), -1)) return false;
         const float mean = spectrum(false);
         for (int k = 0; k < N; k++) dacc[k] += pw[k] / mean;
     }
@@ -370,10 +489,11 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
     const int diff = wrap(kDn - kUp);
     int taus[10]; int nt = 0;
     for (int d = -2; d <= 2; d++) { taus[nt++] = wrap(diff / 2 + d); taus[nt++] = wrap(diff / 2 + d + N / 2); }
-    const int sw1 = syncSymbol(p.syncWord, 0, sf), sw2 = syncSymbol(p.syncWord, 1, sf);
+    std::vector<uint8_t> syncs{p.syncWord};
+    for (uint8_t s : p.moreSync) if (std::find(syncs.begin(), syncs.end(), s) == syncs.end()) syncs.push_back(s);
     // Every candidate (tau, m) is scored first on the cheap windows (cached per tau: 9 up and 6 down windows serve all m),
     // the three best again on windows resampled with their carrier offset mixed out (full sensitivity).
-    struct Cand { double score; int tau, m, cfoC; };
+    struct Cand { double score; int tau, m, cfoC, si; };
     std::vector<Cand> cands;
     std::vector<std::vector<float>> upW(9, std::vector<float>(N)), dnW(6, std::vector<float>(N));
     std::vector<int> upOk(9), dnOk(6);
@@ -382,13 +502,13 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
         const int cfoC = wrap(kUp + tau);
         // up windows start at (e + j) N + tau for j = -4..4, down windows for j = -1..4
         for (int j = -4; j <= 4; j++) {
-            upOk[(size_t)(j + 4)] = extractFast(b, origin + (double)((e + j) * N + tau) * rho);
+            upOk[(size_t)(j + 4)] = fetch(ochip + (e + j) * N + tau, 1);
             if (!upOk[(size_t)(j + 4)]) continue;
             const float m = spectrum(true);
             for (int k = 0; k < N; k++) upW[(size_t)(j + 4)][(size_t)k] = pw[(size_t)k] / m;
         }
         for (int j = -1; j <= 4; j++) {
-            dnOk[(size_t)(j + 1)] = extractFast(b, origin + (double)((e + j) * N + tau) * rho);
+            dnOk[(size_t)(j + 1)] = fetch(ochip + (e + j) * N + tau, -1);
             if (!dnOk[(size_t)(j + 1)]) continue;
             const float m = spectrum(false);
             for (int k = 0; k < N; k++) dnW[(size_t)(j + 1)][(size_t)k] = pw[(size_t)k] / m;
@@ -396,13 +516,16 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
         for (int m = -1; m <= 3; m++) {
             // first down-chirp at (e + m) N + tau: up windows at m-3, m-2, m-1, down windows at m, m+1
             if (!upOk[(size_t)(m + 1)] || !upOk[(size_t)(m + 2)] || !upOk[(size_t)(m + 3)] || !dnOk[(size_t)(m + 1)] || !dnOk[(size_t)(m + 2)]) continue;
-            const double sc = near3(upW[(size_t)(m + 1)], cfoC) + near3(upW[(size_t)(m + 2)], cfoC + sw1) + near3(upW[(size_t)(m + 3)], cfoC + sw2) +
-                              near3(dnW[(size_t)(m + 1)], cfoC) + near3(dnW[(size_t)(m + 2)], cfoC);
-            cands.push_back({sc, tau, m, cfoC});
+            for (size_t si = 0; si < syncs.size(); si++) {
+                const int sw1 = syncSymbol(syncs[si], 0, sf), sw2 = syncSymbol(syncs[si], 1, sf);
+                const double sc = near3(upW[(size_t)(m + 1)], cfoC) + near3(upW[(size_t)(m + 2)], cfoC + sw1) + near3(upW[(size_t)(m + 3)], cfoC + sw2) +
+                                  near3(dnW[(size_t)(m + 1)], cfoC) + near3(dnW[(size_t)(m + 2)], cfoC);
+                cands.push_back({sc, tau, m, cfoC, (int)si});
+            }
         }
     }
     std::sort(cands.begin(), cands.end(), [](const Cand& x, const Cand& y) { return x.score > y.score; });
-    if (cands.size() > 3) cands.resize(3);
+    if (cands.size() > 2 + syncs.size()) cands.resize(2 + syncs.size());
     std::vector<float> w0(N), w1(N), w2(N), w3(N), w4(N);
     double cfoMix = 0;
     auto norm = [&](bool up, double t0, std::vector<float>& o) {
@@ -411,17 +534,18 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
         for (int k = 0; k < N; k++) o[k] = pw[k] / m;
         return true;
     };
-    double bestScore = 0; int64_t bestS = 0; int bestCfo = 0, bestV1 = 0, bestV2 = 0;
+    double bestScore = 0; int64_t bestS = 0; int bestCfo = 0, bestV1 = 0, bestV2 = 0, sw1 = 0, sw2 = 0;
     for (const auto& c : cands) {
+        const int cw1 = syncSymbol(syncs[(size_t)c.si], 0, sf), cw2 = syncSymbol(syncs[(size_t)c.si], 1, sf);
         cfoMix = c.cfoC >= N / 2 ? c.cfoC - N : c.cfoC;     // after mixing, the expected bins are relative to it
         const int64_t s = (e + c.m) * N + c.tau;
         const double t = origin;
         if (!norm(true, t + (double)(s - 3 * N) * rho, w0) || !norm(true, t + (double)(s - 2 * N) * rho, w1) ||
             !norm(true, t + (double)(s - N) * rho, w2) || !norm(false, t + (double)s * rho, w3) || !norm(false, t + (double)(s + N) * rho, w4))
             continue;
-        const double score = near3(w0, 0) + near3(w1, sw1) + near3(w2, sw2) + near3(w3, 0) + near3(w4, 0);
+        const double score = near3(w0, 0) + near3(w1, cw1) + near3(w2, cw2) + near3(w3, 0) + near3(w4, 0);
         if (score > bestScore) {
-            bestScore = score; bestS = s; bestCfo = c.cfoC;
+            bestScore = score; bestS = s; bestCfo = c.cfoC; sw1 = cw1; sw2 = cw2;
             bestV1 = (int)(std::max_element(w1.begin(), w1.end()) - w1.begin());
             bestV2 = (int)(std::max_element(w2.begin(), w2.end()) - w2.begin());
         }
@@ -509,6 +633,7 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
             const double sMean = sig / ns, nMean = noi / ns;
             snrLin = std::max(1e-4, sMean / (N * std::max(nMean, 1e-30)));
             levelLin = sMean / ((double)N * N);
+            sigPw = sMean;
         }
     }
     cfoBins = cfo;
@@ -539,9 +664,28 @@ bool Demod::Impl::sfd(const ChanBuf& b) {
 void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
     if (!extract(b, posS, chipS, cfoBins)) { toSearch(posS); return; }
     const float mean = spectrum(true, true);
-    const int k = argmax();
+    SoftSym ss;
+    {
+        // the four strongest bins (ties: the lower bin first, like argmax) and their noncoherent log-likelihoods
+        float tv[SoftSym::M]; int ti[SoftSym::M];
+        int cnt = 0;
+        for (int i = 0; i < N; i++) {
+            const float v = pw[(size_t)i];
+            if (cnt == SoftSym::M && v <= tv[SoftSym::M - 1]) continue;
+            int pos = cnt < SoftSym::M ? cnt++ : SoftSym::M - 1;
+            while (pos > 0 && tv[pos - 1] < v) { tv[pos] = tv[pos - 1]; ti[pos] = ti[pos - 1]; pos--; }
+            tv[pos] = v; ti[pos] = i;
+        }
+        const double nz = std::max(1e-30, ((double)mean * N - tv[0]) / (N - 1));
+        const double amp = std::sqrt(std::max(sigPw, 1e-30));
+        const double sc = 2.0 * amp / nz;
+        for (int c = 0; c < cnt; c++) { ss.bin[c] = (uint16_t)ti[c]; ss.m[c] = lnI0((float)(sc * std::sqrt((double)tv[c]))); }
+        ss.n = cnt;
+        ss.floorM = ss.m[cnt - 1];
+    }
+    const int k = ss.bin[0];
     const double q = pw[(size_t)k] / mean;
-    fd.push((uint16_t)k);
+    if (sigPw > 0) fd.pushSoft(ss); else fd.push((uint16_t)k);
     // Carrier offset (cfoTrack > 0): the phase of the peak bin advances by 2 pi times the carrier offset (in bins) from symbol to
     // symbol (the chirps' phase is continuous and returns to zero at every symbol start), once the mixer's own phase at the window
     // start is added back. Moving the window by x chips turns the phase by x / 2 cycles (lastAdj). The offset comes out modulo one
@@ -613,6 +757,7 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
         }
         f.hdr = fd.header();
         f.corrected = corr;
+        f.softFixed = fd.softFixed() ? 1 : 0;
         f.cfoHz = cfoBins * p.bwHz / N;
         if (p.cfoTrack > 0) { f.cfoStartHz = cfoStartBins * p.bwHz / N; f.cfoRateHzS = cfoRate * p.bwHz * p.bwHz / ((double)N * N); }
         f.sfoPpm = (drift + loopInt) / N * 1e6;
@@ -628,11 +773,14 @@ void Demod::Impl::dataSymbol(const ChanBuf& b, std::vector<RxFrame>& out) {
     }
 }
 
-Demod::Demod(const Params& p, double fsChan, int) : p_(std::make_unique<Impl>(p, fsChan)) {}
+Demod::Demod(const Params& p, double fsChan, int, std::shared_ptr<ChipStream> shared) : p_(std::make_unique<Impl>(p, fsChan, shared)) {}
 Demod::~Demod() = default;
 const Params& Demod::params() const { return p_->p; }
 void Demod::reset(int64_t from) { p_->toSearch((double)from); p_->st = DemodStats(); }
-void Demod::process(const ChanBuf& b, std::vector<RxFrame>& out) { p_->run(b, out); }
+void Demod::process(const ChanBuf& b, std::vector<RxFrame>& out) {
+    p_->run(b, out);
+    if (p_->ownCs) p_->cs->trimToSample(oldestNeeded());
+}
 bool Demod::busy() const { return p_->state != Impl::Search; }
 const DemodStats& Demod::stats() const { return p_->st; }
 int64_t Demod::oldestNeeded() const {

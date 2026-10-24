@@ -54,13 +54,14 @@ struct LoraRawReceiver::Impl {
     // feed thread
     struct Dec {
         std::unique_ptr<lora::Demod> dm;
-        size_t info = 0;
-        int sync = 0;
+        std::vector<size_t> infos;         // telemetry rows, one per sync word (one preamble search serves all of them)
+        std::vector<int> syncs;
         lora::DemodStats seen;
     };
     struct Chan {
         std::unique_ptr<lora::Channelizer> ch;
         lora::ChanBuf buf;
+        std::shared_ptr<lora::ChipStream> cs;     // shared by the spreading factors of the channel
         std::vector<Dec> decs;
         double offHz = 0;                  // from the tuned frequency
         int64_t base = 0;
@@ -120,10 +121,15 @@ struct LoraRawReceiver::Impl {
         for (double bw : bws) {
             const bool inBand = std::fabs(inOff) + 0.5 * bw + 25e3 < 0.45 * rate && rate >= 2.2 * bw;
             Chan* c = nullptr;
-            for (int sf : sfs) for (int sw : syncs) {
-                LrDecoderInfo d;
-                d.sf = sf; d.bwHz = bw; d.sync = sw; d.inBand = inBand;
-                tel.decoders.push_back(d);
+            for (int sf : sfs) {
+                Dec dc;
+                for (int sw : syncs) {
+                    LrDecoderInfo d;
+                    d.sf = sf; d.bwHz = bw; d.sync = sw; d.inBand = inBand;
+                    tel.decoders.push_back(d);
+                    dc.infos.push_back(tel.decoders.size() - 1);
+                    dc.syncs.push_back(sw);
+                }
                 if (!inBand) continue;
                 if (!c) {
                     chans.emplace_back();
@@ -132,16 +138,15 @@ struct LoraRawReceiver::Impl {
                     c->offHz = cfg.offsetHz;
                     c->base = nProc;
                     c->buf.clear(0);
+                    c->cs = std::make_shared<lora::ChipStream>(c->ch->outRate() / bw);
                 }
                 lora::Params p;
-                p.sf = sf; p.bwHz = bw; p.syncWord = (uint8_t)sw; p.preamble = cfg.preamble;
+                p.sf = sf; p.bwHz = bw; p.syncWord = (uint8_t)syncs[0]; p.preamble = cfg.preamble;
+                for (size_t si = 1; si < syncs.size(); si++) p.moreSync.push_back((uint8_t)syncs[si]);
                 p.ldro = cfg.ldro < 0 ? lora::autoLdro(sf, bw) : cfg.ldro == 1;
                 if (cfg.implicit) { p.implicitHdr = true; p.implicitLen = cfg.length; p.cr = cfg.cr; p.crc = cfg.crc; }
-                Dec dc;
-                dc.dm = std::make_unique<lora::Demod>(p, c->ch->outRate());
+                dc.dm = std::make_unique<lora::Demod>(p, c->ch->outRate(), 1, c->cs);
                 dc.dm->reset(0);
-                dc.info = tel.decoders.size() - 1;
-                dc.sync = sw;
                 c->decs.push_back(std::move(dc));
             }
             char b[64];
@@ -158,13 +163,15 @@ struct LoraRawReceiver::Impl {
         recent.push_back({f.payload, t, ci, di});
         if (recent.size() > 12) recent.erase(recent.begin());
         const lora::Params& p = d.dm->params();
-        LrDecoderInfo& info = tel.decoders[d.info];
+        size_t row = 0;
+        for (size_t si = 0; si < d.syncs.size(); si++) if (d.syncs[si] == f.syncWord) row = si;
+        LrDecoderInfo& info = tel.decoders[d.infos[row]];
         info.frames++;
         if (!good) info.crcBad++;
         LrFrame r;
         r.wallTime = (int64_t)std::time(nullptr);
         r.sec = t; r.sf = p.sf; r.bwHz = p.bwHz; r.cr = f.hdr.cr; r.hasCrc = f.hdr.crc; r.crcOk = f.crcOk; r.implicit = p.implicitHdr;
-        r.sync = d.sync; r.len = (int)f.payload.size(); r.corrected = f.corrected;
+        r.sync = d.syncs[row]; r.len = (int)f.payload.size(); r.corrected = f.corrected;
         r.snrDb = (float)f.snrDb; r.levelDb = (float)f.levelDb; r.cfoHz = f.cfoHz; r.freqHz = c.offHz + f.cfoHz;
         r.payload = f.payload; r.hex = hexOf(f.payload); r.ascii = textOf(f.payload);
         if (good) {
@@ -188,6 +195,7 @@ struct LoraRawReceiver::Impl {
         for (size_t ci = 0; ci < chans.size(); ci++) {
             Chan& c = chans[ci];
             c.ch->process(x, n, c.buf);
+            c.cs->extend(c.buf);
             int64_t keep = c.buf.end();
             for (size_t di = 0; di < c.decs.size(); di++) {
                 Dec& d = c.decs[di];
@@ -195,14 +203,17 @@ struct LoraRawReceiver::Impl {
                 d.dm->process(c.buf, frames);
                 for (auto& f : frames) onFrame(ci, di, c, d, f);
                 const auto& st = d.dm->stats();
-                LrDecoderInfo& info = tel.decoders[d.info];
                 tel.preambles += st.preambles - d.seen.preambles;
                 tel.headerBad += st.headerBad - d.seen.headerBad;
-                info.preambles = st.preambles; info.headerBad = st.headerBad; info.syncBad = st.syncBad;
+                for (size_t ii : d.infos) {
+                    LrDecoderInfo& info = tel.decoders[ii];
+                    info.preambles = st.preambles; info.headerBad = st.headerBad; info.syncBad = st.syncBad;
+                }
                 d.seen = st;
                 keep = std::min(keep, d.dm->oldestNeeded());
             }
             c.buf.trim(keep);
+            c.cs->trimToSample(keep);
         }
         nProc += (int64_t)n;
     }
