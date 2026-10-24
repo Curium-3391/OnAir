@@ -324,10 +324,11 @@ pub fn parse_block(b: &[u8], out: &mut Out) {
             len = n - pos;
         }
         out.blk.resources += 1;
-        // The MAC address is read only for an SSI (types 1 and 5, first 24 bits); parse_cmce keeps it only for a call that is not encrypted.
-        let addr = if at == 1 || at == 5 { r.get(24) as i32 } else { r.get(ADDR_LEN[at & 7]); -1 };
-        if at == 5 {
-            r.get(10);
+        // The MAC address is read only for an SSI (type 1, and 5 / 6 with an event label or usage marker after it: a group call set-up is usually
+        // sent to the SSI with the usage marker it is given); parse_cmce keeps it only for a call that is not encrypted.
+        let addr = if at == 1 || at == 5 || at == 6 { r.get(24) as i32 } else { r.get(ADDR_LEN[at & 7]); -1 };
+        if at == 5 || at == 6 {
+            r.get(ADDR_LEN[at] - 24); // event label (10) or usage marker (6)
         }
         if r.bit() {
             r.get(4); // power control

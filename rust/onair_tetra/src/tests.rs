@@ -192,3 +192,42 @@ fn call_setup_encryption_flag() {
     parse_block(&b, &mut o);
     assert_eq!((o.blk.encrypted, o.blk.n_call), (1, 0));
 }
+
+/// A clear group-call D-SETUP (communication type 1) in a MAC-RESOURCE whose address is of type `at`: the SSI 0x123456, then for types 5 and 6
+/// the event label (10) or usage marker (6); then the mandatory elements up to the call priority and an O-bit of 0.
+fn group_setup_block(at: u64) -> Vec<u8> {
+    let extra = [0usize, 0, 0, 0, 0, 10, 6, 0][at as usize];
+    let mut w = W(vec![]);
+    for (v, n) in [(0, 2), (1, 1), (0, 1), (0, 2), (0, 1), (17, 6), (at, 3), (0x123456, 24)] {
+        w.put(v, n);
+    }
+    w.put(0, extra);
+    for (v, n) in [(0, 1), (0, 1), (0, 1)] {
+        w.put(v, n); // no power control, no slot granting, no channel allocation
+    }
+    // LLC BL-UDATA, MLE discriminator 2, D-SETUP: call id 777, time-out 5, hook 0, simplex 1, circuit mode 0, clear, point-to-multipoint,
+    // slots / speech 0; transmission grant 0, request permission 0, priority 0, O-bit 0
+    for (v, n) in [(2, 4), (2, 3), (7, 5), (777, 14), (5, 4), (0, 1), (1, 1), (0, 3), (0, 1), (1, 2), (0, 2), (0, 2), (0, 1), (0, 4), (0, 1)] {
+        w.put(v, n);
+    }
+    w.put(1, 1);
+    while w.0.len() < 136 {
+        w.put(0, 1);
+    }
+    w.0
+}
+
+#[test]
+fn group_setup_gssi_by_address_type() {
+    // SSI (1), SSI + event label (5), SSI + usage marker (6): the group; USSI (3) and SMI (4) are not a group address
+    for (at, want) in [(1u64, 0x123456), (5, 0x123456), (6, 0x123456), (3, -1), (4, -1)] {
+        let b = group_setup_block(at);
+        let mut nw = [Nwrk::default(); 4];
+        let mut nb = [Neighbour::default(); 8];
+        let mut o = Out { blk: MacBlock::default(), nwrk: &mut nw, nbr: &mut nb };
+        parse_block(&b, &mut o);
+        assert_eq!(o.blk.n_call, 1, "address type {at}");
+        let c = o.blk.call[0];
+        assert_eq!((c.kind, c.call_id, c.enc, c.gssi), (1, 777, 0, want), "address type {at}");
+    }
+}
