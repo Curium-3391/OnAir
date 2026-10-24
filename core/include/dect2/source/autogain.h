@@ -176,8 +176,14 @@ struct ModeTarget {
     double lockSnrDb = 6;        // a decoder locked above this SNR freezes the loop (only overloads still act)
     double maxStepDb = 6;        // largest upward step of the loop
     const char* why = "";
+    const char* bandNote = "";   // what the band the radio is tuned to changes (set by modeTargetFor when freqHz is given), for the user
+    const char* bandName = "";
 };
-ModeTarget modeTargetFor(int stdMode, double chanBwHz, double rateHz);
+// freqHz > 0 adds the band's bias: HF and the strong broadcast / mobile bands want headroom and a linear front end, quiet microwave bands
+// want sensitivity (bandBiasNote in the target says so in one line)
+ModeTarget modeTargetFor(int stdMode, double chanBwHz, double rateHz, double freqHz = 0);
+// A short id of the band a frequency is in ("hf", "fm", "tv-uhf", "cell", "microwave" ...): gain memory and the app re-optimise when it changes
+const char* bandIdFor(double freqHz);
 
 // ============================================================================================================================ 4. control
 enum class AgMode { Off, Auto, Once, Safe };
@@ -198,6 +204,8 @@ struct AgSettings {
     bool imdProbeAuto = false;   // Auto also checks for intermodulation now and then (a short 3 dB step up and back)
     double settleSec = 0.8;      // extra wait after each change before measuring (on top of the radio's own)
     double measureSec = 1.2;     // Optimise once / Safe: how long each step is measured
+    bool quickStart = true;      // Auto begins (and re-begins after a retune / Re-optimise) with a short bracketing search of 4-6 gains
+    double bracketSec = 0.15;    // how long each gain of that search is measured (after the radio's own settling)
 };
 
 struct AgInput {
@@ -269,6 +277,16 @@ public:
     double bestMetric() const { return bestMetric_; }
     int changes() const { return changes_; }
     double ceilingDb(double now) const { return now < ceilUntil_ ? ceil_ : 1e9; }
+    // Auto: run the short bracketing search again from the next tick ("Re-optimise")
+    void reoptimise() { if (mode_ == AgMode::Auto && phase_ != Phase::Idle) wantBracket_ = true; }
+    // Auto: a gain taken from the memory needs no search at start
+    void skipQuickSearch() { wantBracket_ = false; }
+    bool bracketing() const { return br_ != 0; }
+    // true once after each finished bracketing search (the app stores the result in the memory)
+    bool takeBracketDone() { const bool b = bracketDone_; bracketDone_ = false; return b; }
+    // One line for the user: "Gain set to 32 dB: strong FM stations nearby, kept headroom" and the reasons behind it
+    const std::string& explanation() const { return expl_; }
+    const std::vector<std::string>& reasons() const { return reasons_; }
 
     // The score a measurement gets for the metric (higher is better); false when it has none
     static bool score(Metric m, const Quality& q, const FloorEstimate& fl, const BlockStats& adc, const ModeTarget& t, double headroomTarget, double& out);
@@ -281,11 +299,14 @@ private:
     void logEvent(double now, double from, double to, const std::string& why);
     void measure(const AgInput& in);
     bool tickAuto(const AgInput& in, AgCommand& out);
+    bool tickBracket(const AgInput& in, AgCommand& out);
+    void beginBracket(const AgInput& in);
+    void explain(const std::string& lead);
     bool tickOnce(const AgInput& in, AgCommand& out);
     bool tickSafe(const AgInput& in, AgCommand& out);
     bool beginTrial(double now, double totalDb, Policy pol, AgCommand& out);
     void accumulate(AgTrial& t, const AgInput& in);
-    int chooseTrial(Metric& used) const;
+    int chooseTrial(Metric& used, double minHead = 0.5, double maxMargin = 1e9) const;
     void finish(double now, int idx, Metric used, AgCommand& out, bool& changed);
     Metric resolvedMetric(const Quality& q) const;
     std::vector<double> stepsFor(Policy pol) const;
@@ -306,12 +327,16 @@ private:
     Quality q_;
     AgMeters met_;
     // overload memory
-    double ceil_ = 1e9, ceilUntil_ = 0, linearUntil_ = 0;
+    double ceil_ = 1e9, ceilUntil_ = 0, linearUntil_ = 0, preOvDb_ = 0;
     std::vector<double> ovTimes_;
     // quality guard of an upward step
     bool guard_ = false; double guardFrom_ = 0, guardMetric_ = 0; Metric guardM_ = Metric::Auto;
     // IMD probe (Auto)
     int probe_ = 0; double probeAt_ = -1e9, probeFrom_ = 0; std::vector<float> probeLo_;
+    // the short bracketing search of Auto: br_ 1 = running; wantBracket_ = start it at the next settled tick
+    int br_ = 0, brExtra_ = 0; bool wantBracket_ = false, bracketDone_ = false; double brFrom_ = 0;
+    std::string expl_;
+    std::vector<std::string> reasons_;
     // Optimise once / Safe
     std::vector<AgTrial> trials_;
     std::vector<std::pair<double, Policy>> queue_;

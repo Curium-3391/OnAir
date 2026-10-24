@@ -1,5 +1,6 @@
 // Automatic gain, parts 2 and 3: what is measured (ADC, noise floor, channel SNR, the mode's quality, intermodulation) and what each mode
 // wants. See docs/AUTOGAIN.md.
+#include <string>
 #include "dect2/source/autogain.h"
 #include <algorithm>
 #include <cmath>
@@ -202,7 +203,53 @@ const char* modeKindName(ModeKind k) {
     }
 }
 
-ModeTarget modeTargetFor(int std_, double bwHz, double rateHz) {
+const char* bandIdFor(double f) {
+    if (f <= 0) return "";
+    if (f < 30e6) return "hf";
+    if (f < 87.5e6) return "vhf-low";
+    if (f < 108e6) return "fm";
+    if (f < 174e6) return "vhf";
+    if (f < 240e6) return "tv-vhf";
+    if (f < 470e6) return "uhf";
+    if (f < 700e6) return "tv-uhf";
+    if (f < 1000e6) return "cell";
+    if (f < 2300e6) return "lband";
+    if (f < 2500e6) return "ism24";
+    return "microwave";
+}
+
+// What the band changes: the strongest signals a band holds decide how much headroom and linearity the front end needs, the quietest bands how
+// much sensitivity. Pulsed (ADS-B) and GNSS targets already know their band.
+static void applyBandBias(ModeTarget& t, double f) {
+    const std::string b = bandIdFor(f);
+    if (b.empty() || t.kind == ModeKind::Pulsed || t.kind == ModeKind::Gnss) return;
+    const bool narrow = t.kind == ModeKind::NarrowVoice || t.kind == ModeKind::NarrowData;
+    t.bandName = b == "hf" ? "HF" : b == "fm" ? "FM broadcast" : b == "tv-vhf" || b == "tv-uhf" ? "TV broadcast" : b == "cell" ? "mobile" : b == "lband" ? "L-band" : b == "microwave" ? "microwave" : "";
+    if (b == "hf") {   // the band's own noise is far above the radio's and shortwave stations are strong: less gain, linear stages
+        t.headroomDb += 3; t.marginGoalDb = std::max(3.0, t.marginGoalDb - 4); t.policy = Policy::Linearity;
+        t.bandNote = "HF: the band's own noise is well above the radio's, strong shortwave stations, so gain is kept low";
+    } else if (b == "fm") {   // 100 dBuV stations: everything else in the band gets a linear front end
+        if (t.kind != ModeKind::FmBroadcast) t.headroomDb += 3;
+        t.marginGoalDb = std::max(4.0, t.marginGoalDb - 3); t.policy = Policy::Linearity;
+        t.bandNote = "strong FM stations nearby, kept headroom";
+    } else if (b == "tv-vhf" || b == "tv-uhf") {
+        if (narrow) { t.headroomDb += 2; if (t.policy == Policy::Sensitivity) t.policy = Policy::Balanced; }
+        t.bandNote = "strong TV transmitters in this band, kept headroom";
+    } else if (b == "cell") {
+        if (narrow) { t.headroomDb += 2; if (t.policy == Policy::Sensitivity) t.policy = Policy::Balanced; }
+        t.bandNote = "mobile-phone band: strong nearby signals, kept headroom";
+    } else if (b == "vhf-low" || b == "vhf") {
+        t.headroomDb += 1;
+    } else if (b == "lband" || b == "microwave") {   // quiet: the radio's own noise is what matters
+        if (t.kind != ModeKind::WideSpan) {
+            t.policy = Policy::Sensitivity;
+            t.headroomDb = std::max(5.0, t.headroomDb - 2); t.marginGoalDb += 2;
+            t.bandNote = "quiet band: gain chosen for sensitivity";
+        }
+    }
+}
+
+ModeTarget modeTargetFor(int std_, double bwHz, double rateHz, double freqHz) {
     ModeTarget t;
     auto in = [&](std::initializer_list<int> l) { for (int x : l) if (x == std_) return true; return false; };
     if (in({0, 1, 2, 3, 5, 6, 8, 9, 10, 42})) {   // DVB-T2/T, ATSC, ATSC 3.0, ISDB-T, DVB-S/S2, DTMB, analog TV, DVB-C
@@ -244,6 +291,7 @@ ModeTarget modeTargetFor(int std_, double bwHz, double rateHz) {
     }
     // a capture much wider than the channel holds more strong signals: keep more headroom
     if (rateHz > 0 && bwHz > 0 && rateHz / bwHz > 50 && t.kind != ModeKind::Pulsed) t.headroomDb += 2;
+    if (freqHz > 0) applyBandBias(t, freqHz);
     return t;
 }
 
