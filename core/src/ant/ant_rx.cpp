@@ -141,8 +141,10 @@ struct AntReceiver::Impl {
     // ---------------------------------------------------------------- front end
 
     void input(float re, float im) {
-        const std::complex<double> v = std::complex<double>(re, im) * lo;
-        lo *= loStep;
+        // the two complex products written out (the same bits as std::complex<double>, without its NaN-recovery call)
+        const double lr = lo.real(), li = lo.imag(), sr = loStep.real(), si = loStep.imag();
+        const std::complex<double> v((double)re * lr - (double)im * li, (double)re * li + (double)im * lr);
+        lo = std::complex<double>(lr * sr - li * si, lr * si + li * sr);
         if (++loCount >= 4096) { lo /= std::abs(lo); loCount = 0; }
         hr[(size_t)hp] = hr[(size_t)(hp + L)] = (float)v.real();
         hi[(size_t)hp] = hi[(size_t)(hp + L)] = (float)v.imag();
@@ -169,7 +171,7 @@ struct AntReceiver::Impl {
 
     // ---------------------------------------------------------------- demodulator
 
-    void demod(std::complex<float> y) {
+    __attribute__((always_inline)) void demod(std::complex<float> y) {   // inlined: a call per sample stored the two floats and loaded them as one 8-byte value (store-forwarding stall)
         const std::complex<float> z = y * std::conj(prevY);
         prevY = y;
         const float fHz = (float)(std::atan2(z.imag(), z.real()) * (kOut / (2 * kPi)));
