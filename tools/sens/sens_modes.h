@@ -13,6 +13,13 @@
 #include "dect2/hdr/hdr_rx.h"
 #include "dect2/t2/t2.h"
 #include "dect2/t2/t2gen.h"
+#include "dect2/m17/m17_rx.h"
+#include "dect2/m17/m17_tel.h"
+#include "dect2/fusion/fusion_rx.h"
+#include "dect2/p25p2/p25p2_rx.h"
+#include "dect2/p25p2/p25p2_tel.h"
+#include "dect2/tetrapol/tetrapol_rx.h"
+#include "dect2/tetrapol/tetrapol_tel.h"
 #include "dect2/meteor/meteor_rx.h"
 #include "dect2/meteor/meteor_tel.h"
 #include "dect2/hrpt/hrpt_rx.h"
@@ -411,6 +418,10 @@ inline std::vector<Mode> allModes() {
     narrow.template operator()<NxdnReceiver, NxdnTelemetry>("nxdn", "NXDN", "digital-voice", 40, 1.2e6, 6.0, 6.25e3, 450, nullptr, 25);
     narrow.template operator()<DpmrReceiver, DpmrTelemetry>("dpmr", "dPMR", "digital-voice", 47, 1.2e6, 6.0, 6.25e3, 446, nullptr, 25);
     narrow.template operator()<TetraReceiver, TetraTelemetry>("tetra", "TETRA", "digital-voice", 48, 2e6, 8.0, 25e3, 390, [](SynthConfig& c) { c.modeOpt[0] = 1; }, 22);
+    narrow.template operator()<M17Receiver, M17Telemetry>("m17", "M17", "digital-voice", 33, 2e6, 6.0, 9e3, 433, nullptr, 25);
+    narrow.template operator()<FusionReceiver, FusionTelemetry>("fusion", "Yaesu System Fusion", "digital-voice", 130, 2e6, 6.0, 12.5e3, 144, nullptr, 25);
+    narrow.template operator()<P25p2Receiver, P25p2Telemetry>("p25p2", "P25 phase 2", "digital-voice", 182, 2e6, 6.0, 12.5e3, 851, nullptr, 25);
+    narrow.template operator()<TetrapolReceiver, TetrapolTelemetry>("tetrapol", "TETRAPOL", "digital-voice", 81, 2e6, 6.0, 12.5e3, 400, nullptr, 25);
     narrow.template operator()<P25Receiver, P25Telemetry>("p25", "P25 phase 1", "digital-voice", 52, 1.2e6, 6.0, 12.5e3, 851, nullptr, 25);
     // weather satellites: the SNR is Es/N0 (the noise bandwidth is the symbol rate); frames whose Reed-Solomon codewords all passed
     narrow.template operator()<MeteorReceiver, MeteorTelemetry>("meteor", "Meteor-M LRPT (OQPSK 72k)", "satellite-weather", 61, 1e6, 8.0, 72e3, 137.9, nullptr, 16);
