@@ -3,6 +3,7 @@
 #pragma once
 #include "dect2/adsb/adsb_tel.h"
 #include "dect2/ais/ais_tel.h"
+#include "dect2/dmr/dmr_tel.h"
 #include "dect2/packet/packet_tel.h"
 #include "passes.h"
 #include "dect2/sonde/sonde_tel.h"
@@ -12,7 +13,7 @@
 
 namespace dect2 {
 
-enum MapLayer { LayerAdsb = 0, LayerAis, LayerAprs, LayerSonde, LayerSat, LayerCell, LayerCount };
+enum MapLayer { LayerAdsb = 0, LayerAis, LayerAprs, LayerSonde, LayerSat, LayerCell, LayerDmr, LayerCount };
 
 struct MapMarker {
     int layer = LayerAdsb;
@@ -31,6 +32,7 @@ std::vector<MapMarker> markersFromAdsb(const AdsbTelemetry& t);     // aircraft 
 std::vector<MapMarker> markersFromAis(const AisTelemetry& t);       // vessels with a position
 std::vector<MapMarker> markersFromAprs(const PacketTelemetry& t);   // stations and objects with a position
 std::vector<MapMarker> markersFromSonde(const SondeTelemetry& t);   // sondes with a position, their flight track
+std::vector<MapMarker> markersFromDmr(const DmrTelemetry& t);       // radios with a position, their movement track
 
 // A satellite on the map: sub-point, the circle on the ground it sees (above `minElDeg`), and its ground track from
 // `pastMin` before to `futureMin` after `unixSec`, one point per `stepMin`.
