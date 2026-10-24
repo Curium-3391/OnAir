@@ -448,6 +448,7 @@ public:
             for (int pass = 0; pass < L_.passes; pass++) {
                 bigFft();
                 spectrogram();
+                toneSums();
                 int found = 0;
                 for (int mir = 0; mir < (mirrored_ ? 2 : 1); mir++) {
                     const auto cands = candidates(mir != 0);
@@ -532,6 +533,22 @@ private:
             for (int b = 0; b < nb_; b++) P_[(size_t)fr * nb_ + b] = std::norm(buf[(size_t)(bLo_ + b)]);
         }
     }
+    void toneSums() {   // A_[m][f][b] = sum over the tones t of P(f, b + s t), s = +-2 (upright / mirrored)
+        for (int m = 0; m < 2; m++) {
+            A_[m].assign((size_t)nf_ * nb_, 0.f);
+            if (j_.mode == kWspr) continue;
+            const int st = m ? -2 : 2;
+            for (int f = 0; f < nf_; f++) {
+                const float* row = &P_[(size_t)f * nb_];
+                float* out = &A_[m][(size_t)f * nb_];
+                for (int b = 0; b < nb_; b++) {
+                    float a = 0;
+                    for (int t = 0; t < L_.nt; t++) { const int bb = b + st * t; if (bb >= 0 && bb < nb_) a += row[bb]; }
+                    out[b] = a;
+                }
+            }
+        }
+    }
     float P(int fr, int b) const { return (fr < 0 || fr >= nf_ || b < 0 || b >= nb_) ? 0.f : P_[(size_t)fr * nb_ + b]; }
 
     // sync score of a transmission starting at frame fr with tone 0 at bin b
@@ -550,13 +567,12 @@ private:
         }
         double syn = 0, all = 0;
         int n = 0;
+        const std::vector<float>& A = A_[mir ? 1 : 0];   // the sum over the tones, per frame and bin (filled in spectrogram())
         for (const auto& sy : L_.sync) {
             const int f = fr + 4 * sy.first;
             if (f >= nf_) continue;
-            double a = 0;
-            for (int t = 0; t < L_.nt; t++) a += P(f, b + s * t);
+            all += (b < 0 || b >= nb_) ? 0.f : A[(size_t)f * nb_ + b];
             syn += P(f, b + s * sy.second);
-            all += a;
             n++;
         }
         if (n < (int)L_.sync.size() / 2 || all <= syn) return 0.f;
@@ -961,6 +977,7 @@ private:
     double df_ = 0, binHz_ = 0;
     int bLo_ = 0, bHi_ = 0, nb_ = 0, nf_ = 0;
     std::vector<float> P_;
+    std::vector<float> A_[2];
     std::vector<cd> zc_;   // complex tone correlations of the candidate being tried, the symbol-to-symbol phase step taken out
     struct Fit { bool valid = false; std::vector<cf32> y; int kc = 0, bestT = 0; double base = 0, dfr = 0, tfrac = 0; } fit_;
     int lastErr_ = 0;

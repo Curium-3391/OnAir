@@ -273,6 +273,7 @@ struct HfdigWide::Impl {
     WideDecimator dec;
     std::vector<std::unique_ptr<Chain>> ftxChains, rttyChains;
     std::vector<cf32> buf;
+    std::vector<int> chanOf;     // channelised input: the channel of each ftx chain
     double span = 0;
     explicit Impl(HfdigFtx& f) : mainFtx(f) {}
 };
@@ -352,6 +353,29 @@ void HfdigWide::configureSlots(double rate, double spanHz, double dialHz, double
         c->ftx->copyClockFrom(m.mainFtx);
         m.ftxChains.push_back(std::move(c));
     }
+}
+
+void HfdigWide::configureChannels(double chanRate, const std::vector<ChanSpec>& specs, double reportDialHz) {
+    Impl& m = *p_;
+    for (auto& c : m.ftxChains) if (c->ftx) c->ftx->setForwardTo(nullptr);
+    m.ftxChains.clear(); m.rttyChains.clear(); m.chanOf.clear();
+    for (const ChanSpec& sp : specs) {
+        auto c = std::make_unique<Chain>();
+        c->init(chanRate, sp.offsetHz);
+        c->ftx = makeFtxDecoder();
+        for (int mo = 0; mo < kFtxModes; mo++) c->ftx->setEnabled(mo, (sp.modeBits >> mo) & 1);
+        c->ftx->setDialHz(sp.dialHz);
+        c->ftx->setSpotShiftHz(sp.dialHz - reportDialHz);
+        c->ftx->setForwardTo(&m.mainFtx);
+        c->ftx->copyClockFrom(m.mainFtx);
+        m.ftxChains.push_back(std::move(c));
+        m.chanOf.push_back(sp.channel);
+    }
+}
+
+void HfdigWide::feedChannel(int channel, const cf32* x, size_t n) {
+    Impl& m = *p_;
+    for (size_t i = 0; i < m.ftxChains.size(); i++) if (m.chanOf[i] == channel) m.ftxChains[i]->feed(x, n);
 }
 
 void HfdigWide::setOffsetHz(double hz) { p_->dec.setOffsetHz(hz); }

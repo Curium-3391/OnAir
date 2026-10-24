@@ -1,6 +1,7 @@
 // Multi-band monitor (see hfdig_multiband.h).
 #include "dect2/hfdig/hfdig_multiband.h"
 #include "dect2/hfdig/hfdig_wide.h"
+#include "hfdig_chan.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -101,6 +102,9 @@ struct HfdigMultiBand::Impl {
     std::vector<MbSel> wanted, active, notCovered, droppedSel;
     std::vector<std::unique_ptr<HfdigWide>> bands;
     std::vector<int> bandIds;
+    ChanBank bank;                                // the shared channeliser (all bands, one FFT)
+    std::unique_ptr<HfdigWide> shared;           // the chains of every dial, fed from the channels
+    bool useBank = false;
     MbCpuGuard guard;
     double (*clock)() = nullptr;
     explicit Impl(HfdigFtx& m) : main(m) {}
@@ -114,6 +118,31 @@ struct HfdigMultiBand::Impl {
             if (std::find(droppedSel.begin(), droppedSel.end(), c.sel) != droppedSel.end()) continue;
             if (c.covered) { active.push_back(c.sel); perBand[c.sel.band].push_back(c.sel); }
             else notCovered.push_back(c.sel);
+        }
+        // one shared channeliser when the capture is wide enough for a channel bank; else one decimator per band
+        shared.reset(); useBank = false;
+        std::vector<double> dials;
+        std::vector<int> bits;
+        for (auto& kv : perBand)
+            for (const MbSel& s : kv.second) {
+                const double f = mbDialHz(s.band, s.mode);
+                bool merged = false;
+                for (size_t i = 0; i < dials.size(); i++) if (std::fabs(dials[i] - f) < 100) { bits[i] |= 1 << s.mode; merged = true; }
+                if (!merged) { dials.push_back(f); bits.push_back(1 << s.mode); }
+            }
+        std::vector<ChanBank::Out> map;
+        std::vector<double> rel;
+        for (double f : dials) rel.push_back(f - centre);
+        // the shared FFT costs the same for one channel as for twenty (about 0.3 core-s per s at 32 Msps); a decimator per band costs about 0.18
+        // each: the bank pays from three channels on
+        if (!dials.empty() && bank.configure(rate, rel, kMbAudioHz, map) && bank.channels() >= 3) {
+            std::vector<HfdigWide::ChanSpec> specs;
+            for (size_t i = 0; i < dials.size(); i++) specs.push_back({map[i].channel, dials[i], map[i].offsetHz, bits[i]});
+            shared = std::make_unique<HfdigWide>(main);
+            shared->configureChannels(bank.outRate(), specs, reportDial > 0 ? reportDial : centre);
+            useBank = true;
+            for (auto& kv : perBand) bandIds.push_back(kv.first);
+            return;
         }
         for (auto& kv : perBand) {
             std::vector<FtxSlot> slots;
@@ -159,8 +188,9 @@ void HfdigMultiBand::configure(double rate, double centre, const std::vector<MbS
 
 void HfdigMultiBand::feed(const cf32* x, size_t n) {
     Impl& m = *p_;
-    if (m.bands.empty() || m.rate <= 0 || n == 0) return;
+    if ((m.bands.empty() && !m.useBank) || m.rate <= 0 || n == 0) return;
     const double t0 = m.clock ? m.clock() : Impl::now();
+    if (m.useBank) m.bank.feed(x, n, [&](int ch, const cf32* y, size_t k) { m.shared->feedChannel(ch, y, k); });
     for (auto& b : m.bands) b->feed(x, n);
     const double t1 = m.clock ? m.clock() : Impl::now();
     m.step(t1 - t0, (double)n / m.rate);
@@ -173,8 +203,9 @@ MbStatus HfdigMultiBand::status() const {
     const Impl& m = *p_;
     MbStatus s;
     s.centreHz = m.centre; s.rateHz = m.rate;
-    s.bands = (int)m.bands.size();
+    s.bands = m.useBank ? (int)m.bandIds.size() : (int)m.bands.size();
     for (const auto& b : m.bands) s.channels += b->ftxChannels();
+    if (m.shared) s.channels += m.shared->ftxChannels();
     s.dropped = (int)m.droppedSel.size();
     s.tooSlow = m.guard.tooSlow() || !m.droppedSel.empty();
     s.load = m.guard.load();

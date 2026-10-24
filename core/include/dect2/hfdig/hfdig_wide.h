@@ -29,6 +29,11 @@ public:
     // also one at the reference dialHz. spanHz is the span to cover around dialHz (offsetHz: where dialHz sits in the input).
     void configureSlots(double inputRate, double spanHz, double dialHz, double offsetHz, const std::vector<FtxSlot>& slots,
                         double reportDialHz);   // reportDialHz: the radio's tuned frequency, which PSK Reporter / WSPRnet add the audio frequency to
+    // Channelised input (hfdig_chan.h): the input already is a set of narrow channels (rate chanRate, centred on a bin of the shared FFT); every
+    // spec is one dial frequency decoded on its channel (offsetHz: where the dial sits in it), modeBits the modes (1 << kFtx mode) of that dial.
+    struct ChanSpec { int channel; double dialHz, offsetHz; int modeBits; };
+    void configureChannels(double chanRate, const std::vector<ChanSpec>& specs, double reportDialHz);
+    void feedChannel(int channel, const cf32* x, size_t n);
     void setOffsetHz(double hz);
     void feed(const cf32* x, size_t n);
     void rttyTelemetry(std::vector<RttyWideSignal>& out);   // the receiver thread
