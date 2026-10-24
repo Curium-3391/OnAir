@@ -1,4 +1,5 @@
 // Wi-SUN FAN monitor (see wisun_rx.h).
+#include "dect2/dsp/fast_phase.h"
 #include "dect2/common/thread_name.h"
 #include "dect2/wisun/wisun_rx.h"
 #include "dect2/dsp/dsp_compat.h"
@@ -40,7 +41,7 @@ constexpr int kSearchBits = 512;          // how far into a burst the start of f
 
 using cf = std::complex<float>;
 
-int popc32(uint32_t v) { return dect2::bits::popcount(v); }
+int popc32(uint32_t v) { v = v - ((v >> 1) & 0x55555555u); v = (v & 0x33333333u) + ((v >> 2) & 0x33333333u); return (int)((((v + (v >> 4)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24); }
 
 // A windowed-sinc low-pass (Blackman), unity gain at 0 Hz; fc in cycles per sample
 std::vector<float> lowpass(int n, double fc) {
@@ -508,7 +509,7 @@ struct WisunReceiver::Impl {
             const cf z(re, im);
             if (d.havePrev) {
                 const cf w = z * std::conj(d.zPrev);
-                d.f.push_back(std::atan2(w.imag(), w.real()));
+                d.f.push_back(fastAtan2(w.imag(), w.real()));
             } else d.f.push_back(0.f);
             d.zPrev = z; d.havePrev = true;
         }
