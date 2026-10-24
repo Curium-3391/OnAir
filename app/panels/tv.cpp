@@ -183,7 +183,8 @@ void tvRecordRow(App& a) {
 void teletextTab(App& a) {
     TeletextDecoder& tx = a.engine.teletext();
     const Player& pl = a.engine.player();
-    if (tx.pid() < 0) {
+    static const bool idDemo = getenv("DECT2_IDCHECK_TTX") != nullptr;   // test only: draw the page controls with an empty page, without a stream
+    if (tx.pid() < 0 && !idDemo) {
         { ImGui::PushTextWrapPos(0); ImGui::TextDisabled(pl.selected() < 0 ? "Play a service (Player tab) - teletext is read from the playing service." : "The playing service has no teletext stream."); ImGui::PopTextWrapPos(); }
         return;
     }
@@ -225,7 +226,7 @@ void teletextTab(App& a) {
     }
     TtxPage pg;
     if (a.ttxHold) pg = a.ttxHeld;
-    else if (!tx.page(a.ttxPage, pg, a.ttxSub)) { { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("page %d has not been received yet (pages repeat every few seconds)", a.ttxPage); ImGui::PopTextWrapPos(); } return; }
+    else if (!tx.page(a.ttxPage, pg, a.ttxSub) && !idDemo) { { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("page %d has not been received yet (pages repeat every few seconds)", a.ttxPage); ImGui::PopTextWrapPos(); } return; }
     // subpages: the newest by default, or step through the ones held
     {
         const std::vector<int> subs = tx.subpages(a.ttxPage);
@@ -245,7 +246,7 @@ void teletextTab(App& a) {
         for (int i = 0; i < 5; i++) {
             const int link = pg.fastext[i];
             char lab[24];
-            snprintf(lab, sizeof lab, link ? "%d##fx%d" : "-##fx%d", link, i);
+            if (link) snprintf(lab, sizeof lab, "%d##fx%d", link, i); else snprintf(lab, sizeof lab, "-##fx%d", i);
             ImGui::BeginDisabled(!link);
             if (i < 4) { ImGui::PushStyleColor(ImGuiCol_Button, col[i]); ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col[i]); }
             const bool hit = ImGui::SmallButton(lab);
