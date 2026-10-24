@@ -301,23 +301,11 @@ function easedHeading(t, hdg) {
   return t._dh;
 }
 
-/** Returns a (lon, lat) => bool for the padded viewport, or null when everything is in view anyway (few tracks, world view). */
-function viewTest() {
-  if (tracks.size <= 150 || !map.loaded() || map.getZoom() < 3) return null;
-  const b = map.getBounds();
-  const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-  if (e - w >= 300) return null;
-  const cx = (w + e) / 2, cy = (s + n) / 2, hx = (e - w) / 2 * 1.3 + 0.2, hy = (n - s) / 2 * 1.3 + 0.2;
-  return (lon, lat) => Math.abs(((lon - cx + 540) % 360 + 360) % 360 - 180) <= hx && Math.abs(lat - cy) <= hy;
-}
-
 function geojson() {
   const features = [];
   const theme = themeKey();
-  const inView = viewTest();   // beyond ~150 tracks only what is on (or near) the screen is handed to the renderer
   for (const t of tracks.values()) {
     if (!on[t.kind] || t.kind === "doa" || t.kind === "fix") continue;   // drawn by the DF layers
-    if (inView && t.id !== selected && !inView(t.lon, t.lat)) continue;
     const hdg = effectiveHeading(t);
     const dot = datalinkDotUntilHeading(t, hdg);
     const shape = shapeFor(t);
@@ -962,8 +950,14 @@ map.on("load", () => {
   ensureMotionLoop();
 });
 
-// the visible part of the map changed: hand the renderer the tracks that are now near the screen
-map.on("moveend", () => { const src = map.getSource("live"); if (src && tracks.size > 150) src.setData(geojson()); });
+// no viewport culling: the source always holds every track (the renderer culls itself), so panning/zooming never drops icons.
+// Clusters are recomputed whenever the zoom crosses a whole level, not only when the gesture ends.
+let lastZoomStep = null;
+map.on("zoom", () => {
+  const z = Math.floor(map.getZoom());
+  if (lastZoomStep === null) { lastZoomStep = z; return; }
+  if (z !== lastZoomStep) { lastZoomStep = z; const src = map.getSource("live"); if (src) src.setData(geojson()); }
+});
 
 // user panning cancels follow mode
 for (const ev of ["dragstart", "wheel", "touchstart"]) {
