@@ -71,7 +71,7 @@ bool hellUserGlyph(int cp, unsigned short out[14]) {
         const int row = base + y0 + r;
         if (row < kFirstRow || row >= kFirstRow + kInkRows) continue;
         for (int c = 0; c < w && c < kMaxCols; c++)
-            if (bm[(size_t)r * w + c] >= 110) { out[row] |= (unsigned short)(1u << (15 - c)); any = true; }
+            if (bm[(size_t)r * w + c] >= 64) { out[row] |= (unsigned short)(1u << (15 - c)); any = true; }
     }
     return any;
 }

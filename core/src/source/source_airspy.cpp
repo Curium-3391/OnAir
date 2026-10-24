@@ -68,7 +68,7 @@ struct AirspyApi {
 };
 AirspyApi& airspy() { static AirspyApi a; return a; }
 // the three amplifier stages the library lets one set by hand
-struct StageFn { const char* key; const char* label; int (DECT2_CALL* AirspyApi::*fn)(airspy_device*, uint8_t); };
+struct StageFn { const char* key; const char* label; int (DECT2_CALL* AirspyApi::*fn)(AirspyApi::airspy_device*, uint8_t); };
 const StageFn kStages[] = {{"gain.lna", "LNA", &AirspyApi::set_lna_gain}, {"gain.mixer", "mixer", &AirspyApi::set_mixer_gain}, {"gain.vga", "VGA (IF)", &AirspyApi::set_vga_gain}};
 
 namespace {

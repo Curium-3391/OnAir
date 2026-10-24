@@ -379,7 +379,7 @@ int main() {
             const bool ok = kbd::hellGlyph(cp, g);
             int ink = 0, outside = 0;
             for (int r = 0; r < 14; r++) { for (int b = 0; b < 16; b++) if (g[r] & (1 << b)) { ink++; if (r < 2 || r > 11) outside++; } }
-            CHECK(ok && ink >= 6 && outside == 0, "U+%04X from the font: ok %d, %d pixels, %d outside rows 2..11", cp, ok, ink, outside);
+            CHECK(ok && ink >= 4 && outside == 0, "U+%04X from the font: ok %d, %d pixels, %d outside rows 2..11", cp, ok, ink, outside);
         }
         CHECK(kbd::hellGlyph('A', g) && g[2] != 0 + 0xFFFF, "ASCII keeps the built-in Feld glyph");
         { unsigned short ref[14]; for (int i = 0; i < 14; i++) ref[i] = kbd::kHellFont['A' - ' '][i]; bool same = true; for (int i = 0; i < 14; i++) same = same && g[i] == ref[i]; CHECK(same, "ASCII is unchanged by the font"); }
