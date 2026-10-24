@@ -3,6 +3,7 @@
 #include "dect2/transcribe/transcriber.h"
 #include "dect2/common/stable_random.h"
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
