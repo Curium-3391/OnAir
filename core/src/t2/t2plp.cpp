@@ -143,7 +143,7 @@ PlpResult PlpDecoder::decodeNow(const PlpJob& job, int threads, bool useGpu, con
         o.ok = true;
         o.corrected = corr;
         std::vector<uint8_t> cw0;
-        const bool measure = (b % 8) == 0;
+        const bool measure = (b % 32) == 0;   // (the MER and pre-FEC figures: one block in 32 is plenty, and each costs an LDPC re-encode)
         o.frame.bits.assign(bb.begin(), bb.begin() + d.kBch);
         const uint8_t* rnd0 = bbRandomiser();
         for (int i = 0; i < d.kBch; i++) o.frame.bits[i] ^= rnd0[i];
