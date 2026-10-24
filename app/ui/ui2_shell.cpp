@@ -606,11 +606,12 @@ static void viewMenu(App& a) {
 static float gBarRestW = 0;
 static void menuBarRight(App& a) {
     const ImGuiStyle& ist = ImGui::GetStyle();
-    const float g = 6.f * gUi, margin = 8.f * gUi, W = ImGui::GetWindowWidth();
+    const float g = 6.f * gUi, margin = 12.f * gUi, W = ImGui::GetWindowWidth();
     const char* credit = tr("by: Kristijonas Adomaitis, made with help from the community");
     const float cw = ImGui::CalcTextSize(credit).x + 2.f * ist.FramePadding.x;
     const float lineH = ImGui::GetTextLineHeight();
-    const float y = std::max(0.f, (ImGui::GetWindowHeight() - lineH) * 0.5f);
+    // centred on the line the menu titles are on (their frame is taller than the chips), never touching the bar's bottom edge
+    const float y = std::max(0.f, ImGui::GetCursorPosY() + (ImGui::GetFrameHeight() - lineH) * 0.5f - 1.f * gUi);
     const float minX = ImGui::GetCursorPosX() + 20 * gUi;
     const float xRest = gBarRestW > 0 ? W - margin - gBarRestW : W - margin - 400 * gUi;
     const bool showBy = gBarRestW > 0 && xRest - g - cw > minX;   // the 'by' text goes first when the menu bar is narrow

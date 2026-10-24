@@ -116,7 +116,9 @@ void agcAmpWarning(const App& a) {   // on a row of its own: the caller starts i
     const bool hov1 = ImGui::IsItemHovered();
     ImGui::SameLine(0, 4 * gUi);
     ImGui::AlignTextToFramePadding();
+    ImGui::PushTextWrapPos(0);   // a narrow panel: the line wraps instead of running off the edge
     ImGui::TextColored(pal::warnAmber(), "%s", tr("can be damaged by strong signals"));
+    ImGui::PopTextWrapPos();
     if (hov1 || ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The amp can fry itself on strong signals while it is on. Leave it off unless the antenna is weak and nothing strong is near."));
 }
 

@@ -151,6 +151,7 @@ static void applyUiThemeAccent(App& a);
 void applyUiTheme(App& a) {
     applyUiThemeBase(a);
     applyUiThemeAccent(a);
+    pal::tabColours(ImGui::GetStyle().Colors);   // the selected tab is blue in every palette, with no bar above it
     touch::applyMetrics(ImGui::GetStyle());   // last, and only ever raises sizes, so it is safe to repeat every frame
 }
 static void applyUiThemeAccent(App& a) {

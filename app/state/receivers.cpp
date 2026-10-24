@@ -189,12 +189,9 @@ void strip(App& first, ImVec2 disp, float h) {
         const bool showX = r->rxId > 1 && (hov || sel);
         const ImVec2 xa(b.x - btn, a.y), sa(b.x - btn * (r->rxId > 1 ? 2.f : 1.f), a.y);
         const bool onX = hov && showX && mp.x >= xa.x, onS = hov && !onX && mp.x >= sa.x;
-        ImVec4 bg = sel ? ImVec4(0.14f, 0.15f, 0.165f, 1) : (hov ? ImVec4(0.12f, 0.125f, 0.135f, 1) : ImVec4(0.085f, 0.09f, 0.095f, 1));
+        ImVec4 bg = sel ? ImGui::GetStyle().Colors[ImGuiCol_TabSelected] : (hov ? ImVec4(0.12f, 0.125f, 0.135f, 1) : ImVec4(0.085f, 0.09f, 0.095f, 1));
         dl->AddRectFilled(a, b, ImGui::GetColorU32(bg), rad);
-        if (sel) {
-            dl->AddRect(a, b, ImGui::GetColorU32(pal::accent(0.45f)), rad);
-            dl->AddRectFilled(ImVec2(a.x + 6 * gUi, a.y), ImVec2(b.x - 6 * gUi, a.y + 2 * gUi), ImGui::GetColorU32(pal::accent()), 1.f);
-        } else dl->AddRect(a, b, ImGui::GetColorU32(ImVec4(0.2f, 0.21f, 0.22f, 1)), rad);
+        if (!sel) dl->AddRect(a, b, ImGui::GetColorU32(ImVec4(0.2f, 0.21f, 0.22f, 1)), rad);
         const ImVec4 dot = run ? pal::okGreen() : ImVec4(0.42f, 0.44f, 0.46f, 1);
         dl->AddCircleFilled(ImVec2(a.x + 10 * gUi, a.y + chipH * 0.5f), 3.5f * gUi, ImGui::GetColorU32(dot));
         // text: shorten the mode name first so the frequency stays readable
@@ -208,7 +205,7 @@ void strip(App& first, ImVec2 disp, float h) {
             t = rxbar::ellipsize(t, n);
             (void)fq;
         }
-        dl->AddText(ImVec2(a.x + 18 * gUi, a.y + (chipH - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(sel ? ImVec4(0.93f, 0.94f, 0.95f, 1) : ImVec4(0.72f, 0.74f, 0.76f, 1)), t.c_str());
+        dl->AddText(ImVec2(a.x + 18 * gUi, a.y + (chipH - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(sel ? ImVec4(1, 1, 1, 1) : ImVec4(0.72f, 0.74f, 0.76f, 1)), t.c_str());
         // speaker: lit when this receiver is the audible one
         const ImVec2 sc(sa.x + btn * 0.5f, a.y + chipH * 0.5f);
         if (onS) dl->AddRectFilled(ImVec2(sa.x + 1, a.y + 2 * gUi), ImVec2(sa.x + btn - 1, b.y - 2 * gUi), ImGui::GetColorU32(ImVec4(1, 1, 1, 0.08f)), 3 * gUi);
