@@ -3,6 +3,7 @@
 // dropped and counted).
 #include "dect2/common/thread_name.h"
 #include "dect2/iridium/iridium_rx.h"
+#include "dect2/dsp/simd.h"
 #include "dect2/results/results_io.h"
 #include "dect2/iridium/iridium_bits.h"
 #include <chrono>
@@ -515,6 +516,15 @@ void IridiumReceiver::reset() {
     p_->recent.clear();
     p_->clearResults();
 }
+namespace {
+// float samples to the 16 bit ring (scaled by 8192, clipped), interleaved re/im: one flat loop the compiler vectorises
+DECT2_SIMD_BODY void ringStoreFlatBody(int16_t* __restrict dst, const float* __restrict src, size_t n2) {
+    for (size_t i = 0; i < n2; i++) { const float v = src[i] * 8192.f; dst[i] = (int16_t)(v > 32767.f ? 32767.f : v < -32767.f ? -32767.f : v); }
+}
+DECT2_AVX2_DISPATCH(void, ringStoreFlat, (int16_t* dst, const float* src, size_t n2), (dst, src, n2))
+inline void ringStore(int16_t* dst, const cf32* src, size_t n) { ringStoreFlat(dst, reinterpret_cast<const float*>(src), 2 * n); }
+} // namespace
+
 void IridiumReceiver::feed(const cf32* x, size_t n) {
     Impl& P = *p_;
     std::lock_guard<std::mutex> fl(P.fmu);
@@ -537,9 +547,8 @@ void IridiumReceiver::feed(const cf32* x, size_t n) {
         const uint64_t w = P.written.load();
         const size_t s0 = (size_t)(w & P.ringMask);
         const size_t first = std::min(m, rs - s0);
-        auto q16 = [](float v) { return (int16_t)std::clamp(v * 8192.f, -32767.f, 32767.f); };   // truncation: 1/8192 at most
-        for (size_t i = 0; i < first; i++) { P.ring[2 * (s0 + i)] = q16(src[i].real()); P.ring[2 * (s0 + i) + 1] = q16(src[i].imag()); }
-        for (size_t i = first; i < m; i++) { P.ring[2 * (i - first)] = q16(src[i].real()); P.ring[2 * (i - first) + 1] = q16(src[i].imag()); }
+        ringStore(&P.ring[2 * s0], src, first);
+        if (m > first) ringStore(&P.ring[0], src + first, m - first);   // truncation: 1/8192 at most
         P.written = w + m;
         P.found.clear();
         P.det.feed(src, m, P.found);

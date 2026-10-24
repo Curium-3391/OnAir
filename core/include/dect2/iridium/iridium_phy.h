@@ -83,6 +83,10 @@ private:
     std::vector<Active> act_;
     std::vector<DetectedBurst>* out_ = nullptr;
     int maxFrames_ = 0;
+    // duty cycle: two FFT frames are analysed, the next two skipped (a burst lasts at least 8 ms, 80 frames at 10 Msps; the start is backdated by the skipped frames)
+    size_t skip_ = 0;            // samples still to skip
+    bool gap_ = false;           // the previous analysed frame is not the one just before this frame
+    int pair_ = 0;
 };
 
 // Result of demodulating one burst.

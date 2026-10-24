@@ -1,6 +1,7 @@
 // Iridium radio layer: burst detector and per-burst DQPSK demodulator (see iridium_phy.h for the sources of the constants).
 #include "dect2/iridium/iridium_phy.h"
 #include "dect2/dsp/dsp_compat.h"
+#include "dect2/dsp/simd.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -107,7 +108,7 @@ void BurstDetector::setThreshold(double thresholdDb) {
 }
 
 void BurstDetector::reset() {
-    fill_ = 0; pos_ = 0; frames_ = 0;
+    fill_ = 0; pos_ = 0; frames_ = 0; skip_ = 0; gap_ = false; pair_ = 0;
     act_.clear();
     std::fill(noise_.begin(), noise_.end(), 0.f);
     std::fill(prev_.begin(), prev_.end(), 0.f);
@@ -122,22 +123,30 @@ double BurstDetector::noisePerHz() const {
     return v[v.size() / 2] / (wsum * rate_);   // E|X|^2 = N0 * rate * sum(w^2) for white noise of density N0
 }
 
+// duty-cycled detection (2 frames on, 2 off) halves the FFT cost but lost bursts in the bench (458 -> 120 frames): off
+namespace { constexpr bool kDuty = false; }
+
 void BurstDetector::feed(const cf32* x, size_t n, std::vector<DetectedBurst>& out) {
     if (fft_ == 0) return;
     out_ = &out;
     while (n > 0) {
+        if (skip_ > 0) { const size_t s = std::min(n, skip_); skip_ -= s; x += s; n -= s; pos_ += s; continue; }
         const size_t take = std::min(n, (size_t)fft_ - fill_);
         std::copy(x, x + take, buf_.begin() + fill_);
         fill_ += take; x += take; n -= take; pos_ += take;
-        if (fill_ == (size_t)fft_) { frame(); fill_ = 0; }
+        if (fill_ == (size_t)fft_) {
+            frame(); fill_ = 0;
+            if (kDuty && ++pair_ == 2) { pair_ = 0; if (frames_ > 8) { skip_ = 2 * (size_t)fft_; frames_ += 2; gap_ = true; } }   // see skip_
+        }
     }
     out_ = nullptr;
 }
 
 void BurstDetector::finish(const Active& a, std::vector<DetectedBurst>& out) {
     DetectedBurst b;
-    const uint64_t pre = 2 * (uint64_t)fft_ + (uint64_t)(2e-4 * rate_);
-    const uint64_t post = (uint64_t)fft_ + (uint64_t)(8e-4 * rate_);
+    const uint64_t gapF = kDuty ? 2 : 0;   // frames skipped by the duty cycle
+    const uint64_t pre = (2 + gapF) * (uint64_t)fft_ + (uint64_t)(2e-4 * rate_);
+    const uint64_t post = (1 + gapF) * (uint64_t)fft_ + (uint64_t)(8e-4 * rate_);
     const uint64_t s = a.startFrame * (uint64_t)fft_;
     b.start = s > pre ? s - pre : 0;
     b.end = (a.lastFrame + 1) * (uint64_t)fft_ + post;
@@ -146,12 +155,49 @@ void BurstDetector::finish(const Active& a, std::vector<DetectedBurst>& out) {
     out.push_back(b);
 }
 
+// ---------------------------------------------------------------- detector kernels (vectorised: one pass each, AVX2 copy picked at run time)
+namespace {
+// re/im = windowed samples (the interleaved input split into two arrays)
+DECT2_SIMD_BODY void windowSplitBody(const float* __restrict in, const float* __restrict win, float* __restrict re, float* __restrict im, int n) {
+    for (int i = 0; i < n; i++) { re[i] = in[2 * i] * win[i]; im[i] = in[2 * i + 1] * win[i]; }
+}
+DECT2_AVX2_DISPATCH(void, windowSplit, (const float* in, const float* win, float* re, float* im, int n), (in, win, re, im, n))
+
+// pw = |X|^2; returns non-zero when some bin could start a burst (the same two tests the peak search makes), so that the search is skipped
+// for the frames of pure noise (nearly all of them)
+DECT2_SIMD_BODY int powerScanBody(const float* re, const float* im, float* pw, const float* prev, const float* noise, int n, float thr, float thr2) {
+    int any = 0;
+    for (int k = 0; k < n; k++) {
+        const float p = re[k] * re[k] + im[k] * im[k];
+        pw[k] = p;
+        const float nf = noise[k];
+        const bool one = p > thr * nf;
+        const bool two = (p + prev[k] > thr2 * nf) & (std::min(p, prev[k]) >= 4.f * nf);
+        any |= (int)(one | two);
+    }
+    return any;
+}
+DECT2_AVX2_DISPATCH(int, powerScan, (const float* re, const float* im, float* pw, const float* prev, const float* noise, int n, float thr, float thr2), (re, im, pw, prev, noise, n, thr, thr2))
+
+// the noise floor follows quiet bins quickly and creeps up under a signal
+DECT2_SIMD_BODY void noiseUpdateBody(const float* __restrict pw, float* __restrict nf, int n) {
+    for (int k = 0; k < n; k++) {
+        const float p = pw[k], v = nf[k];
+        const float quiet = v + (p - v) * (1.f / 64.f), loud = v * 1.002f;
+        const float r = p < 4.f * v ? quiet : loud;
+        nf[k] = r < 1e-20f ? 1e-20f : r;
+    }
+}
+DECT2_AVX2_DISPATCH(void, noiseUpdate, (const float* pw, float* nf, int n), (pw, nf, n))
+} // namespace
+
 void BurstDetector::frame() {
     const int N = fft_;
-    for (int i = 0; i < N; i++) { re_[i] = buf_[i].real() * win_[i]; im_[i] = buf_[i].imag() * win_[i]; }
+    windowSplit(reinterpret_cast<const float*>(buf_.data()), win_.data(), re_.data(), im_.data(), N);
     fftSplit(re_.data(), im_.data(), log2n_, false);
-    for (int i = 0; i < N; i++) pow_[i] = re_[i] * re_[i] + im_[i] * im_[i];
     const uint64_t f = frames_++;
+    if (gap_) { std::fill(prev_.begin(), prev_.end(), 0.f); gap_ = false; }   // the frame before the gap is not adjacent
+    const bool candidates = powerScan(re_.data(), im_.data(), pow_.data(), prev_.data(), noise_.data(), N, thr_, thr2_) != 0;
     if (f == 0) {   // start from the median over the band: bursts cover a few bins at most
         std::vector<float> v(pow_);
         std::nth_element(v.begin(), v.begin() + N / 2, v.end());
@@ -163,8 +209,8 @@ void BurstDetector::frame() {
     const double bin = rate_ / N;
     // peaks over the threshold
     std::vector<DetectedBurst>& out = *out_;
-    for (int k = 0; k < N; k++) sum_[k] = pow_[k] + prev_[k];
-    for (int k = 0; k < N; k++) {
+    if (candidates) for (int k = 0; k < N; k++) sum_[k] = pow_[k] + prev_[k];
+    for (int k = 0; candidates && k < N; k++) {
         // one strong frame, or two weaker ones in a row
         const float* q = pow_.data();
         float p = pow_[k];
@@ -217,13 +263,7 @@ void BurstDetector::frame() {
         else i++;
     }
     // noise floor: follow quiet bins quickly, creep up slowly under a signal (a steady spur becomes noise in a fraction of a second)
-    for (int k = 0; k < N; k++) {
-        const float p = pow_[k];
-        float& nf = noise_[k];
-        if (p < 4.f * nf) nf += (p - nf) * (1.f / 64.f);
-        else nf *= 1.002f;
-        if (nf < 1e-20f) nf = 1e-20f;
-    }
+    noiseUpdate(pow_.data(), noise_.data(), N);
     prev_.swap(pow_);
 }
 
