@@ -226,8 +226,7 @@ void addWaveIQ(int mode, const std::vector<int>& tones, double f0, double rate, 
             if (u < 1) env = 0.5 * (1 - std::cos(hfdig::kPi * u));
             else if (u > total - 1) env = 0.5 * (1 - std::cos(hfdig::kPi * (total - u)));
         }
-        double sn, cs;
-        sincos(ph, &sn, &cs);
+        const double sn = std::sin(ph), cs = std::cos(ph);
         re[(size_t)n] += (float)(env * cs);
         im[(size_t)n] += (float)(env * sn);
         ph += 2 * hfdig::kPi * (f0 + sg * s.spacing * dev) / rate;
