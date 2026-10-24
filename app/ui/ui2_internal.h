@@ -18,6 +18,7 @@ struct UiTheme {
     bool flair;         // lower-case labels, key hints and a log line
 };
 extern UiTheme T;
+extern ImVec2 gViewMenuCentre;
 }  // namespace ui2
 #define kBg T.bg
 #define kRail T.rail

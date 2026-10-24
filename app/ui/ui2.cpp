@@ -75,7 +75,7 @@ void bodyParent(App& a, float bodyH, ImVec2 disp) {
     const ImGuiID kAnaNone = ImGui::GetID(("##uniAnaNone" + std::to_string(a.family)).c_str());   // measured: this mode has no charts to show
     const bool anaOpen = uni && running && !stg->GetBool(kAnaFold, false) && !stg->GetBool(kAnaNone, false);
     float logH = (a.atsc3Mode || tx) ? 0 : std::max(144.f * gUi, std::min(215.f * gUi, availH - gap - 240.f * gUi));
-    if (uni) logH = anaOpen ? anaHdr + std::floor(120 * gUi) : anaHdr;   // compact charts, or one line while there is nothing to chart
+    if (uni) logH = 0;   // the charts are the "Analysis" tab of the decoded views (main_tabs.cpp)
     if (!a.atsc3Mode && !tx && a.splitBottom > 0 && !uni) logH = clampPx(a.splitBottom * gUi, 90 * gUi, availH - gap - 150 * gUi);
     float rightW = std::floor(std::max(236.f * gUi, std::min(330.f * gUi, ImGui::GetContentRegionAvail().x * 0.30f)));
     if (a.splitRight > 0) rightW = std::floor(clampPx(a.splitRight * gUi, 150 * gUi, ImGui::GetContentRegionAvail().x - gap - 260 * gUi));
@@ -112,16 +112,7 @@ void bodyParent(App& a, float bodyH, ImVec2 disp) {
         endPane();
     }
     if (uni) {
-        beginPane("##const2", ImVec2(0, logH));
-        tgRect(a, TgConst);
-        bool open = anaOpen;
-        if (kit::panelHeader(running ? (stg->GetBool(kAnaNone, false) ? "ANALYSIS  (none for this mode)" : "ANALYSIS") : "ANALYSIS  (receiver stopped)", &open)) stg->SetBool(kAnaFold, !stg->GetBool(kAnaFold, false));
-        if (anaOpen) {
-            const float y0 = ImGui::GetCursorPosY();
-            constellationsTab(a);
-            if (ImGui::GetCursorPosY() - y0 < ImGui::GetTextLineHeightWithSpacing()) stg->SetBool(kAnaNone, true);
-        }
-        endPane();
+        a.tgMin[TgConst] = a.tgMax[TgConst] = ImVec2(0, 0);
     } else if (!a.atsc3Mode && !tx) {
         {   // the bar between the row above and the lower row, in the gap that is there anyway
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() - gap);
@@ -270,6 +261,17 @@ void drawShell2(App& a, ImVec2 disp) {
         }
     }
     if (a.kitGallery) { kit::gallery(a, disp); return; }
+    {   // Ctrl/Cmd+Shift+L: Classic <-> Unified (the receiver keeps running)
+        ImGuiIO& io = ImGui::GetIO();
+        if ((io.KeyCtrl || io.KeySuper) && io.KeyShift && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_L, false)) { a.layoutUnified = !a.layoutUnified; savePrefs(a); }
+    }
+    if (a.devViewMenu > 0) {   // dev: --viewmenu opens the View menu by a click, for a hidden screenshot
+        static int n = 0; ImGuiIO& io = ImGui::GetIO();
+        if (++n == 60) io.AddMousePosEvent(gViewMenuCentre.x, gViewMenuCentre.y);
+        if (n == 62) io.AddMouseButtonEvent(0, true);
+        if (n == 64) io.AddMouseButtonEvent(0, false);
+        if (n == 140 && a.devViewMenu == 2) io.AddMousePosEvent(gViewMenuCentre.x + 40 * gUi, gViewMenuCentre.y + 22 * gUi);   // on Layout: its submenu opens
+    }
     const float menuH = menuBar(a);
     {   // the waterfall range is set automatically once, two seconds after the receiver starts
         static bool wasRunning = false, done = false;

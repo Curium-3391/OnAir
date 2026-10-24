@@ -81,7 +81,8 @@ std::string typeText(const AdsbAircraft& ac) {
 void aircraftTable(App& a, bool compact) {
     const AdsbTelemetry& t = a.rx.adsb;
     const bool on = live(a);
-    const int cols = compact ? 7 : 27;
+    const bool noReg = compact && ImGui::GetContentRegionAvail().x < 400 * gUi;   // a narrow list: the registration goes first
+    const int cols = (compact ? 7 : 27) - (noReg ? 1 : 0);
     if (!compact) {
         static std::string note;
         resexp::Table x; x.cols = {"time", "frequency_hz", "mode", "icao", "registration", "country", "operator", "callsign", "type", "source", au::altCol(S.units), "geo_" + std::string(au::altCol(S.units)), au::speedCol(S.units), "speed_kind", "ias_kt", "mach", "heading_deg", "heading_kind", au::vrateCol(S.units), "lat", "lon", "fix", au::distCol(S.units), "bearing_deg", "squawk", "selected_" + std::string(au::altCol(S.units)), "emergency", "nacp", "adsb_version", "tisb", "ground", "messages", "age_s", "pos_age_s", "level_dbfs"};
@@ -104,7 +105,7 @@ void aircraftTable(App& a, bool compact) {
     if (!ImGui::BeginTable(compact ? "##acs" : "##acf", cols, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit, ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("ICAO", ImGuiTableColumnFlags_WidthFixed, 62 * gUi); ImGui::TableSetupColumn("Callsign", ImGuiTableColumnFlags_WidthFixed, 72 * gUi);
-    ImGui::TableSetupColumn("Reg", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
+    if (!noReg) ImGui::TableSetupColumn("Reg", ImGuiTableColumnFlags_WidthFixed, 70 * gUi);
     if (!compact) { ImGui::TableSetupColumn("Ctry", ImGuiTableColumnFlags_WidthFixed, 34 * gUi); ImGui::TableSetupColumn("Operator", ImGuiTableColumnFlags_WidthFixed, 110 * gUi); }
     const std::string hAlt = std::string("Alt ") + au::altUnit(S.units), hSpd = std::string("Spd ") + au::speedUnit(S.units), hVs = std::string("V/S ") + au::vrateUnit(S.units), hDist = std::string("Dist ") + au::distUnit(S.units);
     const std::string hGeo = std::string("GNSS ") + au::altUnit(S.units), hSel = std::string("Sel ") + au::altUnit(S.units);
@@ -114,7 +115,7 @@ void aircraftTable(App& a, bool compact) {
         ImGui::TableSetupColumn(hSpd.c_str()); ImGui::TableSetupColumn("Hdg"); ImGui::TableSetupColumn(hVs.c_str());
         ImGui::TableSetupColumn("Lat", ImGuiTableColumnFlags_WidthFixed, 78 * gUi); ImGui::TableSetupColumn("Lon", ImGuiTableColumnFlags_WidthFixed, 82 * gUi);
     } else {
-        ImGui::TableSetupColumn("Lat", ImGuiTableColumnFlags_WidthFixed, 70 * gUi); ImGui::TableSetupColumn("Lon", ImGuiTableColumnFlags_WidthFixed, 74 * gUi);
+        ImGui::TableSetupColumn("Lat", ImGuiTableColumnFlags_WidthFixed, 62 * gUi); ImGui::TableSetupColumn("Lon", ImGuiTableColumnFlags_WidthFixed, 66 * gUi);
     }
     ImGui::TableSetupColumn(hDist.c_str());
     if (!compact) {
@@ -140,7 +141,7 @@ void aircraftTable(App& a, bool compact) {
             ImGui::SameLine(0, 4 * gUi); ImGui::TextColored(kWarn, "*");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("%d ACARS messages"), nm);
         }
-        { const std::string rg = registrationOf(ac.icao); ImGui::TableNextColumn(); ImGui::TextUnformatted(rg.empty() ? "-" : rg.c_str()); }
+        if (!noReg) { const std::string rg = registrationOf(ac.icao); ImGui::TableNextColumn(); ImGui::TextUnformatted(rg.empty() ? "-" : rg.c_str()); }
         if (!compact) {
             const std::string cc = countryCode(ac.icao), op = operatorOf(ac.icao);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(cc.empty() ? "-" : cc.c_str());
