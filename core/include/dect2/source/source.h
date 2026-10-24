@@ -143,6 +143,7 @@ struct DeviceInfo {
     // above what is asked for (rate_choice.h).
     std::vector<std::pair<double, double>> rateRanges;
     double gainMinDb = 0, gainMaxDb = 0;
+    std::string gainNote;                  // shown with the gain slider when the "gain" is not the usual analog one (Red Pitaya: digital gain only)
     double minFreqHz = 0, maxFreqHz = 0;   // the range the radio is SPECIFIED for (0 = unknown): information and a note only, OnAir asks the driver for any frequency
     bool hasBiasTee = false;               // the radio and its library can power the antenna input (TuneSettings::biasTee)
     // Transmit (TxSink below). canTransmit: OnAir has a transmit path for this radio (HackRF, PlutoSDR, SoapySDR radios that have a TX channel);

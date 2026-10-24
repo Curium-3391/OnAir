@@ -243,6 +243,7 @@ static void toolbarGain(App& a, bool vertical, bool running, bool& retune) {
         float gdb = (float)a.tune.gainDb;
         ImGui::SliderFloat("##gain", &gdb, (float)curDev.gainMinDb, (float)std::max(curDev.gainMaxDb, curDev.gainMinDb + 1.0), "%.0f dB");
         a.tune.gainDb = std::round(gdb);
+        if (!curDev.gainNote.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", curDev.gainNote.c_str());
         if (ImGui::IsItemDeactivatedAfterEdit()) retune = true, a.agcOn = false;
     } else {
     gainLabel(tr("LNA"), tr("The RF amplifier's gain (the radio sets it in 8 dB steps)"), 78);
