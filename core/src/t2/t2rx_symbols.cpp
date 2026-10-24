@@ -33,6 +33,7 @@ void T2Receiver::Impl::processFrames() {
             { StageClock sc(3); processSymbol(s, idx); } // may clear `frames` (loss of lock / guard-interval correction)
         }
         if (stalled || frames.empty()) break;
+        if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] frame done: %d of %d symbols\n", frames.front().next, frames.front().maxSyms);
         frames.pop_front();
     }
 }

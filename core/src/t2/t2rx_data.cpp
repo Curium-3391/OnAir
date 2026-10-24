@@ -96,7 +96,7 @@ void T2Receiver::Impl::runDataStage() {
     const FftMode* fm = fftModeFromS2(fftCode);
     if (!fm || !l1preOk) return;
     const int L = frameSyms, N = fftN, G = guard;
-    for (int l = 0; l < L; l++) if ((int)frameCells[l].size() != kMax) return;
+    for (int l = 0; l < L; l++) if ((int)frameCells[l].size() != kMax) { if (getenv("DECT2_DEBUG")) fprintf(stderr, "  [dbg] data stage skipped: symbol %d of %d has no cells\n", l, L); return; }
     PilotConfig pc;
     pc.fftCode = fftCode; pc.ext = l1pre.bwtExt != 0; pc.pp = l1pre.pilotPattern; pc.tr = (l1pre.papr & 2) != 0; pc.giIdx = giIdx;
     {
