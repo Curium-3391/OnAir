@@ -1,7 +1,27 @@
 // The data stage of the DVB-T2 receiver: channel estimation from the scattered pilots and handing cells to the error correction.
 #include "t2rx_impl.h"
+#include "dect2/dsp/simd.h"
 
 namespace dect2 {
+
+namespace {
+// h = a + dl * b over n floats (the channel of a symbol from the frame's middle value and slope)
+DECT2_SIMD_BODY void axpyBody(const float* a, const float* b, float dl, float* h, int n) {
+    for (int i = 0; i < n; i++) h[i] = a[i] + dl * b[i];
+}
+DECT2_AVX2_DISPATCH(void, axpy, (const float* a, const float* b, float dl, float* h, int n), (a, b, dl, h, n))
+// Equalised cells and their noise variance for the K carriers of a symbol: eq = cell conj(H) / |H|^2, n0 = noise scale / (2 |H|^2)
+DECT2_SIMD_BODY void equaliseBody(const float* cell, const float* h, const float* noise, float scale, float* eq, float* n0, int K) {
+    for (int k = 0; k < K; k++) {
+        const float hr = h[2 * k], hi = h[2 * k + 1], cr = cell[2 * k], ci = cell[2 * k + 1];
+        const float g2 = std::max(1e-12f, hr * hr + hi * hi);
+        eq[2 * k] = (cr * hr + ci * hi) / g2;
+        eq[2 * k + 1] = (ci * hr - cr * hi) / g2;
+        n0[k] = noise[k] * scale / (2.0f * g2);
+    }
+}
+DECT2_AVX2_DISPATCH(void, equalise, (const float* cell, const float* h, const float* noise, float scale, float* eq, float* n0, int K), (cell, h, noise, scale, eq, n0, K))
+} // namespace
 
 void T2Receiver::Impl::submitPlp(const std::vector<cf32>& dstream, const std::vector<float>& dn0, double sigma2) {
     const int cP2 = (int)p2Sym[0].size();
@@ -85,7 +105,12 @@ void T2Receiver::Impl::runDataStage() {
             dsCache.pm.reset(new PilotMap(pc));
             dsCache.pc = pc; dsCache.L = L;
             dsCache.types.assign(L, {});
-            if (dsCache.pm->valid()) for (int l = 0; l < L; l++) dsCache.pm->symbolTypes(l, L, dsCache.types[l]);
+            dsCache.dataIdx.assign(L, {});
+            if (dsCache.pm->valid()) for (int l = 0; l < L; l++) {
+                dsCache.pm->symbolTypes(l, L, dsCache.types[l]);
+                auto& di = dsCache.dataIdx[(size_t)l];
+                for (int kk = 0; kk < (int)dsCache.types[l].size(); kk++) if (dsCache.types[l][kk] == kCellData) di.push_back(kk);
+            }
         }
     }
     const PilotMap& pm = *dsCache.pm;
@@ -470,26 +495,33 @@ void T2Receiver::Impl::runDataStage() {
         }
     }
     // the equalised cells are only kept for the display, which thins them to about 6000: store every step-th one
+    DECT2_STAGE("t2.eqloop");
     size_t totalData = 0;
-    for (int l = firstData; l < L; l++) for (int kk = 0; kk < K; kk++) totalData += types[l][kk] == kCellData;
+    for (int l = firstData; l < L; l++) totalData += dsCache.dataIdx[(size_t)l].size();
     const size_t dispStep = std::max<size_t>(1, totalData / 6000);
     size_t dispIdx = 0;
     H.resize(K);
+    std::vector<cf32> eqv((size_t)K);
+    std::vector<float> n0v((size_t)K);
     for (int l = firstData; l < L; l++) {
+        const float* ha; const float* hb; float dl;
         if (nSeg > 1) {
             const int sg = segOf(l);
-            const float dl = (float)(l - segC[(size_t)sg]);
-            const std::vector<cf32>& hm = segMid[(size_t)sg]; const std::vector<cf32>& hs = segSlope[(size_t)sg];
-            for (int kk = 0; kk < K; kk++) H[kk] = hm[kk] + dl * hs[kk];
+            dl = (float)(l - segC[(size_t)sg]);
+            ha = reinterpret_cast<const float*>(segMid[(size_t)sg].data()); hb = reinterpret_cast<const float*>(segSlope[(size_t)sg].data());
         } else {
-            const float dl = (float)(l - lc);
-            for (int kk = 0; kk < K; kk++) H[kk] = Hmid[kk] + dl * Hslope[kk];
+            dl = (float)(l - lc);
+            ha = reinterpret_cast<const float*>(Hmid.data()); hb = reinterpret_cast<const float*>(Hslope.data());
         }
-        for (int kk = 0; kk < K; kk++)
-            if (types[l][kk] == kCellData) { if (dispIdx++ % dispStep == 0) all.push_back(frameCells[l][off + kk] / H[kk]); }
+        axpy(ha, hb, dl, reinterpret_cast<float*>(H.data()), 2 * K);
+        const std::vector<int>& di = dsCache.dataIdx[(size_t)l];
+        const int cD = (int)di.size();
+        {
+            const size_t first = (dispStep - dispIdx % dispStep) % dispStep;   // the first data cell of this symbol that the display takes
+            for (size_t jj = first; jj < (size_t)cD; jj += dispStep) { const int kk = di[jj]; all.push_back(frameCells[l][off + kk] / H[kk]); }
+            dispIdx += (size_t)cD;
+        }
         if (wantPlp) {
-            int cD = 0;
-            for (int kk = 0; kk < K; kk++) cD += types[l][kk] == kCellData;
             // straight into the end of the PLP stream (every one of the cD places is written: Hi is a permutation), with the cached
             // interleaver sequence by reference: no three vectors (a third of a megabyte at 32K) allocated, zeroed and copied per symbol
             const std::vector<int>& Hi = freqInterleaverSeqRef(fftCode, cD, (l & 1) != 0);
@@ -497,17 +529,13 @@ void T2Receiver::Impl::runDataStage() {
             dstream.resize(d0 + (size_t)cD); dn0.resize(d0 + (size_t)cD);
             cf32* orig = dstream.data() + d0;
             float* on0 = dn0.data() + d0;
-            int jj = 0;
-            for (int kk = 0; kk < K; kk++)
-                if (types[l][kk] == kCellData) {
-                    cf32 hh = H[kk];
-                    float g2 = std::max(1e-12f, std::norm(hh));
-                    orig[Hi[jj]] = frameCells[l][off + kk] * std::conj(hh) / g2;
-                    const float nk = noiseCar[kk] > 0 ? noiseCar[kk] : (float)sigma2;
-                    on0[Hi[jj]] = erased(l) ? 1e6f : (float)(nk * symScale[(size_t)l] / (2.0 * g2));
-                    if (erased(l)) orig[Hi[jj]] = cf32(0, 0);
-                    jj++;
-                }
+            if (erased(l)) {
+                for (int jj = 0; jj < cD; jj++) { orig[Hi[(size_t)jj]] = cf32(0, 0); on0[Hi[(size_t)jj]] = 1e6f; }
+            } else {
+                equalise(reinterpret_cast<const float*>(&frameCells[l][off]), reinterpret_cast<const float*>(H.data()), noiseCar.data(), (float)symScale[(size_t)l],
+                         reinterpret_cast<float*>(eqv.data()), n0v.data(), K);
+                for (int jj = 0; jj < cD; jj++) { const int kk = di[(size_t)jj]; orig[Hi[(size_t)jj]] = eqv[(size_t)kk]; on0[Hi[(size_t)jj]] = n0v[(size_t)kk]; }
+            }
         }
         if (l == firstData + (L - firstData) / 2) { chH = H; chK = K; } // keep a mid-frame channel snapshot for display
     }

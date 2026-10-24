@@ -219,6 +219,7 @@ struct T2Receiver::Impl {
         PilotConfig pc; int L = 0;
         std::unique_ptr<PilotMap> pm;
         std::vector<std::vector<uint8_t>> types;
+        std::vector<std::vector<int>> dataIdx;   // per symbol: the carriers that carry data cells
     } dsCache;
     // pilot maps of the P2 stage by configuration (building one generates a 28,000-value PRBS, and the stage runs every frame)
     std::map<int, std::unique_ptr<PilotMap>> pmCache;
