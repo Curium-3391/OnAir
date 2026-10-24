@@ -61,6 +61,8 @@ public:
     // the quietest 250 kHz window within the usable part of the span (dB)
     double floorDb(double edgeFrac = 0.46) const;
     double binHz() const { return rate_ / kN; }
+    // the averaged spectrum in dB, DC in the middle (kN bins); empty before the first frame
+    std::vector<float> spectrumDb() const { if (!nFrames_) return {}; refresh(); return db_; }
 
 private:
     static constexpr int kN = 4096;

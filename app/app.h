@@ -304,7 +304,7 @@ struct App {
     dect2::WideTuning wideTuning;         // the whole-span detector's settings (the carriers table's settings button)
     bool wideTuningDirty = true;          // sent to the engine at the next frame
     int wideSel = 0;          // the carrier the sound and the detail follow (0: the best locked one)
-    bool mtvOn = false;       // "Multi-channel": decode two or three adjacent TV channels of a wide capture (DVB-T2 / DVB-T)
+    bool mtvOn = false;       // TV "Whole span" (saved as mtvOn, once "Multi-channel"): decode every channel (DVB-T2 / DVB-T) or transponder (DVB-S/S2) of a wide capture
     int mtvMax = 0;           // receivers at once (0: 2 on a laptop, 3 on a desktop)
     int mtvGrid = 0;          // 0 find out, 1 the capture is centred on a channel, 2 between two channels
     std::vector<MultiService> mtvSvc;   // every service of every channel (refreshed with ts)
@@ -1109,7 +1109,8 @@ float specPlotBwBtnW();                                                    // pl
 float specPlotWideBtnW();
 void channelWidthButton(App& a, ImVec2 plotMin, ImVec2 plotSize, const char* yLabel);
 void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
-void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
+void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);   // the "Whole span" switch of the TV standards (wholeSpanTvState in plots.cpp)
+bool wholeSpanTvOffered(const App& a);
 float specCornerPopup(App& a, const char* label, const char* popId, ImVec2 plotMin, ImVec2 plotSize, float rightUsed, float reserveLeft, float dropY, bool on, const char* tip, void (*body)(App&));
 double clickTuneMhz(const App& a, double mhz);   // plots.cpp: where a click on the spectrum at mhz tunes (the mode's limits and raster); NAN: the mode is not tuned by a click
 void waterfall3dPlot(App& a, ImVec2 size);       // gfx/wf3d_plot.cpp: the 3D waterfall in place of the flat one (a.wf.s3d.on)

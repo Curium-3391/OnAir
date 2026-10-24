@@ -191,7 +191,7 @@ void Engine::analysisLoop() {
                     std::lock_guard<std::mutex> lk(rxMu_);
                     publishRx(std::move(t));
                 }
-            } else if (mtvActive_.load() && activeStd_.load() <= 1) {
+            } else if (mtvActive_.load() && (mtvSat_.load() ? activeStd_.load() == 7 : activeStd_.load() <= 1)) {
                 if (auto m = mtvGet()) {
                     RxTelemetry mt;
                     if (m->poll(mt)) {

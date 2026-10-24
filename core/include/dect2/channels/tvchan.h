@@ -20,6 +20,11 @@ struct TvChannelRow {
     int services = 0;             // services in its list
     double snrDb = 0;
     std::string network;          // network name from its NIT
+    // satellite ("Whole span" DVB-S/S2): the transponder
+    bool sat = false;
+    double bwHz = 0;              // occupied bandwidth
+    double symbolRate = 0;        // from the spectrum, then the receiver's own
+    std::string detail;           // "DVB-S2 QPSK 2/3"
 };
 
 } // namespace dect2

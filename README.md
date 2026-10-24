@@ -176,7 +176,7 @@ KAAL, KAPP and KAFT can write an IQ file you can open in SDR++ or OnAir without 
 - **A real-time map of positions** (aircraft, ships, APRS, mesh nodes, radiosondes and more), with offline map files, a receiver-range plot on the ADS-B and AIS maps, and the public [map.on-air.dev](https://map.on-air.dev).
 - **DRM data services:** slide show, broadcast website, programme guide (EPG), TPEG and Journaline. DAB and DRM share the same MOT object handling.
 - **Whole-span decoding** for pagers (POCSAG, FLEX) and APRS / packet: every channel in the captured span at once.
-- **TV:** teletext pages and DVB subtitles, recording with pause and live buffer, multi-channel DVB-T/T2 from one wide capture, user-set channel logos, DVB-S2X VL-SNR frames, DTMB LDPC on the GPU.
+- **TV:** teletext pages and DVB subtitles, recording with pause and live buffer, Whole span for DVB-T/T2 channels and DVB-S/S2 transponders from one wide capture (docs/WHOLESPAN-TV.md), user-set channel logos, DVB-S2X VL-SNR frames, DTMB LDPC on the GPU.
 - **ADS-B:** feeds from other receivers, offline registrations and countries, range statistics, metric vertical speed.
 - **FM:** a Mono switch for weak stations, a saved-station library, a scan with full RDS.
 - **Scroll to tune:** the wheel (or a trackpad) steps the frequency field digit by digit.

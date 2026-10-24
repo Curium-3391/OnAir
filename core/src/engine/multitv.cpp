@@ -26,7 +26,10 @@ struct MultiTv::Slot {
     ChannelFilter filter;
     std::unique_ptr<T2Receiver> t2;
     std::unique_ptr<DvbtReceiver> t;
+    std::unique_ptr<DvbsReceiver> sat;
     bool dvbt = false;
+    Transponder tp;
+    DvbsTelemetry dtel;
     // transport stream
     std::mutex tsMu;
     BbUnpacker unpack;
@@ -51,7 +54,7 @@ struct MultiTv::Slot {
     int absent = 0;
     bool occupied = true;
 
-    ~Slot() { t2.reset(); t.reset(); }   // the receivers' threads call back into this slot: they go first
+    ~Slot() { t2.reset(); t.reset(); sat.reset(); }   // the receivers' threads call back into this slot: they go first
     void deliver(const uint8_t* pk, size_t n, double secs) {
         TsSnapshot s;
         {
@@ -98,7 +101,7 @@ struct MultiTv::Slot {
             const uint64_t t0 = nowNs();
             o.clear();
             filter.process(b->data(), b->size(), o);
-            if (!o.empty()) { if (dvbt) t->feed(o.data(), o.size()); else t2->feed(o.data(), o.size()); }
+            if (!o.empty()) { if (sat) sat->feed(o.data(), o.size()); else if (dvbt) t->feed(o.data(), o.size()); else t2->feed(o.data(), o.size()); }
             busyNs += nowNs() - t0;
             { std::lock_guard<std::mutex> lk(qMu); busy = false; }
             qCv.notify_all();
@@ -122,8 +125,9 @@ bool MultiTv::configure(const MultiTvOptions& o) {
     reset();
     o_ = o;
     gridOff_ = o.gridOffsetHz; gridFixed_ = !o.autoGrid;
-    slots_ = spanSlots(o.spanRate, o.widthMhz * 1e6, gridOff_);
+    slots_ = o.sat ? std::vector<ChannelSlotPos>() : spanSlots(o.spanRate, o.widthMhz * 1e6, gridOff_);
     scan_.configure(o.spanRate);
+    if (o.sat) return o.spanRate >= 3e6;
     queueLimit_ = std::max(kQueueMin, (size_t)(o.spanRate * kQueueSec));
     sel_ = kNone;
     return !slots_.empty() || o.autoGrid;
@@ -151,6 +155,8 @@ void MultiTv::reset() {
     dead.clear();   // receivers go (their own threads are joined in their destructors)
     scan_.reset();
     measured_.clear();
+    { std::lock_guard<std::mutex> lk(mu_); tracks_.clear(); }
+    nextId_ = 1;
     sinceEval_ = 0;
     sel_ = kNone;
     lastSelPolled_ = kNone;
@@ -185,6 +191,7 @@ void MultiTv::startSlot(const SlotPower& p) {
 
 void MultiTv::evaluate() {
     if (scan_.frames() < 12) return;
+    if (o_.sat) { evaluateSat(); return; }
     if (!gridFixed_) {   // the capture is centred on a channel or between two: whichever fits more signals
         const double w = o_.widthMhz * 1e6;
         double best = -1, bestOff = 0;
@@ -281,7 +288,18 @@ bool MultiTv::poll(RxTelemetry& out) {
     for (auto& sp : live_) {
         Slot& s = *sp;
         RxTelemetry t;
-        if (s.dvbt ? s.t->telemetry(t, s.telSeq) : s.t2->telemetry(t, s.telSeq)) {
+        bool got = false;
+        if (s.sat) {
+            DvbsTelemetry dt;
+            if (s.sat->telemetry(dt, s.telSeq)) {
+                got = true;
+                t.standard = 7; t.seq = dt.seq; t.state = dt.state; t.cfoHz = dt.cfoHz; t.dataValid = dt.dataValid; t.dataSnrDb = dt.snrDb;
+                t.blocksOk = dt.blocksOk; t.blocksBad = dt.blocksBad; t.rateOk = true;
+                s.dtel = dt;
+                t.dvbs = std::move(dt);
+            }
+        } else got = s.dvbt ? s.t->telemetry(t, s.telSeq) : s.t2->telemetry(t, s.telSeq);
+        if (got) {
             s.telSeq = t.seq; s.tel = std::move(t); s.haveTel = true;
             if (s.pos.index == sel) selNew = true;
         }
@@ -305,6 +323,35 @@ std::vector<TvChannelRow> MultiTv::channels() {
     std::lock_guard<std::mutex> lk(mu_);
     std::vector<TvChannelRow> v;
     const int sel = sel_.load();
+    if (o_.sat) {
+        for (const TpTrack& tr : tracks_) {
+            if (tr.seen < 2 && !find(tr.id)) continue;
+            TvChannelRow r;
+            r.slot = tr.id; r.sat = true; r.offsetHz = tr.tp.centerHz; r.levelDb = tr.tp.levelDb; r.aboveDb = tr.tp.snrDb; r.occupied = tr.absent == 0;
+            r.bwHz = tr.tp.bwHz; r.symbolRate = tr.tp.rsHz;
+            if (Slot* s = find(tr.id)) {
+                r.running = true; r.selected = s->pos.index == sel;
+                r.cpuPct = s->cpuPct; r.dropped = s->dropped.load();
+                if (s->haveTel) {
+                    const DvbsTelemetry& d = s->dtel;
+                    r.state = d.state; r.snrDb = d.merDb > 0 ? d.merDb : d.snrDb;
+                    r.locked = d.tsLock || d.state >= 2;
+                    if (d.symbolRate > 0) r.symbolRate = d.symbolRate;
+                    if (d.standard > 0) {
+                        r.detail = d.standard == 1 ? "DVB-S" : d.standard == 2 ? "DVB-S2" : "DVB-S2X";
+                        if (!d.modulationName.empty()) r.detail += " " + d.modulationName;
+                        if (!d.codeRate.empty()) r.detail += " " + d.codeRate;
+                    }
+                }
+                std::lock_guard<std::mutex> tk(s->tsMu);
+                r.services = (int)s->snap.services.size();
+                r.network = s->snap.networkName;
+            }
+            v.push_back(r);
+        }
+        std::sort(v.begin(), v.end(), [](const TvChannelRow& a, const TvChannelRow& b) { return a.offsetHz < b.offsetHz; });
+        return v;
+    }
     for (const SlotPower& p : measured_) {
         TvChannelRow r;
         r.slot = p.pos.index; r.offsetHz = p.pos.offsetHz; r.levelDb = p.levelDb; r.aboveDb = p.aboveDb; r.occupied = p.occupied;
@@ -366,6 +413,101 @@ std::vector<int> MultiTv::runningSlots() {
     std::vector<int> v;
     for (auto& s : live_) v.push_back(s->pos.index);
     return v;
+}
+
+std::vector<Transponder> MultiTv::lastTransponders() {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<Transponder> v;
+    for (const TpTrack& t : tracks_) if (t.absent == 0) v.push_back(t.tp);
+    return v;
+}
+
+// DVB-S/S2: look at the averaged spectrum, follow the transponders found (same one when the centres are within a quarter of its width), start
+// a receiver for each that has been there two looks in a row, strongest first, up to the cap; drop a track that has been gone for a while
+void MultiTv::evaluateSat() {
+    TransponderParams tp;
+    tp.minRsHz = o_.minRsHz;
+    tp.thresholdDb = std::max(3.0, o_.thresholdDb - 1);
+    const std::vector<Transponder> found = detectTransponders(scan_.spectrumDb(), o_.spanRate, tp);
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        for (TpTrack& t : tracks_) t.absent++;
+        for (const Transponder& f : found) {
+            if (f.clipped) continue;   // runs into the edge of the capture: its other half is not here
+            TpTrack* best = nullptr;
+            double bd = 1e30;
+            for (TpTrack& t : tracks_) {
+                const double d = std::fabs(t.tp.centerHz - f.centerHz), tol = std::max(0.25 * std::min(t.tp.bwHz, f.bwHz), 150e3);
+                if (d < tol && d < bd) { best = &t; bd = d; }
+            }
+            if (best && best->absent == 0) best = nullptr;   // already matched in this look: this one is another transponder
+            if (best) {
+                const bool running = find(best->id) != nullptr;
+                if (best->absent > 0) best->seen++;   // a track is matched once per look; a second hit in the same look is another transponder
+                best->absent = 0;
+                if (!running) best->tp = f;           // a running receiver keeps the centre it was started at; the table shows the measurement
+                else { best->tp.levelDb = f.levelDb; best->tp.snrDb = f.snrDb; }
+            } else {
+                TpTrack t; t.id = nextId_++; t.tp = f; t.seen = 1; t.absent = 0;
+                tracks_.push_back(t);
+            }
+        }
+        // a track that was not seen for 4 looks starts counting again; the long absent ones go (never a running one with a lock)
+        for (TpTrack& t : tracks_) if (t.absent >= 2 && !find(t.id)) t.seen = 0;
+    }
+    // stop receivers whose transponder has gone and that never locked; drop dead tracks
+    for (;;) {
+        size_t victim = SIZE_MAX;
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            for (size_t i = 0; i < live_.size(); i++) {
+                int ab = 0;
+                for (const TpTrack& t : tracks_) if (t.id == live_[i]->pos.index) ab = t.absent;
+                if (ab >= kAbsentEvals && !(live_[i]->haveTel && live_[i]->dtel.state >= 2)) { victim = i; break; }
+            }
+        }
+        if (victim == SIZE_MAX) break;
+        std::lock_guard<std::mutex> lk(mu_);
+        const int idx = live_[victim]->pos.index;
+        stopSlot(victim);
+        if (sel_.load() == idx) sel_ = live_.empty() ? kNone : live_.front()->pos.index;
+    }
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        for (size_t i = 0; i < tracks_.size();) {
+            if (tracks_[i].absent >= kAbsentEvals && !find(tracks_[i].id)) tracks_.erase(tracks_.begin() + (long)i);
+            else i++;
+        }
+    }
+    std::vector<TpTrack> want;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        for (const TpTrack& t : tracks_) if (t.absent == 0 && t.seen >= 2 && !find(t.id)) want.push_back(t);
+    }
+    std::sort(want.begin(), want.end(), [](const TpTrack& a, const TpTrack& b) { return a.tp.snrDb > b.tp.snrDb; });
+    for (const TpTrack& t : want) {
+        size_t cnt;
+        { std::lock_guard<std::mutex> lk(mu_); cnt = live_.size(); }
+        if ((int)cnt >= std::max(1, o_.maxChannels)) break;
+        startSat(t);
+    }
+}
+
+void MultiTv::startSat(const TpTrack& t) {
+    auto s = std::make_unique<Slot>();
+    s->pos.index = t.id; s->pos.offsetHz = t.tp.centerHz; s->owner = this; s->tp = t.tp;
+    // as the secondary DVB-S receiver of the engine: 3.2 samples per symbol, 2 Msps at least, never more than the capture has
+    const double outRate = std::min(o_.spanRate, std::max(2e6, t.tp.rsHz * 3.2));
+    if (!s->filter.configure(o_.spanRate, t.tp.centerHz, outRate)) return;
+    Slot* raw = s.get();
+    s->sat = std::make_unique<DvbsReceiver>();
+    s->sat->configure(outRate);
+    s->sat->setBlocking(o_.blocking);
+    s->sat->setPacketCallback([raw](const uint8_t* pk, size_t n, double secs) { raw->deliver(pk, n, secs); });
+    s->th = dect2::namedThread("onair-mtv", [raw] { raw->run(); });
+    std::lock_guard<std::mutex> lk(mu_);
+    live_.push_back(std::move(s));
+    if (sel_.load() == kNone) sel_ = t.id;
 }
 
 std::vector<SlotPower> MultiTv::lastMeasure() { std::lock_guard<std::mutex> lk(mu_); return measured_; }

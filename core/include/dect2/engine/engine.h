@@ -337,7 +337,9 @@ public:
     void setMultiChannel(bool on, int maxChannels = 0, int grid = 0);
     bool multiChannel() const { return mtvOn_.load(); }                  // asked for
     bool multiChannelActive() const { return mtvActive_.load(); }        // running now (the mode, the span and the width allow it)
-    static bool multiChannelSupported(int stdMode) { return stdMode == 1 || stdMode == 2; }   // DVB-T2, DVB-T
+    static bool multiChannelSupported(int stdMode) { return stdMode == 1 || stdMode == 2 || stdMode == 8; }   // DVB-T2, DVB-T, DVB-S/S2 ("Whole span")
+    // the capture can hold more than one signal of the standard: T/T2 two channels of the width, S/S2 any capture of 3 Msps and up (transponders sit anywhere)
+    static bool wholeSpanFits(int stdMode, double spanRate, double widthMhz, int grid) { return stdMode == 8 ? spanRate >= 3e6 : slotsInSpan(spanRate, widthMhz, grid) >= 2; }
     static int defaultMaxChannels();                                      // 2 on a laptop, 3 on a desktop
     static int slotsInSpan(double spanRate, double widthMhz, int grid);   // channels of the raster that fit the capture
     void selectTvChannel(int slot);                                       // the channel that plays and shows in detail
@@ -612,7 +614,7 @@ private:
     std::shared_ptr<MultiTv> mtv_;
     mutable std::mutex mtvMu_;               // mtv_ (the analysis thread replaces it, the interface reads it)
     std::shared_ptr<MultiTv> mtvGet() const { std::lock_guard<std::mutex> lk(mtvMu_); return mtv_; }
-    std::atomic<bool> mtvOn_{false}, mtvActive_{false};
+    std::atomic<bool> mtvOn_{false}, mtvActive_{false}, mtvSat_{false};
     std::atomic<int> mtvMax_{0}, mtvGrid_{0};
     double mtvKeyRate_ = -1, mtvKeyBw_ = 0;
     int mtvKeyStd_ = -1, mtvKeyMax_ = -1, mtvKeyGrid_ = -1;

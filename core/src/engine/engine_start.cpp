@@ -50,7 +50,7 @@ bool Engine::start(const DeviceInfo& dev, const TuneSettings& tune, const FileOp
     if (!src_) { log("no source"); releaseDevice(receiverId_); return false; }
     offHz_ = 0; offRate_ = 0; offsetDc_ = false;
     std::string offNote;
-    if (autoOffset_ && dev.isRadio() && offsetAllowed() && mtvOn_.load() && multiChannelSupported(stdMode_.load()) && slotsInSpan(tune.sampleRate, tune.bandwidthMhz, 0) >= 2) {
+    if (autoOffset_ && dev.isRadio() && offsetAllowed() && mtvOn_.load() && multiChannelSupported(stdMode_.load()) && wholeSpanFits(stdMode_.load(), tune.sampleRate, tune.bandwidthMhz, 0)) {
         // a wide capture for multi-channel TV: the DC spike is inside the span whatever the offset (it would sit in a neighbouring channel), and
         // shifting 60 Msps back by the offset costs a double-precision mixer pass over every sample: the spike is removed instead
         offsetDc_ = true;
