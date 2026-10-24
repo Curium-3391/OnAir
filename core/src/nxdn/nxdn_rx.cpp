@@ -24,6 +24,7 @@ namespace {
 using dect2::math::kPi;
 constexpr double kFs = 48000;            // demodulator rate: 20 samples per NXDN48 symbol, 10 per NXDN96 symbol
 constexpr int kYMask = 32767;
+constexpr double kNarrowHz = 5000.0;     // channel filter cut of the NXDN48 chain (the signal reaches 2.5 kHz)
 constexpr size_t kMaxEvents = 200;
 
 float pearson(const float* v, const int* s, int n) {
@@ -76,8 +77,8 @@ struct NxdnReceiver::Impl {
     int64_t dN = 0;
     double rp = 0, rstep = 0;
     int M = 0, nPh = 64;
-    std::vector<float> fir;
-    cf32 prevZ{0, 0};
+    std::vector<float> fir, firN;   // wide channel filter (NXDN96) and a narrow one for NXDN48 (less noise into the discriminator)
+    cf32 prevZ{0, 0}, prevZn{0, 0};
 
     void initFront() {
         D = std::max(1, (int)std::floor(rate / 100000.0));
@@ -90,24 +91,28 @@ struct NxdnReceiver::Impl {
         dbuf.assign(8192, cf32(0, 0)); dN = 0;
         rstep = fd / kFs;
         M = std::max(8, (int)std::ceil(5.5 * fd / 6000.0 / 2));
-        fir.assign((size_t)nPh * 2 * M, 0.f);
-        const double fc = 7500.0 / std::max(1.0, fd);
-        for (int ph = 0; ph < nPh; ph++) {
-            const double frac = (double)ph / nPh;
-            double sum = 0;
-            for (int k = 0; k < 2 * M; k++) {
-                const double t = (double)(k - M + 1) - frac;
-                const double x = 2 * fc * t;
-                const double s = std::fabs(x) < 1e-9 ? 1.0 : std::sin(kPi * x) / (kPi * x);
-                const double w = 0.42 + 0.5 * std::cos(kPi * t / M) + 0.08 * std::cos(2 * kPi * t / M);
-                const double v = std::fabs(t) < M ? 2 * fc * s * w : 0;
-                fir[(size_t)ph * 2 * M + k] = (float)v;
-                sum += v;
+        auto design = [&](std::vector<float>& f, double cutHz) {
+            f.assign((size_t)nPh * 2 * M, 0.f);
+            const double fc = cutHz / std::max(1.0, fd);
+            for (int ph = 0; ph < nPh; ph++) {
+                const double frac = (double)ph / nPh;
+                double sum = 0;
+                for (int k = 0; k < 2 * M; k++) {
+                    const double t = (double)(k - M + 1) - frac;
+                    const double x = 2 * fc * t;
+                    const double s = std::fabs(x) < 1e-9 ? 1.0 : std::sin(kPi * x) / (kPi * x);
+                    const double w = 0.42 + 0.5 * std::cos(kPi * t / M) + 0.08 * std::cos(2 * kPi * t / M);
+                    const double v = std::fabs(t) < M ? 2 * fc * s * w : 0;
+                    f[(size_t)ph * 2 * M + k] = (float)v;
+                    sum += v;
+                }
+                for (int k = 0; k < 2 * M; k++) f[(size_t)ph * 2 * M + k] /= (float)sum;
             }
-            for (int k = 0; k < 2 * M; k++) fir[(size_t)ph * 2 * M + k] /= (float)sum;
-        }
+        };
+        design(fir, 7500.0);
+        design(firN, kNarrowHz);
         rp = M + 2;
-        prevZ = cf32(0, 0);
+        prevZ = prevZn = cf32(0, 0);
     }
 
     void input(std::complex<double> x) {
@@ -125,14 +130,18 @@ struct NxdnReceiver::Impl {
                 const int64_t base = (int64_t)std::floor(rp);
                 const int ph = std::min(nPh - 1, (int)std::lround((rp - (double)base) * nPh));
                 const float* h = &fir[(size_t)ph * 2 * M];
-                cf32 acc(0, 0);
+                const float* hn = &firN[(size_t)ph * 2 * M];
+                cf32 acc(0, 0), accN(0, 0);
                 const int64_t i0 = base - M + 1;
-                for (int k = 0; k < 2 * M; k++) acc += dbuf[(size_t)((i0 + k) & 8191)] * h[k];
+                for (int k = 0; k < 2 * M; k++) { const cf32 z = dbuf[(size_t)((i0 + k) & 8191)]; acc += z * h[k]; accN += z * hn[k]; }
                 rp += rstep;
                 const cf32 d = acc * std::conj(prevZ);
                 prevZ = acc;
                 const float f = (float)(std::atan2(d.imag(), d.real()) * kFs / (2 * kPi));
-                for (auto& c2 : ch) c2.push(f);
+                const cf32 dn = accN * std::conj(prevZn);
+                prevZn = accN;
+                const float fn = (float)(std::atan2(dn.imag(), dn.real()) * kFs / (2 * kPi));
+                ch[0].push(fn); ch[1].push(f);
                 for (int k = 0; k < 2; k++) chainStep(k);
             }
         }
