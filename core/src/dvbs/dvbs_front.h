@@ -31,6 +31,7 @@ public:
 private:
     Config c_;
     double fs1_ = 0;
+    bool bypass_ = false;
     MixDc mix_;
     std::vector<Halfband> hb_;
     std::vector<SplitBuf> stage_;

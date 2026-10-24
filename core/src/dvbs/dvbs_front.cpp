@@ -16,6 +16,9 @@ void DvbsFront::configure(const Config& c) {
     stage_.assign((size_t)k + 1, SplitBuf());
     fs1_ = c.fs / (double)(1 << k);
     rs_.configure(fs1_ / (2.0 * c.symbolRate));
+    // exactly two samples per symbol: the resampler would be an identity (its phase-0 taps are a unit impulse), so the samples go to the timing loop as
+    // they are and the loop absorbs the small symbol rate offset of the transmitter (about 0.14 CPU-s per s at 10 Msps, 5 Msym/s)
+    bypass_ = std::fabs(fs1_ / (2.0 * c.symbolRate) - 1.0) < 1e-9;
     // the matched filter spans 2 * hs symbols: the tails of a root raised cosine pulse fall off more slowly the smaller the roll-off, so a small
     // roll-off needs a longer filter (the truncation stays below -40 dB; each symbol of span costs four multiply-adds per sample of the filter)
     const int hs = c.rollOff >= 0.30 ? 6 : c.rollOff >= 0.20 ? 8 : c.rollOff >= 0.10 ? 10 : 12;
@@ -32,6 +35,7 @@ void DvbsFront::reset() {
 }
 
 void DvbsFront::recentre() {
+    if (bypass_) return;                  // no resampler: the loop keeps the offset itself
     const double off = timer_.rateOffset();
     // the loop found that the symbols come (1 + off) times faster than nominal: the resampler should produce 2 samples per real symbol
     c_.symbolRate *= (1.0 + off);
@@ -52,6 +56,7 @@ void DvbsFront::process(const cf32* x, size_t n, std::vector<cf32>& out) {
             hb_[k].process(*cur, cur->size(), stage_[k]);
             cur = &stage_[k];
         }
+        if (bypass_) { timer_.process(*cur, out); continue; }
         two_.clear();
         rs_.process(*cur, cur->size(), two_);
         timer_.process(two_, out);
