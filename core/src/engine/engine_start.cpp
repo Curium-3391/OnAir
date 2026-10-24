@@ -201,6 +201,7 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxPager_.setSignalOffset(o);
         rxPacket_.setSignalOffset(o);
         rxHfdig_.setSignalOffset(o);
+        rxHfdig_.setDialHz(dev.kind != DeviceInfo::File ? tune.centerHz : 0.0);   // the dial of every FT8 / FT4 / WSPR decode (Band / Dial MHz, PSK Reporter); the multi-band monitor is centred from it
         rxAirband_.setSignalOffset(o);
         rxVdl2_.setSignalOffset(o);
         rxVdl2_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);

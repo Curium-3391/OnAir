@@ -11,6 +11,8 @@ int main() {
     // dial frequencies of the table are those of hf.tsv
     CHECK(mbDialHz(5, 0) == 14074000 && mbDialHz(5, 1) == 14080000 && mbDialHz(5, 2) == 14084000 && mbDialHz(5, 3) == 14095600, "20 m dials");
     CHECK(mbDialHz(0, 1) == 0 && mbDialHz(0, 2) == 0 && mbDialHz(4, 2) == 0, "no FT4 on 160 m, FT2 only on 20 m");
+    // the Band column of a decode: the dial it carries maps back to the band it came from, for every band with an FT8 dial (5 or more bands)
+    { int n = 0; for (int b = 0; b < kMbBands; b++) { const double f = mbDialHz(b, 0); if (f > 0) { n++; CHECK(mbBandOf(f) == b, "FT8 dial of band %d (%.4f MHz) maps to its band, got %d", b, f / 1e6, mbBandOf(f)); } } CHECK(n >= 5, "at least 5 bands have an FT8 dial: %d", n); }
     CHECK(std::string(mbBand(0).name) == "160 m" && std::string(mbBand(10).name) == "6 m", "band names");
     for (int b = 0; b < kMbBands; b++)
         for (int m = 0; m < kMbModes; m++) {
