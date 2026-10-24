@@ -1,5 +1,6 @@
 #include "dect2/t2/t2fec.h"
 #include "dect2/t2/t2fec_tables.h"
+#include "dect2/dsp/simd.h"
 
 #include <algorithm>
 #include <cmath>
@@ -244,7 +245,7 @@ namespace {
 // was within about 1e-3), and the loops over the eight lanes run as vector instructions (about five times faster than the table).
 // With `map` the values go straight to their places in the LDPC codeword (the bit de-interleaver), else in label-bit order.
 template <int NB>
-void demapAxes(const PlpFec& f, const cf32* cells, const float* n0, int nCells, float* llr, const int* map) {
+DECT2_SIMD_BODY void demapAxesBody(const PlpFec& f, const cf32* cells, const float* n0, int nCells, float* llr, const int* map) {
     constexpr int L = 1 << NB, M = 2 * NB, B = 8;
     const AxisMap& A = axisMap(f.mod);
     float levR[L], levI[L];
@@ -320,6 +321,20 @@ void demapAxes(const PlpFec& f, const cf32* cells, const float* n0, int nCells, 
             else for (int b = 0; b < NB; b++) { llr[o + (size_t)posR[b]] = outR[b][l]; llr[o + (size_t)posI[b]] = outI[b][l]; }
         }
     }
+}
+// the AVX2 + FMA copy of the demapper (the eight cell lanes become one vector), picked at run time
+#if defined(DECT2_X86_DISPATCH)
+template <int NB>
+DECT2_AVX2_TARGET void demapAxesAvx2(const PlpFec& f, const cf32* cells, const float* n0, int nCells, float* llr, const int* map) {
+    demapAxesBody<NB>(f, cells, n0, nCells, llr, map);
+}
+#endif
+template <int NB>
+void demapAxes(const PlpFec& f, const cf32* cells, const float* n0, int nCells, float* llr, const int* map) {
+#if defined(DECT2_X86_DISPATCH)
+    if (cpuHasAvx2()) { demapAxesAvx2<NB>(f, cells, n0, nCells, llr, map); return; }
+#endif
+    demapAxesBody<NB>(f, cells, n0, nCells, llr, map);
 }
 void demapDispatch(const PlpFec& f, const cf32* cells, const float* n0, int nCells, float* llr, const int* map) {
     switch (f.mod) {
