@@ -26,6 +26,28 @@
 #include "dect2/hrpt/hrpt_tel.h"
 #include "dect2/goes/goes_rx.h"
 #include "dect2/goes/goes_tel.h"
+#include "dect2/globalstar/globalstar_rx.h"
+#include "dect2/globalstar/globalstar_tel.h"
+#include "dect2/orbcomm/orbcomm_rx.h"
+#include "dect2/orbcomm/orbcomm_tel.h"
+#include "dect2/argos/argos_rx.h"
+#include "dect2/argos/argos_tel.h"
+#include "dect2/sarsat/sarsat_rx.h"
+#include "dect2/sarsat/sarsat_tel.h"
+#include "dect2/wisun/wisun_rx.h"
+#include "dect2/wisun/wisun_tel.h"
+#include "dect2/halow/halow_rx.h"
+#include "dect2/halow/halow_tel.h"
+#include "dect2/zigbee/zigbee_rx.h"
+#include "dect2/zigbee/zigbee_tel.h"
+#include "dect2/zwave/zwave_rx.h"
+#include "dect2/zwave/zwave_tel.h"
+#include "dect2/sigfox/sigfox_rx.h"
+#include "dect2/sigfox/sigfox_tel.h"
+#include "dect2/ble/ble_rx.h"
+#include "dect2/ble/ble_tel.h"
+#include "dect2/inmc/inmc_rx.h"
+#include "dect2/inmc/inmc_tel.h"
 #include "sens_impair.h"
 #include <chrono>
 #include <cmath>
@@ -370,6 +392,45 @@ inline std::vector<Mode> allModes() {
         m.make = factory<IridiumReceiver, IridiumTelemetry>([](IridiumReceiver& rx, double r) { rx.setSignalOffset(0); rx.setOffline(true); rx.configure(r); rx.setCenterMhz(1622); },
                                                             blocks<IridiumTelemetry>, false, [](IridiumReceiver& rx) { rx.flush(); });
         add(m);
+    }
+    {   // mobile-satellite and ISM data modes (satdata family): the clean test signal of the mode, the receiver set up by prepGeneric
+        struct S { const char* id; const char* name; int std_; double secs, bw, snrHi; };
+        auto addGen = [&](auto tag, const S& d) {
+            using Rx = typename decltype(tag)::Rx; using Tel = typename decltype(tag)::Tel;
+            const ModeTuning* mt = modeTuning(d.std_);
+            if (!mt) return;
+            Mode m = base(d.id, d.name, "satdata", d.std_, mt->sampleRate, d.secs, d.bw, mt->defMhz);
+            m.snrHi = d.snrHi; m.maxJobs = 4;
+            const double rate = mt->sampleRate; const int sd = d.std_;
+            m.gen = [rate, sd](size_t n) { return clean(sd, SynthConfig(), rate, n); };
+            m.make = factory<Rx, Tel>([sd](Rx& rx, double r) { prepGeneric(rx, r, sd); }, blocks<Tel>);
+            add(m);
+        };
+        struct T { };
+        #define SATDATA_TAG(NAME, RX, TEL) struct NAME { using Rx = RX; using Tel = TEL; };
+        SATDATA_TAG(TGlobalstar, GlobalstarReceiver, GlobalstarTelemetry)
+        SATDATA_TAG(TOrbcomm, OrbcommReceiver, OrbcommTelemetry)
+        SATDATA_TAG(TArgos, ArgosReceiver, ArgosTelemetry)
+        SATDATA_TAG(TSarsat, SarsatReceiver, SarsatTelemetry)
+        SATDATA_TAG(TWisun, WisunReceiver, WisunTelemetry)
+        SATDATA_TAG(THalow, HalowReceiver, HalowTelemetry)
+        SATDATA_TAG(TZigbee, ZigbeeReceiver, ZigbeeTelemetry)
+        SATDATA_TAG(TZwave, ZwaveReceiver, ZwaveTelemetry)
+        SATDATA_TAG(TSigfox, SigfoxReceiver, SigfoxModeTelemetry)
+        SATDATA_TAG(TBle, BleReceiver, BleTelemetry)
+        SATDATA_TAG(TInmc, InmcReceiver, InmcTelemetry)
+        #undef SATDATA_TAG
+        addGen(TGlobalstar(), {"globalstar", "Globalstar", 64, 4.0, 1.23e6, 25});
+        addGen(TOrbcomm(), {"orbcomm", "Orbcomm", 46, 6.0, 10e3, 25});
+        addGen(TArgos(), {"argos", "Argos", 154, 6.0, 5e3, 25});
+        addGen(TSarsat(), {"sarsat", "COSPAS-SARSAT", 94, 6.0, 3e3, 25});
+        addGen(TWisun(), {"wisun", "Wi-SUN FAN", 86, 4.0, 200e3, 25});
+        addGen(THalow(), {"halow", "Wi-Fi HaLow", 72, 4.0, 1e6, 30});
+        addGen(TZigbee(), {"zigbee", "Zigbee", 67, 4.0, 2e6, 25});
+        addGen(TZwave(), {"zwave", "Z-Wave", 100, 4.0, 100e3, 25});
+        addGen(TSigfox(), {"sigfox", "Sigfox", 155, 6.0, 600, 25});
+        addGen(TBle(), {"ble", "Bluetooth LE", 53, 4.0, 1e6, 25});
+        addGen(TInmc(), {"inmc", "Inmarsat-C", 19, 40.0, 1.2e3, 25});
     }
     {   // Meshtastic LongFast
         Mode m = base("mesh", "Meshtastic / MeshCore LoRa", "lora", 22, 2e6, 15.0, 250e3, 869.5);
