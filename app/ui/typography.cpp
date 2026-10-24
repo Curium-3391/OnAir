@@ -80,11 +80,7 @@ bool beginTabItem(const char* label, bool* open, ImGuiTabItemFlags flags) {
     ImGuiTabBar* tb = ImGui::GetCurrentTabBar();
     const bool selected = tb && tb->SelectedTabId == ImGui::GetCurrentWindow()->GetID(label);
     Scoped f(selected ? fonts().semibold : fonts().medium);
-    // the selected tab's overline sits at the top edge: the label gets a little clearance below it (follows the font size and the UI scale)
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y + std::max(1.f, std::round(ImGui::GetFontSize() * 0.14f))));
-    const bool r = ImGui::BeginTabItem(label, open, flags);
-    ImGui::PopStyleVar();
-    return r;
+    return ImGui::BeginTabItem(label, open, flags);
 }
 
 } // namespace typo
