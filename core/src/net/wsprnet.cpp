@@ -221,9 +221,9 @@ void WsprNet::stop() {
     want_.store(false, std::memory_order_relaxed);
 }
 
-void WsprNet::spot(double audioHz, float snrDb, float dt, const std::string& call, const std::string& grid, int dbm, double slotUtc) {
+void WsprNet::spot(double audioHz, float snrDb, float dt, const std::string& call, const std::string& grid, int dbm, double slotUtc, double dialHz) {
     if (!want()) return;
-    const double dial = dial_.load(std::memory_order_relaxed);
+    const double dial = dialHz > 0 ? dialHz : dial_.load(std::memory_order_relaxed);
     if (dial < 1e5) return;
     std::string c = call;
     for (char& ch : c) ch = (char)toupper((unsigned char)ch);

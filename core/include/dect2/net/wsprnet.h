@@ -65,7 +65,7 @@ public:
     void setDialHz(double hz) { dial_.store(hz, std::memory_order_relaxed); }
     bool want() const { return want_.load(std::memory_order_relaxed); }
     // WSPR decode path only: audioHz offset from dial, slotUtc start of the 2-minute slot.
-    void spot(double audioHz, float snrDb, float dt, const std::string& call, const std::string& grid, int dbm, double slotUtc);
+    void spot(double audioHz, float snrDb, float dt, const std::string& call, const std::string& grid, int dbm, double slotUtc, double dialHz = 0);   // dialHz > 0: the dial of the band it was heard on (multi-band), else the tuned one
     struct Impl;
 private:
     WsprNet();

@@ -4,6 +4,7 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,7 +12,7 @@
 namespace dect2 {
 namespace pskr {
 
-constexpr size_t kMaxPacket = 1400;       // a datagram stays below this
+constexpr size_t kMaxPacket = 1024;       // a datagram stays below this
 constexpr int kSenderTemplateId = 0x9993, kReceiverTemplateId = 0x9992;
 
 struct Receiver { std::string call, locator, software, antenna; };
@@ -75,7 +76,12 @@ public:
     void setDialHz(double hz) { dial_.store(hz, std::memory_order_relaxed); }   // the radio's tuned frequency; the decoders give audio offsets
     bool want() const { return want_.load(std::memory_order_relaxed); }
     // what the decoders call (cheap when off). audioHz: offset from the dial; call: the sender's callsign (not the user's).
-    void spot(const char* mode, double audioHz, float snrDb, const std::string& call, const std::string& grid = std::string());
+    // dialHz > 0: the dial frequency of the band the signal was heard on (multi-band / whole-span decoding: several bands at once);
+    // 0: the radio's tuned frequency (setDialHz).
+    void spot(const char* mode, double audioHz, float snrDb, const std::string& call, const std::string& grid = std::string(), double dialHz = 0);
+    // Tests: replace the UDP socket by a function that gets each datagram, and send what is pending right now.
+    void setSenderForTest(std::function<bool(const uint8_t*, size_t)> f);
+    void flushNowForTest(int64_t now);
     struct Impl;
 private:
     PskReporter();

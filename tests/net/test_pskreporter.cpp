@@ -1,6 +1,8 @@
 // PSK Reporter: the IPFIX encoder (templates, record round trip, size limit), the batcher (dedupe, interval) and the validators.
 #include "dect2/net/pskreporter.h"
 #include <cstdio>
+#include <set>
+#include <string>
 using namespace dect2;
 using namespace dect2::pskr;
 static int fails = 0;
@@ -81,6 +83,36 @@ int main() {
     CHECK(PskReporter::get().status().duplicates == 1 && PskReporter::get().status().state.find("1 spots waiting") != std::string::npos, "queued: %s", PskReporter::get().status().state.c_str());
     c.call = "x"; PskReporter::get().configure(c);
     CHECK(!PskReporter::get().want(), "invalid callsign: nothing is collected");
+    // multi-band: spots from 5 bands (each with its own dial) all reach the sender, each in its own frequency group; nothing is sent for real
+    {
+        PskReporterConfig mc; mc.on = true; mc.call = "PA9900"; mc.locator = "JO22ab"; mc.host = "127.0.0.1"; mc.port = 9;
+        std::vector<std::vector<uint8_t>> sent;
+        { PskReporterConfig off = mc; off.on = false; PskReporter::get().configure(off); }   // drops what the earlier checks left pending
+        PskReporter::get().configure(mc);
+        PskReporter::get().setSenderForTest([&](const uint8_t* d, size_t n) { sent.emplace_back(d, d + n); return true; });
+        PskReporter::get().setDialHz(7074000);   // the radio is tuned to 40 m; the other bands come with their own dial
+        const double dials[5] = {3573000, 7074000, 10136000, 14074000, 21074000};
+        for (int i = 0; i < 5; i++) for (int k = 0; k < 3; k++) PskReporter::get().spot("FT8", 1000 + 100 * k, -10.f, "DL" + std::to_string(i) + "ABC", "JO62", i == 1 ? 0.0 : dials[i]);
+        PskReporter::get().flushNowForTest(1700000000);
+        std::set<uint32_t> bands; size_t total = 0;
+        for (const auto& p : sent) {
+            CHECK(p.size() <= 1024, "packet %zu bytes", p.size());
+            Decoded dd; CHECK(decodePacket(p.data(), p.size(), dd), "mb decode");
+            CHECK(dd.rx.call == "PA9900", "receiver call");
+            for (const Spot& sp : dd.spots) { bands.insert(sp.freqHz / 1000000); total++; CHECK(sp.mode == "FT8" && sp.freqHz % 1000000 > 0, "spot"); }
+        }
+        CHECK(total == 5, "5 calls x 3 slots on the same band deduped to 5 spots: %zu", total);
+        CHECK(bands.size() == 5 && bands.count(3) && bands.count(7) && bands.count(10) && bands.count(14) && bands.count(21), "all 5 bands present: %zu", bands.size());
+        // a single band is unchanged: tuned dial + audio offset
+        sent.clear();
+        PskReporter::get().setDialHz(14074000);
+        PskReporter::get().spot("FT8", 1234, -3.f, "W1AW", "FN31");
+        PskReporter::get().flushNowForTest(1700000400);
+        Decoded d1;
+        CHECK(sent.size() == 1 && decodePacket(sent[0].data(), sent[0].size(), d1) && d1.spots.size() == 1 && d1.spots[0].freqHz == 14075234 && d1.spots[0].snr == -3, "single band");
+        PskReporter::get().setSenderForTest(nullptr);
+        PskReporter::get().stop();
+    }
     PskReporter::get().stop();
     printf(fails ? "FAILED %d\n" : "pskreporter OK\n", fails);
     return fails != 0;

@@ -1131,9 +1131,9 @@ struct HfdigFtx::Impl {
             for (auto& d : dec) {
                 d.dialHz = dialHz.load();
                 tel.decodes.push_back(d);
-                if (!d.call.empty() && PskReporter::get().want()) PskReporter::get().spot(ftxModeName(m), d.hz + spotShift.load(), d.snrDb, d.call, d.grid);
+                if (!d.call.empty() && PskReporter::get().want()) PskReporter::get().spot(ftxModeName(m), d.hz, d.snrDb, d.call, d.grid, d.dialHz > 0 ? d.dialHz : 0.0);
                 if (m == kWspr && !d.call.empty() && WsprNet::get().want())
-                    WsprNet::get().spot(d.hz + spotShift.load(), d.snrDb, d.dt, d.call, d.grid, d.dbm, d.slotUtc);
+                    WsprNet::get().spot(d.hz, d.snrDb, d.dt, d.call, d.grid, d.dbm, d.slotUtc, d.dialHz > 0 ? d.dialHz : 0.0);
                 tel.total++;
                 tel.perMode[m]++;
             }
