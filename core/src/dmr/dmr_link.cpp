@@ -76,6 +76,7 @@ void Link::reset() {
     const uint64_t nCalls = tel_.calls;
     for (auto& c : calls) { c.startSec -= t0; c.endSec -= t0; c.active = false; }
     for (auto& m : msgs) m.sec -= t0;
+    for (auto& l : locs) l.sec -= t0;   // the map history moves back with the clock too
     memset(ring_, 0, sizeof ring_);
     n_ = 0;
     memset(rho_, 0, sizeof rho_);
