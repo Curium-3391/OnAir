@@ -852,6 +852,8 @@ if(DECT2_BUILD_TESTS)
   set_tests_properties(sens_quick PROPERTIES LABELS "sens-quick;slow" TIMEOUT 1800)
   set_tests_properties(sens_full PROPERTIES LABELS "sens-full;slow" TIMEOUT 36000)
   if(NOT WIN32)   # the benchmark uses fork/waitpid/getrusage (POSIX only)
+    add_executable(bench_dab tests/bench/bench_dab.cpp)   # DabReceiver cost and output hash
+    target_link_libraries(bench_dab PRIVATE dect2core)
     add_executable(bench_modes tests/bench/bench_modes.cpp)
     target_link_libraries(bench_modes PRIVATE dect2core)
     add_executable(bench_tx tests/bench/bench_tx.cpp)   # the transmit generators' cost and sample hash (nothing is transmitted)

@@ -37,12 +37,17 @@ std::string labelText(int charset, const uint8_t* d, int n) {
 }
 
 // max*(a, b) = log(e^a + e^b): the larger plus a correction from a table (1/8 steps up to 8, then nothing). DECT2_DAB_MAXLOG=1: the larger only
-float maxStar(float a, float b) {
-    static const struct T { float v[65]; T() { for (int i = 0; i <= 64; i++) v[i] = (float)std::log1p(std::exp(-(i + 0.5) / 8.0)); v[64] = 0; } } t;
-    static const bool maxLog = std::getenv("DECT2_DAB_MAXLOG") != nullptr;
+// (the table and the switch are built once at start-up: a function-local static costs a guard check in every call, 20 calls a cell)
+struct MaxStarTab {
+    float v[65];
+    bool maxLog;
+    MaxStarTab() { for (int i = 0; i <= 64; i++) v[i] = (float)std::log1p(std::exp(-(i + 0.5) / 8.0)); v[64] = 0; maxLog = std::getenv("DECT2_DAB_MAXLOG") != nullptr; }
+};
+const MaxStarTab gMaxStar;
+inline float maxStar(float a, float b) {
     const float m = a > b ? a : b, d = std::fabs(a - b);
-    if (maxLog || !(d < 8.f)) return m;
-    return m + t.v[(int)(d * 8.f)];
+    if (gMaxStar.maxLog || !(d < 8.f)) return m;
+    return m + gMaxStar.v[(int)(d * 8.f)];
 }
 
 bool baselineMode() { static const bool b = std::getenv("DECT2_DAB_BASELINE") != nullptr; return b; }
