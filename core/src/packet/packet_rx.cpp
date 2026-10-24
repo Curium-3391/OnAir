@@ -17,6 +17,7 @@
 #include "dect2/packet/packet_demod.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <complex>
 #include <deque>
 #include "../audio/ham_listen.h"
@@ -97,6 +98,8 @@ struct PacketReceiver::Impl {
         fe.chanPass = narrow ? 6500.0 : 9000.0; fe.chanStop = narrow ? 10500.0 : 17000.0;
         // the AFC follows a carrier up to 12 kHz off; in a 12.5 kHz channel that would be the neighbour's carrier, so it only follows radios within 4 kHz
         fe.afcMaxHz = narrow ? 4000.0 : 12000.0;
+        // the 1200 baud demodulators get a narrower channel of their own (threshold about 2 dB lower); the 9600 baud ones keep the wide one
+        fe.chanPass2 = narrow ? 0.0 : 4500.0; fe.chanStop2 = fe.chanPass2 * 1.8;
         if (!fe.configure(fs, wideInput ? 192000.0 : packetTuning().minSampleRate)) return;
         audio8.design(dmr::lowpassTaps(3200.0, 800.0, 48000.0, 50, 9), 6);
         audio48.design(dmr::lowpassTaps(3300.0, 8000.0, kMidRate, 50, 9), 2);
@@ -350,7 +353,8 @@ struct PacketReceiver::Impl {
         if (!isReady || n == 0) return;
         const std::vector<float>& disc = fe.process(x, n);
         a48.clear();
-        audio48.process(disc.data(), disc.size(), a48);
+        const std::vector<float>& d1200 = fe.narrowDisc();
+        audio48.process(d1200.data(), d1200.size(), a48);
         if (listen.on.load() && !a48.empty()) { a8.clear(); audio8.process(a48.data(), a48.size(), a8); listen.play(a8.data(), a8.size()); }
         if (!a48.empty()) {
             emph.process(a48.data(), a48.size());

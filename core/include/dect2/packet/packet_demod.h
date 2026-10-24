@@ -27,6 +27,9 @@ constexpr size_t kBlock = 1920;                // power blocks of 20 ms at 96 kH
 struct FmFront {
     // pass / stop: the channel filter (Hz); clipHz: FM clicks are cut to this deviation; afcMaxHz: how far the AFC follows a carrier
     double chanPass = 9000.0, chanStop = 17000.0;
+    // optional second, narrower channel with its own discriminator (disc2) on the same signal: the 1200 baud tones need much less than the
+    // 9600 baud data, and a narrower IF filter is worth 2-3 dB at the threshold. 0: off (disc2 is then the wide discriminator)
+    double chanPass2 = 0, chanStop2 = 0;
     float clipHz = 8000.f;
     double afcMaxHz = 12000.0;
     // the input is already FM-demodulated audio (a sound card on a radio's discriminator or speaker output): its real part is used, with
@@ -37,7 +40,10 @@ struct FmFront {
     std::vector<dmr::Fir<cf32>> stages;
     ExactResampler rs;
     bool rsPass = true;
-    dmr::Fir<cf32> chan;
+    dmr::Fir<cf32> chan, chan2;
+    cf32 prevY2 = cf32(1.f, 0.f);
+    std::vector<cf32> ch2;
+    std::vector<float> disc2;
     cf32 prevY = cf32(1.f, 0.f);
     std::vector<cf32> bufA, bufB, mixBuf, o2, ch, clean, afcBuf;
     std::vector<float> disc;
@@ -58,6 +64,7 @@ struct FmFront {
     void setOffset(double hz) { offsetHz = hz; offPhase = 0; }
     void reset();
     const std::vector<float>& process(const cf32* x, size_t n);
+    const std::vector<float>& narrowDisc() const { return chanPass2 > 0 ? disc2 : disc; }   // valid after process()
     void commit() { n96 += (int64_t)pending; pending = 0; }
     double cfoHz() const { return afcHz + cfoEma; }
     float takeLevelDb() { const float l = inN ? (float)(10 * std::log10(inPower / (double)inN + 1e-20)) : -200.f; inPower = 0; inN = 0; return l; }
