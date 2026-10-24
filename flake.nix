@@ -1,7 +1,7 @@
 {
   description = "OnAir: software radio receiver (DVB-T2, DVB-T, ATSC, FM and many more modes) for HackRF and other SDRs";
 
-  # Untested on a real Nix machine, written from CMakeLists.txt; docs/NIXOS.md lists what is unverified.
+  # Built by the `nix` GitHub workflow; docs/NIXOS.md lists what is verified.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
@@ -12,18 +12,21 @@
       soapyFor = pkgs: builtins.filter (p: p != null) (map (n: pkgs.${n} or null) [
         "soapyrtlsdr" "soapyhackrf" "soapyairspy" "soapyremote"
       ]);
+      mkOnair = pkgs: server: pkgs.callPackage ./packaging/nix/package.nix {
+        src = self;
+        inherit server;
+        soapyModules = if server then [ ] else soapyFor pkgs;
+      };
     in
     {
+      overlays.default = final: _prev: {
+        onair = mkOnair final false;
+        onair-server = mkOnair final true;
+      };
+
       packages = forAll (system: pkgs: rec {
-        onair = pkgs.callPackage ./packaging/nix/package.nix {
-          src = self;
-          soapyModules = soapyFor pkgs;
-        };
-        onair-server = pkgs.callPackage ./packaging/nix/package.nix {
-          src = self;
-          server = true;
-          soapyModules = soapyFor pkgs;
-        };
+        onair = mkOnair pkgs false;
+        onair-server = mkOnair pkgs true;
         default = onair;
       });
 
@@ -41,6 +44,10 @@
         onair = import ./packaging/nix/module.nix { inherit self; };
         default = onair;
       };
+
+      checks = forAll (system: _pkgs: {
+        inherit (self.packages.${system}) onair onair-server;
+      });
 
       formatter = forAll (system: pkgs: pkgs.nixpkgs-fmt);
     };
