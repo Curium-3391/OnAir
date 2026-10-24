@@ -1,5 +1,5 @@
 # OnAir for Nix: the GUI (pname "onair") or the headless server (server = true, pname "onair-server").
-# Untested on a real Nix machine (written from CMakeLists.txt and cmake/OnairRust.cmake); see docs/NIXOS.md.
+# Verified only by the `nix` GitHub workflow (builds on x86_64-linux); see docs/NIXOS.md.
 {
   lib,
   stdenv,
@@ -18,10 +18,11 @@
   hamlib,
   # libraries OnAir loads with dlopen at run time (core/src/source/source_*.cpp, docs/CODECS.md): the wrapper puts them on LD_LIBRARY_PATH
   rtl-sdr,
-  airspy,
-  airspyhf,
-  bladeRF,
-  libiio,
+  # optional radio libraries: not every nixpkgs revision ships all of them (null = skipped)
+  airspy ? null,
+  airspyhf ? null,
+  libbladeRF ? null,
+  libiio ? null,
   alsa-lib,
   libpulseaudio,
   zenity,
@@ -34,25 +35,32 @@
 }:
 
 let
+  # the version comes from CMakeLists.txt: project(OnAir VERSION ...)
+  cmakeLines = lib.splitString "\n" (builtins.readFile (src + "/CMakeLists.txt"));
+  version = lib.head (
+    lib.findFirst (m: m != null) [ null ] (map (builtins.match "[[:space:]]*project\\(OnAir VERSION ([0-9.]+).*") cmakeLines)
+  );
+  optionalRuntimeLibs = lib.filter (x: x != null) [
+    airspy
+    airspyhf
+    libbladeRF
+    libiio
+  ];
   runtimeLibs = [
     hackrf
     libusb1
     rtl-sdr
-    airspy
-    airspyhf
-    bladeRF
-    libiio
     soapysdr
     hamlib
     alsa-lib
     libpulseaudio
     libGL
-  ] ++ extraRuntimeLibs;
+  ] ++ optionalRuntimeLibs ++ extraRuntimeLibs;
   prog = if server then "onair-server" else "onair";
 in
 stdenv.mkDerivation {
   pname = prog;
-  version = "3.0.0"; # CMakeLists.txt: project(OnAir VERSION ...)
+  inherit version;
   inherit src;
 
   nativeBuildInputs = [
@@ -120,7 +128,7 @@ stdenv.mkDerivation {
           install -m755 dect2 $out/bin/onair
           mkdir -p $out/lib/onair
           install -m755 onair-plugin-host $out/lib/onair/   # the program looks in ../lib/onair of its own folder
-          cp -r plugins $out/lib/onair/plugins
+          if [ -d plugins ]; then cp -r plugins $out/lib/onair/plugins; fi
           find . -maxdepth 2 -name 'libonair_codec2.so*' -exec cp -P {} $out/lib/onair/ \;
           install -Dm644 ../packaging/icons/onair.svg $out/share/icons/hicolor/scalable/apps/onair.svg
           install -Dm644 ../packaging/icons/onair_1024.png $out/share/icons/hicolor/1024x1024/apps/onair.png
