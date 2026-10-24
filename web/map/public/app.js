@@ -301,6 +301,26 @@ function easedHeading(t, hdg) {
   return t._dh;
 }
 
+/** The only way tracks reach the renderer. A setData while the previous one is still being tiled cancels those tile
+ * loads (they end up errored and their icons vanish until the next quiet moment), so rebuilds are coalesced:
+ * at most one in flight, the latest state is pushed as soon as it lands. */
+let liveBusy = false, liveDirty = false, liveBusyTimer = 0;
+function pushLive() {
+  const src = map.getSource("live");
+  if (!src) return;
+  if (liveBusy) { liveDirty = true; return; }
+  liveBusy = true;
+  clearTimeout(liveBusyTimer);
+  liveBusyTimer = setTimeout(liveIdle, 1500);   // safety: never stay blocked
+  src.setData(geojson());
+}
+function liveIdle() {
+  clearTimeout(liveBusyTimer);
+  liveBusy = false;
+  if (liveDirty) { liveDirty = false; pushLive(); }
+}
+map.on("sourcedata", (e) => { if (e.sourceId === "live" && liveBusy && map.isSourceLoaded("live")) liveIdle(); });
+
 function geojson() {
   const features = [];
   const theme = themeKey();
@@ -334,27 +354,21 @@ function geojson() {
   return { type: "FeatureCollection", features: clusterFeatures(features) };
 }
 
-/** Zoomed out with many tracks: dense cells become one counted bubble (clusters source), the rest stay single icons. */
+/** Zoomed out with many tracks: dense cells become one counted bubble, the rest stay single icons.
+ * Bubbles live in the SAME source as the icons (property cl=1), so one setData swaps both atomically: a separate
+ * clusters source was reloaded on every rebuild and its tiles kept ending up errored, so bubbles and icons flickered. */
 function clusterFeatures(features) {
-  const csrc = map.getSource("clusters");
   const zoom = map.getZoom();
-  if (!shouldCluster(features.length, zoom)) {
-    if (csrc && clusterState) { csrc.setData({ type: "FeatureCollection", features: [] }); clusterState = false; }
-    return features;
-  }
+  if (!shouldCluster(features.length, zoom)) return features;
   const pts = features.map((f) => ({ id: f.properties.id, kind: f.properties.kind, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
   const { clusters, singles } = clusterPoints(pts, zoom, { keep: (id) => id === selected });
   const keepIds = new Set(singles.map((p) => p.id));
-  if (csrc) {
-    csrc.setData({ type: "FeatureCollection", features: clusters.map((c) => ({
-      type: "Feature", properties: { n: c.n, label: c.n >= 1000 ? Math.round(c.n / 100) / 10 + "k" : String(c.n) },
-      geometry: { type: "Point", coordinates: [c.lon, c.lat] },
-    })) });
-    clusterState = true;
-  }
-  return features.filter((f) => keepIds.has(f.properties.id));
+  const bubbles = clusters.map((c) => ({
+    type: "Feature", properties: { cl: 1, n: c.n, label: c.n >= 1000 ? Math.round(c.n / 100) / 10 + "k" : String(c.n) },
+    geometry: { type: "Point", coordinates: [c.lon, c.lat] },
+  }));
+  return features.filter((f) => keepIds.has(f.properties.id)).concat(bubbles);
 }
-let clusterState = false;
 
 function trailGeo() {
   const g = trailGeoSelected();
@@ -627,8 +641,7 @@ function renderStats() {
 // ---------- apply / upsert ----------
 
 function apply() {
-  const src = map.getSource("live");
-  if (src) src.setData(geojson());
+  pushLive();
   const tr = map.getSource("trails");
   if (tr) tr.setData(trailGeo());
   renderLayers();
@@ -738,8 +751,7 @@ function selectTrack(t) {
   sheet.onOpen();
   setHash(t);
   applyListSel();
-  const src = map.getSource("live");
-  if (src) src.setData(geojson());
+  pushLive();
   const tr = map.getSource("trails");
   if (tr) tr.setData(trailGeo());
   if (window.matchMedia("(max-width: 860px)").matches) setRailOpen(false);
@@ -752,8 +764,7 @@ function clearSelection() {
   sheet.onClose();
   setHash(null);
   applyListSel();
-  const src = map.getSource("live");
-  if (src) src.setData(geojson());
+  pushLive();
   const tr = map.getSource("trails");
   if (tr) tr.setData(trailGeo());
 }
@@ -811,7 +822,6 @@ function toast(msg) {
 
 map.on("load", () => {
   map.addSource("trails", { type: "geojson", data: trailGeo() });
-  map.addSource("clusters", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addSource("live", { type: "geojson", data: geojson() });
   map.addLayer({
     id: "trail", type: "line", source: "trails",
@@ -838,7 +848,7 @@ map.on("load", () => {
   map.addLayer({ id: "dffix", type: "circle", source: "trails", filter: ["==", ["get", "kind"], "dffix"],
     paint: { "circle-radius": 7, "circle-color": "#ff5a5a", "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" } });
   map.addLayer({ id: "dffixlabel", type: "symbol", source: "trails", filter: ["==", ["get", "kind"], "dffix"],
-    layout: { "text-field": ["concat", "TX ", ["get", "label"]], "text-size": 12, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Open Sans Regular"] },
+    layout: { "text-field": ["concat", "TX ", ["get", "label"]], "text-size": 12, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"] },
     paint: { "text-color": "#ffd0d0", "text-halo-color": "#0b0c0d", "text-halo-width": 1.5 } });
   // selected state: soft glow plus a ring in the track's colour
   map.addLayer({
@@ -893,7 +903,7 @@ map.on("load", () => {
   const dark = themeKey() === "d";
   map.addLayer({
     id: "lab", type: "symbol", source: "live", minzoom: 7.5,
-    filter: ["all", ["!=", ["get", "label"], ""], ["==", ["to-number", ["get", "sel"]], 0], ["!=", ["get", "kind"], "gnss"]],
+    filter: ["all", ["!=", ["to-number", ["get", "cl"], 0], 1], ["!=", ["get", "label"], ""], ["==", ["to-number", ["get", "sel"]], 0], ["!=", ["get", "kind"], "gnss"]],
     layout: { ...labelLayout, "text-allow-overlap": false, "text-ignore-placement": false },
     paint: { "text-color": dark ? "#dfe2e5" : "#14181c", "text-halo-color": dark ? "#0b0c0d" : "#ffffff", "text-halo-width": 1.4, "text-opacity": 0.92 },
   });
@@ -904,7 +914,7 @@ map.on("load", () => {
     paint: { "text-color": dark ? "#ffffff" : "#000000", "text-halo-color": dark ? "#0b0c0d" : "#ffffff", "text-halo-width": 1.6 },
   });
   map.addLayer({
-    id: "clusterDot", type: "circle", source: "clusters",
+    id: "clusterDot", type: "circle", source: "live", filter: ["==", ["to-number", ["get", "cl"], 0], 1],
     paint: {
       "circle-radius": ["interpolate", ["linear"], ["get", "n"], 4, 13, 50, 20, 500, 30],
       "circle-color": themeKey() === "d" ? "#2a3a4c" : "#dce8f4",
@@ -912,14 +922,14 @@ map.on("load", () => {
     },
   });
   map.addLayer({
-    id: "clusterNum", type: "symbol", source: "clusters",
-    layout: { "text-field": ["get", "label"], "text-size": 12, "text-font": ["Open Sans Regular"], "text-allow-overlap": true },
+    id: "clusterNum", type: "symbol", source: "live", filter: ["==", ["to-number", ["get", "cl"], 0], 1],
+    layout: { "text-field": ["get", "label"], "text-size": 12, "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"], "text-allow-overlap": true },
     paint: { "text-color": themeKey() === "d" ? "#e4e6e8" : "#14181c" },
   });
   map.on("click", "clusterDot", (e) => {
     map.easeTo({ center: e.lngLat, zoom: Math.min(map.getZoom() + 2, 8), duration: REDUCED ? 0 : 400 });
   });
-  map.on("zoomend", () => { const src = map.getSource("live"); if (src) src.setData(geojson()); });
+  map.on("zoomend", () => { pushLive(); });
   map.on("mouseenter", "clusterDot", () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", "clusterDot", () => { map.getCanvas().style.cursor = ""; });
   initHam({ map, tracks: () => tracks, selectById: (id) => { const t = tracks.get(id); if (t) focusTrack(id); }, esc, REDUCED });
@@ -956,7 +966,7 @@ let lastZoomStep = null;
 map.on("zoom", () => {
   const z = Math.floor(map.getZoom());
   if (lastZoomStep === null) { lastZoomStep = z; return; }
-  if (z !== lastZoomStep) { lastZoomStep = z; const src = map.getSource("live"); if (src) src.setData(geojson()); }
+  if (z !== lastZoomStep) { lastZoomStep = z; pushLive(); }
 });
 
 // user panning cancels follow mode
@@ -1133,8 +1143,7 @@ let motionTimer = 0;
 let pulse = 0;
 function refreshMotion() {
   if (document.hidden) return;
-  const live = map.getSource("live");
-  if (live) live.setData(geojson());
+  pushLive();
   const tr = map.getSource("trails");
   if (tr && selected) tr.setData(trailGeo());
   if (selected && map.getLayer("halo") && !REDUCED) {
