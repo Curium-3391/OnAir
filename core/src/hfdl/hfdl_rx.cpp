@@ -42,8 +42,8 @@ constexpr double kChanEdgeHz = 4000;
 // integrator per channel on every input sample); up to 16 MHz that is what it always was and stays bit-identical, above it (32 MHz holds
 // about the whole 19 MHz station table) the cost grows 4 to 5 times and the analysis thread falls behind, so one filter bank does the
 // per-sample work once for all channels (cost ~ rate, whatever the number of channels).
-constexpr double kChanMinRate = 16.5e6;
-constexpr int kChanMinChans = 4;
+constexpr double kChanMinRate = 1.5e6;
+constexpr int kChanMinChans = 3;
 constexpr double kChanMaxBinHz = 64000;   // sub-band spacing B = rate / N, N a power of two: B in (32, 64] kHz; the sub-band rate is 2 B
 constexpr int kChanFold = 4;               // prototype length = kChanFold x N taps
 using cd = std::complex<double>;
@@ -348,7 +348,7 @@ struct HfdlReceiver::Impl {
         for (size_t i = 0; i < n1; i++) acc += k.mh[p0 + i] * mf[i];
         for (size_t i = n1; i < T; i++) acc += k.mh[i - n1] * mf[i];
         k.x.push_back(acc);
-        k.xa.push_back(std::abs(acc));
+        k.xa.push_back(std::sqrt(acc.real() * acc.real() + acc.imag() * acc.imag()));
         k.blkPow += std::norm(acc); k.blkN++;
         if (k.blkN >= 1800) {     // a quarter second: the noise floor follows the quiet blocks
             const double p = k.blkPow / k.blkN;
@@ -378,6 +378,21 @@ struct HfdlReceiver::Impl {
         }();
         return r;
     }
+    // The same references as coarseRefs(), laid out as [symbol][hypothesis lane] (re and im apart, kLanes lanes, the unused ones zero), so that
+    // the inner loop of coarse() runs over the hypotheses and vectorises: one broadcast sample against all the trial offsets at once.
+    static constexpr int kLanes = 16;
+    struct CoarseSoa { std::vector<float> re, im; };
+    static const CoarseSoa& coarseSoa() {
+        static const CoarseSoa t = [] {
+            CoarseSoa r;
+            r.re.assign((size_t)kSearchSyms * kLanes, 0.f); r.im.assign((size_t)kSearchSyms * kLanes, 0.f);
+            const auto& refs = coarseRefs();
+            for (size_t h = 0; h < refs.size(); h++)
+                for (int q = 0; q < kSearchSyms; q++) { r.re[(size_t)q * kLanes + h] = refs[h][(size_t)q].real(); r.im[(size_t)q * kLanes + h] = refs[h][(size_t)q].imag(); }
+            return r;
+        }();
+        return t;
+    }
     double coarse(const Chan& k, int64_t s) const {
         const int64_t i0 = s - k.xBase;   // whole samples: cubicAt() would only return x[i] here, at several times the cost
         if (i0 < 0 || i0 + (int64_t)(kSearchSyms - 1) * kSps >= (int64_t)k.x.size()) return 0;
@@ -386,18 +401,22 @@ struct HfdlReceiver::Impl {
         double sumA = 0;
         for (int q = 0; q < kSearchSyms; q++) sumA += pa[q * kSps];
         if (sumA <= 1e-6 * kSearchSyms) return 0;
-        double best = 0;
-        for (const auto& ref : coarseRefs()) {
-            double sumC = 0;
-            for (int c = 0; c < kSearchSyms / kChunk + 1; c++) {
-                cf32 acc(0, 0);
-                const int k0 = c * kChunk, k1 = std::min(kSearchSyms, k0 + kChunk);
-                for (int q = k0; q < k1; q++) acc += p[q * kSps] * ref[(size_t)q];
-                sumC += std::abs(acc);
+        const CoarseSoa& R = coarseSoa();
+        float sumC[kLanes] = {};
+        for (int c = 0; c < kSearchSyms / kChunk + 1; c++) {
+            float ar[kLanes] = {}, ai[kLanes] = {};
+            const int k0 = c * kChunk, k1 = std::min(kSearchSyms, k0 + kChunk);
+            for (int q = k0; q < k1; q++) {
+                const float pr = p[q * kSps].real(), pi = p[q * kSps].imag();
+                const float* rr = &R.re[(size_t)q * kLanes];
+                const float* ri = &R.im[(size_t)q * kLanes];
+                for (int h = 0; h < kLanes; h++) { ar[h] += pr * rr[h] - pi * ri[h]; ai[h] += pr * ri[h] + pi * rr[h]; }
             }
-            best = std::max(best, sumC);
+            for (int h = 0; h < kLanes; h++) sumC[h] += std::sqrt(ar[h] * ar[h] + ai[h] * ai[h]);
         }
-        return best / sumA;
+        float best = 0;
+        for (int h = 0; h < 2 * kCoarseHyp + 1; h++) best = std::max(best, sumC[h]);
+        return (double)best / sumA;
     }
 
     // y_k = ref_k * x(t0 + 4k), interpolated
