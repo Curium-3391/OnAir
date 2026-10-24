@@ -212,10 +212,12 @@ bool essDecode(uint8_t essB[16], const uint8_t essA[28], int& algId, int& keyId,
     algId = (essB[0] << 2) | (essB[1] >> 4);
     if (algId == 0) algId = kAlgClear;
     keyId = ((essB[1] & 0x0F) << 12) | (essB[2] << 6) | essB[3];
-    for (int j = 0, k = 0; k < 9; j += 4) {
-        mi[k++] = (uint8_t)((essB[j + 4] << 2) | (essB[j + 5] >> 4));
-        mi[k++] = (uint8_t)(((essB[j + 5] & 0x0F) << 4) | (essB[j + 6] >> 2));
-        mi[k++] = (uint8_t)(((essB[j + 6] & 0x03) << 6) | essB[j + 7]);
+    for (int g = 0; g < 3; g++) {   // the MI: hexbits 4..15 (four per group) -> bytes 0..8 (three per group)
+        const uint8_t* h = essB + 4 + 4 * g;
+        uint8_t* m = mi + 3 * g;
+        m[0] = (uint8_t)((h[0] << 2) | (h[1] >> 4));
+        m[1] = (uint8_t)(((h[1] & 0x0F) << 4) | (h[2] >> 2));
+        m[2] = (uint8_t)(((h[2] & 0x03) << 6) | h[3]);
     }
     return true;
 }

@@ -15,14 +15,17 @@ int main() {
         const int n = D * 40;
         std::vector<std::complex<double>> x((size_t)n);
         for (auto& v : x) v = {nd(rng), nd(rng)};
-        // reference: the cascade of three length-D moving sums, from zero
-        auto ref = [&](int end) {   // output after sample end (exclusive), three nested boxcars
-            std::complex<double> s = 0;
-            for (int a = 0; a < D; a++)
-                for (int b = 0; b < D; b++)
-                    for (int c = 0; c < D && D <= 8; c++) { const int i = end - 1 - a - b - c; if (i >= 0) s += x[(size_t)i]; }
-            return s;
+        // reference: the cascade of three length-D moving sums from zero, in O(n) (the input quantised to the decimator's 2^-20 step first, so
+        // the two agree to rounding); s3[i] is the decimator's output after sample i
+        std::vector<std::complex<double>> s1((size_t)n), s2((size_t)n), s3((size_t)n);
+        auto mov = [&](const std::vector<std::complex<double>>& in, std::vector<std::complex<double>>& out) {
+            std::complex<double> acc = 0;
+            for (int i = 0; i < n; i++) { acc += in[(size_t)i]; if (i >= D) acc -= in[(size_t)(i - D)]; out[(size_t)i] = acc; }
         };
+        std::vector<std::complex<double>> xq((size_t)n);
+        for (int i = 0; i < n; i++) xq[(size_t)i] = {std::trunc(x[(size_t)i].real() * Cic3::kScale) / Cic3::kScale, std::trunc(x[(size_t)i].imag() * Cic3::kScale) / Cic3::kScale};
+        mov(xq, s1); mov(s1, s2); mov(s2, s3);
+        auto ref = [&](int end) { return s3[(size_t)(end - 1)]; };
         Cic3 fresh, aged;
         for (int k = 0; k < 3; k++) {   // integrators far past 64 bits of history: arbitrary wrapped states
             aged.ir[k] = rng(); aged.ii[k] = rng(); aged.cr[k] = rng(); aged.ci[k] = rng();
@@ -35,10 +38,10 @@ int main() {
             if ((i + 1) % D) continue;
             const std::complex<double> a = fresh.comb(), b = aged.comb();
             if (++outs > 3) worst = std::max(worst, std::abs(a - b));   // after the combs have flushed the old states
-            if (D <= 8 && i + 1 >= 3 * D) worstRef = std::max(worstRef, std::abs(a - ref(i + 1)) / (double)(D * D * D));
+            worstRef = std::max(worstRef, std::abs(a - ref(i + 1)) / ((double)D * D * D));   // from the first output: both start from zero
         }
         CHECK(worst == 0, "D %d: aged integrators differ from fresh ones by %g", D, worst);
-        if (D <= 8) CHECK(worstRef < 1e-5, "D %d: differs from the moving sums by %g", D, worstRef);
+        CHECK(worstRef < 1e-9, "D %d: differs from the moving sums by %g (of the mean)", D, worstRef);
         printf("D %d: aged vs fresh %g, vs reference %g\n", D, worst, worstRef);
     }
     // NaN and huge inputs do not break it

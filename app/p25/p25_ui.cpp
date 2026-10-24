@@ -311,7 +311,8 @@ void trunkTick(App& a) {
         }
     }
     T.ctl.tick(now);
-    // a Phase 2 call: seed the receiver with the site's WACN / system / NAC (the descrambler) and pick the slot
+    // a Phase 2 call: seed the receiver with the site's WACN / system / NAC (the descrambler) and pick the slot. a.engine.p25p2() is the receiver
+    // either way: the engine runs a second mode on the idle receiver of that mode (Engine::setSecondary), and a hop makes it the first mode.
     auto p2Start = [&](const Action& ac) {
         const SiteInfo& si = T.ctl.sys.site();
         dect2::P25p2Receiver& r = a.engine.p25p2();
