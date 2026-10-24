@@ -256,24 +256,29 @@ DECT2_SIMD_BODY void demapAxesBody(const PlpFec& f, const cf32* cells, const flo
     if (f.rotation) { const double a = kRotDeg[f.mod] * M_PI / 180.0; cr = (float)std::cos(a); sr = (float)std::sin(a); }
     for (int s0 = 0; s0 < nCells; s0 += B) {
         const int cnt = std::min(B, nCells - s0);
-        float yI[B], yQ[B], w[B];
+        float yI[B], yQ[B], wI[B], wQ[B];
         for (int l = 0; l < B; l++) {
             const int s = s0 + (l < cnt ? l : 0);
-            float nv;
+            float nvI, nvQ;
             if (f.rotation) {
                 const int s1 = s + 1 < nCells ? s + 1 : 0;
                 // derotate the (I from this cell, Q from the next cell) observation back onto the unrotated grid
                 const float aI = cells[s].real(), aQ = cells[s1].imag();
                 yI[l] = aI * cr + aQ * sr;
                 yQ[l] = aQ * cr - aI * sr;
-                nv = 0.5f * (n0[s] + n0[s1]);
-            } else { yI[l] = cells[s].real(); yQ[l] = cells[s].imag(); nv = n0[s]; }
-            w[l] = 1.f / std::max(1e-9f, 2 * nv);
+                // the two axes of the derotated observation have different noise when the two cells it is made of do (a faded carrier next to a
+                // good one): I = cr aI + sr aQ, Q = cr aQ - sr aI
+                nvI = cr * cr * n0[s] + sr * sr * n0[s1];
+                nvQ = cr * cr * n0[s1] + sr * sr * n0[s];
+            } else { yI[l] = cells[s].real(); yQ[l] = cells[s].imag(); nvI = nvQ = n0[s]; }
+            wI[l] = 1.f / std::max(1e-9f, 2 * nvI);
+            wQ[l] = 1.f / std::max(1e-9f, 2 * nvQ);
         }
         float outR[NB][B], outI[NB][B];
         for (int axis = 0; axis < 2; axis++) {
             const float* y = axis ? yQ : yI;
             const float* lev = axis ? levI : levR;
+            const float* w = axis ? wQ : wI;
             // The smallest distance per bit and bit value as a tree: the levels whose indices differ only in the lowest bit are merged
             // (min) after that bit's two minima are taken, then the next bit, ... (36 minimum operations for 16 levels instead of 64). The
             // minimum of a set does not depend on the order it is taken in, and the final min with 1e30 keeps what the running minimum
