@@ -125,21 +125,35 @@ bool AdsbTracker::tryCorrect(AdsbRaw& raw, int len, uint32_t, double now) {
             if (fits(t, df, icao)) { std::memcpy(raw.bytes, t, 14); raw.bits = L; return true; }
         }
         if (opt_.fixBits >= 2) {
-            // the eight least certain bits: 28 pairs, each tested against the remainder
+            // the least certain bits (the slicer's confidence per bit): every pair among the 16 least certain, every triple among the 12 least certain.
+            // The remainder of the damaged frame is the XOR of the single-bit syndromes of the flipped positions, so each combination is one XOR and a
+            // compare; the address (known, unless fixUnknown) and the format still have to fit, which keeps the false repairs out.
             int idx[112];
             std::iota(idx, idx + L, 0);
-            const int K = 8;
+            const int K = 16;
             std::partial_sort(idx, idx + K, idx + L, [&](int a, int b) { return raw.conf[a] < raw.conf[b]; });
-            uint32_t syn[8];
+            uint32_t syn[K];
             for (int k = 0; k < K; k++) syn[k] = singleBitSyndrome(L, idx[k]);
-            for (int a = 0; a < K; a++) for (int b = a + 1; b < K; b++) {
-                if ((syn[a] ^ syn[b]) != rem) continue;
+            auto tryFlip = [&](int n, const int* sel) {
                 uint8_t t[14];
                 std::memcpy(t, raw.bytes, 14);
-                t[idx[a] >> 3] ^= (uint8_t)(0x80 >> (idx[a] & 7));
-                t[idx[b] >> 3] ^= (uint8_t)(0x80 >> (idx[b] & 7));
+                for (int i = 0; i < n; i++) t[idx[sel[i]] >> 3] ^= (uint8_t)(0x80 >> (idx[sel[i]] & 7));
                 int df; uint32_t icao;
                 if (fits(t, df, icao)) { std::memcpy(raw.bytes, t, 14); raw.bits = L; return true; }
+                return false;
+            };
+            for (int a = 0; a < K; a++) for (int b = a + 1; b < K; b++) {
+                if ((syn[a] ^ syn[b]) != rem) continue;
+                const int sel[2] = {a, b};
+                if (tryFlip(2, sel)) return true;
+            }
+            for (int a = 0; a < 12; a++) for (int b = a + 1; b < 12; b++) {
+                const uint32_t ab = syn[a] ^ syn[b] ^ rem;
+                for (int c = b + 1; c < 12; c++) {
+                    if (syn[c] != ab) continue;
+                    const int sel[3] = {a, b, c};
+                    if (tryFlip(3, sel)) return true;
+                }
             }
         }
     }

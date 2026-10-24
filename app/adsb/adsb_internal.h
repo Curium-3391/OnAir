@@ -28,7 +28,7 @@ struct State {
     double refAltM = 0;                         // its height above sea level (metres): the pass planner's look angles
     double pushedLat = 1e9, pushedLon = 1e9;
     uint32_t sel = 0xFFFFFFFFu;                 // the selected aircraft (ICAO address)
-    int correction = 1;
+    int correction = 2;
     std::deque<float> rate, snr;                // good messages per second and SNR, a point per report
     uint64_t lastSeq = 0;
     int viewMode = 0;                           // 0 map, 1 table, 2 radar
