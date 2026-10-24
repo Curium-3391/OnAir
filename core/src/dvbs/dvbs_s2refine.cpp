@@ -5,6 +5,9 @@
 #include <cmath>
 #include <map>
 #include <mutex>
+#if defined(__SSE2__) && !defined(DECT2_NO_SIMD)
+#include <emmintrin.h>
+#endif
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -62,6 +65,32 @@ inline float ftanhf(float x) {
     const float t = (1.f - e) / (1.f + e);
     return x < 0 ? -t : t;
 }
+
+// e[i] = fexpNeg(w[i]) for n a multiple of 4: the same operations in the same order, four at a time, so the values are bit for bit those of fexpNeg
+inline void fexpNegN(const float* w, float* e, int n) {
+#if defined(__SSE2__) && !defined(DECT2_NO_SIMD)
+    const __m128 lo = _mm_set1_ps(-60.f), l2e = _mm_set1_ps(1.44269504f), one = _mm_set1_ps(1.f);
+    const __m128 c1 = _mm_set1_ps(0.69314718f), c2 = _mm_set1_ps(0.24022651f), c3 = _mm_set1_ps(0.05550411f), c4 = _mm_set1_ps(0.00961813f);
+    for (int i = 0; i < n; i += 4) {
+        const __m128 x = _mm_max_ps(_mm_loadu_ps(w + i), lo);
+        const __m128 t = _mm_mul_ps(x, l2e);
+        const __m128i tr = _mm_cvttps_epi32(t);
+        const __m128 trf = _mm_cvtepi32_ps(tr);
+        const __m128 gt = _mm_cmpgt_ps(trf, t);                      // truncation went up (t < 0): floor is one less
+        const __m128 fi = _mm_sub_ps(trf, _mm_and_ps(gt, one));
+        const __m128i fii = _mm_add_epi32(tr, _mm_castps_si128(gt));
+        const __m128 f = _mm_sub_ps(t, fi);
+        __m128 pp = _mm_add_ps(c3, _mm_mul_ps(f, c4));
+        pp = _mm_add_ps(c2, _mm_mul_ps(f, pp));
+        pp = _mm_add_ps(c1, _mm_mul_ps(f, pp));
+        pp = _mm_add_ps(one, _mm_mul_ps(f, pp));
+        const __m128 u = _mm_castsi128_ps(_mm_slli_epi32(_mm_add_epi32(fii, _mm_set1_epi32(127)), 23));
+        _mm_storeu_ps(e + i, _mm_mul_ps(pp, u));
+    }
+#else
+    for (int i = 0; i < n; i++) e[i] = fexpNeg(w[i]);
+#endif
+}
 } // namespace
 
 float s2RefinePhase(cf32* x, int n, int mod, int rate, float sigma2, int W, const std::vector<PhaseMark>& marks, int iterations) {
@@ -96,11 +125,15 @@ float s2RefinePhase(cf32* x, int n, int mod, int rate, float sigma2, int W, cons
                     const float e = fexpNeg(-(d2 - d1) * 0.5f * invS), iw = 1.f / (1.f + e);
                     er = (c[i1].real() + e * c[i2].real()) * iw; ei = (c[i1].imag() + e * c[i2].imag()) * iw;
                 } else {
-                    float w[32], mx = -1e30f;
+                    float w[32], ev[32], mx = -1e30f;
                     const float h = 0.5f * invS;
                     for (int i = 0; i < P; i++) { const float a = xr - c[i].real(), bb = xi - c[i].imag(); w[i] = -(a * a + bb * bb) * h; mx = std::max(mx, w[i]); }
+                    const int Pv = (P + 3) & ~3;
+                    for (int i = 0; i < P; i++) w[i] -= mx;
+                    for (int i = P; i < Pv; i++) w[i] = -60.f;
+                    fexpNegN(w, ev, Pv);
                     float sw = 0, sr = 0, si = 0;
-                    for (int i = 0; i < P; i++) { const float e = fexpNeg(w[i] - mx); sw += e; sr += e * c[i].real(); si += e * c[i].imag(); }
+                    for (int i = 0; i < P; i++) { const float e = ev[i]; sw += e; sr += e * c[i].real(); si += e * c[i].imag(); }
                     er = sr / sw; ei = si / sw;
                 }
                 ar += xr * er + xi * ei;           // x conj(E)

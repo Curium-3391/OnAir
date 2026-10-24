@@ -1,6 +1,7 @@
 // DVB-S/S2 receiver signal path, see dvbs_dsp.h.
 #include "dvbs_dsp.h"
 #include "dvbs_simd.h"
+#include "dect2/dsp/simd.h"
 #include "dect2/dvbs/dvbs_gen.h"     // rrcAt
 #include <algorithm>
 #include <cmath>
@@ -248,6 +249,9 @@ void SymbolTimer::process(SplitBuf& in, std::vector<cf32>& out) {
     out.resize(outBase + (size_t)std::max(0.0, (lim - t_) / 1.5) + 2);
     cf32* o = out.data() + outBase;
     size_t made = 0;
+#if defined(DVBS_AVX2_DOT)
+    const bool avx2 = cpuHasAvx2() && (taps & 7) == 0;
+#endif
     double corrPrev = corr_;                 // the correction from the previous symbol's error is applied with a delay of one symbol, which
     float invPow = invPower_, gain = gain_;  // lets the filter outputs of consecutive symbols be computed without waiting for each other
     while (t_ < lim) {
@@ -259,6 +263,9 @@ void SymbolTimer::process(SplitBuf& in, std::vector<cf32>& out) {
         const float* h = &bank_[(size_t)p * taps];
         const long s0 = ii - m_ + 1;
         float dv[4];
+#if defined(DVBS_AVX2_DOT)
+        if (avx2) dot4Avx2(h, xr + s0, xi + s0, xr + s0 - 1, xi + s0 - 1, taps, dv); else
+#endif
         dot4(h, xr + s0, xi + s0, xr + s0 - 1, xi + s0 - 1, taps, dv);
         const float yr = dv[0], yi = dv[1], mr = dv[2], mi = dv[3];
         // the next timing instant, from the correction known so far

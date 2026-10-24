@@ -10,8 +10,32 @@
 #define DVBS_SSE2 1
 #endif
 
+#if defined(__x86_64__) && defined(__GNUC__) && !defined(DECT2_NO_SIMD) && defined(DVBS_SSE2)
+#include <immintrin.h>
+#define DVBS_AVX2_DOT 1
+#endif
+
 namespace dect2 {
 namespace dvbs {
+
+#if defined(DVBS_AVX2_DOT)
+// dot4 with eight lanes (n a multiple of 8), compiled for AVX2 without FMA; the sums associate differently from the 4 lane version (last-bit differences only)
+__attribute__((target("avx2"))) inline void dot4Avx2(const float* h, const float* a0, const float* a1, const float* a2, const float* a3, int n, float* out) {
+    __m256 s0 = _mm256_setzero_ps(), s1 = s0, s2 = s0, s3 = s0;
+    for (int i = 0; i < n; i += 8) {
+        const __m256 hv = _mm256_loadu_ps(h + i);
+        s0 = _mm256_add_ps(s0, _mm256_mul_ps(hv, _mm256_loadu_ps(a0 + i)));
+        s1 = _mm256_add_ps(s1, _mm256_mul_ps(hv, _mm256_loadu_ps(a1 + i)));
+        s2 = _mm256_add_ps(s2, _mm256_mul_ps(hv, _mm256_loadu_ps(a2 + i)));
+        s3 = _mm256_add_ps(s3, _mm256_mul_ps(hv, _mm256_loadu_ps(a3 + i)));
+    }
+    // horizontal sums of the four accumulators at once
+    const __m256 t01 = _mm256_hadd_ps(s0, s1), t23 = _mm256_hadd_ps(s2, s3);
+    const __m256 u = _mm256_hadd_ps(t01, t23);                      // per 128-bit half: s0 s1 s2 s3 partial sums
+    const __m128 r = _mm_add_ps(_mm256_castps256_ps128(u), _mm256_extractf128_ps(u, 1));
+    _mm_storeu_ps(out, r);
+}
+#endif
 
 // out[k] = sum_i h[i] * a[k][i], k < 4
 inline void dot4(const float* h, const float* a0, const float* a1, const float* a2, const float* a3, int n, float* out) {

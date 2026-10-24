@@ -1,5 +1,6 @@
 // DVB-S2 and DVB-S2X building blocks, see dvbs_s2.h. Clause numbers refer to ETSI EN 302 307 V1.3.1 unless they name EN 302 307-2 (V1.2.1).
 #include "dect2/dvbs/dvbs_s2.h"
+#include "dect2/dsp/simd.h"
 #include "dvbs_ldpc_tables.h"
 #include "dvbs_s2x.h"
 #include "dvbs_s2x_tables.h"
@@ -395,7 +396,7 @@ namespace {
 // one-symbol-at-a-time loop it replaced, so the same values (a minimum does not depend on the order), at a fraction of the cost: 32APSK was the
 // largest part of a DVB-S2 receiver.
 template <int M>
-void demapApsk(const cf32* sym, int n, const float* cr, const float* ci, float w, float* llr) {
+inline __attribute__((always_inline)) void demapApskBody(const cf32* sym, int n, const float* cr, const float* ci, float w, float* llr) {
     constexpr int P = 1 << M, B = 8;
     for (int i0 = 0; i0 < n; i0 += B) {
         const int cnt = std::min(B, n - i0);
@@ -413,6 +414,19 @@ void demapApsk(const cf32* sym, int n, const float* cr, const float* ci, float w
         }
         for (int l = 0; l < cnt; l++) for (int b = 0; b < M; b++) llr[(size_t)(i0 + l) * M + b] = (m1[b][l] - m0[b][l]) * w;
     }
+}
+
+#if defined(DECT2_X86_DISPATCH)
+// the same body compiled for AVX2 without FMA (a fused multiply-add would round a * a + b * b differently): eight lanes in one register, same values
+template <int M>
+__attribute__((target("avx2"))) void demapApskAvx2(const cf32* sym, int n, const float* cr, const float* ci, float w, float* llr) { demapApskBody<M>(sym, n, cr, ci, w, llr); }
+#endif
+template <int M>
+void demapApsk(const cf32* sym, int n, const float* cr, const float* ci, float w, float* llr) {
+#if defined(DECT2_X86_DISPATCH)
+    if (::dect2::cpuHasAvx2()) { demapApskAvx2<M>(sym, n, cr, ci, w, llr); return; }
+#endif
+    demapApskBody<M>(sym, n, cr, ci, w, llr);
 }
 } // namespace
 
