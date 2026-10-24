@@ -63,6 +63,9 @@ stdenv.mkDerivation {
   inherit version;
   inherit src;
 
+  # Nix adds -Werror=format-security; the UI code has printf-style calls with non-literal formats (app/dtmb/dtmb_ui.cpp, app/dmr/dmr_ui.cpp, ...)
+  hardeningDisable = [ "format" ];
+
   nativeBuildInputs = [
     cmake
     pkg-config
