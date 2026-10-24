@@ -3,6 +3,7 @@
 #include "dect2/zwave/zwave_proto.h"
 #include "dect2/zwave/zwave_tel.h"
 #include "dect2/common/mathconst.h"
+#include "dect2/dsp/gen_util.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -19,6 +20,7 @@ namespace {
 
 constexpr double kChanRate = 400e3;     // the rate of every channel stream, about
 constexpr double kMaxBurstSec = 0.25;
+constexpr int kTab = 256, kChunk = 4096;
 
 struct Decoded { zwave::Frame f; int rate = 0; bool ok = false; bool sawSof = false; };
 
@@ -86,12 +88,14 @@ struct Group {
     double mhz = 0;
     int mask = 0;                     // bit r: rate r decoded here
     std::vector<size_t> chanIdx[4];   // telemetry channels per rate
-    cf32 rot{1, 0}, step{1, 0};
+    cf32 step{1, 0};
+    std::complex<double> rotD{1, 0}, stepB{1, 0};   // the mixer: phasor at the start of the next sample, and one table step
+    double w = 0;
+    std::vector<cf32> tab;                           // exp(j w k), k < kTab
+    std::vector<float> mre, mim;                     // N - 1 mixed samples of history, then the block
     int D = 1;
     double chanRate = kChanRate;
     std::vector<float> taps;
-    std::vector<cf32> ring;
-    size_t rpos = 0;
     int dcount = 0;
     // burst detector
     float pe = 0, nz = 0;
@@ -180,7 +184,12 @@ struct ZwaveReceiver::Impl {
                 sum += s * win;
             }
             for (auto& t : g.taps) t = (float)(t / sum);
-            g.ring.assign((size_t)N, cf32(0, 0));
+            g.tab.resize(kTab);
+            for (int k = 0; k < kTab; k++) g.tab[(size_t)k] = cf32((float)std::cos(w * k), (float)std::sin(w * k));
+            g.w = w;
+            g.stepB = std::polar(1.0, w * kTab);
+            g.rotD = std::complex<double>(1, 0);
+            g.mre.assign((size_t)N - 1 + kChunk, 0.f); g.mim.assign((size_t)N - 1 + kChunk, 0.f);
             g.hist.assign(512, cf32(0, 0));
         }
         resetReq = false;
@@ -281,16 +290,30 @@ struct ZwaveReceiver::Impl {
 
     void feedGroup(Group& g, const cf32* x, size_t n) {
         const size_t N = g.taps.size();
-        for (size_t i = 0; i < n; i++) {
-            g.rot *= g.step;
-            if ((i & 1023) == 1023) g.rot /= std::abs(g.rot);
-            g.ring[g.rpos] = x[i] * g.rot;
-            g.rpos = g.rpos + 1 == N ? 0 : g.rpos + 1;
-            if (++g.dcount < g.D) continue;
-            g.dcount = 0;
-            float re = 0, im = 0;
-            size_t k = g.rpos;   // oldest sample
-            for (size_t t = 0; t < N; t++) { const cf32 v = g.ring[k]; re += v.real() * g.taps[t]; im += v.imag() * g.taps[t]; k = k + 1 == N ? 0 : k + 1; }
+        while (n > 0) {
+            // the block mixed to the channel (a table of one 256 sample run times the phasor of the run: no per-sample recurrence), after the N - 1 samples of history
+            const size_t m = std::min(n, (size_t)kChunk);
+            float* mr = g.mre.data() + (N - 1);
+            float* mi = g.mim.data() + (N - 1);
+            for (size_t i0 = 0; i0 < m; i0 += kTab) {
+                const float br = (float)g.rotD.real(), bi = (float)g.rotD.imag();
+                const size_t e = std::min(m, i0 + (size_t)kTab);
+                const cf32* tb = g.tab.data();
+                for (size_t i = i0; i < e; i++) {
+                    const float tr = tb[i - i0].real(), ti = tb[i - i0].imag();
+                    const float pr = br * tr - bi * ti, pi = br * ti + bi * tr;
+                    const float xr = x[i].real(), xi = x[i].imag();
+                    mr[i] = xr * pr - xi * pi; mi[i] = xr * pi + xi * pr;
+                }
+                g.rotD *= (e - i0 == (size_t)kTab) ? g.stepB : std::polar(1.0, g.w * (double)(e - i0));
+            }
+            g.rotD /= std::abs(g.rotD);
+            for (size_t i = 0; i < m; i++) {
+                if (++g.dcount < g.D) continue;
+                g.dcount = 0;
+                float o[2];
+                genutil::dot2(g.taps.data(), g.mre.data() + i, g.mim.data() + i, (int)N, o);
+                const float re = o[0], im = o[1];
             const cf32 y(re, im);
             const float p = re * re + im * im;
             g.pe += 0.2f * (p - g.pe);
@@ -315,6 +338,10 @@ struct ZwaveReceiver::Impl {
                     g.cur.clear();
                 }
             }
+            }
+            std::copy(g.mre.begin() + (long)m, g.mre.begin() + (long)(m + N - 1), g.mre.begin());
+            std::copy(g.mim.begin() + (long)m, g.mim.begin() + (long)(m + N - 1), g.mim.begin());
+            x += m; n -= m;
         }
     }
 };
