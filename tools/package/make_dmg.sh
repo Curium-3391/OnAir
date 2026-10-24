@@ -103,6 +103,11 @@ for f in "$APP"/Contents/Frameworks/*.dylib "$APP"/Contents/Frameworks/SoapySDR/
   if [ -L "$f" ] || [ ! -f "$f" ]; then continue; fi
   codesign --force -s - "$f" || echo "warning: could not sign $f"
 done
+# the second program (onair-server) and any other helper in MacOS/ must be signed before the app, or the app signature stops with "code object is not signed at all"
+for f in "$APP"/Contents/MacOS/*; do
+  if [ -L "$f" ] || [ ! -f "$f" ] || [ "$(basename "$f")" = "OnAir" ]; then continue; fi
+  codesign --force -s - "$f" || echo "warning: could not sign $f"
+done
 # no --deep: every library and module inside is signed above, and a folder name with an extension (SoapySDR "modules0.8") is read as a malformed bundle, hence "modules"
 codesign --force -s - "$APP" || { echo "Signing the app failed"; codesign -dvvv "$APP" 2>&1 | head -20; exit 1; }
 STAGE=$BUILD/dmg
