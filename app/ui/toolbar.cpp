@@ -445,6 +445,15 @@ void bbfWidget(App& a, const char* key) {
 } // namespace
 void bbfSyncPrefs() { bbfSyncImpl(); }
 
+// The running radio's dial: its centre less the mode's tuneOffsetHz (as radioCenterMhz adds it). The receiver mixes the tune offset out
+// after the decode shift, so a shift counts from the dial: a narrow mode decodes at dial + shift, not at the radio's centre + shift
+static double radioDialHz(const App& a) {
+    const ModeTuning* mt = a.family >= 6 ? modeTuning(a.family + 2) : nullptr;
+    const bool noOff = !a.devices.empty() && a.devIdx >= 0 && a.devIdx < (int)a.devices.size() &&
+                       (a.devices[a.devIdx].kind == DeviceInfo::File || a.devices[a.devIdx].isAudio() || a.devices[a.devIdx].kind == DeviceInfo::Hamlib);
+    return a.engine.captureCentreHz() - (mt && !noOff ? mt->tuneOffsetHz : 0.0);
+}
+
 void toolbarParts(App& a, int mask, bool vertical) {
     bool running = a.engine.running();
     bool retune = false;
@@ -488,7 +497,7 @@ void toolbarParts(App& a, int mask, bool vertical) {
         fileSetVfo(a, a.freqMhz);
         a.peak.clear();
     } else if (retune && running) {
-        const tunedrag::TunerRetune rt = tunedrag::tunerRetune(a.tune.centerHz, a.engine.captureCentreHz(), a.engine.decodeShiftHz(), a.freqMhz * 1e6);
+        const tunedrag::TunerRetune rt = tunedrag::tunerRetune(a.tune.centerHz, radioDialHz(a), a.engine.decodeShiftHz(), a.freqMhz * 1e6);
         if (rt.clearShift) a.engine.setDecodeShiftHz(0);   // a new frequency: the radio goes there, the old click shift no longer applies
         const bool moved = std::fabs(a.tune.centerHz - rt.dialHz) > 1;
         a.tune.centerHz = rt.dialHz;
@@ -516,7 +525,7 @@ void tuneDecode(App& a, double absMhz) {
         return;
     }
     a.freqMhz = dialMhzFromAbs(a, absMhz);
-    if (a.engine.running()) a.engine.setDecodeShiftHz(absMhz * 1e6 - a.engine.captureCentreHz());
+    if (a.engine.running()) a.engine.setDecodeShiftHz(absMhz * 1e6 - radioDialHz(a));
     savePrefsSoon(a);
 }
 

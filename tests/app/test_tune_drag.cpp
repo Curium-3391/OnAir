@@ -50,7 +50,8 @@ int main() {
     check(t.dialHz == 222.064e6 && t.clearShift, "the radio centre typed in: no shift any more");
     t = tunerRetune(100e6, 100e6, 0, 101e6);
     check(t.dialHz == 101e6 && !t.clearShift, "no shift: the radio follows the frequency");
-    t = tunerRetune(100e6, 100.2e6, -0.1e6, 100.1e6);
-    check(t.dialHz == 100e6 && !t.clearShift, "a mode tune offset: the decoded frequency counts from the capture centre");
+    // P25 (50 kHz tune offset): the radio centre is 100.05 MHz, but the receiver mixes the offset out after the shift, so 100.1 is dial + 0.1
+    t = tunerRetune(100e6, 100e6, 0.1e6, 100.1e6);
+    check(t.dialHz == 100e6 && !t.clearShift, "a mode tune offset: the decoded frequency counts from the radio's dial, not its centre");
     return fails ? 1 : 0;
 }
