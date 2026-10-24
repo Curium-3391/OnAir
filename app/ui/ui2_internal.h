@@ -3,6 +3,7 @@
 // Included by ui2.cpp, ui2_theme.cpp, ui2_widgets.cpp, ui2_shell.cpp and ui2_faces.cpp only.
 #pragma once
 #include "touch.h"
+#include "kit/kit.h"
 #include "../app.h"
 #include "typography.h"
 #include "imgui_internal.h"   // RenderArrow for the folding mode groups

@@ -313,9 +313,19 @@ void sidebar(App& a) {
 }
 
 // height of the labelled cells of the status strip: caption row + value row + padding (follows the text size)
-float statusStripBlockHeight() {
+// The real line heights of the two sizes (measured with the fonts pushed, so a high-DPI font whose line is taller than its size still fits).
+struct StripLines { float cap, val; };
+static StripLines stripLines() {
     const float fs = ImGui::GetFontSize();
-    return std::max(ImGui::GetFrameHeight(), fs * 0.78f + fs * 1.3f + 8 * gUi);
+    StripLines l;
+    ImGui::PushFont(nullptr, fs * 0.78f); l.cap = std::max(fs * 0.78f, ImGui::GetTextLineHeight()); ImGui::PopFont();
+    ImFont* f = typo::fonts().monoBold ? typo::fonts().monoBold : nullptr;
+    ImGui::PushFont(f, fs * 1.3f); l.val = std::max(fs * 1.3f, ImGui::GetTextLineHeight()); ImGui::PopFont();
+    return l;
+}
+float statusStripBlockHeight() {
+    const StripLines l = stripLines();
+    return std::max(ImGui::GetFrameHeight(), l.cap + l.val + 8 * gUi);   // 3 above the caption, 2 between, 3 below the value
 }
 
 // the status strip: labelled cells (frequency, mode, receiver, state, CPU level, mute), then the rate / level / load / log fields separated by rules
@@ -368,7 +378,8 @@ void statusLine(App& a) {
         limit = stripR - w.mute - gap;
         ImDrawList* dl2 = ImGui::GetWindowDrawList();
         float x = stripX0;
-        const float capY = stripY0 + 3 * gUi, valY = capY + capS + 2 * gUi, valH = valS;
+        const StripLines sl2 = stripLines();
+        const float capY = stripY0 + 3 * gUi, valY = capY + sl2.cap + 2 * gUi, valH = sl2.val, lhRatio = sl2.val / valS;
         const auto box = [&](float cw, float& cx) { const ImVec2 a0(cx, stripY0), b0(cx + cw, stripY0 + blockH);
             dl2->AddRectFilled(a0, b0, u32(T.bg), rnd); dl2->AddRect(a0, b0, u32(T.edge), rnd, 0, 1.f); return a0; };
         const auto caption = [&](float cx, const std::string& s) {
@@ -382,7 +393,7 @@ void statusLine(App& a) {
             ImGui::PushFont(f, sz); dl2->AddText(ImVec2(cx + (cw - tw) * 0.5f, vy), col, s.c_str()); ImGui::PopFont();
         };
         const float rowY = pl.captions ? valY : stripY0 + (blockH - valH) * 0.5f;
-        const auto rowYFor = [&](float sz) { return rowY + (valH - sz) * 0.5f; };
+        const auto rowYFor = [&](float sz) { return rowY + (valH - sz * lhRatio) * 0.5f; };
         {   // FREQUENCY: first three digits in the accent, the rest bright, MHz small and dim
             const float cw = pl.captions ? w.freq.cap : w.freq.bare;
             const ImVec2 o = box(cw, x);
@@ -797,14 +808,9 @@ void topBar(App& a, ImVec2 disp) {
 }
 
 void bottomBar(App& a, ImVec2 disp) {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, kRail);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10 * gUi, 4 * gUi));
-    ImGui::BeginChild("##statusbar", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::PopStyleVar();
-    ImGui::GetWindowDrawList()->AddLine(ImGui::GetWindowPos(), ImVec2(ImGui::GetWindowPos().x + disp.x, ImGui::GetWindowPos().y), u32(kEdge));
+    kit::statusBarBegin(disp.x);
     statusLine(a);
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    kit::statusBarEnd();
 }
 
 void tgRect(App& a, int id) { a.tgMin[id] = ImGui::GetWindowPos(); a.tgMax[id] = ImVec2(a.tgMin[id].x + ImGui::GetWindowSize().x, a.tgMin[id].y + ImGui::GetWindowSize().y); }

@@ -21,17 +21,9 @@ void bodyParent(App& a, float bodyH, ImVec2 disp) {
     ImGui::BeginChild("##side", ImVec2(sideW, bodyH), ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::PopStyleVar();
     if (rail) {
-        const float bs = 22 * gUi;
         auto iconBtn = [&](const char* id, Ic ic, const char* tip, bool on) {
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 1 * gUi);
-            const ImVec2 p = ImGui::GetCursorScreenPos();
-            const bool hit = ImGui::InvisibleButton(id, ImVec2(bs, bs));
-            const bool hov = ImGui::IsItemHovered();
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            if (hov) dl->AddRectFilled(p, ImVec2(p.x + bs, p.y + bs), ImGui::GetColorU32(ImGuiCol_ButtonHovered));
-            icons::draw(ic, ImVec2(p.x + bs * 0.5f, p.y + bs * 0.5f), bs * 0.62f, on ? u32(kAccent) : u32(hov ? kBright : kDim), dl);
-            if (hov) ImGui::SetTooltip("%s", tr(tip));
-            return hit;
+            return kit::iconButton(id, ic, tr(tip), on);
         };
         if (iconBtn("##railExpand", Ic::Right, "Show the controls panel", false)) { a.sideCollapsed = false; savePrefs(a); }
         const bool run = a.engine.running();
@@ -239,6 +231,7 @@ void drawShell2(App& a, ImVec2 disp) {
             if (!spaceTaken && ImGui::IsKeyPressed(ImGuiKey_Space, false)) { if (a.engine.running()) a.engine.stop(); else startReceiver(a); }
         }
     }
+    if (a.kitGallery) { kit::gallery(a, disp); return; }
     const float menuH = menuBar(a);
     {   // the waterfall range is set automatically once, two seconds after the receiver starts
         static bool wasRunning = false, done = false;

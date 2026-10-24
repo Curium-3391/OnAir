@@ -47,24 +47,17 @@ template <class F> static void unifiedCentre(App& a, F tabs) {
     if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F6, false)) { st.col = !st.col; changed = true; }
 
     // ---- the header: a tool-window title bar with a fold arrow and a 1 px rule under it
-    const float hh = std::floor(ImGui::GetTextLineHeight() + 5 * gUi);
+    const float hh = std::floor(kit::px(kit::tokens().headerH));
     const ImVec2 h0 = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##uniHead", ImVec2(avail.x, hh));
-    if (ImGui::IsItemClicked(0)) { st.col = !st.col; changed = true; }
-    if (ImGui::IsItemHovered()) { ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); ImGui::SetTooltip("%s", tr(st.col ? "Show the spectrum and waterfall (F6)" : "Fold the spectrum and waterfall to a strip (F6)")); }
     {
-        const float cy = h0.y + hh * 0.5f, ax = h0.x + 8 * gUi, r = 3.5f * gUi;
-        if (st.col) dl->AddTriangleFilled(ImVec2(ax - r * 0.6f, cy - r), ImVec2(ax - r * 0.6f, cy + r), ImVec2(ax + r, cy), dim);
-        else dl->AddTriangleFilled(ImVec2(ax - r, cy - r * 0.6f), ImVec2(ax + r, cy - r * 0.6f), ImVec2(ax, cy + r), dim);
         char t[160];
-        snprintf(t, sizeof t, "SPECTRUM  %.4f MHz", radioCenterMhz(a));
-        const float ty = h0.y + (hh - ImGui::GetTextLineHeight()) * 0.5f;
-        dl->AddText(ImVec2(h0.x + 18 * gUi, ty), txt, t);
-        if (!a.engine.running()) dl->AddText(ImVec2(h0.x + 18 * gUi + ImGui::CalcTextSize(t).x + 12 * gUi, ty), dim, "stopped");
-        dl->AddLine(ImVec2(h0.x, h0.y + hh - 1), ImVec2(h0.x + avail.x, h0.y + hh - 1), edge, 1.f);
+        snprintf(t, sizeof t, "SPECTRUM  %.4f MHz%s", radioCenterMhz(a), a.engine.running() ? "" : "  stopped");
+        bool open = !st.col;
+        if (kit::panelHeader(t, &open)) { st.col = !open; changed = true; }
+        kit::tooltip(tr(st.col ? "Show the spectrum and waterfall" : "Fold the spectrum and waterfall to a strip"), "F6");
     }
-    ImGui::SameLine(0, 0);   // the placement toggle at the right end of the header
-    {
+    ImGui::SameLine(0, 0);   // the placement toggle at the right end of the header (not when the title would run into it)
+    if (avail.x > 330 * gUi) {
         const char* lab = side ? "[left]" : "[top]";
         const float w = ImGui::CalcTextSize(lab).x + 10 * gUi;
         const ImVec2 b0(h0.x + avail.x - w - 4 * gUi, h0.y);

@@ -4,6 +4,7 @@
 #pragma once
 #include "imgui.h"
 #include "theme.h"
+#include "kit/kit.h"
 #include <algorithm>
 #include <string>
 
@@ -23,6 +24,7 @@ inline int gSectionTopFrame = -1;
 inline void subHeading(const char* text) {
     const bool first = gSectionTopFrame == ImGui::GetFrameCount() && std::fabs(ImGui::GetCursorPosY() - gSectionTopY) < 1.f;
     if (!first) ImGui::Dummy(ImVec2(0, 2 * gUi));
+    if (pal::dev()) { kit::sectionHeader(text); return; }
     ImGui::AlignTextToFramePadding();
     const ImVec2 p = ImGui::GetCursorScreenPos();
     ImGui::TextDisabled("%s", text);

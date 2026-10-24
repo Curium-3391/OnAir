@@ -57,6 +57,7 @@ void loadTheme(int n) {
         T.flair = true;
     }
     for (int k = 0; k < 5; k++) pal::tones()[k] = T.tone[k];
+    kit::syncTokens();
 }
 
 }  // namespace ui2

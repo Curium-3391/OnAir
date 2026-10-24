@@ -5,6 +5,7 @@
 #include <unistd.h>
 #endif
 #include "app.h"
+#include "ui/kit/kit.h"
 #include "adsb/adsb_map.h"
 #include "ui/contrast.h"
 #include "dect2/source/iq_file.h"
@@ -118,7 +119,7 @@ static void mainTabsInner(App& a, bool unified) {
     // their whole names instead of being cut short or scrolled out of view
     gTightTabs = ImGui::GetContentRegionAvail().x < 760 * gUi;
     if (gTightTabs) ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(3 * gUi, ImGui::GetStyle().FramePadding.y));
-    const bool bar = ImGui::BeginTabBar("tabs", pal::dev() ? ImGuiTabBarFlags_DrawSelectedOverline : 0);
+    const bool bar = pal::dev() ? kit::beginTabs("tabs") : ImGui::BeginTabBar("tabs", 0);
     if (gTightTabs) ImGui::PopStyleVar();
     if (bar) {
         if (!unified && tabItem(N_("Overview"), Ic::Grid)) { adsbmap::FullScope fs(&a, [&a]{ overviewTab(a); }); overviewTab(a); ImGui::EndTabItem(); }
