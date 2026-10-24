@@ -45,6 +45,10 @@ bool loadFonts(ImGuiIO& io, void (*merge)(ImGuiIO&, ImFont*)) {
     return true;
 }
 
+ImFont* loadEmbeddedMono(ImGuiIO& io, float size, void (*merge)(ImGuiIO&, ImFont*)) {
+    return add(io, 3, kFont_JetBrainsMono_Regular, sizeof kFont_JetBrainsMono_Regular, size, merge);
+}
+
 void applyStyle(ImGuiStyle& st) {
     if (!on()) return;
     const bool c = variant() == Compact;
