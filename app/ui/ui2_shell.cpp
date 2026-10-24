@@ -30,6 +30,7 @@ void clearAllButtonAt(App& a, bool sameLine);   // update_ui.cpp: Clear all, wit
 using namespace ui2;
 
 namespace ui2 {
+ImVec2 gViewMenuCentre;   // where the View menu is in the menu bar (the dev --viewmenu shot clicks it)
 
 // two lines about what is being received, in the top bar: the station or ensemble, the state and the main numbers
 void summaryText(App& a, std::string& l1, std::string& l2) {
@@ -510,7 +511,23 @@ const char* kVariantNames[8] = {N_("Sidebar"), N_("Scope"), N_("Tiles"), N_("Fac
 static void viewMenu(App& a) {
     const float vx0 = ImGui::GetCursorScreenPos().x, vy0 = ImGui::GetWindowPos().y, vy1 = vy0 + ImGui::GetWindowHeight();
     struct Mark { float x0, y0, y1; ~Mark() { tourMark("view", ImVec2(x0, y0), ImVec2(ImGui::GetCursorScreenPos().x, y1)); } } mark{vx0, vy0, vy1};   // the tour points at the View menu
+    gViewMenuCentre = ImVec2(ImGui::GetCursorScreenPos().x + ImGui::CalcTextSize(tr("View")).x * 0.5f + 6 * gUi, ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight() * 0.5f);
     if (ImGui::BeginMenu(tr("View"))) {
+        if (ImGui::BeginMenu(tr("Layout"))) {   // both switches act at once, the receiver keeps running; the same two values as Settings > Display
+            if (ImGui::MenuItem(tr("Classic"), "Ctrl+Shift+L", !a.layoutUnified)) { a.layoutUnified = false; savePrefs(a); }
+            if (ImGui::MenuItem(tr("Unified"), "Ctrl+Shift+L", a.layoutUnified)) { a.layoutUnified = true; savePrefs(a); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Try the new layout: the spectrum and waterfall stay on screen above the decoded views"));
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(tr("Look"))) {
+            const int cur = a.uiTheme == 3 ? 1 : a.uiTheme == 4 ? 2 : 0;
+            if (ImGui::MenuItem(tr("Classic"), nullptr, cur == 0)) { if (cur != 0) a.uiTheme = 1; savePrefs(a); }
+            if (ImGui::MenuItem(tr("Dev A"), nullptr, cur == 1)) { a.uiTheme = 3; savePrefs(a); }
+            if (ImGui::MenuItem(tr("Dev B"), nullptr, cur == 2)) { a.uiTheme = 4; savePrefs(a); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Try the new look: flat, dense, one accent colour"));
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
         for (int v = 0; v < 8; v++) if (ImGui::MenuItem(tr(kVariantNames[v]), nullptr, a.uiVariant == v)) { a.uiVariant = v; savePrefs(a); }
         ImGui::Separator();
         if (ImGui::BeginMenu(tr("Text size"))) {

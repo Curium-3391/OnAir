@@ -129,6 +129,7 @@ static void mainTabsInner(App& a, bool unified) {
             if (mu->receiver && tabItem(N_("Receiver"), Ic::Antenna)) { adsbmap::FullScope fs(&a, [&a]{ receiverTab(a); }); receiverTab(a); ImGui::EndTabItem(); }
             if (mu->stream && tabItem(N_("Stream"), Ic::Layers)) { adsbmap::FullScope fs(&a, [&a]{ streamTab(a); }); streamTab(a); ImGui::EndTabItem(); }
             if (mu->scan && tabItem(N_("Scan"), Ic::Scan)) { adsbmap::FullScope fs(&a, [&a]{ scanTab(a); }); scanTab(a); ImGui::EndTabItem(); }
+            if (unified && (!mu->panels ? false : true) && tabItem(N_("Analysis"), Ic::Pulse)) { adsbmap::FullScope fs(&a, [&a]{ constellationsTab(a); }); constellationsTab(a); ImGui::EndTabItem(); }
             if (tabItem(N_("History"), Ic::Chart)) { adsbmap::FullScope fs(&a, [&a]{ historyLogTab(a); }); historyLogTab(a); ImGui::EndTabItem(); }
             memoryTabItem(a); freqdbTabItem(a);
             secondModeTabs(a);
@@ -147,6 +148,7 @@ static void mainTabsInner(App& a, bool unified) {
         if (!a.dabMode && !a.fmMode && tabItem(N_("Stream"), Ic::Layers)) { adsbmap::FullScope fs(&a, [&a]{ streamTab(a); }); streamTab(a); ImGui::EndTabItem(); }
         if (tabItem(N_("Scan"), Ic::Scan)) { adsbmap::FullScope fs(&a, [&a]{ scanTab(a); }); scanTab(a); ImGui::EndTabItem(); }
         if (!a.fmMode && tabItem(N_("Antenna"), Ic::Compass)) { adsbmap::FullScope fs(&a, [&a]{ antennaTab(a); }); antennaTab(a); ImGui::EndTabItem(); }
+        if (unified && !a.atsc3Mode && tabItem(N_("Analysis"), Ic::Pulse)) { adsbmap::FullScope fs(&a, [&a]{ constellationsTab(a); }); constellationsTab(a); ImGui::EndTabItem(); }
         if (tabItem(N_("History"), Ic::Chart)) { adsbmap::FullScope fs(&a, [&a]{ historyLogTab(a); }); historyLogTab(a); ImGui::EndTabItem(); }
         memoryTabItem(a); freqdbTabItem(a);
         secondModeTabs(a);

@@ -5,6 +5,7 @@
 #include "map/pos_predict.h"
 #include "adsb_acars.h"
 #include "trail_draw.h"
+#include "ui/kit/kit.h"
 #include "gfx/render_caps.h"
 
 using namespace adsbui;
@@ -281,34 +282,57 @@ static void drawAircraft(ImDrawList* dl, const AdsbTelemetry& t, ImVec2 p0, ImVe
 static void mapCorner(App& a, ImVec2 p0, ImVec2 size, bool wrongRef, double areaLat, double areaLon, double nearest) {
     // controls in the corner
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 8 * gUi, p0.y + 8 * gUi));
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
-    if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
-    ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
-    ImGui::SameLine(0, 6 * gUi);
-    if (ImGui::Button("antenna")) { S.map.lat = S.refLat; S.map.lon = S.refLon; S.mapHome = true; }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Centre the map on the antenna");
-    ImGui::SameLine(0, 2 * gUi);
-    if (ImGui::Button("position")) ImGui::OpenPopup("##adsbpos");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set where the antenna is: for ranges, the radar rings and decoding positions locally. You can also right-click the map.");
-    ImGui::SameLine(0, 6 * gUi);
-    if (adsbmap::fullButton(S.full, "map")) S.full = !S.full;
-    ImGui::PopStyleColor();
-    ImGui::SameLine(0, 6 * gUi);
-    unitsControls();
-    ImGui::SameLine(0, 6 * gUi);
-    displayControls();
-    ImGui::SameLine(0, 6 * gUi);
-    if (ImGui::Checkbox("winds aloft", &S.winds)) { plat::prefs().setB("adsbWinds", S.winds); plat::prefs().flush(); }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Wind arrows (downwind) at the aircraft, coloured by altitude: derived from Comm-B 5,0 + 6,0 replies, or reported in 4,4.");
-    ImGui::SameLine(0, 6 * gUi);
-    if (ImGui::Checkbox("GPS interference", &S.jamLayer)) { plat::prefs().setB("adsbGpsJam", S.jamLayer); plat::prefs().flush(); }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Shades 0.5 degree squares by the share of aircraft that reported a poor GPS position (NACp / NIC low, or a position jump) in the last hour; at least 3 aircraft per square. An indicator, not proof of jamming.");
-    ImGui::SameLine(0, 6 * gUi);
-    gPred.load("adsb", true, false);
-    gPred.controls();
-    ImGui::SameLine(0, 6 * gUi);
-    adsbmap::tileControls(nullptr, false);
+    kit::FlowAuto flow(p0.x + 8 * gUi, p0.x + size.x - 8 * gUi, 6 * gUi);
+    flow.item("zoom", [&] {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
+        if (ImGui::Button("+", ImVec2(26 * gUi, 0))) S.map.zoom = std::min(adsbmap::kMaxZoom, S.map.zoom + 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom in"));
+        ImGui::SameLine(0, 2 * gUi);
+        if (ImGui::Button("-", ImVec2(26 * gUi, 0))) S.map.zoom = std::max(adsbmap::kMinZoom, S.map.zoom - 1); if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Zoom out"));
+        ImGui::PopStyleColor();
+    });
+    flow.item("antpos", [&] {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
+        if (ImGui::Button("antenna")) { S.map.lat = S.refLat; S.map.lon = S.refLon; S.mapHome = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Centre the map on the antenna");
+        ImGui::SameLine(0, 2 * gUi);
+        if (ImGui::Button("position")) ImGui::OpenPopup("##adsbpos");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set where the antenna is: for ranges, the radar rings and decoding positions locally. You can also right-click the map.");
+        ImGui::PopStyleColor();
+    });
+    flow.item("full", [&] {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
+        if (adsbmap::fullButton(S.full, "map")) S.full = !S.full;
+        ImGui::PopStyleColor();
+    });
+    const bool small = size.y < 330 * gUi;   // a short map (the Unified layout gives the height to the spectrum): the options go behind one button
+    if (small) {
+        flow.item("more", [&] {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.07f, 0.08f, 0.85f));
+            if (ImGui::Button("options")) ImGui::OpenPopup("##mapopts");
+            ImGui::PopStyleColor();
+        });
+        if (ImGui::BeginPopup("##mapopts")) {
+            unitsControls();
+            displayControls();
+            if (ImGui::Checkbox("winds aloft", &S.winds)) { plat::prefs().setB("adsbWinds", S.winds); plat::prefs().flush(); }
+            if (ImGui::Checkbox("GPS interference", &S.jamLayer)) { plat::prefs().setB("adsbGpsJam", S.jamLayer); plat::prefs().flush(); }
+            gPred.load("adsb", true, false); gPred.controls();
+            adsbmap::tileControls(nullptr, false);
+            ImGui::EndPopup();
+        }
+    }
+    if (!small) flow.item("units", [&] { unitsControls(); });
+    if (!small) flow.item("display", [&] { displayControls(); });
+    if (!small) flow.item("winds", [&] {
+        if (ImGui::Checkbox("winds aloft", &S.winds)) { plat::prefs().setB("adsbWinds", S.winds); plat::prefs().flush(); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Wind arrows (downwind) at the aircraft, coloured by altitude: derived from Comm-B 5,0 + 6,0 replies, or reported in 4,4.");
+    });
+    if (!small) flow.item("jam", [&] {
+        if (ImGui::Checkbox("GPS interference", &S.jamLayer)) { plat::prefs().setB("adsbGpsJam", S.jamLayer); plat::prefs().flush(); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Shades 0.5 degree squares by the share of aircraft that reported a poor GPS position (NACp / NIC low, or a position jump) in the last hour; at least 3 aircraft per square. An indicator, not proof of jamming.");
+    });
+    if (!small) flow.item("pred", [&] { gPred.load("adsb", true, false); gPred.controls(); });
+    if (!small) flow.item("tiles", [&] { adsbmap::tileControls(nullptr, false); });
     if (wrongRef) {
         ImGui::SetCursorScreenPos(ImVec2(p0.x + 8 * gUi, p0.y + 38 * gUi));
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.18f, 0.14f, 0.04f, 0.92f));

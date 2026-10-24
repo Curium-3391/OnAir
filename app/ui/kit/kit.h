@@ -8,6 +8,7 @@
 #include "../theme.h"
 #include "../icons.h"
 #include <string>
+#include <map>
 struct App;
 
 namespace kit {
@@ -48,6 +49,30 @@ void statusBarEnd();
 void tooltip(const char* text, const char* keyHint = nullptr);   // after an item: shown on hover with an optional "[F6]" hint
 
 void gallery(App& a, ImVec2 disp);                // kit_gallery.cpp: every component on one page (--kitgallery)
+
+// a flow row of composite items (each item may draw several widgets): the width of every item is remembered from the last frame, so an
+// item that would pass the right edge starts the next line. Nothing is clipped at any width.
+class FlowAuto {
+public:
+    FlowAuto(float x0, float rightEdge, float gap) : x0_(x0), right_(rightEdge), gap_(gap) {}
+    template <class F> void item(const char* id, F&& draw) {
+        float& w = widths()[ImGui::GetID(id)];
+        if (!first_) {
+            if (lastRight_ + gap_ + w > right_) { ImGui::SetCursorScreenPos(ImVec2(x0_, lineBottom_ + gap_)); lineBottom_ = 0; }
+            else ImGui::SameLine(0, gap_);
+        }
+        const float sx = ImGui::GetCursorScreenPos().x;
+        draw();
+        lastRight_ = ImGui::GetItemRectMax().x;
+        lineBottom_ = std::max(lineBottom_, ImGui::GetItemRectMax().y);
+        w = lastRight_ - sx;
+        first_ = false;
+    }
+private:
+    static std::map<ImGuiID, float>& widths() { static std::map<ImGuiID, float> m; return m; }
+    float x0_, right_, gap_, lastRight_ = 0, lineBottom_ = 0;
+    bool first_ = true;
+};
 
 // ---- meters
 void meter(float frac, float width, float warnAt = 0.8f, float errorAt = 0.95f);   // a level bar: ok colour, then warn, then error

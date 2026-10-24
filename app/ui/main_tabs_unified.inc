@@ -7,7 +7,7 @@
 
 namespace {
 
-struct UniSt { float top = 0.48f, side = 0.5f; bool col = false; };
+struct UniSt { float top = 0.58f, side = 0.5f; bool col = false; };
 
 std::map<int, UniSt>& uniMap(App& a) {
     static std::map<int, UniSt> m;
@@ -17,8 +17,8 @@ std::map<int, UniSt>& uniMap(App& a) {
         std::stringstream ss(a.uniSplit);
         std::string item;
         while (std::getline(ss, item, ';')) {
-            int fam = 0, c = 0; float t = 0.48f, s = 0.5f;
-            if (sscanf(item.c_str(), "%d=%f,%f,%d", &fam, &t, &s, &c) == 4) m[fam] = UniSt{std::fabs(t - 0.38f) < 0.002f ? 0.48f : std::min(0.7f, std::max(0.15f, t)), std::min(0.8f, std::max(0.25f, s)), c != 0};
+            int fam = 0, c = 0; float t = 0.58f, s = 0.5f;
+            if (sscanf(item.c_str(), "%d=%f,%f,%d", &fam, &t, &s, &c) == 4) m[fam] = UniSt{(std::fabs(t - 0.38f) < 0.002f || std::fabs(t - 0.48f) < 0.002f) ? 0.58f : std::min(0.7f, std::max(0.15f, t)), std::min(0.8f, std::max(0.25f, s)), c != 0};
         }
     }
     return m;
@@ -87,7 +87,7 @@ template <class F> static void unifiedCentre(App& a, F tabs) {
         const float m = vertical ? std::floor((p0.x + p1.x) * 0.5f) : std::floor((p0.y + p1.y) * 0.5f);
         const ImU32 col = (hov || act) ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered) : edge;
         if (vertical) dl->AddLine(ImVec2(m, p0.y), ImVec2(m, p1.y), col, 1.f); else dl->AddLine(ImVec2(p0.x, m), ImVec2(p1.x, m), col, 1.f);
-        if (hov && ImGui::IsMouseDoubleClicked(0)) { share = vertical ? 0.5f : 0.48f; changed = true; }
+        if (hov && ImGui::IsMouseDoubleClicked(0)) { share = vertical ? 0.5f : 0.58f; changed = true; }
         else if (act && ImGui::IsMouseDragging(0, 0)) {
             const float d = vertical ? io.MouseDelta.x : io.MouseDelta.y;
             if (d != 0) { share = std::min(hi, std::max(lo, share + d / std::max(1.f, total))); changed = true; }
@@ -101,7 +101,7 @@ template <class F> static void unifiedCentre(App& a, F tabs) {
         ImGui::PopStyleVar();
         ImGui::EndChild();
     } else if (!side) {
-        const float specH = std::floor(std::min(std::max(rest.y * st.top, std::min(280 * gUi, rest.y * 0.45f)), std::max(200.f * gUi, rest.y - gap - 150 * gUi)));   // 280 px least: spectrum and waterfall together
+        const float specH = std::floor(std::min(std::max(rest.y * st.top, std::min(440 * gUi, rest.y * 0.68f)), std::max(200.f * gUi, rest.y - gap - 150 * gUi)));   // 280 px least: spectrum and waterfall together
         drawSpec(ImVec2(0, specH));
         splitBar(false, rest.x, rest.y, st.top, 0.15f, 0.7f);
         ImGui::BeginChild("##uniTabs", ImVec2(0, 0), 0);
