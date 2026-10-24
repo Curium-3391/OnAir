@@ -89,3 +89,13 @@ test("consent: nothing before a choice, always is remembered, decline is not", (
   assert.equal(readChoice(broken), null);
   saveChoice(broken, "always");
 });
+
+import { searchUsers, byMatches } from "../public/search.js";
+test("user search: prefix, case-insensitive, counts icons; byMatches filters", () => {
+  const ts = [{ id: "a", by: "Anna" }, { id: "b", by: "anna" }, { id: "c", by: "Annabel" }, { id: "d" }, { id: "e", by: "Ben" }];
+  assert.deepEqual(searchUsers(ts, "ANNA").map((u) => [u.name.toLowerCase(), u.n]), [["anna", 2], ["annabel", 1]]);
+  assert.deepEqual(searchUsers(ts, "a"), []);
+  assert.equal(ts.filter((t) => byMatches(t, "anna")).length, 3);
+  assert.equal(ts.filter((t) => byMatches(t, "anna", false)).length, 2);
+  assert.equal(byMatches({ id: "x" }, "anna"), false);
+});
