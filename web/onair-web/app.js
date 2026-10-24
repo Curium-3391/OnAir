@@ -362,6 +362,7 @@
   async function fetchInfo() {
     try {
       const r = await fetch("/web/v1/info", { cache: "no-store" });
+      if (r.status === 404) S.notServer = true;   // a plain web host (no OnAir receiver behind this address)
       if (!r.ok) throw new Error(String(r.status));
       S.info = await r.json(); renderInfo(); return S.info;
     } catch (e) { return null; }
@@ -668,6 +669,7 @@
     const h = new URLSearchParams(location.hash.replace(/^#/, ""));
     if (h.get("invite")) { S.invite = h.get("invite").slice(0, 128); try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* ignore */ } }
     fetchInfo().then((info) => {
+      if (S.notServer) { setConn("no receiver", "dim"); banner("There is no OnAir receiver behind this address. OnAir Web is served by a receiver you run yourself: start onair-server with --web --web-lan (see docs/ONAIR-WEB.md), then open http://<that computer>:8073 from a browser on your network. Nothing is received on this page."); return; }
       if (info && authNeeded()) { showLogin(true); setConn("sign in", "warn"); } else connect();
     });
   }
