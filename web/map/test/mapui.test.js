@@ -97,3 +97,13 @@ test("cluster cells are stable within a zoom level", () => {
   const a = clusterPoints(pts, 3.1), b = clusterPoints(pts, 3.8);
   assert.deepEqual(a.clusters, b.clusters);
 });
+
+import { searchUsers, byMatches } from "../public/search.js";
+test("user search: prefix, case-insensitive, counts icons; byMatches filters", () => {
+  const ts = [{ id: "a", by: "Anna" }, { id: "b", by: "anna" }, { id: "c", by: "Annabel" }, { id: "d" }, { id: "e", by: "Ben" }];
+  assert.deepEqual(searchUsers(ts, "ANNA").map((u) => [u.name.toLowerCase(), u.n]), [["anna", 2], ["annabel", 1]]);
+  assert.deepEqual(searchUsers(ts, "a"), []);
+  assert.equal(ts.filter((t) => byMatches(t, "anna")).length, 3);
+  assert.equal(ts.filter((t) => byMatches(t, "anna", false)).length, 2);
+  assert.equal(byMatches({ id: "x" }, "anna"), false);
+});

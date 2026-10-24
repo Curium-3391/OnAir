@@ -13,7 +13,7 @@ import { watchMapTheme, themeKey, onThemeChange } from "./theme.js";
 import { mergeTrails, appendLive, toLine } from "./trail.js";
 import { cellsToGeo, LEVEL_COLOURS } from "./jamlayer.js";
 import { clusterPoints, shouldCluster } from "./cluster.js";
-import { searchTracks as rankTracks } from "./search.js";
+import { searchTracks as rankTracks, searchUsers, byMatches } from "./search.js";
 import { initConsent, photoAllowed } from "./consent-ui.js";
 import { initHam } from "./ham-ui.js";
 
@@ -44,6 +44,7 @@ const KINDS = [
 const on = Object.fromEntries(KINDS.map((k) => [k.id, true]));
 const kindOf = Object.fromEntries(KINDS.map((k) => [k.id, k]));
 let tracks = new Map();
+let byFilter = "";   // lower-case user name while the map shows only that user's icons ("" = everyone)
 let selected = null;
 let liveOk = false;
 let everLive = false;
@@ -326,6 +327,7 @@ function geojson() {
   const theme = themeKey();
   for (const t of tracks.values()) {
     if (!on[t.kind] || t.kind === "doa" || t.kind === "fix") continue;   // drawn by the DF layers
+    if (byFilter && !byMatches(t, byFilter)) continue;
     const hdg = effectiveHeading(t);
     const dot = datalinkDotUntilHeading(t, hdg);
     const shape = shapeFor(t);
@@ -561,6 +563,7 @@ function visibleTracks() {
   const out = [];
   for (const t of tracks.values()) {
     if (!on[t.kind]) continue;
+    if (byFilter && !byMatches(t, byFilter)) continue;
     if (q && !matchText(t, q)) continue;
     out.push(t);
   }
@@ -1009,15 +1012,22 @@ function searchTracks(q) { return rankTracks(tracks.values(), q, 8); }
 
 function renderResults() {
   const q = qEl.value;
-  resItems = searchTracks(q);
+  const users = searchUsers(tracks.values(), q, 3);
+  resItems = [...users.map((u) => ({ user: u })), ...searchTracks(q).map((t) => ({ t }))];
   resIdx = resItems.length ? 0 : -1;
   if (q.trim().length < 2) { resEl.hidden = true; qEl.setAttribute("aria-expanded", "false"); return; }
   resEl.hidden = false;
   qEl.setAttribute("aria-expanded", "true");
-  resEl.innerHTML = resItems.length
-    ? resItems.map((t, i) => `<li role="option" id="res${i}" data-id="${esc(t.id)}" aria-selected="${i === 0}"><img alt="" src="${miniUrl(shapeFor(t), colorOf(t.kind, t))}" width="18" height="18"><b>${esc(t.label || t.id)}</b><span>${esc(cap(t.kind) + (t.sub ? " · " + t.sub : ""))}</span></li>`).join("")
-    : `<li class="none">No match on the map right now</li>`;
+  let html = "";
+  resItems.forEach((it, i) => {
+    if (it.user && i === 0) html += `<li class="hd" role="presentation">Users</li>`;
+    if (it.t && (i === 0 || resItems[i - 1].user)) html += users.length ? `<li class="hd" role="presentation">Tracks</li>` : "";
+    if (it.user) html += `<li role="option" id="res${i}" data-user="${esc(it.user.name)}" aria-selected="${i === 0}"><span></span><b>${esc(it.user.name)}</b><span>${it.user.n} icon${it.user.n === 1 ? "" : "s"}</span></li>`;
+    else { const t = it.t; html += `<li role="option" id="res${i}" data-id="${esc(t.id)}" aria-selected="${i === 0}"><img alt="" src="${miniUrl(shapeFor(t), colorOf(t.kind, t))}" width="18" height="18"><b>${esc(t.label || t.id)}</b><span>${esc(cap(t.kind) + (t.sub ? " · " + t.sub : ""))}</span></li>`; }
+  });
+  resEl.innerHTML = html || `<li class="none">No match on the map right now</li>`;
   for (const li of resEl.querySelectorAll("li[data-id]")) li.onmousedown = (e) => { e.preventDefault(); pickResult(li.dataset.id); };
+  for (const li of resEl.querySelectorAll("li[data-user]")) li.onmousedown = (e) => { e.preventDefault(); pickUser(li.dataset.user); };
 }
 
 function pickResult(id) {
@@ -1027,10 +1037,36 @@ function pickResult(id) {
   focusTrack(id);
 }
 
+const byChip = $("byChip");
+
+/** Show only the icons last heard by this user and fit the map to them; the chip puts everyone back. */
+function pickUser(name) {
+  resEl.hidden = true;
+  qEl.setAttribute("aria-expanded", "false");
+  qEl.blur();
+  setByFilter(String(name).toLowerCase(), name);
+}
+
+function setByFilter(key, shown) {
+  byFilter = key;
+  if (key) {
+    byChip.textContent = "Showing only " + shown + " \u00b7 show everyone \u2715";
+    byChip.hidden = false;
+    const pts = [...tracks.values()].filter((t) => byMatches(t, key));
+    if (pts.length) {
+      let w = 180, s = 90, e = -180, n = -90;
+      for (const t of pts) { const [lo, la] = displayLonLat(t); w = Math.min(w, lo); e = Math.max(e, lo); s = Math.min(s, la); n = Math.max(n, la); }
+      map.fitBounds([[w, s], [e, n]], { padding: { top: 90, bottom: 140, left: 40, right: 40 }, maxZoom: 8, duration: REDUCED ? 0 : 500 });
+    } else toast("No icons from that user are on the map right now.");
+  } else byChip.hidden = true;
+  apply();
+}
+byChip.onclick = () => setByFilter("", "");
+
 function moveResult(d) {
   if (!resItems.length) return;
   resIdx = (resIdx + d + resItems.length) % resItems.length;
-  [...resEl.children].forEach((li, i) => li.setAttribute("aria-selected", String(i === resIdx)));
+  [...resEl.querySelectorAll("li[role=option]")].forEach((li, i) => li.setAttribute("aria-selected", String(i === resIdx)));
   qEl.setAttribute("aria-activedescendant", "res" + resIdx);
 }
 
@@ -1046,8 +1082,10 @@ qEl.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowUp") { e.preventDefault(); moveResult(-1); }
   else if (e.key === "Enter") {
     if (!resItems.length) renderResults();
-    const t = resItems[Math.max(0, resIdx)];
-    if (t) pickResult(t.id); else toast("No match on the map right now.");
+    const it = resItems[Math.max(0, resIdx)];
+    if (it && it.user) pickUser(it.user.name);
+    else if (it) pickResult(it.t.id);
+    else toast("No match on the map right now.");
   } else if (e.key === "Escape") {
     if (qEl.value) { qEl.value = ""; query = ""; renderResults(); renderListSoon(); }
     else qEl.blur();
@@ -1061,6 +1099,7 @@ document.addEventListener("keydown", (e) => {
   const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "");
   if (e.key === "/" && !inField && !e.metaKey && !e.ctrlKey) { e.preventDefault(); qEl.focus(); qEl.select(); return; }
   if (e.key === "Escape" && !inField) {
+    if (byFilter && !selected) { setByFilter("", ""); return; }
     if (selected) clearSelection();
     else if ($("rail").classList.contains("open")) setRailOpen(false);
   }
