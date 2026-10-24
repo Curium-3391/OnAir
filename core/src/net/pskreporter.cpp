@@ -161,6 +161,7 @@ struct PskReporter::Impl {
     PskReporterStatus st;
     pskr::Batcher bat;
     std::thread th;
+    std::function<bool(const uint8_t*, size_t)> testSend;
     bool quit = false;
     uint32_t seq = 0, streamId = 0;
     int packetsWithTemplates = 0;
@@ -185,7 +186,7 @@ struct PskReporter::Impl {
     }
     void flush(int64_t now) {   // called with mu held
         const std::vector<pskr::Spot> sp = bat.take(now);
-        if (!credsOk() || !openSock()) { st.active = false; return; }
+        if (!credsOk() || (!testSend && !openSock())) { st.active = false; return; }
         const pskr::Receiver rx{cfg.call, cfg.locator, "OnAir", cfg.antenna};
         size_t at = 0;
         while (at < sp.size()) {
@@ -193,7 +194,7 @@ struct PskReporter::Impl {
             std::vector<uint8_t> pkt;
             const size_t n = pskr::encodePacket(pkt, rx, sp, at, now, seq, streamId, tpl);
             if (!n) break;
-            if (sockSendTo(sock, pkt.data(), pkt.size(), to) < 0) { st.lastError = "send failed"; st.active = false; return; }
+            if (testSend ? !testSend(pkt.data(), pkt.size()) : sockSendTo(sock, pkt.data(), pkt.size(), to) < 0) { st.lastError = "send failed"; st.active = false; return; }
             st.lastError.clear(); st.active = true; st.packets++; st.spotsSent += n; st.lastSend = now;
             seq += (uint32_t)n; at += n;
             if (tpl) { packetsWithTemplates++; lastTemplates = now; }
@@ -253,9 +254,11 @@ void PskReporter::stop() {
     p.closeSock();
     want_.store(false, std::memory_order_relaxed);
 }
-void PskReporter::spot(const char* mode, double audioHz, float snrDb, const std::string& call, const std::string& grid) {
+void PskReporter::setSenderForTest(std::function<bool(const uint8_t*, size_t)> f) { std::lock_guard<std::mutex> lk(impl_->mu); impl_->testSend = std::move(f); }
+void PskReporter::flushNowForTest(int64_t now) { std::lock_guard<std::mutex> lk(impl_->mu); impl_->flush(now); }
+void PskReporter::spot(const char* mode, double audioHz, float snrDb, const std::string& call, const std::string& grid, double dialHz) {
     if (!want()) return;
-    const double dial = dial_.load(std::memory_order_relaxed);
+    const double dial = dialHz > 0 ? dialHz : dial_.load(std::memory_order_relaxed);
     if (dial < 1e5) return;
     std::string c = call;
     for (char& ch : c) ch = (char)toupper((unsigned char)ch);

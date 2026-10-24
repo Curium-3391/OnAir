@@ -67,11 +67,12 @@ struct Profile {
     int boardId;           // byte 10 of the discovery reply
     double maxHz;
     bool lna, filters;     // register 0x0a (the LNA gain), the N2ADR filter board
+    bool digitalGain = false;   // no analog gain at all (Red Pitaya): the gain control is a software gain on the samples, 0 to +40 dB
     int defaultRx, maxRx;  // receivers listed while the radio has not said how many it has; the most it can have
 };
 // the HL2's usual gateware has four receivers (its discovery reply says how many: that is what is listed once it has answered)
-const Profile kHl2 = {"Hermes Lite 2", "hermeslite2", kBoardHl2, kMaxFreqHz, true, true, 4, kMaxRx};
-const Profile kRedPitaya = {"Red Pitaya", "redpitaya", kBoardHermes, kRpMaxFreqHz, false, false, 3, 3};
+const Profile kHl2 = {"Hermes Lite 2", "hermeslite2", kBoardHl2, kMaxFreqHz, true, true, false, 4, kMaxRx};
+const Profile kRedPitaya = {"Red Pitaya", "redpitaya", kBoardHermes, kRpMaxFreqHz, false, false, true, 3, 3};
 constexpr int kStartMs = 1500, kStallMs = 3000;
 constexpr int kSettleMs = 300;   // the longest a new receiver count is waited for in the packets
 
@@ -252,6 +253,7 @@ public:
         uint32_t hz = 0;
         bool swapIq = false;
         bool filters = false;   // the filter board follows this one's frequency
+        float gain = 1;         // digital gain applied to the samples (Red Pitaya: it has no analog gain stage)
     };
     Link(const Profile& p, std::string addr) : p_(p), addr_(std::move(addr)) {}
     ~Link() { shutdown(); }
@@ -380,6 +382,7 @@ protected:
         hz_ = (uint32_t)std::llround(f);
         lna_ = (int)std::lround(std::min(std::max(s.gainDb, -12.0), 48.0)) + 12;
         filters_ = p_.filters && radioFlag(s, "filters", true);
+        dgain_ = p_.digitalGain ? (float)std::pow(10.0, std::min(std::max(s.gainDb, 0.0), 40.0) / 20.0) : 1.f;
         swapIq_ = radioFlag(s, "swapiq", false);
         int got = speed;
         if (attached_ && link_) {
@@ -403,7 +406,7 @@ protected:
     void interrupt() override { if (link_) link_->wake(); }
 
 private:
-    Link::Rx rxCfg() const { Link::Rx c; c.hz = hz_; c.swapIq = swapIq_; c.filters = filters_; return c; }
+    Link::Rx rxCfg() const { Link::Rx c; c.hz = hz_; c.swapIq = swapIq_; c.filters = filters_; c.gain = dgain_; return c; }
     // what is said about the settings: a frequency beyond the radio's range, a rate another receiver set, a rate too low for the channel
     void notes(const TuneSettings& s, int got, std::string& err) {
         char b[300];
@@ -425,6 +428,7 @@ private:
     // what configure() set
     uint32_t hz_ = 0;
     int want_ = 3, lna_ = 32;
+    float dgain_ = 1;
     bool filters_ = false, swapIq_ = false;
     std::chrono::steady_clock::time_point lostAt_{};
 };
@@ -639,12 +643,13 @@ void Link::loop() {
                 auto& out = buf_[rx];
                 out.resize((size_t)2 * per);
                 const bool swap = rx_[rx].swapIq;
+                const float k = rx_[rx].gain / 8388608.f;
                 for (int h = 0; h < 2; h++) {
                     const unsigned char* p = (h ? f1 : f0) + 8 + 6 * rx;
                     for (int i = 0; i < per; i++, p += slot) {
                         const int32_t a = (int32_t)((uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8) >> 8;
                         const int32_t c = (int32_t)((uint32_t)p[3] << 24 | (uint32_t)p[4] << 16 | (uint32_t)p[5] << 8) >> 8;
-                        out[(size_t)h * per + i] = swap ? cf32(a / 8388608.f, c / 8388608.f) : cf32(c / 8388608.f, a / 8388608.f);
+                        out[(size_t)h * per + i] = swap ? cf32(a * k, c * k) : cf32(c * k, a * k);
                     }
                 }
                 s->deliver(out.data(), out.size());
@@ -750,6 +755,13 @@ DeviceInfo hpsdr1Device(const Profile& p, const std::string& host, int port, int
     const RadioSetting swap = boolSetting("swapiq", "Swap I and Q",
                                          "Mirror the spectrum if signals appear on the wrong side of the tuned frequency (the I and Q words of the stream are taken the other way round).",
                                          false);
+    if (p.digitalGain) {   // Red Pitaya: no analog RF gain at all, so the gain slider is a digital gain on the samples
+        d.gainMinDb = 0;
+        d.gainMaxDb = 40;
+        d.settings = {ppmSetting(0.1), swap};
+        d.gainNote = "The Red Pitaya has no analog RF gain: this is a digital gain on the samples (0 to +40 dB). For a stronger signal at the ADC use the LV/HV input jumper and an external preamp.";
+        return d;
+    }
     if (!p.lna) {   // no gain register is known for it: no gain control is offered
         d.settings = {ppmSetting(0.1), swap};
         return d;
