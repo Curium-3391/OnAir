@@ -89,7 +89,7 @@ void Engine::ingest(cf32* x, size_t n) {
     // a recording with the tune box off its centre: a receiver that watches the whole span (one decoder per carrier, several TV channels, the
     // spectrum analysers) keeps the capture as it is; the tune box is then only a marker for it
     const int act = activeStd_.load();
-    const bool wholeSpan = fileCentreHz_.load() > 0 && ((act <= 1 && mtvActive_.load(std::memory_order_relaxed)) || (wideOn_.load(std::memory_order_relaxed) && WideModes::supports(act)) || act == 42 || act == 43);
+    const bool wholeSpan = fileCentreHz_.load() > 0 && ((mtvActive_.load(std::memory_order_relaxed) && (mtvSat_.load(std::memory_order_relaxed) ? act == 7 : act <= 1)) || (wideOn_.load(std::memory_order_relaxed) && WideModes::supports(act)) || act == 42 || act == 43);
     {
         cpu::Scope cs(cpuDec_.load(std::memory_order_relaxed));   // the receiver's CPU (and its pool jobs) to the decoder account
         if (!wholeSpan) decodeMix_.mix(x, n);
@@ -132,7 +132,7 @@ void Engine::stop() {
     if (!running_ && !src_) return;
     stopReq_ = true;
     if (th_.joinable()) th_.join();
-    mtvActive_ = false;
+    mtvActive_ = false; mtvSat_ = false;
     { std::shared_ptr<MultiTv> m; { std::lock_guard<std::mutex> lk(mtvMu_); m.swap(mtv_); } }   // the channels' receivers stop with the radio
     mtvKeyRate_ = -1;
     rec_.stop();   // a recording ends with the radio (the analysis thread is gone, nothing pushes any more)
@@ -394,7 +394,7 @@ void Engine::feedReceiver(int a, const cf32* x, size_t n) {
         if (auto sink = std::atomic_load(&pluginSink_)) (*sink)(reinterpret_cast<const float*>(x), n, rate_.load());
         return;
     }
-    if (a <= 1 && mtvActive_.load(std::memory_order_relaxed)) { if (auto m = mtvGet()) { m->feed(x, n); return; } }   // multi-channel TV: one receiver per channel of the span
+    if (mtvActive_.load(std::memory_order_relaxed) && (mtvSat_.load(std::memory_order_relaxed) ? a == 7 : a <= 1)) { if (auto m = mtvGet()) { m->feed(x, n); return; } }   // multi-channel TV: one receiver per channel of the span
     if (wideOn_.load(std::memory_order_relaxed) && WideModes::supports(a)) {
         if (a == 24) wide_.setPagerOptions(rxPager_.protocols(), rxPager_.pocsagBauds());   // the screens' POCSAG / FLEX / baud choice reaches every carrier
         if (a == 24 || a == 25) wide_.setNarrowChannels(rxPager_.narrowChannel(), rxPacket_.narrowChannel());   // the 12.5 / 25 kHz choice too

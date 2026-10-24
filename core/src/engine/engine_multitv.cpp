@@ -67,17 +67,18 @@ void Engine::syncMultiTv() {
     mtvKeyOn_ = on; mtvKeyStd_ = sm; mtvKeyMax_ = mx; mtvKeyGrid_ = grid; mtvKeyRate_ = rate; mtvKeyBw_ = bw;
     std::string note;
     bool want = on;
-    if (on && !multiChannelSupported(sm)) { want = false; note = "multi-channel TV works with DVB-T2 or DVB-T selected (not automatic detection)"; }
-    else if (on && slotsInSpan(rate, bw, grid) < 2) {
+    if (on && !multiChannelSupported(sm)) { want = false; note = "Whole span works with DVB-T2, DVB-T or DVB-S/S2 selected (not automatic detection)"; }
+    else if (on && sm == 8 && !wholeSpanFits(sm, rate, bw, grid)) { want = false; note = "the capture is too narrow for Whole span: DVB-S/S2 needs at least 3 Msps"; }
+    else if (on && sm != 8 && slotsInSpan(rate, bw, grid) < 2) {
         want = false;
         char b[200];
-        snprintf(b, sizeof b, "the capture (%.2f Msps) holds only one %g MHz channel: a wider capture is needed for several", rate / 1e6, bw);
+        snprintf(b, sizeof b, "the capture (%.2f Msps) holds only one %g MHz channel: capture at least %g MHz for two %g MHz channels", rate / 1e6, bw, 2 * bw, bw);
         note = b;
     }
     { std::lock_guard<std::mutex> lk(mtvNoteMu_); mtvNote_ = note; }
     if (!want) {
         if (!wasActive) return;
-        mtvActive_ = false;
+        mtvActive_ = false; mtvSat_ = false;
         { std::shared_ptr<MultiTv> m; { std::lock_guard<std::mutex> lk(mtvMu_); m.swap(mtv_); } }
         player_.select(-1);
         resetReceiver(activeStd_.load());
@@ -87,6 +88,8 @@ void Engine::syncMultiTv() {
     auto m = std::make_shared<MultiTv>();
     MultiTvOptions o;
     o.dvbt = sm == 2;
+    o.sat = sm == 8;
+    if (o.sat) o.minRsHz = std::max(1e6, dvbsMinAutoSymbolRate(rate));
     o.spanRate = rate;
     o.widthMhz = bw;
     o.maxChannels = mx > 0 ? mx : defaultMaxChannels();
@@ -107,9 +110,11 @@ void Engine::syncMultiTv() {
         mtv_ = m;
     }
     old.reset();
+    mtvSat_ = o.sat;
     mtvActive_ = true;
     char b[200];
-    snprintf(b, sizeof b, "multi-channel TV: %s, %g MHz channels, up to %d at once from a %.2f Msps capture", o.dvbt ? "DVB-T" : "DVB-T2", bw, o.maxChannels, rate / 1e6);
+    if (o.sat) snprintf(b, sizeof b, "whole span: DVB-S/S2 transponders, up to %d decoded at once from a %.2f Msps capture", o.maxChannels, rate / 1e6);
+    else snprintf(b, sizeof b, "multi-channel TV: %s, %g MHz channels, up to %d at once from a %.2f Msps capture", o.dvbt ? "DVB-T" : "DVB-T2", bw, o.maxChannels, rate / 1e6);
     log(b);
 }
 

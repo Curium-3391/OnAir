@@ -490,11 +490,16 @@ void playerTab(App& a) {
 // Multi-channel TV: the channels of the span, one receiver each (click: this channel plays and shows in detail, the others keep decoding)
 static void multiChannelTable(App& a) {
     const std::vector<TvChannelRow>& rows = a.rx.tvChannels;
-    sectionHeader(Ic::Radio, "Channels in the span");
-    if (rows.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("looking for channels in the capture..."); ImGui::PopTextWrapPos(); return; }
-    if (!ImGui::BeginTable("##mtvchans", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV)) return;
-    ImGui::TableSetupColumn(tr("Channel MHz")); ImGui::TableSetupColumn(tr("State")); ImGui::TableSetupColumn(tr("Services")); ImGui::TableSetupColumn(tr("SNR dB"));
-    ImGui::TableSetupColumn(tr("Load")); ImGui::TableSetupColumn(tr("Network"), ImGuiTableColumnFlags_WidthStretch);
+    sectionHeader(Ic::Radio, a.family == 6 ? "Transponders in the span" : "Channels in the span");
+    if (rows.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled(a.family == 6 ? "looking for transponders in the capture..." : "looking for channels in the capture..."); ImGui::PopTextWrapPos(); return; }
+    const bool sat = rows.front().sat;   // DVB-S/S2 "Whole span": a transponder per row, with its symbol rate and MODCOD
+    if (!ImGui::BeginTable("##mtvchans", sat ? 7 : 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollX)) return;
+    ImGui::TableSetupColumn(tr(sat ? "Transponder MHz" : "Channel MHz"));
+    if (sat) ImGui::TableSetupColumn(tr("Msym/s"));
+    ImGui::TableSetupColumn(tr("State"));
+    if (sat) ImGui::TableSetupColumn(tr("Mode"));
+    ImGui::TableSetupColumn(tr("Services")); ImGui::TableSetupColumn(tr(sat ? "MER dB" : "SNR dB"));
+    ImGui::TableSetupColumn(tr("Load")); if (!sat) ImGui::TableSetupColumn(tr("Network"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (const TvChannelRow& r : rows) {
         ImGui::TableNextRow();
@@ -502,11 +507,13 @@ static void multiChannelTable(App& a) {
         char b[48]; snprintf(b, sizeof b, "%.3f##tc%d", radioCenterMhz(a) + r.offsetHz / 1e6, r.slot);
         if (!r.occupied && !r.running) { ImGui::BeginDisabled(); ImGui::Selectable(b, false, ImGuiSelectableFlags_SpanAllColumns); ImGui::EndDisabled(); }
         else if (ImGui::Selectable(b, r.selected, ImGuiSelectableFlags_SpanAllColumns) && r.running) a.engine.selectTvChannel(r.slot);
+        if (sat) { ImGui::TableNextColumn(); ImGui::Text("%.2f", r.symbolRate / 1e6); }
         ImGui::TableNextColumn(); ImGui::TextUnformatted(!r.occupied && !r.running ? tr("empty") : !r.running ? tr("waiting") : r.locked ? tr("locked") : r.state > 0 ? tr("partial") : tr("searching"));
+        if (sat) { ImGui::TableNextColumn(); if (r.running && !r.detail.empty()) ImGui::TextUnformatted(r.detail.c_str()); else ImGui::TextDisabled("-"); }
         ImGui::TableNextColumn(); if (r.running) ImGui::Text("%d", r.services); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); if (r.running && r.locked) ImGui::Text("%.1f", r.snrDb); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); if (r.running) ImGui::Text("%.0f %%", r.cpuPct); else ImGui::TextDisabled("-");
-        ImGui::TableNextColumn(); ImGui::TextUnformatted(r.network.c_str());
+        if (!sat) { ImGui::TableNextColumn(); ImGui::TextUnformatted(r.network.c_str()); }
     }
     ImGui::EndTable();
     ImGui::Spacing();

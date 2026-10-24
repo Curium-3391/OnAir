@@ -354,26 +354,49 @@ void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
     restoreCursor(keep);
 }
 
-// "Multi-channel" switch (DVB-T2 / DVB-T): when the capture holds more than one channel of the chosen width, decode every occupied channel of it, one
-// receiver each. Same place as "Whole span" (the TV modes do not have that one). Right click: how many at once, and where the channel raster sits.
-static bool multiAvailable(const App& a) {
-    if (a.family != 0) return false;
+// "Whole span" switch for the TV standards (DVB-T2 / DVB-T on a channel raster, DVB-S/S2 on transponders found in the spectrum): decode every
+// occupied signal of the capture, one receiver each; the selected one plays, the others keep decoding. Same place and name as the "Whole span" of
+// the other modes. One helper for all of them: a standard that joins (DVB-C, ISDB-T, ATSC, DTMB) adds a row to wholeSpanTvStd() and an Engine
+// stdMode to Engine::multiChannelSupported. The saved setting is still called mtvOn.
+struct WholeSpanTv {
+    bool offered = false;   // this standard has the switch (shown always)
+    bool usable = false;    // the capture is wide enough for it
+    bool raster = true;     // signals on a channel raster of the chosen width (false: anywhere in the span)
+    int stdMode = 0;
+    double needMhz = 0;     // raster: capture width for two channels
+    double widthMhz = 0;
+};
+static WholeSpanTv wholeSpanTvState(const App& a) {
+    WholeSpanTv w;
+    switch (a.family) {   // family -> the engine's standard code
+        case 0: w.offered = true; w.raster = true; w.stdMode = 1; break;    // DVB-T2 / DVB-T (the engine checks which one)
+        case 6: w.offered = true; w.raster = false; w.stdMode = 8; break;   // DVB-S / S2
+        default: return w;
+    }
     const double rate = a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate;
-    return Engine::slotsInSpan(rate, channelWidth(a).mhz, 0) >= 2;
+    w.widthMhz = channelWidth(a).mhz;
+    w.needMhz = 2 * w.widthMhz;
+    w.usable = w.raster ? Engine::slotsInSpan(rate, w.widthMhz, 0) >= 2 : Engine::wholeSpanFits(w.stdMode, rate, w.widthMhz, 0);
+    return w;
 }
+bool wholeSpanTvOffered(const App& a) { return wholeSpanTvState(a).offered; }
 void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
-    if (!multiAvailable(a)) return;
+    const WholeSpanTv ws = wholeSpanTvState(a);
+    if (!ws.offered) return;
     const bool run = a.engine.multiChannelActive();
-    const char* lb = a.mtvOn ? "Multi-channel: on###mtvbtn" : "Multi-channel###mtvbtn";
+    const char* lb = a.mtvOn && ws.usable ? "Whole span: on###mtvbtn" : "Whole span###mtvbtn";
     const ImVec2 sz = ImGui::CalcTextSize(lb, nullptr, true);
     const float w = sz.x + 2 * ImGui::GetStyle().FramePadding.x, m = 4 * gUi;
     const float x = plotMin.x + plotSize.x - gBwBtnW - w - m;
     if (x < plotMin.x + 40 * gUi || plotSize.y < sz.y + 2 * m) return;   // no room
     const ImVec2 keep = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2(x, plotMin.y + m));
-    ImVec4 bg = a.mtvOn ? pal::accent(0.55f) : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg); if (!a.mtvOn) bg.w = 0.85f;
+    const bool on = a.mtvOn && ws.usable;
+    ImVec4 bg = on ? pal::accent(0.55f) : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg); if (!on) bg.w = 0.85f;
     ImGui::PushStyleColor(ImGuiCol_Button, bg);
+    if (!ws.usable) ImGui::BeginDisabled();   // not hidden: it looks off and the tooltip says what the capture needs
     if (ImGui::SmallButton(lb)) { a.mtvOn = !a.mtvOn; savePrefs(a); }
+    if (!ws.usable) ImGui::EndDisabled();
     ImGui::PopStyleColor();
     if (run) {   // how many decoders run now
         int n = 0;
@@ -382,21 +405,32 @@ void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
         const ImVec2 cs = ImGui::CalcTextSize(cb);
         if (x - cs.x - 10 * gUi > plotMin.x) ImGui::GetWindowDrawList()->AddText(ImVec2(x - cs.x - 8 * gUi, plotMin.y + m + 2 * gUi), IM_COL32(245, 190, 70, 255), cb);
     }
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##mtvpop");
-    if (ImGui::IsItemHovered()) {
-        const std::string note = a.engine.multiChannelNote();
-        ImGui::SetTooltip("%s%s%s", tr("decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)"),
-                          a.mtvOn && !run && !note.empty() ? "\n\n" : "", a.mtvOn && !run ? note.c_str() : "");
+    if (ws.usable && ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##mtvpop");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!ws.usable) {
+            char tb[200];
+            if (ws.raster) snprintf(tb, sizeof tb, tr("capture at least %g MHz for two %g MHz channels"), ws.needMhz, ws.widthMhz);
+            else snprintf(tb, sizeof tb, "%s", tr("capture at least 3 MHz: DVB-S/S2 transponders are found in the spectrum"));
+            ImGui::SetTooltip("%s", tb);
+        } else {
+            const std::string note = a.engine.multiChannelNote();
+            ImGui::SetTooltip("%s%s%s", ws.raster ? tr("decode every channel in the span: a receiver for each occupied channel, one plays, the others keep decoding\n(right click: how many at once, where the channels sit)")
+                                                  : tr("decode every transponder in the span: the occupied ones are found in the spectrum, with their symbol rate, and each gets a receiver; one plays, the others keep decoding\n(right click: how many at once)"),
+                              a.mtvOn && !run && !note.empty() ? "\n\n" : "", a.mtvOn && !run ? note.c_str() : "");
+        }
     }
     if (ImGui::BeginPopup("##mtvpop")) {
         int mx = a.mtvMax > 0 ? a.mtvMax : Engine::defaultMaxChannels();
         ImGui::SetNextItemWidth(120 * gUi);
         if (ImGui::SliderInt(tr("Receivers at once"), &mx, 1, 8)) { a.mtvMax = mx; savePrefs(a); }
-        static const char* kGrid[3] = {"find out", "capture centred on a channel", "capture between two channels"};
-        ImGui::SetNextItemWidth(220 * gUi);
-        if (ImGui::BeginCombo(tr("Channel raster"), tr(kGrid[a.mtvGrid]))) {
-            for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(kGrid[i]), a.mtvGrid == i)) { a.mtvGrid = i; savePrefs(a); }
-            ImGui::EndCombo();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Each receiver uses CPU. The default is 3 on a computer with 8 cores or more, 2 on a smaller one. The strongest signals are decoded first."));
+        if (ws.raster) {
+            static const char* kGrid[3] = {"find out", "capture centred on a channel", "capture between two channels"};
+            ImGui::SetNextItemWidth(220 * gUi);
+            if (ImGui::BeginCombo(tr("Channel raster"), tr(kGrid[a.mtvGrid]))) {
+                for (int i = 0; i < 3; i++) if (ImGui::Selectable(tr(kGrid[i]), a.mtvGrid == i)) { a.mtvGrid = i; savePrefs(a); }
+                ImGui::EndCombo();
+            }
         }
         ImGui::EndPopup();
     }
@@ -406,10 +440,11 @@ void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize) {
 // The channels of multi-channel TV: the channel edges and the centre of each on the spectrum (the playing one in the accent colour)
 static void multiMarkers(App& a) {
     if (!a.engine.multiChannelActive()) return;
-    const double c = radioCenterMhz(a), halfW = channelWidth(a).mhz * 0.5;
+    const double c = radioCenterMhz(a), halfW0 = channelWidth(a).mhz * 0.5;
     int k = 0;
     for (const TvChannelRow& r : a.rx.tvChannels) {
         if (!r.occupied && !r.running) continue;
+        const double halfW = r.sat ? r.bwHz * 0.5e-6 : halfW0;
         const double f = c + r.offsetHz / 1e6;
         const ImVec4 col = r.selected ? pal::accent(0.9f) : r.locked ? ImVec4(0.55f, 0.85f, 0.55f, 0.6f) : ImVec4(0.85f, 0.75f, 0.45f, 0.5f);
         for (int e = -1; e <= 1; e += 2) {

@@ -12,6 +12,8 @@
 #include "channelizer.h"
 #include "dect2/t2/t2rx.h"
 #include "dect2/dvbt/dvbt_rx.h"
+#include "dect2/dvbs/dvbs_rx.h"
+#include "transponders.h"
 #include "dect2/tv/ts.h"
 #include "dect2/channels/tvchan.h"
 #include <atomic>
@@ -27,6 +29,7 @@ namespace dect2 {
 
 struct MultiTvOptions {
     bool dvbt = false;            // false DVB-T2, true DVB-T
+    bool sat = false;             // DVB-S/S2 ("Whole span"): no channel raster; the transponders are found in the spectrum (transponders.h), one receiver each
     double spanRate = 0;          // sample rate of what feed() gets
     double widthMhz = 8;          // channel width (7 VHF, 8 UHF Europe, 6 Americas / Asia)
     double gridOffsetHz = 0;      // a channel centre on the raster, relative to the centre of the capture (0: the capture is centred on a channel)
@@ -34,12 +37,21 @@ struct MultiTvOptions {
     int maxChannels = 2;          // receivers running at once
     bool blocking = true;         // a slow receiver holds feed() back (files, tests); false: it loses blocks (a live radio)
     double thresholdDb = 6;       // a slot is occupied this far above the quietest part of the span
+    double minRsHz = 1e6;         // sat: the narrowest transponder looked for
 };
 
 struct MultiService {
     int slot = 0;
     double offsetHz = 0;
     TsService svc;
+};
+
+// A transponder followed over successive looks at the spectrum (DVB-S/S2); id is stable while it stays
+struct Track {
+    int id = 0;
+    Transponder tp;
+    int seen = 0;      // looks in a row that found it
+    int absent = 0;    // looks in a row that did not
 };
 
 class MultiTv {
@@ -74,12 +86,16 @@ public:
     double gridOffsetHz() const { return gridOff_; }
     // test hook: the slots the scan measured (the last evaluation)
     std::vector<SlotPower> lastMeasure();
+    // sat: the transponders seen now (test hook and the table)
+    std::vector<Transponder> lastTransponders();
 
 private:
     struct Slot;
     void evaluate();
     void mtvDeliver(int slot, const uint8_t* pk, size_t n, double secs, const TsSnapshot& snap);   // a receiver thread: the selected slot's packets go on
     void startSlot(const SlotPower& p);
+    void evaluateSat();
+    void startSat(const Track& t);
     void stopSlot(size_t i);   // under mu_
     Slot* find(int slot);
 
@@ -97,6 +113,8 @@ private:
     Sink sink_;
     std::mutex sinkMu_;
     int lastSelPolled_ = INT_MIN / 2;
+    std::vector<Track> tracks_;   // sat: the transponders followed over time (under mu_)
+    int nextId_ = 1;
 };
 
 } // namespace dect2
