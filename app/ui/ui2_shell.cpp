@@ -228,6 +228,14 @@ void sidebar(App& a) {
                 if (ImGui::Selectable(tr(Waterfall::mapName(i)), a.wf.effMap() == i)) { a.wf.map = i; a.wf.palette(); savePrefs(a); }
             ImGui::EndCombo();
         }
+        {
+            const char* ts[] = {N_("Classic"), N_("Slab"), N_("Brackets"), N_("Ruler flag")};
+            ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Tuner style")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
+            if (ImGui::BeginCombo("##tunerstyle", tr(ts[std::max(0, std::min(3, a.tunerStyle))]))) {
+                for (int i = 0; i < 4; i++) if (ImGui::Selectable(tr(ts[i]), a.tunerStyle == i)) { a.tunerStyle = i; savePrefs(a); }
+                ImGui::EndCombo();
+            }
+        }
         ImGui::Unindent(6 * gUi);
         ImGui::Spacing();
     }

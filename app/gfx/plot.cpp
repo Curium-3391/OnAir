@@ -691,14 +691,18 @@ void EndPlot() {
         const ImVec4 lc = C.look.label;
         const ImU32 lab = ImGui::ColorConvertFloat4ToU32(lc), maj = ImGui::ColorConvertFloat4ToU32(ImVec4(lc.x, lc.y, lc.z, lc.w * 0.55f)),
                     mnr = ImGui::ColorConvertFloat4ToU32(ImVec4(lc.x, lc.y, lc.z, lc.w * 0.28f));
+        float stripEnd = -FLT_MAX;
         for (const auto& t : lookTicks()) {
             const float x = std::floor(px(t.mhz)) + 0.5f;
             if (x < C.plot.Min.x || x > C.plot.Max.x) continue;
             C.dl->AddLine(ImVec2(x, y0), ImVec2(x, y0 + (t.major ? 5.f : 2.5f) * sc), t.major ? maj : mnr);
             if (!t.major || t.label.empty()) continue;
             const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, t.label.c_str());
-            if (x - ts.x * 0.5f < x0 + 2 * sc || x + ts.x * 0.5f > x1 - 2 * sc) continue;   // never clipped by the panel
-            C.dl->AddText(font, fs, ImVec2(std::round(x - ts.x * 0.5f), std::round(y0 + (h - ts.y) * 0.5f + 1.5f * sc)), lab, t.label.c_str());
+            // never clipped by the panel: a label that would cross its edge is shifted inside (dropped when that would touch the label before it)
+            const float tx = std::max(x0 + 2 * sc, std::min(x1 - 2 * sc - ts.x, x - ts.x * 0.5f));
+            if (tx < stripEnd + 4 * sc) continue;
+            stripEnd = tx + ts.x;
+            C.dl->AddText(font, fs, ImVec2(std::round(tx), std::round(y0 + (h - ts.y) * 0.5f + 1.5f * sc)), lab, t.label.c_str());
         }
     }
     for (int a = 0; a < 2; a++) {
@@ -711,10 +715,10 @@ void EndPlot() {
                 if (x < C.plot.Min.x - 1 || x > C.plot.Max.x + 1) continue;
                 C.dl->AddLine(ImVec2(std::floor(x) + 0.5f, C.plot.Max.y), ImVec2(std::floor(x) + 0.5f, C.plot.Max.y + tickLen * 0.5f), txt);
                 const ImVec2 s = ImGui::CalcTextSize(t.label.c_str());
-                if (x - s.x * 0.5f < lastEnd + 4 * sc) continue;
-                if (x - s.x * 0.5f < C.frame.Min.x || x + s.x * 0.5f > C.frame.Max.x) continue;   // a label that would leave the panel is dropped, not squeezed against the edge (#230)
-                lastEnd = x + s.x * 0.5f;
-                C.dl->AddText(ImVec2(x - s.x * 0.5f, C.plot.Max.y + tickLen * 0.5f), txt, t.label.c_str());
+                const float lx = std::max(C.frame.Min.x + 2 * sc, std::min(C.frame.Max.x - 2 * sc - s.x, x - s.x * 0.5f));   // a label that would leave the panel is shifted inside (#230)
+                if (lx < lastEnd + 4 * sc) continue;
+                lastEnd = lx + s.x;
+                C.dl->AddText(ImVec2(lx, C.plot.Max.y + tickLen * 0.5f), txt, t.label.c_str());
             } else {
                 const float y = py(t.v);
                 if (y < C.plot.Min.y - 1 || y > C.plot.Max.y + 1) continue;
