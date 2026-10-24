@@ -913,8 +913,6 @@ void rotatorPointBearing(double bearingDeg, double elDeg);
 // The transmitter (tx_ui.cpp): independent of the receivers, with its own radio. The state is not an App's; transmitting is never saved.
 struct ModeDef;
 bool& txViewFlag();                // the RX / TX switch: true = TX view (never saved: the program opens in RX view)
-int modeSwitchStyle();            // 0 pill (original), 1 tabs, 2 square segmented, 3 status coloured
-void modeSwitchStyleChoice();     // the Settings > Display combo
 void txViewSwitch(App& a);         // the slider at the top left of both interfaces
 bool& hamViewFlag();               // the Ham view (third choice of the switch, exclusive with TX)
 void hamPanel(App& a);             // app/ham/ham_ui.cpp

@@ -220,7 +220,6 @@ void sidebar(App& a) {
         if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
         ImGui::SameLine(0, 4 * gUi);
         wfAutoButton(a);
-        modeSwitchStyleChoice();
         if (ImGui::SmallButton(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Restore the default spectrum and waterfall levels and the usual half-and-half split (does not change panel layout)"));
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Palette")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));

@@ -404,72 +404,34 @@ void txTick(App&) {
     dl->AddText(ImVec2(x + pad, 4 * gUi + pad), IM_COL32(255, 255, 255, 255), b);
 }
 
-// Which look the RX / TX / Ham selector has: 0 = the original pill, 1 = tabs, 2 = square segmented, 3 = status coloured.
-int modeSwitchStyle() {
-    static int env = [] { const char* e = getenv("DECT2_MODESWITCH"); return e ? atoi(e) : -1; }();   // dev: pick the look for --shot
-    if (env >= 0) return std::min(3, env);
-    return (int)std::min(3L, std::max(0L, plat::prefs().getI("modeSwitchStyle", 0)));
-}
-
-void modeSwitchStyleChoice() {
-    static const char* names[4] = {N_("Pill (current)"), N_("Tabs"), N_("Segmented, square"), N_("Status coloured")};
-    const int cur = modeSwitchStyle();
-    ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Mode switch"));
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
-    if (ImGui::BeginCombo("##modeswitchstyle", tr(names[cur]))) {
-        for (int i = 0; i < 4; i++)
-            if (ImGui::Selectable(tr(names[i]), cur == i)) plat::prefs().setI("modeSwitchStyle", i);
-        ImGui::EndCombo();
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How the RX / TX / Ham switch at the top left looks"));
-}
-
-// The three flat styles. Equal cells, text centred, no layout change with the selection; the click rule is the same as the pill.
-static float drawFlatSwitch(TxUi& s, bool& ham, const char* const labs[3], int style, bool tx) {
+// The RX / TX / Ham selector's cells: flat, equal width, the selected one in the same blue as a selected tab; the click rule is the plain
+// three-way choice. Returns the total width.
+static float drawSwitch(TxUi& s, bool& ham, const char* const labs[3], bool tx) {
     const float h = ImGui::GetFrameHeight();
-    const float pad = 9 * gUi;
-    float seg = 0;
+    const float pad = 9 * gUi, gap = 2 * gUi, rad = 2 * gUi;
+    float seg = h * 1.6f;
     for (int i = 0; i < 3; i++) seg = std::max(seg, ImGui::CalcTextSize(labs[i]).x + 2 * pad);
-    seg = std::max(seg, h * 1.6f);
-    const float gap = style == 2 ? 0.f : 2 * gUi;
-    const float rad = 2 * gUi;
     const int cur = ham ? 2 : s.view ? 1 : 0;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
-    const ImU32 blue = IM_COL32(52, 108, 160, 255), red = IM_COL32(200, 48, 44, 255), green = IM_COL32(44, 150, 92, 255);
-    const ImU32 dark = IM_COL32(26, 27, 29, 255), darkHot = IM_COL32(44, 46, 50, 255), edge = IM_COL32(88, 92, 98, 255);
-    const ImU32 meaning[3] = {blue, red, green};
-    if (style == 2) {   // one bordered body, dividers drawn after the cells
-        dl->AddRectFilled(p0, ImVec2(p0.x + seg * 3, p0.y + h), dark, rad);
-    }
+    const ImU32 blue = ImGui::GetColorU32(ImGuiCol_TabSelected), dark = IM_COL32(26, 27, 29, 255), darkHot = IM_COL32(44, 46, 50, 255);
     for (int i = 0; i < 3; i++) {
         ImGui::PushID(i);
         if (i) ImGui::SameLine(0, gap);
-        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const ImVec2 p = ImGui::GetCursorScreenPos(), p1(p.x + seg, p.y + h);
         const bool clicked = ImGui::InvisibleButton("##cell", ImVec2(seg, h));
-        const bool hot = ImGui::IsItemHovered(), focus = ImGui::IsItemFocused();
+        const bool hot = ImGui::IsItemHovered();
         if (hot) ImGui::SetTooltip("%s", tr("Receive (RX), transmit (TX) or Ham (amateur operation with a rig: FT8 / FT4 / FT2 contacts, log). The transmitter has its own radio, so a receiver can keep receiving while you transmit."));
         if (clicked) { s.view = i == 1; ham = i == 2; }
         const bool sel = i == cur;
-        const ImVec2 p1(p.x + seg, p.y + h);
-        ImU32 fill, txt;
-        if (style == 1) { fill = sel ? blue : hot ? darkHot : dark; txt = sel ? IM_COL32(255, 255, 255, 255) : hot ? IM_COL32(225, 226, 228, 255) : IM_COL32(150, 154, 160, 255); }
-        else if (style == 2) { fill = sel ? IM_COL32(232, 233, 235, 255) : hot ? darkHot : dark; txt = sel ? IM_COL32(20, 21, 23, 255) : hot ? IM_COL32(225, 226, 228, 255) : IM_COL32(170, 174, 180, 255); }
-        else { fill = sel ? meaning[i] : hot ? darkHot : dark; txt = sel ? IM_COL32(255, 255, 255, 255) : hot ? IM_COL32(225, 226, 228, 255) : IM_COL32(140, 144, 150, 255); }
-        if (style == 2) { if (sel || hot) dl->AddRectFilled(ImVec2(p.x + 1, p.y + 1), ImVec2(p1.x - 1, p1.y - 1), fill, 0); }
-        else dl->AddRectFilled(p, p1, fill, rad);
-        if (style == 3 && !sel) dl->AddRect(p, p1, IM_COL32(52, 54, 58, 255), rad);
+        dl->AddRectFilled(p, p1, sel ? blue : hot ? darkHot : dark, rad);
+        const ImU32 txt = sel ? IM_COL32(255, 255, 255, 255) : hot ? IM_COL32(225, 226, 228, 255) : IM_COL32(150, 154, 160, 255);
         const ImVec2 ts = ImGui::CalcTextSize(labs[i]);
         dl->AddText(ImVec2(p.x + std::floor((seg - ts.x) * 0.5f), p.y + std::floor((h - ts.y) * 0.5f)), txt, labs[i]);
-        if (focus) dl->AddRect(ImVec2(p.x + 1, p.y + 1), ImVec2(p1.x - 1, p1.y - 1), IM_COL32(255, 255, 255, 230), 0);
+        if (ImGui::IsItemFocused()) dl->AddRect(ImVec2(p.x + 1, p.y + 1), ImVec2(p1.x - 1, p1.y - 1), IM_COL32(255, 255, 255, 230));
         ImGui::PopID();
     }
-    if (style == 2) {
-        for (int i = 1; i < 3; i++) dl->AddLine(ImVec2(p0.x + seg * i, p0.y + 1), ImVec2(p0.x + seg * i, p0.y + h - 1), edge);
-        dl->AddRect(p0, ImVec2(p0.x + seg * 3, p0.y + h), edge, rad);
-    }
-    if (tx && cur != 1) dl->AddRect(p0, ImVec2(p0.x + seg * 3 + gap * 2, p0.y + h), red, rad);
+    if (tx && cur != 1) dl->AddRect(p0, ImVec2(p0.x + seg * 3 + gap * 2, p0.y + h), IM_COL32(200, 48, 44, 255), rad);
     return seg * 3 + gap * 2;
 }
 
@@ -479,34 +441,9 @@ void txViewSwitch(App&) {
     bool& ham = hamViewFlag();
     if (ham && s.view) ham = false;   // set by another route (menu): TX and Ham exclude each other
     const char* labs[3] = {tr("RX"), tr("TX"), tr("Ham")};
-    if (const int style = modeSwitchStyle()) {
-        const float fw = drawFlatSwitch(s, ham, labs, style, s.session.running());
-        if (s.session.running() && !s.view) { ImGui::SameLine(); ImGui::TextColored(kRed, "%s", tr("TRANSMITTING")); }
-        ImGui::Dummy(ImVec2(fw, 1.f));
-        return;
-    }
-    const float h = ImGui::GetFrameHeight();
-    float seg = h * 1.6f;   // wide enough for the longest label ("Ham", or its translation) with room in the pill
-    for (const char* l : labs) seg = std::max(seg, ImGui::CalcTextSize(l).x + h * 0.9f);
-    const float w = seg * 3;
-    const ImVec2 p = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##rxtx", ImVec2(w, h));
     const bool tx = s.session.running();
-    if (ImGui::IsItemClicked()) {
-        const int k = std::min(2, std::max(0, (int)((ImGui::GetIO().MousePos.x - p.x) / seg)));
-        s.view = k == 1; ham = k == 2;
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Receive (RX), transmit (TX) or Ham (amateur operation with a rig: FT8 / FT4 / FT2 contacts, log). The transmitter has its own radio, so a receiver can keep receiving while you transmit."));
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const int cur = ham ? 2 : s.view ? 1 : 0;
-    const ImU32 bg = tx ? IM_COL32(190, 25, 25, 255) : cur == 1 ? IM_COL32(150, 60, 40, 255) : cur == 2 ? IM_COL32(40, 110, 80, 255) : IM_COL32(60, 70, 85, 255);
-    dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), bg, h * 0.5f);
-    dl->AddRectFilled(ImVec2(p.x + seg * cur + 2 * gUi, p.y + 2 * gUi), ImVec2(p.x + seg * (cur + 1) - 2 * gUi, p.y + h - 2 * gUi), IM_COL32(245, 245, 245, 255), h * 0.5f);
-    for (int i = 0; i < 3; i++) {
-        const ImVec2 ts = ImGui::CalcTextSize(labs[i]);
-        dl->AddText(ImVec2(p.x + seg * i + (seg - ts.x) * 0.5f, p.y + (h - ts.y) * 0.5f), i == cur ? IM_COL32(30, 30, 30, 255) : IM_COL32(255, 255, 255, 255), labs[i]);
-    }
-    if (tx && cur != 1) { ImGui::SameLine(); ImGui::TextColored(kRed, "%s", tr("TRANSMITTING")); }
+    const float w = drawSwitch(s, ham, labs, tx);
+    if (tx && (ham || !s.view)) { ImGui::SameLine(); ImGui::TextColored(kRed, "%s", tr("TRANSMITTING")); }
     ImGui::Dummy(ImVec2(w, 1.f));   // grow ##root so SetCursorPos of the slider does not extend past the window
 }
 
