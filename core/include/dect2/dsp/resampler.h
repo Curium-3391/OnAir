@@ -18,6 +18,9 @@ public:
     void process(const cf32* in, size_t n, std::vector<cf32>& out);
     // false: the split path even where the interleaved one could run (tests: both must give the same bits with the portable desamp)
     void allowInterleaved(bool on) { allowInter_ = on; inter_ = on && interOk_; }
+    // x86-64 with AVX2: the interleaved path as well (call before configure()); its sums are in another order than desamp's, so the default
+    // keeps the split path and the exact output the other modes have always had
+    void allowFastX86(bool on) { fastX86_ = on; }
 
 private:
     bool allowInter_ = true, interOk_ = false;
@@ -37,7 +40,7 @@ private:
     std::vector<cf32> buf_;                // pending input (interleaved), with history; the first head_ samples are consumed
     std::vector<float> tapsD_;             // per output index within a period (0..L-1): T_ taps, each twice (I, Q)
     std::vector<int> startOf_;             // per output index within a period: its first input sample, relative to the period's start
-    bool primed_ = false;
+    bool fastX86_ = false;   // (was an unused flag: same size, so objects built with the old header stay compatible)
 };
 
 } // namespace dect2

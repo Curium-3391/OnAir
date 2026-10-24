@@ -1,6 +1,10 @@
 #include "dect2/dsp/resampler.h"
 #include "dect2/common/window.h"
 #include "dect2/dsp/dsp_compat.h"
+#include "dect2/dsp/simd.h"
+#if defined(DECT2_X86_DISPATCH)
+#include <immintrin.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -79,14 +83,25 @@ bool RationalResampler::configure(double inRate, double outRate, double* relErro
 #else
     interOk_ = false;
 #endif
+#if defined(DECT2_X86_DISPATCH)
+    // x86-64 with AVX2: the interleaved path too, for a caller that asks for it (allowFastX86: its sums are in a different order from
+    // desamp's, so the other modes keep the split path and their exact output)
+    if (fastX86_ && cpuHasAvx2() && T_ % 8 == 0 && M_ >= 2) interOk_ = true;
+#endif
     inter_ = interOk_ && allowInter_;
     if (interOk_) {
-        tapsD_.assign((size_t)L_ * T_, 0.f);
+#if defined(DECT2_X86_DISPATCH)
+        constexpr int kDup = 2;   // each tap twice (I, Q)
+#else
+        constexpr int kDup = 1;
+#endif
+        tapsD_.assign((size_t)L_ * T_ * kDup, 0.f);
         startOf_.assign(L_, 0);
         for (int p = 0; p < L_; p++) {
             const int ph = nOfPhase_[p];
             startOf_[ph] = base_[p];
-            std::copy(taps_[p].begin(), taps_[p].end(), tapsD_.begin() + (long)ph * T_);
+            if (kDup == 1) std::copy(taps_[p].begin(), taps_[p].end(), tapsD_.begin() + (long)ph * T_);
+            else for (int t = 0; t < T_; t++) tapsD_[(size_t)ph * T_ * kDup + 2 * t] = tapsD_[(size_t)ph * T_ * kDup + 2 * t + 1] = taps_[p][t];
         }
     }
     reset();
@@ -133,8 +148,40 @@ inline void dotN(const float* const* x, const float* const* h, int T, cf32* o) {
 } // namespace
 #endif
 
+#if defined(DECT2_X86_DISPATCH)
+namespace {
+// four outputs at once: x[q] the first input sample (interleaved I Q) and h[q] the T taps (each twice) of output q
+DECT2_AVX2_TARGET void dot4Avx2(const float* const* x, const float* const* h, int T, cf32* o) {
+    __m256 a0 = _mm256_setzero_ps(), a1 = a0, a2 = a0, a3 = a0;
+    for (int t = 0; t < T; t += 4) {
+        a0 = _mm256_fmadd_ps(_mm256_loadu_ps(x[0] + 2 * t), _mm256_loadu_ps(h[0] + 2 * t), a0);
+        a1 = _mm256_fmadd_ps(_mm256_loadu_ps(x[1] + 2 * t), _mm256_loadu_ps(h[1] + 2 * t), a1);
+        a2 = _mm256_fmadd_ps(_mm256_loadu_ps(x[2] + 2 * t), _mm256_loadu_ps(h[2] + 2 * t), a2);
+        a3 = _mm256_fmadd_ps(_mm256_loadu_ps(x[3] + 2 * t), _mm256_loadu_ps(h[3] + 2 * t), a3);
+    }
+    __m256 a[4] = {a0, a1, a2, a3};
+    for (int q = 0; q < 4; q++) {
+        __m128 s = _mm_add_ps(_mm256_castps256_ps128(a[q]), _mm256_extractf128_ps(a[q], 1));
+        s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+        _mm_storel_pi(reinterpret_cast<__m64*>(o + q), s);
+    }
+}
+DECT2_AVX2_TARGET void dot1Avx2(const float* x, const float* h, int T, cf32* o) {
+    __m256 a = _mm256_setzero_ps(), b = a;
+    for (int t = 0; t < T; t += 8) {
+        a = _mm256_fmadd_ps(_mm256_loadu_ps(x + 2 * t), _mm256_loadu_ps(h + 2 * t), a);
+        b = _mm256_fmadd_ps(_mm256_loadu_ps(x + 2 * t + 8), _mm256_loadu_ps(h + 2 * t + 8), b);
+    }
+    a = _mm256_add_ps(a, b);
+    __m128 s = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
+    s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+    _mm_storel_pi(reinterpret_cast<__m64*>(o), s);
+}
+} // namespace
+#endif
+
 void RationalResampler::processInterleaved(const cf32* in, size_t n, std::vector<cf32>& out) {
-#if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
+#if (defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)) || defined(DECT2_X86_DISPATCH)
     if (head_ > 0 && head_ >= buf_.size() - head_) {
         buf_.erase(buf_.begin(), buf_.begin() + (long)head_);
         head_ = 0;
@@ -148,19 +195,32 @@ void RationalResampler::processInterleaved(const cf32* in, size_t n, std::vector
     cf32* o = out.data() + o0;
     const float* x0 = reinterpret_cast<const float*>(buf_.data() + head_);
     const float* hd = tapsD_.data();
+#if defined(DECT2_X86_DISPATCH)
+    constexpr int kTapDup = 2;
+#else
+    constexpr int kTapDup = 1;
+#endif
     size_t j = 0;
     int ph = 0; long long base = 0;   // output j = k L + ph starts at input k M + startOf_[ph]
     const float* xs[4]; const float* hs[4];
     auto next = [&](int q) {
         xs[q] = x0 + 2 * (base + startOf_[ph]);
-        hs[q] = hd + (size_t)ph * T_;
+        hs[q] = hd + (size_t)ph * T_ * kTapDup;
         if (++ph == L_) { ph = 0; base += M_; }
     };
     for (; j + 4 <= total; j += 4) {
         next(0); next(1); next(2); next(3);
+#if defined(DECT2_X86_DISPATCH)
+        dot4Avx2(xs, hs, T_, o + j);
+#else
         dotN<4>(xs, hs, T_, o + j);
+#endif
     }
+#if defined(DECT2_X86_DISPATCH)
+    for (; j < total; j++) { next(0); dot1Avx2(xs[0], hs[0], T_, o + j); }
+#else
     for (; j < total; j++) { next(0); dotN<1>(xs, hs, T_, o + j); }
+#endif
     head_ += (size_t)P * M_;
 #else
     processSplit(in, n, out);
