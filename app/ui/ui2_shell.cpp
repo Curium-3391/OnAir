@@ -229,10 +229,10 @@ void sidebar(App& a) {
             ImGui::EndCombo();
         }
         {
-            const char* ts[] = {N_("Classic"), N_("Slab"), N_("Brackets"), N_("Ruler flag")};
+            const char* ts[] = {N_("Classic"), N_("Simple")};
             ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Tuner style")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
-            if (ImGui::BeginCombo("##tunerstyle", tr(ts[std::max(0, std::min(3, a.tunerStyle))]))) {
-                for (int i = 0; i < 4; i++) if (ImGui::Selectable(tr(ts[i]), a.tunerStyle == i)) { a.tunerStyle = i; savePrefs(a); }
+            if (ImGui::BeginCombo("##tunerstyle", tr(ts[std::max(0, std::min(1, a.tunerStyle))]))) {
+                for (int i = 0; i < 2; i++) if (ImGui::Selectable(tr(ts[i]), a.tunerStyle == i)) { a.tunerStyle = i; savePrefs(a); }
                 ImGui::EndCombo();
             }
         }

@@ -109,7 +109,7 @@ static bool bandEdgeDrag(App& a, int plotId) {
     if (!plt::IsPlotHovered() || gEdgeDrag >= 0 || (ImGui::IsMouseDown(0) && !ImGui::IsMouseClicked(0))) return false;
     const double pLo = specaxis::mhzToPx(a.freqMhz - cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max), pHi = specaxis::mhzToPx(a.freqMhz + cw.mhz / 2, pp.x, ps.x, lim.X.Min, lim.X.Max);
     if (pHi - pLo < 12 * gUi) return false;   // zoomed out so far that the edges touch: the click tunes
-    const int e = specaxis::edgeUnder(mx, pLo, pHi, (a.tunerStyle > 0 ? 6.f : 4.f) * gUi);   // the new tuner styles: a hit area 12 px wide
+    const int e = specaxis::edgeUnder(mx, pLo, pHi, (a.tunerStyle > 0 ? 6.f : 4.f) * gUi);   // Simple: a hit area 12 px wide
     if (e < 0) return false;
     ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (ImGui::IsMouseClicked(0)) { gEdgeDrag = e; gEdgePlot = plotId; }
@@ -276,29 +276,26 @@ void specLookBand(const App& a, double x0, double x1, double centre, bool spectr
 void specLookSet(App& a, int look, bool save);
 
 // The channel band behind the trace (spectrum: a light fill and its edges) or on top of the picture (waterfall: the edges only)
-// The tuner styles 1..3 (tuner_style.h): the same band, drawn by the ImGui draw list inside the plot. under: the fills (before the trace)
-static void tunerDraw(const App& a, bool spectrum, bool under) {
+// The "Simple" tuner look (tuner_style.h): the same band, drawn by the ImGui draw list inside the plot
+static void tunerDraw(const App& a, bool spectrum) {
     const ChanWidth cw = channelWidth(a);
     if (cw.mhz <= 0) return;
     const plt::Rect lim = plt::GetPlotLimits();
     tstyle::In I;
-    I.pmin = plt::GetPlotPos(); I.psize = plt::GetPlotSize(); I.sc = gUi; I.mono = a.mono; I.spectrum = spectrum; I.settable = cw.settable && a.fmMode;
-    I.accent = ImGui::ColorConvertFloat4ToU32(pal::accent(1.f));
-    I.bottomReserve = 0;   // the frequency labels are in the strip under the plot (plot.cpp keeps them inside the panel)
+    I.pmin = plt::GetPlotPos(); I.psize = plt::GetPlotSize(); I.sc = gUi;
     I.xLo = specaxis::mhzToPx(a.freqMhz - cw.mhz / 2, I.pmin.x, I.psize.x, lim.X.Min, lim.X.Max);
     I.xHi = specaxis::mhzToPx(a.freqMhz + cw.mhz / 2, I.pmin.x, I.psize.x, lim.X.Min, lim.X.Max);
     I.xC = specaxis::mhzToPx(a.freqMhz, I.pmin.x, I.psize.x, lim.X.Min, lim.X.Max);
     const int plotId = spectrum ? 0 : 1;
     I.dragging = bandEdgeDragging(plotId);
     I.hover = I.dragging ? gEdgeDrag : -1;
-    if (!I.dragging && I.settable && plt::IsPlotHovered()) I.hover = specaxis::edgeUnder(ImGui::GetIO().MousePos.x, I.xLo, I.xHi, 6 * gUi);
-    snprintf(I.readout, sizeof I.readout, "%.3f MHz  %s", a.freqMhz, widthText(cw.mhz).c_str());
-    tstyle::draw(ImGui::GetWindowDrawList(), I, a.tunerStyle, under);
+    if (!I.dragging && cw.settable && a.fmMode && plt::IsPlotHovered()) I.hover = specaxis::edgeUnder(ImGui::GetIO().MousePos.x, I.xLo, I.xHi, 6 * gUi);
+    tstyle::draw(ImGui::GetWindowDrawList(), I);
 }
 
 static void channelBand(const App& a, bool fill) {
     if (a.family == 55) { generalChannelBand(a, fill); return; }
-    if (a.tunerStyle > 0) { if (fill) tunerDraw(a, true, true); else { tunerDraw(a, false, true); tunerDraw(a, false, false); } return; }
+    if (a.tunerStyle > 0) { if (!fill) tunerDraw(a, false); return; }   // the spectrum draws it over the trace (below)
     const ChanWidth cw = channelWidth(a);
     if (lookOn(a)) { specLookBand(a, a.freqMhz - std::max(0.0, cw.mhz) / 2, a.freqMhz + std::max(0.0, cw.mhz) / 2, a.freqMhz, fill, bandEdgeDragging(fill ? 0 : 1)); return; }
     if (cw.mhz <= 0) return;
@@ -1026,10 +1023,10 @@ void specDisplayPopup(App& a) {
     ImGui::TextDisabled("%s", tr("Palette"));
     specLookCombo(a, 170 * gUi);
     {
-        const char* ts[] = {N_("Classic"), N_("Slab"), N_("Brackets"), N_("Ruler flag")};
+        const char* ts[] = {N_("Classic"), N_("Simple")};
         ImGui::SetNextItemWidth(170 * gUi);
-        if (ImGui::BeginCombo(tr("Tuner style"), tr(ts[std::max(0, std::min(3, a.tunerStyle))]))) {
-            for (int i = 0; i < 4; i++) if (ImGui::Selectable(tr(ts[i]), a.tunerStyle == i)) { a.tunerStyle = i; savePrefs(a); }
+        if (ImGui::BeginCombo(tr("Tuner style"), tr(ts[std::max(0, std::min(1, a.tunerStyle))]))) {
+            for (int i = 0; i < 2; i++) if (ImGui::Selectable(tr(ts[i]), a.tunerStyle == i)) { a.tunerStyle = i; savePrefs(a); }
             ImGui::EndCombo();
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How the tuned band is drawn over the spectrum and the waterfall."));
@@ -1521,7 +1518,7 @@ static void spectrumPlot(App& a, ImVec2 size, int extraFlags) {
             }
         }
         if (look) specLookCursor(a, 0, plotMin, plotSize);
-        if (a.tunerStyle > 0 && a.family != 55) tunerDraw(a, true, false);   // the lines, grips and readout over the trace
+        if (a.tunerStyle > 0 && a.family != 55) tunerDraw(a, true);   // the lines over the trace
         wideMarkers(a);
         fileSpikeAndEdges(a, 0, plotMin, plotSize);
         multiMarkers(a);

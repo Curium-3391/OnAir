@@ -116,7 +116,7 @@ const std::vector<PrefKey>& keyTable() {
         real("specAvg", AT(a.specAvgSec), 0, 5), num("specFft", AT(a.specFft), 0, 0, 262144, true), real("specLine", AT(a.specLine), 0.6, 3),
         flagB("specFill", AT(a.specFill), true, false, true), flagB("specGrid", AT(a.specGrid), false, false, true), flagB("specPeaks", AT(a.specPeaks), false, false, true), flagB("specLabels", AT(a.specLabels), true, false, true), num("specLabelMask", AT(a.specLabelMask), 63, 0, 63, true),
         flagB("specReadout", AT(a.specReadout), false, false, true), flagB("specDbm", AT(a.specDbm), false, false, true),
-        num("specLook", AT(a.specLook), 1, 0, slook::NumLooks - 1, true), num("tunerStyle", AT(a.tunerStyle), 0, 0, 3, true), num("specAxisLabels", AT(a.specAxisLabels), -1, -1, 1, true),
+        num("specLook", AT(a.specLook), 1, 0, slook::NumLooks - 1, true), num("tunerLook", AT(a.tunerStyle), 1, 0, 1, true), num("specAxisLabels", AT(a.specAxisLabels), -1, -1, 1, true),
         real("specLabelSize", AT(a.specLabelSize), 0.7, 1.6), num("specSmoothTrace", AT(a.specSmoothTrace), -1, -1, 4, true),
         flagB("specNfMarker", AT(a.specNfMarker), false, false, true), flagB("specSmoothZoom", AT(a.specSmoothZoom), true, false, true),
         num("specSnapHz", AT(a.specSnapHz), 0, 0, 1000000, true), flagB("wfLowPass", AT(a.wfLowPass), false, false, true),
