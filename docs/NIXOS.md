@@ -1,6 +1,6 @@
 # OnAir on NixOS and Nix
 
-> **Untested.** The flake was written from `CMakeLists.txt`, `cmake/OnairRust.cmake` and the Debian packaging, on a machine without Nix. Expect to fix a detail or two on the first build and please report them.
+> **Status.** There is no Nix on the maintainer's machine. The `nix` GitHub workflow (`.github/workflows/nix.yml`, started by hand from the Actions tab) runs `nix flake check` and `nix build .#onair .#onair-server` on x86_64-linux; only what that run covers is verified. Running the program with a real radio on NixOS is not.
 
 The repository has a `flake.nix` (packages `onair` and `onair-server`, a NixOS module, a dev shell). The files are in `packaging/nix/`.
 
@@ -12,6 +12,20 @@ nix run github:adswill/OnAir#onair-server # the headless server (docs/headless-s
 ```
 
 This does not give your user access to the USB radio: for that use the NixOS module below, which installs the udev rules (`packaging/linux/install-udev-rules.sh` writes into `/etc` and does not suit NixOS).
+
+## Overlay
+
+```nix
+nixpkgs.overlays = [ onair.overlays.default ];   # then pkgs.onair and pkgs.onair-server exist
+```
+
+## What the flake provides
+
+- `packages.<system>.onair`, `.onair-server`, `checks.<system>` (the same two packages, for `nix flake check`), `overlays.default`, `nixosModules.default`, `devShells.default`.
+- The package version is read from `project(OnAir VERSION ...)` in `CMakeLists.txt`.
+- Radio libraries that a nixpkgs revision lacks (`airspy`, `airspyhf`, `libbladeRF`, `libiio`) are skipped instead of failing the evaluation.
+- The module's `package` option falls back to building the package itself when the flake has no package for the host's system.
+- With no system monospaced font (NixOS has none under `/usr/share/fonts`) the Classic look uses the embedded JetBrains Mono.
 
 ## NixOS module
 

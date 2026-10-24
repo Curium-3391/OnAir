@@ -158,6 +158,7 @@ void loadFonts(App& app, ImGuiIO& io) {
     ImFont* ui = nullptr;
     app.mono = nullptr;
     for (const auto& f : plat::monoFontCandidates()) if (access(f.c_str(), R_OK) == 0 && (ui = io.Fonts->AddFontFromFileTTF(f.c_str(), 13.0f))) break; // the whole UI is monospaced
+    if (!ui) ui = typo::loadEmbeddedMono(io, 13.0f, [](ImGuiIO& i, ImFont* f) { mergeCjk(i, f); });   // no system font (NixOS): the embedded one
     if (!ui) ui = io.Fonts->AddFontDefault();
     // CJK (Korean/Japanese/Chinese): merge every system font that loads (Menlo has no Hangul; DRM Journaline needs it).
     mergeCjk(io, ui);

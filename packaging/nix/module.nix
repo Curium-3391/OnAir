@@ -12,7 +12,7 @@ in
     enable = lib.mkEnableOption "OnAir, the software radio receiver (installs it and the udev rules for the USB radios)";
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${system}.onair;
+      default = (self.packages.${system} or { }).onair or (pkgs.callPackage (self + "/packaging/nix/package.nix") { src = self; soapyModules = [ ]; });
       defaultText = lib.literalExpression "onair.packages.\${system}.onair";
       description = "The OnAir package. Use `.override { soapyModules = [ ... ]; extraRuntimeLibs = [ ... ]; }` for more radios.";
     };
@@ -38,7 +38,7 @@ in
     enable = lib.mkEnableOption "the OnAir headless server (a software radio controlled from a web browser, docs/headless-server.md)";
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${system}.onair-server;
+      default = (self.packages.${system} or { }).onair-server or (pkgs.callPackage (self + "/packaging/nix/package.nix") { src = self; server = true; soapyModules = [ ]; });
       defaultText = lib.literalExpression "onair.packages.\${system}.onair-server";
       description = "The onair-server package.";
     };

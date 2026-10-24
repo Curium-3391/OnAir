@@ -23,6 +23,8 @@ Fonts& fonts();
 // Loads the five fonts (embedded) when the look is not Classic; mergeFallback(io, font) adds the CJK system fonts to each.
 // Returns false (and leaves everything as it was) for Classic or when a font fails to load.
 bool loadFonts(ImGuiIO& io, void (*mergeFallback)(ImGuiIO&, ImFont*));
+// the embedded JetBrains Mono at `size`: the Classic look when no system monospaced font exists (NixOS, minimal containers)
+ImFont* loadEmbeddedMono(ImGuiIO& io, float size, void (*mergeFallback)(ImGuiIO&, ImFont*));
 // spacing, rounding and text colours for the look; call after applyTheme() and before the style is scaled
 void applyStyle(ImGuiStyle& st);
 
