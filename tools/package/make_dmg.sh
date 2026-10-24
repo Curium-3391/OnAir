@@ -14,11 +14,12 @@ export MACOSX_DEPLOYMENT_TARGET
 FFMPEG_PREFIX=${FFMPEG_PREFIX:-$PWD/$BUILD/ffmpeg}
 [ -f "$FFMPEG_PREFIX/lib/libavcodec.a" ] || tools/package/build_ffmpeg_static.sh "$FFMPEG_PREFIX"
 cmake -S . -B $BUILD -DDECT2_FFMPEG_PREFIX="$FFMPEG_PREFIX" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_TESTS=OFF -DDECT2_BUILD_APP=ON -DDECT2_HAVE_HAMLIB=ON -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" -DONAIR_VERSION="$VERSION"
-cmake --build $BUILD -j"$(sysctl -n hw.ncpu)" --target dect2
+cmake --build $BUILD -j"$(sysctl -n hw.ncpu)" --target dect2 onair-server
 APP=$BUILD/OnAir.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp $BUILD/dect2 "$APP/Contents/MacOS/OnAir"
+cp $BUILD/onair-server "$APP/Contents/MacOS/onair-server"   # the headless server for OnAir Web (docs/headless-server.md); bundle_macos.py gives it the same libraries
 cp packaging/icons/OnAir.icns "$APP/Contents/Resources/OnAir.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -74,6 +75,8 @@ then build OnAir from its public source with -DDECT2_FFMPEG_PREFIX=<folder> (see
 the video and audio formats (H.264, H.265, AAC, AC-3 ...) are the user's matter, as with FFmpeg everywhere.
 NOTE
 tools/package/check_lgpl_bundle.sh "$APP/Contents/MacOS/OnAir" "$APP/Contents/Frameworks" || { echo "Licence check failed"; exit 1; }
+tools/package/check_lgpl_bundle.sh "$APP/Contents/MacOS/onair-server" "$APP/Contents/Frameworks" || { echo "Licence check failed (onair-server)"; exit 1; }
+[ -x "$APP/Contents/MacOS/onair-server" ] || { echo "error: onair-server is missing from the app"; exit 1; }
 # licence files: the project's own, and the licence file of the Homebrew formula behind every bundled library
 mkdir -p "$APP/Contents/Resources"
 tools/package/add_license_files.sh "$APP/Contents/Resources"

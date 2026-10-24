@@ -6,6 +6,9 @@ import os, re, shutil, subprocess, sys, glob
 app = sys.argv[1]
 exe = os.path.join(app, "Contents/MacOS/OnAir")
 fw = os.path.join(app, "Contents/Frameworks")
+# the headless server (onair-server) sits next to the app and loads the same bundled libraries
+srv = os.path.join(app, "Contents/MacOS/onair-server")
+exes = [exe] + ([srv] if os.path.exists(srv) else [])
 os.makedirs(fw, exist_ok=True)
 
 def run(*a):
@@ -49,7 +52,7 @@ def is_system(dep):
     return dep.startswith("/usr/lib/") or dep.startswith("/System/")
 
 done = {}   # real path -> bundled name
-queue = [exe]
+queue = list(exes)
 bundled = []
 
 # The radio libraries that OnAir loads at run time when they are present (the native drivers): they go into the app too, so that nothing has
@@ -129,6 +132,7 @@ for lib in bundled:
 for mod in modules:
     for rp in rpaths(mod):
         subprocess.run(["install_name_tool", "-delete_rpath", rp, mod], capture_output=True)
-for rp in rpaths(exe):
-    subprocess.run(["install_name_tool", "-delete_rpath", rp, exe], capture_output=True)
+for e in exes:
+    for rp in rpaths(e):
+        subprocess.run(["install_name_tool", "-delete_rpath", rp, e], capture_output=True)
 print("bundled %d libraries" % len(bundled))

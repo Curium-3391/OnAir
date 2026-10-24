@@ -11,6 +11,7 @@ ARCH=$(uname -m)
 D=$(mktemp -d)/onair-$VERSION-linux-$ARCH-portable
 mkdir -p "$D/bin" "$D/lib"
 cp $B/dect2 "$D/bin/onair"; cp $B/dect2cli "$D/bin/onair-cli"; cp $B/dect2scan "$D/bin/onair-scan"
+cp $B/onair-server "$D/bin/onair-server"   # the headless server (OnAir Web)
 SKIP='linux-vdso|ld-linux|/libc\.so|/libm\.so|/libdl\.so|/libpthread\.so|/librt\.so|/libutil\.so|/libresolv\.so|/libstdc\+\+|/libgcc_s|/libGL|/libEGL|/libOpenGL|/libX|/libxcb|/libwayland|/libdrm|/libasound|/libpulse|/libudev|/libdbus|/libsystemd|/libxkbcommon|/libffi|/libgbm|/libva'
 collect() {
   ldd "$1" | awk '/=> \//{print $3}' | while read -r lib; do
@@ -18,6 +19,7 @@ collect() {
     [ -f "$D/lib/$(basename "$lib")" ] || { cp -L "$lib" "$D/lib/"; collect "$lib"; }
   done
 }
+[ -x "$D/bin/onair-server" ] || { echo "error: onair-server is missing from the portable package"; exit 1; }
 for p in "$D"/bin/*; do collect "$p"; done
 # the radio libraries (RTL-SDR, Airspy, BladeRF, LimeSDR, PlutoSDR, USRP), found by name next to the program
 # codec2 (FreeDV and M17 speech, LGPL-2.1, third_party/codec2): its own shared library, next to the radio libraries (OnAir looks in ../lib of its program)
@@ -47,9 +49,11 @@ done
 # udev rules and the kernel-driver blacklist for the radios, with the script that installs them (the .deb installs them itself)
 mkdir -p "$D/udev"
 cp $SRC/packaging/linux/60-onair-sdr.rules $SRC/packaging/linux/onair-rtlsdr-blacklist.conf $SRC/packaging/linux/onair-sdrplay-blacklist.conf "$D/udev/"
+cp $SRC/packaging/linux/onair-server.service "$D/"   # optional systemd unit, see its header (the paths there are /usr/local/bin)
 cp $SRC/packaging/linux/install-udev-rules.sh "$D/"; chmod 755 "$D/install-udev-rules.sh"
 cat > "$D/README.txt" <<'TXT'
 OnAir portable: run bin/onair. Nothing to install.
+OnAir Web / headless: bin/onair-server --web --web-lan (docs/headless-server.md; onair-server.service is an optional systemd unit).
 If a radio is not found, run sudo ./install-udev-rules.sh once (it lets a normal user open the radios and keeps the kernel's TV driver off RTL-SDR dongles), then replug the radio.
 Libraries OnAir needs from the system: the graphics driver (OpenGL), X11 or Wayland, and for sound ALSA, PulseAudio or PipeWire.
 TXT
