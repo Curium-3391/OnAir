@@ -198,7 +198,7 @@ void recordUi(App& a, int part = 0) {
     }
     toRecordCol(rowX0);
     ImGui::BeginDisabled(rs.active);
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("X-Midas BLUE").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);
+    ImGui::SetNextItemWidth(std::min(ImGui::CalcTextSize("X-Midas BLUE").x + ImGui::GetFrameHeight() + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi, std::max(60.f * gUi, ImGui::GetContentRegionAvail().x)));   // never wider than the panel
     if (ImGui::BeginCombo("##recfmt", a.recFormat == 2 ? "X-Midas BLUE" : a.recFormat == 1 ? "float" : "8-bit")) {
         if (ImGui::Selectable("8-bit", a.recFormat == 0)) { a.recFormat = 0; plat::prefs().setI("recFormat", 0); }
         if (ImGui::Selectable("float", a.recFormat == 1)) { a.recFormat = 1; plat::prefs().setI("recFormat", 1); }
@@ -289,9 +289,9 @@ void audioRecordUi(App& a, int part = 0) {
     }   // part != 2
     if (part != 1) {
     ImGui::BeginDisabled(rs.active);
-    if (ImGui::Checkbox(tr("Only audio"), &a.audioRecGate)) plat::prefs().setB("audioRecGate", a.audioRecGate);
+    if (ImGui::Checkbox(tr("Skip silence"), &a.audioRecGate)) plat::prefs().setB("audioRecGate", a.audioRecGate);
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail"));
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Audio recording writes to the file only while there is sound, like a squelch: the silent parts are left out, with a short lead-in and tail kept around each burst of sound."));
     if (a.audioRecGate) {
         flowNext(6 * gUi);
         ImGui::BeginDisabled(rs.active);
@@ -300,8 +300,8 @@ void audioRecordUi(App& a, int part = 0) {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("One file per transmission: a new file starts after 3 s of silence"));
     }
     flowNext(6 * gUi);
-    if (ImGui::Checkbox(tr("Keep going"), &a.audioRecKeep)) plat::prefs().setB("audioRecKeep", a.audioRecKeep);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Keeps recording when the mode or the frequency changes. Off: the recording stops then."));
+    if (ImGui::Checkbox(tr("Keep recording"), &a.audioRecKeep)) plat::prefs().setB("audioRecKeep", a.audioRecKeep);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Audio recording carries on when you change the mode or the frequency, or stop the receiver. Off: it stops by itself then. The Stop button always works."));
     }   // part != 1
     if (part != 2 && !a.audioRecDonePath.empty() && !rs.active) {
         flowNext(6 * gUi);
@@ -330,8 +330,8 @@ void audioMonitorUi(App& a) {
         d.setB("monYield", a.monYield); d.setS("monDev", a.monDev); d.setS("monDev2", a.monDev2); d.setB("monOut2", a.monOut2); d.setB("monNet", a.monNet);
         d.setI("monPort", a.monPort); d.setB("monBindAll", a.monBindAll); d.setB("monWav", a.monWav);
     };
-    if (ImGui::Checkbox(tr("Monitor audio"), &a.monOn)) save();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound."));
+    if (ImGui::Checkbox(tr("Hear this channel"), &a.monOn)) save();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Play the tuned channel through the speakers in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Stays silent while the mode plays its own sound."));
     const dect2::MonitorStats ms = mon.stats();
     if (a.monOn) {
         flowNext(6 * gUi);
@@ -355,8 +355,8 @@ void audioMonitorUi(App& a) {
         else ImGui::TextDisabled("%.0f dB", ms.levelDb);
     }
     flowNext(6 * gUi);
-    if (ImGui::SmallButton(tr("Audio..."))) ImGui::OpenPopup("##audioout");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream"));
+    if (ImGui::SmallButton(tr("Outputs..."))) ImGui::OpenPopup("##audioout");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Where \"Hear this channel\" plays: the output device, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream"));
     if (ImGui::BeginPopup("##audioout")) {
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 380 * gUi);
         static std::vector<std::string> devs;
@@ -622,7 +622,7 @@ void radioMessagesUi(App& a, bool vertical) {
         a.diagCopiedAt = ImGui::GetTime();
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Copies the version, system, radios, messages and radio log lines, for a bug report"));
-    ImGui::SameLine();
+    sameLineIf(ImGui::CalcTextSize(tr("Save bug report")).x + 2 * ImGui::GetStyle().FramePadding.x + 4 * gUi);   // a narrow panel: on the next row
     if (ImGui::SmallButton(tr("Save bug report"))) {
         const std::string path = plat::saveFileDialog("onair-bug-report.zip");
         if (!path.empty()) {
@@ -651,8 +651,8 @@ void radioMessagesUi(App& a, bool vertical) {
     flowNext(6 * gUi);
     clipsui::button(a);
     flowEnd();
-    panel::subHeading(tr("Listen"));
-    audioRecordUi(a, 2);         // Only audio  Split  Keep going
+    audioRecordUi(a, 2);         // Skip silence  Split  Keep recording: they belong to the audio recording
     flowEnd();
-    audioMonitorUi(a);           // Monitor audio  [demod]  volume  Audio...
+    panel::subHeading(tr("Listen"));
+    audioMonitorUi(a);           // Hear this channel  [demod]  volume  Outputs...
 }

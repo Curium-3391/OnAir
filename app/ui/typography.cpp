@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include "typography.h"
 #include "imgui_internal.h"
 #include "dect2/common/inflate.h"

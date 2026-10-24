@@ -10,6 +10,16 @@ inline ImVec4 accent(float a = 1.f) { ImVec4 c = accentRef(); c.w = a; return c;
 inline ImVec4 okGreen() { return ImVec4(0.40f, 0.76f, 0.52f, 1); }
 inline ImVec4 warnAmber() { return ImVec4(0.90f, 0.70f, 0.28f, 1); }
 inline ImVec4 badRed() { return ImVec4(0.88f, 0.38f, 0.34f, 1); }
+// the tab strips: the selected tab is a filled calm blue (white label, about 5:1), the others stay flat, a hover is a light veil; no bar above
+// the tab. Set after every palette (and in High contrast), so every strip that uses the style colours looks the same. In the Light theme the
+// lightness of every colour is turned over afterwards, which keeps the contrast.
+inline void tabColours(ImVec4* c) {
+    c[ImGuiCol_TabSelected] = ImVec4(0.15f, 0.38f, 0.66f, 1);
+    c[ImGuiCol_TabDimmedSelected] = ImVec4(0.14f, 0.33f, 0.57f, 1);
+    c[ImGuiCol_TabHovered] = ImVec4(1, 1, 1, 0.10f);
+    c[ImGuiCol_TabSelectedOverline] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0, 0, 0, 0);
+}
 inline bool& dev() { static bool v = false; return v; }
 // heading text in panels: blue in the classic interface, soft white in the new one
 inline ImVec4 heading() { return dev() ? ImVec4(0.92f, 0.90f, 0.84f, 1) : ImVec4(0.45f, 0.75f, 1, 1); }
@@ -59,6 +69,7 @@ inline void applyTheme() {
     c[ImGuiCol_TabDimmed]     = ImVec4(0.055f, 0.058f, 0.062f, 1);
     c[ImGuiCol_TabDimmedSelected] = ImVec4(0.10f, 0.11f, 0.12f, 1);
     c[ImGuiCol_TabSelectedOverline] = ImVec4(0.45f, 0.72f, 0.82f, 1);
+    pal::tabColours(c);
     c[ImGuiCol_SliderGrab]    = ImVec4(0.55f, 0.58f, 0.60f, 1);
     c[ImGuiCol_SliderGrabActive] = ImVec4(0.45f, 0.72f, 0.82f, 1);
     c[ImGuiCol_CheckMark]     = ImVec4(0.45f, 0.72f, 0.82f, 1);
