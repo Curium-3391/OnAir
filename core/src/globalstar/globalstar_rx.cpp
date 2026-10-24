@@ -3,6 +3,7 @@
 // (the Doppler shift against the channel centre). Nothing is demodulated.
 #include "dect2/globalstar/globalstar_rx.h"
 #include "dect2/dsp/fftutil.h"
+#include "dect2/dsp/dsp_compat.h"
 #include "dect2/results/results_io.h"
 #include <algorithm>
 #include <chrono>
@@ -59,7 +60,11 @@ struct GlobalstarReceiver::Impl {
     std::vector<cf32> blk;
     size_t blkN = 0;
     std::vector<double> acc;                  // power spectrum of the slot under way
-    int framesAcc = 0;
+    int framesAcc = 0;                        // frames in the slot's average
+    int elapsed = 0;                          // frames of the slot gone by (the duty cycle skips some)
+    int duty = 1, log2n = 0;                  // one frame in `duty` is transformed: a slot still averages a dozen frames of 250 bins
+    size_t skipLeft = 0;
+    std::vector<float> fre, fim;
     Chan ch[kGsChannels];
     int slots = 0;
     double now = 0;
@@ -102,6 +107,9 @@ struct GlobalstarReceiver::Impl {
         while (NF < 4096 && fs / NF > 9000.0) NF *= 2;
         framesPerSlot = std::max(1, (int)std::lround(kSlotSec * fs / NF));
         fft = std::make_unique<Fft>(NF);
+        log2n = 0; while ((1 << log2n) < NF) log2n++;
+        fre.assign((size_t)NF, 0.f); fim.assign((size_t)NF, 0.f);
+        duty = std::max(1, std::min(2, framesPerSlot / 12));
         win.resize((size_t)NF);
         wNorm = 0;
         for (int i = 0; i < NF; i++) { win[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2 * kPi * (i + 0.5) / NF)); wNorm += (double)win[(size_t)i] * win[(size_t)i]; }
@@ -116,7 +124,7 @@ struct GlobalstarReceiver::Impl {
         for (auto& p : track) p.timeSec -= shift;
         for (auto& e : events) e.startSec -= shift;
         now = 0; nextPublish = kPublishSec; slots = 0;
-        blkN = 0; framesAcc = 0;
+        blkN = 0; framesAcc = 0; elapsed = 0; skipLeft = 0;
         std::fill(acc.begin(), acc.end(), 0.0);
         for (auto& C : ch) {
             C.warmSum = 0; C.nf = 0; C.active = false; C.onCnt = C.offCnt = 0; C.occ = 0; C.power = C.snr = 0;
@@ -189,7 +197,7 @@ struct GlobalstarReceiver::Impl {
             for (auto& C : ch) if (C.inView) C.nf = std::min(C.warmSum / kWarmSlots, warmMin * 1.26);
         }
         std::fill(acc.begin(), acc.end(), 0.0);
-        framesAcc = 0;
+        framesAcc = 0; elapsed = 0;
     }
 
     void publish() {
@@ -242,23 +250,37 @@ struct GlobalstarReceiver::Impl {
         pub = std::move(o);
     }
 
+    // one frame of the slot has gone by (transformed or skipped)
+    void frameDone(int frames) {
+        now += (double)frames * NF / fs;
+        elapsed += frames;
+        if (elapsed >= framesPerSlot && framesAcc > 0) onSlot();
+        if (now >= nextPublish) { nextPublish += kPublishSec; publish(); }
+    }
+
     void feed(const cf32* x, size_t n) {
         if (!isReady || n == 0) return;
         size_t i = 0;
         while (i < n) {
+            if (skipLeft > 0) {
+                const size_t s = std::min(skipLeft, n - i);
+                skipLeft -= s; i += s;
+                if (skipLeft > 0) break;
+                frameDone(duty - 1);
+                continue;
+            }
             const size_t take = std::min((size_t)NF - blkN, n - i);
             std::copy(x + i, x + i + take, blk.begin() + (long)blkN);
             blkN += take; i += take;
             if (blkN < (size_t)NF) break;
             blkN = 0;
-            std::vector<cf32> w((size_t)NF);
-            for (int k = 0; k < NF; k++) w[(size_t)k] = blk[(size_t)k] * win[(size_t)k];
-            fft->forward(w.data());
-            for (int k = 0; k < NF; k++) acc[(size_t)k] += (double)std::norm(w[(size_t)k]);
+            const float* in = reinterpret_cast<const float*>(blk.data());
+            for (int k = 0; k < NF; k++) { fre[(size_t)k] = in[2 * k] * win[(size_t)k]; fim[(size_t)k] = in[2 * k + 1] * win[(size_t)k]; }
+            fftSplit(fre.data(), fim.data(), log2n, false);
+            for (int k = 0; k < NF; k++) acc[(size_t)k] += (double)(fre[(size_t)k] * fre[(size_t)k] + fim[(size_t)k] * fim[(size_t)k]);
             framesAcc++;
-            now += (double)NF / fs;
-            if (framesAcc >= framesPerSlot) onSlot();
-            if (now >= nextPublish) { nextPublish += kPublishSec; publish(); }
+            frameDone(1);
+            if (duty > 1) skipLeft = (size_t)(duty - 1) * (size_t)NF;
         }
     }
 };
