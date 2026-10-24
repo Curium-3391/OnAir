@@ -65,7 +65,9 @@ void speechEnvelopeFeatures(const std::vector<float>& e, float& syllabic, float&
     syllabic = all > 0 ? (float)(band / all) : 0.f;
 }
 
-bool looksLikeSpeech(float syllabic, float stdDb) { return stdDb >= 3.0f && syllabic >= 0.25f; }
+// Real FM speech measured syllabic 0.20 and stdDb 13: with the old 0.25 limit every piece of clear speech was thrown away as music. A level that swings
+// by 8 dB or more is speech (or a drum solo) whatever its rhythm; whisper itself writes [Music] for the rest and the filters drop that.
+bool looksLikeSpeech(float syllabic, float stdDb) { return stdDb >= 3.0f && (syllabic >= 0.25f || (stdDb >= 8.0f && syllabic >= 0.10f)); }
 
 VoiceSegmenter::VoiceSegmenter(int inRate, const SegmenterOptions& o) : rate_(std::max(1000, inRate)), o_(o) {
     blk_ = std::max<size_t>(8, (size_t)(rate_ / 50));
@@ -95,6 +97,12 @@ void VoiceSegmenter::block(const float* x, size_t n, int64_t endMs, const std::f
     // noise floor: follows a fall at once, a rise slowly (a long transmission must not raise it)
     if (db < floorDb_) floorDb_ = db; else floorDb_ += (db - floorDb_) * (active_ ? 0.0005 : 0.01);
     floorDb_ = std::max(floorDb_, -80.0);
+    // The steady hiss of a receiver (FM, ham, marine: above the gate) must become the floor within seconds. Starting from -80 dB with a slow rise it
+    // looked like voice for minutes: the transmission never ended, was cut into 27 s pieces of noise and the speech in it was never read. So the floor
+    // also rises to the quietest block of the last 2 s (speech always dips below that between words; a steady bed does not).
+    recent_.push_back((float)db);
+    if (recent_.size() > 100) recent_.pop_front();
+    if (recent_.size() >= 100) floorDb_ = std::max(floorDb_, (double)*std::min_element(recent_.begin(), recent_.end()));
     const bool voice = db > std::max(o_.gateDb, floorDb_ + o_.marginDb);
     const size_t preMax = (size_t)(o_.preRollSec * rate_);
     if (!active_) {
