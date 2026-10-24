@@ -1,6 +1,7 @@
 // VDL Mode 2 receiver: see vdl2_rx.h.
 #include "dect2/vdl2/vdl2_rx.h"
 #include "dect2/dsp/baseband_filter.h"
+#include "dect2/dsp/dsp_compat.h"
 #include "dect2/automation/engine.h"
 #include "dect2/results/results_io.h"
 #include "dect2/net/feeds.h"
@@ -114,6 +115,16 @@ struct Vdl2Receiver::Impl {
     std::function<void(const std::string&)> logCb;
     // DSP set-up
     int Da = 1, Db = 1;
+    // Shared first stage (setup()): the channels sit within a few hundred kHz of each other, so the capture is mixed to the middle of that group and
+    // low-passed / decimated once (to the rate the per-channel moving sums used to reach), instead of once per channel at the full input rate.
+    bool grp = false;
+    double gOff = 0, rateCh = 0;  // the group's middle (Hz from the centre) and the rate the channels run at
+    int Dg = 1;
+    std::vector<float> gh;        // the group filter
+    std::vector<float> gre, gim, ore, oim;
+    std::vector<cf32> gout;
+    cd gph{1, 0}, gstep{1, 0};
+    size_t gst = 0;               // where the next output's window starts in gre / gim (after the history)
     double fs1 = 0, T = 0;        // stage-1 rate, samples per symbol there
     std::vector<float> h1, h2, h3;
     int gd2 = 0;
@@ -149,6 +160,7 @@ struct Vdl2Receiver::Impl {
         const double fsa = rate / Da;
         Db = std::max(1, (int)std::floor(fsa / 80e3));
         fs1 = fsa / Db;
+        grp = false; Dg = 1; rateCh = rate; gOff = 0;
         T = fs1 / kVdl2SymbolRate;
         const double stop1 = fs1 - 16.6e3, pass1 = 22e3;
         int n1 = (int)std::ceil(6.6 * fsa / std::max(10e3, stop1 - pass1));
@@ -176,16 +188,65 @@ struct Vdl2Receiver::Impl {
             if (!k.inBand) { k.x1.clear(); k.x2.clear(); k.x1.shrink_to_fit(); k.x2.shrink_to_fit(); }
             ch.push_back(std::move(k));
         }
+        {
+            double lo = 1e300, hi = -1e300;
+            int nIn = 0;
+            for (auto& k : ch) if (k.inBand) { lo = std::min(lo, k.offHz); hi = std::max(hi, k.offHz); nIn++; }
+            const double pass = nIn ? 0.5 * (hi - lo) + 24e3 : 0, stop = fsa - pass;
+            if (Da >= 3 && nIn >= 2 && stop - pass >= 20e3) {
+                grp = true; Dg = Da; rateCh = fsa; gOff = 0.5 * (lo + hi);
+                int nt = (int)std::ceil(5.5 * rate / (stop - pass));
+                nt = std::min(nt, 1201) | 1;
+                gh = lowpass(nt, 0.5 * (pass + stop) / rate);
+                gre.assign(gh.size() - 1, 0.f); gim.assign(gh.size() - 1, 0.f);
+                gst = 0; gph = cd(1, 0);
+                gstep = cd(std::cos(-2 * kPi * gOff / rate), std::sin(-2 * kPi * gOff / rate));
+                Da = 1;
+                for (auto& k : ch) { k.b1.init(1); k.b2.init(1); k.b3.init(1); }
+            }
+        }
         retuneMixers();
         tel.channels.clear();
         for (auto& k : ch) tel.channels.push_back(k.info);
     }
 
     void retuneMixers() {
-        for (auto& k : ch) { const double w = -2 * kPi * (k.offHz + tuneErr) / rate; k.step = cd(std::cos(w), std::sin(w)); }
+        for (auto& k : ch) { const double w = -2 * kPi * (k.offHz - gOff + tuneErr) / (grp ? rateCh : rate); k.step = cd(std::cos(w), std::sin(w)); }
     }
 
     // ---------------------------------------------------------------- sample path
+
+    // The shared first stage: mix by the group's middle, low-pass, keep every Dg-th sample. The result (at rateCh) is left in gout.
+    void groupStage(const cf32* x, size_t n) {
+        const size_t L = gh.size(), H = L - 1;
+        gre.resize(H + n); gim.resize(H + n);
+        float* re = gre.data() + H;
+        float* im = gim.data() + H;
+        for (size_t i = 0; i < n; i++) {
+            cf32 v = x[i];
+            if (!std::isfinite(v.real()) || !std::isfinite(v.imag())) v = cf32(0, 0);
+            const double yr = v.real() * gph.real() - v.imag() * gph.imag(), yi = v.real() * gph.imag() + v.imag() * gph.real();
+            gph *= gstep;
+            re[i] = (float)yr; im[i] = (float)yi;
+            if ((i & 1023) == 1023) gph /= std::abs(gph);
+        }
+        const size_t T = H + n;
+        gout.clear();
+        if (T >= L + gst) {
+            const size_t cnt = (T - L - gst) / (size_t)Dg + 1;
+            ore.resize(cnt); oim.resize(cnt);
+            desamp(gre.data() + gst, Dg, gh.data(), ore.data(), (int)cnt, (int)L);
+            desamp(gim.data() + gst, Dg, gh.data(), oim.data(), (int)cnt, (int)L);
+            gout.resize(cnt);
+            for (size_t i = 0; i < cnt; i++) gout[i] = cf32(ore[i], oim[i]);
+            gst = gst + cnt * (size_t)Dg - n;
+        } else {
+            gst = gst - n;   // cannot happen when n >= 0 and the window does not fit: keep the position relative to the new history
+        }
+        std::copy(gre.begin() + (std::ptrdiff_t)n, gre.end(), gre.begin());
+        std::copy(gim.begin() + (std::ptrdiff_t)n, gim.end(), gim.begin());
+        gre.resize(H); gim.resize(H);
+    }
 
     void pushInput(Chan& k, cf32 x) {
         const cd y = cd(x.real(), x.imag()) * k.rot;
@@ -565,8 +626,12 @@ void Vdl2Receiver::feed(const cf32* x, size_t n) {
         if (I.havePending && !busy) { I.tuneErr = I.pendingTune; I.havePending = false; I.retuneMixers(); }
     }
     if (I.rate < 1 || I.ch.empty()) { I.nIn += n; return; }
+    if (I.grp) I.groupStage(x, n);
     for (auto& k : I.ch) {
         if (!k.inBand) continue;
+        if (I.grp) {
+            for (const cf32& v : I.gout) I.pushInput(k, v);
+        } else
         for (size_t i = 0; i < n; i++) {
             cf32 v = x[i];
             if (!std::isfinite(v.real()) || !std::isfinite(v.imag())) v = cf32(0, 0);
