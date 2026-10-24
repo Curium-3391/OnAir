@@ -809,6 +809,8 @@ if(DECT2_BUILD_TESTS)
 
   add_executable(bench_resample tests/dsp/bench_resample.cpp)
   target_link_libraries(bench_resample PRIVATE dect2core)
+  add_executable(bench_hfdata tools/bench/bench_hfdata.cpp)   # CPU per second of signal of the pager, packet, PSK and CW receivers
+  target_link_libraries(bench_hfdata PRIVATE dect2core)
   add_executable(bench_rx tests/bench/bench_rx.cpp)
   target_link_libraries(bench_rx PRIVATE dect2core)
   add_executable(test_latest_slot tests/dsp/test_latest_slot.cpp)   # the tuning mailbox: the newest request wins, the rest coalesce
