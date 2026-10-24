@@ -251,7 +251,70 @@ void T2Receiver::Impl::scanP1() {
     scanPos = lo + lastD - 2 * W;
 }
 
+// Timing of the first significant path from the P1 itself. The correlation peak of P1 is a triangle 542 samples wide, so two paths of similar
+// strength (a 0 dB echo) make a plateau on which the maximum sits anywhere, and the P1 position jumped by the echo delay from frame to frame
+// (the clock loop took it for 100 ppm of clock error and the receiver needed seconds to settle, or never did). Here the carriers of the
+// decoded P1 are divided by the transmitted DBPSK chain, which leaves the channel at 384 frequencies; its transform is the impulse response,
+// 1 sample apart. The earliest path within 10 dB of the strongest sets the timing, the same one in every frame.
+void T2Receiver::Impl::refineP1Timing(P1Decode& b) {
+    auto bit = [](const uint8_t* bytes, int i) { return (bytes[i >> 3] >> (7 - (i & 7))) & 1; };
+    fr.assign(1024, 0.f); fi.assign(1024, 0.f);
+    float x = 1.f;
+    for (int i = 0; i < 384; i++) {
+        if (i > 0) {
+            int sg;
+            if (i < 64) sg = 1 - 2 * bit(kS1Patterns[b.s1], i);
+            else if (i < 320) sg = 1 - 2 * bit(kS2Patterns[b.s2], i - 64);
+            else sg = 1 - 2 * bit(kS1Patterns[b.s1], i - 320);
+            x *= (float)sg;
+        }
+        const int f = kP1ActiveCarriers[i] + 86 - 512;
+        const int bin = (f + 1024) % 1024;
+        fr[bin] = b.y[(size_t)i].real() * x; fi[bin] = b.y[(size_t)i].imag() * x;
+    }
+    doFft(10, true);
+    constexpr int R = 250;
+    float P[2 * R + 1];
+    float pm = 0; int im = R;
+    for (int t = -R; t <= R; t++) {
+        const int n = (t + 1024) % 1024;
+        P[t + R] = fr[n] * fr[n] + fi[n] * fi[n];
+        if (P[t + R] > pm) { pm = P[t + R]; im = t + R; }
+    }
+    if (pm <= 0) return;
+    float tmp[2 * R + 1];
+    std::copy(P, P + 2 * R + 1, tmp);
+    std::nth_element(tmp, tmp + R, tmp + 2 * R + 1);
+    const float thr = std::max(0.1f * pm, 12.f * tmp[R]);
+    int pick = im;
+    for (int t = 1; t < 2 * R; t++) {
+        if (P[t] >= thr && P[t] >= P[t - 1] && P[t] > P[t + 1]) { pick = t; break; }
+    }
+    float frac = 0;
+    if (pick > 0 && pick < 2 * R) {
+        const float a = P[pick - 1], c = P[pick], d = P[pick + 1], den = a - 2 * c + d;
+        if (den < 0) frac = std::max(-0.5f, std::min(0.5f, 0.5f * (a - d) / den));
+    }
+    b.frac = -((double)(pick - R) + frac);
+}
+
+// While locked the transmitter's frequency does not jump: only the hypotheses next to the previous P1's offset are tried (5 of 69 FFTs);
+// when none of them decodes, or when not locked, all of them are (decodeP1Range).
 T2Receiver::Impl::P1Decode T2Receiver::Impl::decodeP1(int64_t d, double cfoC) {
+    const int kHyp = (int)std::ceil(kP1CfoBins * (double)kP1CLen / 1024.0);
+    if (state == 2 && p1.valid && p1Count > 1 && trackMiss == 0 && !haveRejected && frameLen > 0 && !getenv("DECT2_NOP1NARROW")) {
+        const double hypStep = fn / kP1CLen;
+        const int kc = (int)std::lround((p1.cfoHz - cfoC) / hypStep);
+        const int lo = std::max(-kHyp, kc - 2), hi = std::min(kHyp, kc + 2);
+        if (lo <= hi) {
+            P1Decode r = decodeP1Range(d, cfoC, lo, hi);
+            if (r.ok && r.conf >= 0.6) return r;
+        }
+    }
+    return decodeP1Range(d, cfoC, -kHyp, kHyp);
+}
+
+T2Receiver::Impl::P1Decode T2Receiver::Impl::decodeP1Range(int64_t d, double cfoC, int kLo, int kHi) {
     P1Decode best;
     const double binHz = fn / 1024.0;
     double hypStep = fn / kP1CLen; // 1/(542 T)
@@ -259,8 +322,7 @@ T2Receiver::Impl::P1Decode T2Receiver::Impl::decodeP1(int64_t d, double cfoC) {
     // one whose carriers carry the S1/S2 sequences wins. Three of them (+-25 kHz) were enough for a radio tuned to the channel, but not for
     // a recording made with the channel off centre (a Hungarian mux recorded 280 kHz off never showed a P1): the search now covers
     // kP1CfoBins P1 carriers either side, which keeps the 6.9 MHz wide P1 inside the band.
-    const int kHyp = (int)std::ceil(kP1CfoBins * (double)kP1CLen / 1024.0);
-    for (int k = -kHyp; k <= kHyp; k++) {
+    for (int k = kLo; k <= kHi; k++) {
         double cfo = cfoC + k * hypStep;
         fr.assign(1024, 0.f); fi.assign(1024, 0.f);
         const cd step = std::polar(1.0, -kTwoPi * cfo / fn);
@@ -322,6 +384,7 @@ T2Receiver::Impl::P1Decode T2Receiver::Impl::decodeP1(int64_t d, double cfoC) {
             best.s2 = i2;
             best.cfo = cfo;
             best.z.assign(z.begin(), z.end());
+            best.y.assign(y.begin(), y.end());
             // sub-sample timing from the phase slope of the (now known) differential bits; carriers with the same spacing to
             // their neighbour share a phasor, so the signed differentials are summed per spacing first
             cd perDf[16] = {};
@@ -346,6 +409,7 @@ T2Receiver::Impl::P1Decode T2Receiver::Impl::decodeP1(int64_t d, double cfoC) {
     }
     (void)binHz;
     best.ok = best.conf >= kP1MinConf && best.s1 < 5;
+    if (best.ok && !best.y.empty() && !getenv("DECT2_NOP1CIR")) refineP1Timing(best);
     return best;
 }
 

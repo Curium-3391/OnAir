@@ -309,10 +309,12 @@ struct T2Receiver::Impl {
         bool ok = false;
         int s1 = 0, s2 = 0;
         double conf = 0, cfo = 0, frac = 0;
-        std::vector<cf32> z;
+        std::vector<cf32> z, y;
     };
 
     P1Decode decodeP1(int64_t d, double cfoC);
+    P1Decode decodeP1Range(int64_t d, double cfoC, int kLo, int kHi);
+    void refineP1Timing(P1Decode& b);
 
     void handleP1Candidate(int64_t d, float metric);
 
