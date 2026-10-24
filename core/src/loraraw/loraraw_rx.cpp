@@ -59,7 +59,11 @@ struct LoraRawReceiver::Impl {
         lora::DemodStats seen;
     };
     struct Chan {
-        std::unique_ptr<lora::Channelizer> ch;
+        std::unique_ptr<lora::Channelizer> ch;     // one channel filter per bandwidth ...
+        size_t fdIndex = 0;                         // ... or the slot in the shared frequency-domain channeliser
+        double outRate = 0;
+        int decim = 1;
+        double delay = 0;
         lora::ChanBuf buf;
         std::shared_ptr<lora::ChipStream> cs;     // shared by the spreading factors of the channel
         std::vector<Dec> decs;
@@ -67,6 +71,8 @@ struct LoraRawReceiver::Impl {
         int64_t base = 0;
     };
     std::vector<Chan> chans;
+    std::unique_ptr<lora::FdChannelizer> fd;       // from 3 bandwidths on: one FFT of the capture serves them all
+    std::vector<lora::ChanBuf*> fdOut;
     std::vector<cf32> pend;
     int64_t nIn = 0, nProc = 0;
     double nextReport = 0, rate = 0, offset = 0;
@@ -118,6 +124,12 @@ struct LoraRawReceiver::Impl {
         else syncs = {cfg.sync};
         const double inOff = cfg.offsetHz + offset;       // where the channel sits in the input
         std::string listed;
+        fd.reset(); fdOut.clear();
+        {
+            std::vector<lora::FdChannelizer::Spec> specs;
+            for (double bw : bws) if (std::fabs(inOff) + 0.5 * bw + 25e3 < 0.45 * rate && rate >= 2.2 * bw) specs.push_back({inOff, bw});
+            if (lora::FdChannelizer::kEnabled && specs.size() >= 3) { fd = std::make_unique<lora::FdChannelizer>(rate, specs); fdOut.assign(specs.size(), nullptr); }
+        }
         for (double bw : bws) {
             const bool inBand = std::fabs(inOff) + 0.5 * bw + 25e3 < 0.45 * rate && rate >= 2.2 * bw;
             Chan* c = nullptr;
@@ -134,18 +146,22 @@ struct LoraRawReceiver::Impl {
                 if (!c) {
                     chans.emplace_back();
                     c = &chans.back();
-                    c->ch = std::make_unique<lora::Channelizer>(rate, inOff, bw);
+                    if (fd) { c->fdIndex = chans.size() - 1; c->outRate = fd->outRate(c->fdIndex); c->decim = fd->decim(c->fdIndex); c->delay = 0; }
+                    else {
+                        c->ch = std::make_unique<lora::Channelizer>(rate, inOff, bw);
+                        c->outRate = c->ch->outRate(); c->decim = c->ch->decim(); c->delay = c->ch->delayIn();
+                    }
                     c->offHz = cfg.offsetHz;
                     c->base = nProc;
                     c->buf.clear(0);
-                    c->cs = std::make_shared<lora::ChipStream>(c->ch->outRate() / bw);
+                    c->cs = std::make_shared<lora::ChipStream>(c->outRate / bw);
                 }
                 lora::Params p;
                 p.sf = sf; p.bwHz = bw; p.syncWord = (uint8_t)syncs[0]; p.preamble = cfg.preamble;
                 for (size_t si = 1; si < syncs.size(); si++) p.moreSync.push_back((uint8_t)syncs[si]);
                 p.ldro = cfg.ldro < 0 ? lora::autoLdro(sf, bw) : cfg.ldro == 1;
                 if (cfg.implicit) { p.implicitHdr = true; p.implicitLen = cfg.length; p.cr = cfg.cr; p.crc = cfg.crc; }
-                dc.dm = std::make_unique<lora::Demod>(p, c->ch->outRate(), 1, c->cs);
+                dc.dm = std::make_unique<lora::Demod>(p, c->outRate, 1, c->cs);
                 dc.dm->reset(0);
                 c->decs.push_back(std::move(dc));
             }
@@ -157,7 +173,7 @@ struct LoraRawReceiver::Impl {
     }
 
     void onFrame(size_t ci, size_t di, Chan& c, Dec& d, const lora::RxFrame& f) {
-        const double t = ((double)c.base + f.startSample * c.ch->decim() - c.ch->delayIn()) / rate;
+        const double t = ((double)c.base + f.startSample * c.decim - c.delay) / rate;
         const bool good = f.crcOk || !f.hdr.crc;
         for (const auto& r : recent) if ((r.chan != ci || r.dec != di) && r.payload == f.payload && std::fabs(r.sec - t) < 0.25) return;   // another setting locked the same frame
         recent.push_back({f.payload, t, ci, di});
@@ -192,9 +208,10 @@ struct LoraRawReceiver::Impl {
     }
 
     void processBlock(const cf32* x, size_t n) {
+        if (fd) { for (Chan& c : chans) fdOut[c.fdIndex] = &c.buf; fd->process(x, n, fdOut); }
         for (size_t ci = 0; ci < chans.size(); ci++) {
             Chan& c = chans[ci];
-            c.ch->process(x, n, c.buf);
+            if (!fd) c.ch->process(x, n, c.buf);
             c.cs->extend(c.buf);
             int64_t keep = c.buf.end();
             for (size_t di = 0; di < c.decs.size(); di++) {

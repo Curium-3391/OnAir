@@ -211,5 +211,31 @@ private:
     int64_t nIn_ = 0;            // input samples mixed so far
 };
 
+
+// Several channels of one wide capture through ONE shared forward FFT (overlap-save, frequency-domain decimation by a power of two per
+// channel, a smooth band-pass on the chosen bins): the cost grows with the channels only by a small inverse FFT each. The channel
+// samples are numbered from the first input sample (no group delay); the output rate of channel i is outRate(i) = inRate / decim(i).
+class FdChannelizer {
+public:
+    struct Spec { double offsetHz, bwHz; };
+    static inline bool kEnabled = true;           // the banks use it from 3 channels on (switch for comparisons)
+    FdChannelizer(double inRate, const std::vector<Spec>& chans);
+    ~FdChannelizer();
+    size_t channels() const;
+    double outRate(size_t i) const;
+    int decim(size_t i) const;
+    void reset();
+    // appends the output of channel i to *out[i] (out has one entry per channel)
+    void process(const cf32* x, size_t n, const std::vector<ChanBuf*>& out);
+private:
+    struct Chan;
+    double inRate_;
+    int M_ = 0, O_ = 0, H_ = 0, lm_ = 0;
+    int64_t inBase_ = 0, block_ = 0;
+    std::vector<Chan> ch_;
+    std::vector<cf32> in_, tmp_;
+    std::vector<float> xr_, xi_;
+};
+
 } // namespace lora
 } // namespace dect2

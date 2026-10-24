@@ -94,11 +94,109 @@ static int cpu(int argc, char** argv) {
     return 0;
 }
 
+
+// 8 LoRaWAN-style channels (200 kHz apart, 125 kHz) in a 2 Msps capture, frames of different SFs and carrier offsets on all of them:
+// how many come out right, and the CPU time of the bank. LORA_NOFD=1 uses one channel filter per channel instead of the shared FFT.
+static int multi(int argc, char** argv) {
+    const double snr = argc > 2 ? atof(argv[2]) : 0;
+    const int trials = argc > 3 ? atoi(argv[3]) : 3;
+    const double rate = 2e6;
+    if (getenv("LORA_NOFD")) lora::FdChannelizer::kEnabled = false;
+    int total = 0, good = 0;
+    double cpuAcc = 0, secAcc = 0;
+    for (int tr = 0; tr < trials; tr++) {
+        std::mt19937 g(100 + tr);
+        std::vector<lora::TxFrame> fr;
+        std::vector<std::pair<int, std::vector<uint8_t>>> pays;
+        const double noiseRms = 0.05;
+        double tEnd = 0;
+        for (int ch = 0; ch < 8; ch++) {
+            double at = 0.05 + 0.02 * (g() % 10);
+            for (int k = 0; k < 2; k++) {
+                lora::TxFrame f;
+                f.p.sf = 7 + (int)((ch + k * 3) % 6); f.p.bwHz = 125e3; f.p.cr = 5; f.p.preamble = 8; f.p.syncWord = 0x34; f.p.ldro = lora::autoLdro(f.p.sf, 125e3);
+                pays.push_back({ch, randomBytes(g, 16)});
+                f.data = lora::encode(f.p, pays.back().second.data(), 16);
+                f.startSec = at;
+                f.freqHz = (ch - 3.5) * 200e3 + ((int)(g() % 2000) - 1000) * 5.0;
+                f.sroPpm = ((int)(g() % 40) - 20);
+                f.amp = ampFor(snr, 125e3, rate, noiseRms);
+                f.phase0 = (g() % 1000) / 1000.0;
+                at = f.endSec() + 0.02;
+                tEnd = std::max(tEnd, at);
+                fr.push_back(f);
+            }
+        }
+        auto x = render(fr, tEnd + 0.1, rate, noiseRms, 7 + tr);
+        std::vector<lorabank::Channel> chans;
+        for (int ch = 0; ch < 8; ch++) {
+            lorabank::Channel c; c.bwHz = 125e3; c.offsetHz = (ch - 3.5) * 200e3; c.sfs = {7, 8, 9, 10, 11, 12}; c.syncs = {0x34}; c.preamble = 8; chans.push_back(c);
+        }
+        lorabank::Bank b;
+        b.configure(rate, chans);
+        std::vector<lorabank::Decoded> out;
+        const double c0 = cpuSec();
+        for (size_t i = 0; i < x.size(); i += 8192) b.feed(x.data() + i, std::min<size_t>(8192, x.size() - i), out);
+        cpuAcc += cpuSec() - c0; secAcc += (double)x.size() / rate;
+        std::vector<bool> used(pays.size(), false);
+        for (const auto& d : out)
+            for (size_t k = 0; k < pays.size(); k++)
+                if (!used[k] && d.f.crcOk && (int)d.chan == pays[k].first && d.f.payload == pays[k].second) { used[k] = true; break; }
+        for (size_t k = 0; k < used.size(); k++) { good += used[k]; if (!used[k] && getenv("LORA_DIAG")) printf("  missed: channel %d frame %zu (SF %d)\n", pays[k].first, k, fr[k].p.sf); }
+        total += (int)pays.size();
+    }
+    printf("MULTI snr %.1f: %d/%d frames right, bank CPU %.4f s per s of signal (%s)\n", snr, good, total, cpuAcc / secAcc, getenv("LORA_NOFD") ? "channel filters" : "shared FFT");
+    return 0;
+}
+
+// the shared-FFT channeliser on a pure tone: amplitude and phase must stay smooth across the blocks
+using cd_ = std::complex<double>;
+static int fdcheck(int, char**) {
+    const double rate = 2e6;
+    std::vector<lora::FdChannelizer::Spec> sp;
+    for (int ch = 0; ch < 4; ch++) sp.push_back({(ch - 1.5) * 200e3 + 100.0 * ch, 125e3});
+    lora::FdChannelizer fd(rate, sp);
+    const size_t n = 400000;
+    std::vector<cf32> x(n);
+    for (int ch = 0; ch < 4; ch++) {
+        const double f0 = 9000.0 + 3000.0 * ch;
+        for (size_t i = 0; i < n; i++) {
+            const double ph = 2 * M_PI * (sp[ch].offsetHz + f0) * (double)i / rate;
+            x[i] = cf32((float)std::cos(ph), (float)std::sin(ph)) * 0.f;
+        }
+        // single tone per run
+        for (size_t i = 0; i < n; i++) {
+            const double ph = 2 * M_PI * (sp[ch].offsetHz + f0) * (double)i / rate;
+            x[i] = cf32((float)std::cos(ph), (float)std::sin(ph));
+        }
+        fd.reset();
+        std::vector<lora::ChanBuf> bufs(4);
+        std::vector<lora::ChanBuf*> ptrs;
+        for (auto& bb : bufs) ptrs.push_back(&bb);
+        for (size_t i = 0; i < n; i += 4096) fd.process(x.data() + i, std::min<size_t>(4096, n - i), ptrs);
+        const lora::ChanBuf& o = bufs[ch];
+        const double r = fd.outRate(ch);
+        double minA = 1e9, maxA = 0, maxDph = 0;
+        for (int64_t k = 200; k + 1 < o.end(); k++) {
+            const cf32 v = o.at(k)[0], w = o.at(k + 1)[0];
+            const double a = std::abs(v);
+            minA = std::min(minA, a); maxA = std::max(maxA, a);
+            const double dph = std::arg(w * std::conj(v)) - 2 * M_PI * f0 / r;
+            maxDph = std::max(maxDph, std::fabs(std::remainder(dph, 2 * M_PI)));
+        }
+        { cd_ acc(0, 0); for (int64_t k = 200; k + 1 < o.end(); k++) acc += std::complex<double>(o.at(k + 1)[0]) * std::conj(std::complex<double>(o.at(k)[0])); printf("  mean tone %.1f Hz (wanted %.1f), first samples %.3f %.3f %.3f\n", std::arg(acc) / (2 * M_PI) * r, f0, o.at(300)[0].real(), o.at(301)[0].real(), o.at(302)[0].real()); }
+        printf("fdcheck ch %d: out rate %.0f, %lld samples, amplitude %.4f..%.4f, max phase step error %.5f rad\n", ch, r, (long long)o.end(), minA, maxA, maxDph);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (const char* e = getenv("LORA_RATIO")) lora::Channelizer::kMinRatio = atof(e);
     if (const char* e = getenv("LORA_RATE_X")) gRateX = atof(e);
     if (argc >= 5 && !strcmp(argv[1], "sweep")) return sweep(argc, argv);
     if (argc >= 2 && !strcmp(argv[1], "cpu")) return cpu(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "fdcheck")) return fdcheck(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "multi")) return multi(argc, argv);
     printf("usage: lora_bench sweep sf bwKhz cr [cfoHz sroPpm len frames floorOffsetDb] | cpu [secs]\n");
     return 1;
 }

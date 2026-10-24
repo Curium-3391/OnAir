@@ -20,7 +20,11 @@ struct Bank::Impl {
         lora::DemodStats seen;
     };
     struct Chan {
-        std::unique_ptr<lora::Channelizer> ch;
+        std::unique_ptr<lora::Channelizer> ch;   // one channel filter per channel ...
+        size_t fdIndex = 0;                      // ... or the channel's slot in the shared frequency-domain channeliser
+        double outRate = 0;
+        int decim = 1;
+        double delay = 0;
         lora::ChanBuf buf, bufInv;
         std::shared_ptr<lora::ChipStream> cs, csInv;     // chip-rate streams shared by the spreading factors of the channel           // bufInv: the conjugated samples (inverted IQ), only filled when a decoder wants them
         bool wantInv = false;
@@ -33,6 +37,8 @@ struct Bank::Impl {
     double rate = 0;
     std::vector<Channel> cfg;
     std::vector<Chan> chans;
+    std::unique_ptr<lora::FdChannelizer> fd;   // used from 3 channels on: one FFT of the capture serves them all
+    std::vector<lora::ChanBuf*> fdOut;
     std::vector<DecoderStat> stats;
     std::vector<cf32> pend;
     std::vector<lora::RxFrame> frames;
@@ -41,9 +47,14 @@ struct Bank::Impl {
     size_t running = 0, inBandChans = 0;
 
     void block(const cf32* x, size_t n, std::vector<Decoded>& out) {
+        std::vector<int64_t> beforeFd;
+        if (fd) {
+            for (Chan& c : chans) { beforeFd.push_back(c.buf.end()); fdOut[c.fdIndex] = &c.buf; }
+            fd->process(x, n, fdOut);
+        }
         for (Chan& c : chans) {
-            const int64_t before = c.buf.end();
-            c.ch->process(x, n, c.buf);
+            const int64_t before = fd ? beforeFd[c.fdIndex] : c.buf.end();
+            if (!fd) c.ch->process(x, n, c.buf);
             if (c.wantInv) {
                 std::vector<cf32> tmp((size_t)(c.buf.end() - before));
                 for (size_t i = 0; i < tmp.size(); i++) tmp[i] = std::conj(c.buf.at(before + (int64_t)i)[0]);
@@ -63,7 +74,7 @@ struct Bank::Impl {
                 }
                 d.seen = ds;
                 for (auto& f : frames) {
-                    const double t = (f.startSample * c.ch->decim() - c.ch->delayIn()) / rate;   // channels start with the bank: sample 0
+                    const double t = (f.startSample * c.decim - c.delay) / rate;   // channels start with the bank: sample 0
                     bool dup = false;
                     for (const auto& r : recent)
                         if (r.chan == c.index && (r.sf != d.sf || r.inv != d.inverted) && r.payload == f.payload && std::fabs(r.sec - t) < 0.25) dup = true;   // another setting locked the same frame
@@ -103,7 +114,14 @@ void Bank::configure(double inputRate, const std::vector<Channel>& chans) {
     m.cfg = chans;
     m.chans.clear(); m.stats.clear(); m.pend.clear(); m.recent.clear();
     m.nProc = 0; m.running = 0; m.inBandChans = 0;
+    m.fd.reset(); m.fdOut.clear();
     if (inputRate <= 0) return;
+    {
+        std::vector<lora::FdChannelizer::Spec> specs;
+        for (const Channel& c : chans)
+            if (fits(inputRate, c) && !c.sfs.empty() && !c.syncs.empty() && (c.normalIq || c.invertedIq)) specs.push_back({c.offsetHz, std::max(c.bwHz, c.filterBwHz)});
+        if (lora::FdChannelizer::kEnabled && specs.size() >= 3) { m.fd = std::make_unique<lora::FdChannelizer>(inputRate, specs); m.fdOut.assign(specs.size(), nullptr); }
+    }
     for (size_t ci = 0; ci < chans.size(); ci++) {
         const Channel& c = chans[ci];
         const bool inBand = fits(inputRate, c);
@@ -112,12 +130,16 @@ void Bank::configure(double inputRate, const std::vector<Channel>& chans) {
         if (active) {
             m.chans.emplace_back();
             ch = &m.chans.back();
-            ch->ch = std::make_unique<lora::Channelizer>(inputRate, c.offsetHz, std::max(c.bwHz, c.filterBwHz));
+            if (m.fd) { ch->fdIndex = m.chans.size() - 1; ch->outRate = m.fd->outRate(ch->fdIndex); ch->decim = m.fd->decim(ch->fdIndex); ch->delay = 0; }
+            else {
+                ch->ch = std::make_unique<lora::Channelizer>(inputRate, c.offsetHz, std::max(c.bwHz, c.filterBwHz));
+                ch->outRate = ch->ch->outRate(); ch->decim = ch->ch->decim(); ch->delay = ch->ch->delayIn();
+            }
             ch->index = ci; ch->offsetHz = c.offsetHz;
             ch->buf.clear(0); ch->bufInv.clear(0);
             ch->wantInv = c.invertedIq;
-            ch->cs = std::make_shared<lora::ChipStream>(ch->ch->outRate() / c.bwHz);
-            ch->csInv = std::make_shared<lora::ChipStream>(ch->ch->outRate() / c.bwHz);
+            ch->cs = std::make_shared<lora::ChipStream>(ch->outRate / c.bwHz);
+            ch->csInv = std::make_shared<lora::ChipStream>(ch->outRate / c.bwHz);
             m.inBandChans++;
         }
         for (int inv = 0; inv < 2; inv++) {
@@ -139,7 +161,7 @@ void Bank::configure(double inputRate, const std::vector<Channel>& chans) {
                 for (size_t si = 1; si < c.syncs.size(); si++) p.moreSync.push_back((uint8_t)c.syncs[si]);
                 p.ldro = lora::autoLdro(sf, c.bwHz);
                 p.cfoTrack = c.cfoTrack; p.carrierHz = c.carrierHz;
-                d.dm = std::make_unique<lora::Demod>(p, ch->ch->outRate(), 1, inv ? ch->csInv : ch->cs);
+                d.dm = std::make_unique<lora::Demod>(p, ch->outRate, 1, inv ? ch->csInv : ch->cs);
                 d.dm->reset(0);
                 ch->decs.push_back(std::move(d));
                 m.running += c.syncs.size();
