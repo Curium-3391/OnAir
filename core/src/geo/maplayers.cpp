@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 #include "dect2/common/mathconst.h"
 
 namespace dect2 {
@@ -82,6 +83,34 @@ std::vector<MapMarker> markersFromSonde(const SondeTelemetry& t) {
         m.detail = s.type + (s.hasVel && s.vSpeed != 0 ? (s.vSpeed < 0 ? ", falling" : ", rising") : "");
         for (const auto& p : s.track) m.track.push_back({p.lat, p.lon});
         v.push_back(std::move(m));
+    }
+    return v;
+}
+
+std::vector<MapMarker> markersFromDmr(const DmrTelemetry& t) {
+    std::vector<MapMarker> v;
+    const double now = (double)std::time(nullptr);
+    // newest first, so the first fix of each radio in this backwards walk is its latest position
+    for (size_t i = t.locations.size(); i-- > 0;) {
+        const DmrLocation& loc = t.locations[i];
+        if (!loc.hasFix) continue;
+        const std::string id = std::to_string(loc.src);
+        bool have = false;
+        for (const MapMarker& m : v) if (m.id == id) { have = true; break; }
+        if (have) continue;
+        MapMarker m; m.layer = LayerDmr; m.id = id; m.label = id;
+        m.lat = loc.lat; m.lon = loc.lon;
+        if (loc.hasSpeed) { m.hasSpeed = true; m.speedKt = loc.speedMs * 1.943844; }
+        m.headingDeg = loc.hasHeading ? loc.headingDeg : -1;
+        m.ageSec = std::max(0.0, now - loc.unixSec);
+        char b[64]; snprintf(b, sizeof b, "TG %u, slot %d", loc.dst, loc.slot);
+        m.detail = b;
+        v.push_back(std::move(m));
+    }
+    for (MapMarker& m : v) {   // the movement track of each radio, oldest first
+        const uint32_t src = (uint32_t)std::stoul(m.id);
+        for (const DmrLocation& loc : t.locations)
+            if (loc.src == src && loc.hasFix) m.track.push_back({(float)loc.lat, (float)loc.lon});
     }
     return v;
 }

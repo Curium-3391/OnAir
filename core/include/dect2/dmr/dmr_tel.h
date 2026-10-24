@@ -38,6 +38,22 @@ struct DmrMessage {
     std::string text;
 };
 
+// One LRRP GPS fix (or NoFix status) received in a DMR data packet; parsed from the IPv4/UDP/LRRP
+// payload (see dmr_lrrp.h).
+struct DmrLocation {
+    int carrierId = 0; double carrierHz = 0;
+    double sec = 0;              // seconds of signal since the receiver started (or was reset)
+    double unixSec = 0;          // wall clock, for "last heard" on the map
+    int slot = 0;
+    uint32_t src = 0, dst = 0;   // radio and talkgroup
+    bool hasFix = false;         // false: a NoFix / status report, no position
+    int resultCode = 0;          // LRRP result code when !hasFix (16 = no fix)
+    double lat = 0, lon = 0;
+    bool hasRadius = false; double radiusM = 0;   // reported accuracy
+    bool hasSpeed = false; double speedMs = 0;    // metres per second (LRRP); km/h = * 3.6
+    bool hasHeading = false; double headingDeg = 0;
+};
+
 struct DmrSlot {
     bool active = false;         // bursts decode on this slot
     int state = 0;               // 0 none, 1 voice, 2 data, 3 idle, 4 control
@@ -94,6 +110,7 @@ struct DmrTelemetry {
     std::vector<float> spectrumDb;   // power spectrum of the channel, 128 bins from -12 to +12 kHz, in dB relative to the strongest
     std::vector<DmrCall> callLog;    // oldest first, at most 100
     std::vector<DmrMessage> messages;   // oldest first, at most 16
+    std::vector<DmrLocation> locations;   // oldest first, at most 512 (LRRP fixes and NoFix reports)
 };
 
 // One line for the command line and the log
