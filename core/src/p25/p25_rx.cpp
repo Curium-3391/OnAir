@@ -1,5 +1,6 @@
 // P25 Phase 1 receiver (see p25_rx.h).
 #include "dect2/p25/p25_rx.h"
+#include "dect2/dsp/up6.h"
 #include "dect2/dsp/cic3.h"
 #include "dect2/results/results_io.h"
 #include "dect2/p25/p25_tel.h"
@@ -275,7 +276,7 @@ struct P25Receiver::Impl {
     bool triedKey = false;              // we have already looked up a key for this encryption state (so we do not re-match every frame)
     std::string decStatus;              // "decrypted with key <name>" / "encrypted: add your key" / "key mismatch"
     std::vector<float> aud8, pcmOut;
-    float upPrev = 0;
+    Up6 up;   // 8 -> 48 kHz (dsp/up6.h)
     std::unique_ptr<AudioOut> audioOut;
     struct Grant { int tg, src, ch; bool group; double last; };
     std::vector<Grant> grants;
@@ -713,8 +714,7 @@ struct P25Receiver::Impl {
         if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
-                for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
-                upPrev = s;
+                up.push(s, [&](float v) { pcmOut.push_back(v); pcmOut.push_back(v); });
             }
             voice::ensureOutput(audioOut, *mon);   // on the mode's output device
             audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());

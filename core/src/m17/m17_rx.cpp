@@ -1,5 +1,6 @@
 // M17 receiver (see m17_rx.h).
 #include "dect2/m17/m17_rx.h"
+#include "dect2/dsp/up6.h"
 #include "dect2/dsp/cic3.h"
 #include "dect2/results/results_io.h"
 #include "dect2/m17/m17_tel.h"
@@ -348,7 +349,7 @@ struct M17Receiver::Impl {
     int c2Rate = 0;
     std::unique_ptr<AudioOut> audioOut;
     std::vector<float> aud8, pcmOut;
-    float upPrev = 0;
+    Up6 up;   // 8 -> 48 kHz (dsp/up6.h)
     std::string lastPosSrc; double lastPosLat = 1e9, lastPosLon = 1e9, lastPosSec = -1e9;
 
     double sigSec() const { return paths[0].sigSec(); }
@@ -590,8 +591,7 @@ struct M17Receiver::Impl {
         if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
-                for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
-                upPrev = s;
+                up.push(s, [&](float v) { pcmOut.push_back(v); pcmOut.push_back(v); });
             }
             voice::ensureOutput(audioOut, *mon);   // on the mode's output device
             audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());

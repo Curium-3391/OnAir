@@ -1,5 +1,6 @@
 // dPMR receiver (see dpmr_rx.h).
 #include "dect2/dpmr/dpmr_rx.h"
+#include "dect2/dsp/up6.h"
 #include "dect2/dsp/cic3.h"
 #include "dect2/results/results_io.h"
 #include "dect2/dpmr/dpmr_tel.h"
@@ -288,7 +289,7 @@ struct DpmrReceiver::Impl {
     bool sdOn = false; DpmrCall sd; int sdBlocks = 0;
     std::unique_ptr<NxdnAmbe> ambe;
     std::vector<float> aud8, pcmOut;
-    float upPrev = 0;
+    Up6 up;   // 8 -> 48 kHz (dsp/up6.h)
     std::unique_ptr<AudioOut> audioOut;
 
     void addBer(int e, int n) { if (e < 0) return; berErr += e; berBits += n; callBer += (uint32_t)e; callBits += (uint32_t)n; }
@@ -548,8 +549,7 @@ struct DpmrReceiver::Impl {
         if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
-                for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
-                upPrev = s;
+                up.push(s, [&](float v) { pcmOut.push_back(v); pcmOut.push_back(v); });
             }
             voice::ensureOutput(audioOut, *mon);   // on the mode's output device
             audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());

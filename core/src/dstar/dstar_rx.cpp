@@ -1,5 +1,6 @@
 // D-STAR receiver (see dstar_rx.h).
 #include "dect2/dstar/dstar_rx.h"
+#include "dect2/dsp/up6.h"
 #include "dect2/dsp/cic3.h"
 #include "dect2/results/results_io.h"
 #include "dect2/dstar/dstar_tel.h"
@@ -216,7 +217,7 @@ struct DstarReceiver::Impl {
     std::unique_ptr<AudioOut> audioOut;
     std::vector<float> aud8, pcmOut;
     std::vector<std::vector<uint8_t>> pend;   // the voice of weak frames, held back
-    float upPrev = 0;
+    Up6 up;   // 8 -> 48 kHz (dsp/up6.h)
 
     double sigSec() const { return (double)fr[0].yN / kFs; }
     float yAt(int64_t i) const { return fr[lp].yAt(i); }
@@ -583,8 +584,7 @@ struct DstarReceiver::Impl {
         if (!silent.load() && mon) {
             pcmOut.clear();
             for (float s : aud8) {
-                for (int k = 1; k <= 6; k++) { const float v = upPrev + (s - upPrev) * k / 6.f; pcmOut.push_back(v); pcmOut.push_back(v); }
-                upPrev = s;
+                up.push(s, [&](float v) { pcmOut.push_back(v); pcmOut.push_back(v); });
             }
             voice::ensureOutput(audioOut, *mon);   // on the mode's output device
             audioOut->setVolume(volume.load() * mon->volume()); audioOut->setMuted(muted.load());

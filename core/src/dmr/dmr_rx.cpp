@@ -1,5 +1,6 @@
 // DMR receiver: front end (decimation, DC removal, carrier offset correction, channel filter, discriminator, matched filter) and the glue to the link layer.
 #include "dect2/dmr/dmr_rx.h"
+#include "dect2/dsp/up6.h"
 #include "dect2/results/results_io.h"
 #include "dect2/dmr/dmr_dsp.h"
 #include "dect2/dmr/dmr_ambe.h"
@@ -160,7 +161,7 @@ struct DmrReceiver::Impl {
     int audioSlot = -1;                      // 0 or 1
     std::vector<float> aud8;                 // 8 kHz mono, not yet played
     std::vector<float> pcmOut, tapL;
-    float upPrev = 0;
+    Up6 up;   // 8 -> 48 kHz (dsp/up6.h)
     std::unique_ptr<AudioOut> audioOut;
 
     // The voice monitor (voice_monitor.h) chooses which call is played: one at a time per mode, the user's mute / allow / priority lists,
@@ -214,8 +215,7 @@ struct DmrReceiver::Impl {
         if (mon) mon->audio(playing, aud8.data(), aud8.size(), 1, 8000);   // the call's recording (when on), at the codec's rate
         pcmOut.clear(); tapL.clear();
         for (float v : aud8) {
-            for (int k = 1; k <= 6; k++) { const float o = upPrev + (v - upPrev) * k / 6.f; tapL.push_back(o); pcmOut.push_back(o); pcmOut.push_back(o); }
-            upPrev = v;
+            up.push(v, [&](float o) { tapL.push_back(o); pcmOut.push_back(o); pcmOut.push_back(o); });
         }
         aud8.clear();
         std::function<void(const float*, const float*, size_t)> t;
@@ -285,7 +285,7 @@ struct DmrReceiver::Impl {
         chan.reset(); mf.reset();
         prevB = cf32(1, 0);
         link.reset();
-        ambe[0].reset(); ambe[1].reset(); audioSlot = -1; aud8.clear(); upPrev = 0;
+        ambe[0].reset(); ambe[1].reset(); audioSlot = -1; aud8.clear(); up.reset();
         powAcc = 0; powN = 0; levelDb = -120;
         specBuf.clear();
         std::fill(specPow.begin(), specPow.end(), 0.0);
