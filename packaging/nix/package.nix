@@ -52,7 +52,7 @@ let
 in
 stdenv.mkDerivation {
   pname = prog;
-  version = "3.0.0"; # CMakeLists.txt: project(OnAir VERSION ...)
+  version = "3.1.0"; # CMakeLists.txt: project(OnAir VERSION ...)
   inherit src;
 
   nativeBuildInputs = [
