@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstring>
 #include "dtmb_simd.h"
+#ifdef DECT2_X86_DISPATCH
+#include <immintrin.h>
+#endif
 #include "dect2/common/window.h"
 
 namespace dect2::dtmb {
@@ -76,7 +79,7 @@ size_t SrrcResampler::available() const {
 
 namespace {
 // The polyphase filter over n outputs; compiled twice on x86-64 (baseline and AVX2 + FMA, see dect2/dsp/simd.h)
-DECT2_SIMD_BODY void filterLoopBody(const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o) {
+DECT2_SIMD_BODY void filterLoopBaseBody(const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o) {
     const int shift = 32 - 9;   // 512 phases
     size_t k = 0;
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
@@ -107,7 +110,47 @@ DECT2_SIMD_BODY void filterLoopBody(const float* re, const float* im, const floa
         pos += step;
     }
 }
-DECT2_AVX2_DISPATCH(void, filterLoop, (const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o), (re, im, bank, stride, half, pos, step, n, o))
+void filterLoopBase(const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o);
+#ifdef DECT2_X86_DISPATCH
+// AVX2 + FMA, four outputs per pass (eight independent accumulator chains: one output alone is bound by the multiply-add latency)
+__attribute__((target("avx2,fma")))
+void filterLoop4(const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o) {
+    const int shift = 32 - 9;
+    size_t k = 0;
+    for (; k + 4 <= n; k += 4) {
+        long base[4]; const float* h[4];
+        for (int u = 0; u < 4; u++) {
+            int64_t i0 = pos >> 32;
+            uint32_t ph = (uint32_t)(((uint64_t)(pos & 0xFFFFFFFFll) + (1ull << (shift - 1))) >> shift);
+            if (ph >= 512) { ph = 0; i0++; }
+            base[u] = (long)i0 - (half - 1);
+            h[u] = bank + (size_t)ph * (size_t)stride;
+            pos += step;
+        }
+        __m256 ar[4], ai[4];
+        for (int u = 0; u < 4; u++) ar[u] = ai[u] = _mm256_setzero_ps();
+        for (int t = 0; t < stride; t += 8)
+            for (int u = 0; u < 4; u++) {
+                const __m256 hv = _mm256_loadu_ps(h[u] + t);
+                ar[u] = _mm256_fmadd_ps(_mm256_loadu_ps(re + base[u] + t), hv, ar[u]);
+                ai[u] = _mm256_fmadd_ps(_mm256_loadu_ps(im + base[u] + t), hv, ai[u]);
+            }
+        for (int u = 0; u < 4; u++) {
+            __m128 a = _mm_add_ps(_mm256_castps256_ps128(ar[u]), _mm256_extractf128_ps(ar[u], 1)), b = _mm_add_ps(_mm256_castps256_ps128(ai[u]), _mm256_extractf128_ps(ai[u], 1));
+            a = _mm_hadd_ps(a, b); a = _mm_hadd_ps(a, a);   // re, im
+            o[k + u] = cf32(_mm_cvtss_f32(a), _mm_cvtss_f32(_mm_shuffle_ps(a, a, 1)));
+        }
+    }
+    if (k < n) filterLoopBase(re, im, bank, stride, half, pos, step, n - k, o + k);
+}
+#endif
+DECT2_AVX2_DISPATCH(void, filterLoopBase, (const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o), (re, im, bank, stride, half, pos, step, n, o))
+void filterLoop(const float* re, const float* im, const float* bank, int stride, int half, int64_t& pos, int64_t step, size_t n, cf32* o) {
+#ifdef DECT2_X86_DISPATCH
+    if (cpuHasAvx2()) { filterLoop4(re, im, bank, stride, half, pos, step, n, o); return; }
+#endif
+    filterLoopBase(re, im, bank, stride, half, pos, step, n, o);
+}
 }
 
 size_t SrrcResampler::pull(std::vector<cf32>& out, size_t maxOut) {

@@ -1,3 +1,7 @@
+#include "dect2/dsp/simd.h"
+#if defined(DECT2_X86_DISPATCH)
+#include <immintrin.h>
+#endif
 #include "dect2/common/thread_name.h"
 #if defined(__ARM_NEON) && !defined(DECT2_NO_SIMD)
 #include <arm_neon.h>
@@ -40,7 +44,7 @@ Bank makeBank(double ratio) {
     b.fc = 0.5 * down * 0.97;
     b.half = (int)std::ceil(16.0 / down);
     b.taps = 2 * b.half;
-    b.stride = (b.taps + 3) & ~3;
+    b.stride = (b.taps + 7) & ~7;
     b.h.assign((size_t)(b.phases + 1) * b.stride, 0.f);
     const double beta = 8.0, i0b = besselI0(beta);
     for (int p = 0; p <= b.phases; p++) {
@@ -58,6 +62,25 @@ Bank makeBank(double ratio) {
     return b;
 }
 }
+
+#ifdef DECT2_X86_DISPATCH
+// Four outputs at once, AVX2 + FMA (eight independent accumulator chains)
+DECT2_AVX2_TARGET static void dot4Avx2(const float* const* h, const float* const* r, const float* const* m, int taps, cf32* o) {
+    __m256 ar[4], ai[4];
+    for (int u = 0; u < 4; u++) ar[u] = ai[u] = _mm256_setzero_ps();
+    for (int t = 0; t < taps; t += 8)
+        for (int u = 0; u < 4; u++) {
+            const __m256 hv = _mm256_loadu_ps(h[u] + t);
+            ar[u] = _mm256_fmadd_ps(_mm256_loadu_ps(r[u] + t), hv, ar[u]);
+            ai[u] = _mm256_fmadd_ps(_mm256_loadu_ps(m[u] + t), hv, ai[u]);
+        }
+    for (int u = 0; u < 4; u++) {
+        __m128 a = _mm_add_ps(_mm256_castps256_ps128(ar[u]), _mm256_extractf128_ps(ar[u], 1)), b = _mm_add_ps(_mm256_castps256_ps128(ai[u]), _mm256_extractf128_ps(ai[u], 1));
+        a = _mm_hadd_ps(a, b); a = _mm_hadd_ps(a, a);
+        o[u] = cf32(_mm_cvtss_f32(a), _mm_cvtss_f32(_mm_shuffle_ps(a, a, 1)));
+    }
+}
+#endif
 
 void resampleExact(const cf32* in, size_t n, double inRate, double outRate, std::vector<cf32>& out, double startOffset) {
     out.clear();
@@ -81,7 +104,7 @@ void resampleExact(const cf32* in, size_t n, double inRate, double outRate, std:
     const long count = (long)std::floor(((double)n - 1 - startOffset) / step) + 1;
     if (count <= 0) return;
     // split input with zero padding on both sides, so that the inner loop has no bounds checks
-    const long pad = b.taps + 2;
+    const long pad = b.stride + 2;
     std::vector<float> re((size_t)n + 2 * pad, 0.f), im((size_t)n + 2 * pad, 0.f);
     for (size_t i = 0; i < n; i++) { re[i + pad] = in[i].real(); im[i + pad] = in[i].imag(); }
     out.resize((size_t)count);
@@ -115,6 +138,15 @@ void resampleExact(const cf32* in, size_t n, double inRate, double outRate, std:
             for (int u = 0; u < 4; u++) {
                 const float32x4_t s = vpaddq_f32(ar[u], ai[u]);   // (re0+re1) (re2+re3) (im0+im1) (im2+im3)
                 out[(size_t)(k + u)] = cf32(vgetq_lane_f32(s, 0) + vgetq_lane_f32(s, 1), vgetq_lane_f32(s, 2) + vgetq_lane_f32(s, 3));
+            }
+        }
+#endif
+#ifdef DECT2_X86_DISPATCH
+        if (cpuHasAvx2()) {
+            for (; k + 4 <= k1; k += 4) {
+                const float *h[4], *r[4], *m[4];
+                for (int u = 0; u < 4; u++) locate(k + u, h[u], r[u], m[u]);
+                dot4Avx2(h, r, m, taps, &out[(size_t)k]);
             }
         }
 #endif

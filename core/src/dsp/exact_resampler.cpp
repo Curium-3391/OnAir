@@ -213,10 +213,43 @@ size_t resampleLoopNeon(const float* R, const float* M, const float* B, int stri
 
 #ifdef DECT2_ER_AVX2
 // The same loop with 256-bit vectors: stride is a multiple of 8, the real and imaginary rows share the tap row loaded once.
-__attribute__((target("avx2")))
+__attribute__((target("avx2,fma")))
+static inline __m128 hsum4(__m256 a, __m256 b, __m256 c, __m256 d) {
+    const __m128 x = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1)), y = _mm_add_ps(_mm256_castps256_ps128(b), _mm256_extractf128_ps(b, 1));
+    const __m128 z = _mm_add_ps(_mm256_castps256_ps128(c), _mm256_extractf128_ps(c, 1)), w = _mm_add_ps(_mm256_castps256_ps128(d), _mm256_extractf128_ps(d, 1));
+    return _mm_hadd_ps(_mm_hadd_ps(x, y), _mm_hadd_ps(z, w));
+}
+__attribute__((target("avx2,fma")))
 size_t resampleLoopAvx2(const float* R, const float* M, const float* B, int stride, int phases, int hm1, long avail, double& posRef, double step, cf32* o) {
     size_t produced = 0;
     double pos = posRef;
+    for (;;) {   // four outputs per pass: their eight accumulator chains are independent, so the multiply-add latency is hidden
+        long base[4]; const float* h[4];
+        double q = pos;
+        bool ok = true;
+        for (int u = 0; u < 4; u++) {
+            const long i0 = (long)q;
+            base[u] = i0 - hm1;
+            if (base[u] + stride > avail) { ok = false; break; }
+            h[u] = B + (size_t)((int)((q - (double)i0) * phases + 0.5)) * (size_t)stride;
+            q += step;
+        }
+        if (!ok) break;
+        __m256 ar[4], ai[4];
+        for (int u = 0; u < 4; u++) ar[u] = ai[u] = _mm256_setzero_ps();
+        for (int t = 0; t < stride; t += 8) {
+            for (int u = 0; u < 4; u++) {
+                const __m256 hv = _mm256_loadu_ps(h[u] + t);
+                ar[u] = _mm256_fmadd_ps(_mm256_loadu_ps(R + base[u] + t), hv, ar[u]);
+                ai[u] = _mm256_fmadd_ps(_mm256_loadu_ps(M + base[u] + t), hv, ai[u]);
+            }
+        }
+        float re4[4], im4[4];
+        _mm_storeu_ps(re4, hsum4(ar[0], ar[1], ar[2], ar[3]));
+        _mm_storeu_ps(im4, hsum4(ai[0], ai[1], ai[2], ai[3]));
+        for (int u = 0; u < 4; u++) o[produced++] = cf32(re4[u], im4[u]);
+        pos = q;
+    }
     for (;;) {
         const long i0 = (long)pos;
         const long base = i0 - hm1;
@@ -248,7 +281,7 @@ size_t resampleLoopAvx2(const float* R, const float* M, const float* B, int stri
 
 size_t resampleLoop(const float* R, const float* M, const float* B, int stride, int phases, int hm1, long avail, double& pos, double step, cf32* o) {
 #ifdef DECT2_ER_AVX2
-    static const bool avx2 = __builtin_cpu_supports("avx2");
+    static const bool avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
     if (avx2) return resampleLoopAvx2(R, M, B, stride, phases, hm1, avail, pos, step, o);
 #endif
 #ifdef DECT2_ER_NEON
