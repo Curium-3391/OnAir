@@ -349,6 +349,7 @@ void dmrMap(App& a) {
             px = std::clamp(px, p0.x + margin, std::max(p0.x + margin, p0.x + size.x - margin - cardSize.x));
             py = std::clamp(py, p0.y + margin, std::max(p0.y + margin, p0.y + size.y - margin - cardSize.y));
             ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Always);
+            ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(std::max(1.f, size.x - 2 * margin), std::max(1.f, size.y - 2 * margin)));
             ImGui::SetNextWindowBgAlpha(0.94f);
             if (ImGui::Begin("##dmrcard", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
                 const ImU32 col = dmrColour(loc->src);
