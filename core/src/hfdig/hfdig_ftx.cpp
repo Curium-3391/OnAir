@@ -172,6 +172,69 @@ void addWave(int mode, const std::vector<int>& tones, double f0, double amp, dou
     }
 }
 
+// The same waveform as addWave, as cos and sin of the phase in one pass (the subtraction of a decoded signal): the Gaussian pulse from a
+// table with linear interpolation, one sincos a sample.
+void addWaveIQ(int mode, const std::vector<int>& tones, double f0, double rate, double start, bool mirrored, std::vector<float>& re, std::vector<float>& im) {
+    const Spec& s = spec(mode);
+    const int lead = (mode == kFt4 || mode == kFt2) ? 1 : 0;
+    const int nsym = (int)tones.size(), total = nsym + 2 * lead;
+    const double T = s.symSec, sg = mirrored ? -1.0 : 1.0;
+    constexpr int kTab = 1 << 13;
+    constexpr double kLim = 3.0;
+    static std::mutex mu;
+    static std::map<double, std::vector<float>> tabs;
+    const float* tab = nullptr;
+    if (s.bt > 0) {
+        std::lock_guard<std::mutex> lk(mu);
+        auto& t = tabs[s.bt];
+        if (t.empty()) {
+            const double c = hfdig::kPi * std::sqrt(2.0 / std::log(2.0));
+            t.resize(kTab + 2);
+            for (int i = 0; i < kTab + 2; i++) {
+                const double x = -kLim + 2 * kLim * i / kTab;
+                t[(size_t)i] = (float)(0.5 * (std::erf(c * s.bt * (x + 0.5)) - std::erf(c * s.bt * (x - 0.5))));
+            }
+        }
+        tab = t.data();
+    }
+    auto pulse = [&](double x) {
+        const double q = (x + kLim) * (kTab / (2 * kLim));
+        const int i = (int)q;
+        const float f = (float)(q - i);
+        return tab[i] + f * (tab[i + 1] - tab[i]);
+    };
+    std::vector<double> tv((size_t)nsym + 8);   // tone of transmission symbol k, the ends held, at index k + 2
+    for (int k = -2; k < nsym + 6; k++) tv[(size_t)(k + 2)] = (double)tones[(size_t)std::max(0, std::min(nsym - 1, k - lead))];
+    const long n0 = std::max(0L, (long)std::ceil(start)), n1 = std::min((long)re.size(), (long)std::floor(start + total * T * rate));
+    double ph = 0;
+    const double invTr = 1.0 / (T * rate);
+    for (long n = n0; n < n1; n++) {
+        const double u = (n - start) * invTr;
+        const int k0 = (int)std::floor(u);
+        double dev;
+        if (s.bt <= 0) dev = tv[(size_t)(k0 + 2)];
+        else {
+            dev = 0;
+            for (int k = k0 - 2; k <= k0 + 2; k++) dev += tv[(size_t)(k + 2)] * pulse(u - k - 0.5);
+        }
+        double env = 1;
+        if (mode == kFt8) {
+            const double r = 1.0 / 8;
+            if (u < r) env = 0.5 * (1 - std::cos(hfdig::kPi * u / r));
+            else if (u > total - r) env = 0.5 * (1 - std::cos(hfdig::kPi * (total - u) / r));
+        } else if (lead) {
+            if (u < 1) env = 0.5 * (1 - std::cos(hfdig::kPi * u));
+            else if (u > total - 1) env = 0.5 * (1 - std::cos(hfdig::kPi * (total - u)));
+        }
+        double sn, cs;
+        sincos(ph, &sn, &cs);
+        re[(size_t)n] += (float)(env * cs);
+        im[(size_t)n] += (float)(env * sn);
+        ph += 2 * hfdig::kPi * (f0 + sg * s.spacing * dev) / rate;
+        if (ph > 1e4) ph = std::fmod(ph, 2 * hfdig::kPi);
+    }
+}
+
 } // namespace ftx
 
 bool ftxGridToLatLon(const std::string& grid, double& lat, double& lon) { return ftx::gridToLatLon(grid, lat, lon); }
@@ -294,6 +357,7 @@ static const int kFtxNudges = (int)envOr("HFDIG_FTX_NUDGES", 5);
 static const double kFtxNudgeStep = envOr("HFDIG_FTX_NUDGESTEP", 1.0 / 48);
 static const bool kOsdNudged = envOr("HFDIG_FTX_OSDNUDGE", 0) != 0;
 static const bool kFtxApCq = envOr("HFDIG_FTX_APCQ", 1) != 0;
+static const bool kNudgeDbg = envOr("HFDIG_FTX_NUDDBG", 0) != 0;
 static const bool kOsdDebug = envOr("HFDIG_FTX_OSDDBG", 0) != 0;
 static const int kOsdPairs = (int)envOr("HFDIG_FTX_OSDPAIRS", 40);
 static const float kOsdMinScore = (float)envOr("HFDIG_FTX_OSDSCORE", 2.5);
@@ -398,6 +462,7 @@ public:
                         for (int k = 0; k < (deep_ && L_.nt == 4 ? kFtxNudges : 1) && !ok; k++) {   // FT4 / FT2: 16 sync symbols only
                             nudge_ = k == 0 ? 0.0 : ((k + 1) / 2) * kFtxNudgeStep * (k % 2 ? 1 : -1);
                             ok = tryCandidate(c, mir != 0, d, tones, f0, start);
+                            if (kNudgeDbg) fprintf(stderr, "NUD k=%d err=%d score=%.2f ok=%d\n", k, lastErr_, c.score, (int)ok);
                         }
                         nudge_ = 0;
                         if (!ok) continue;
@@ -610,7 +675,7 @@ private:
                     const int v = (cmb >> ((g - 1 - q) * L_.bits)) & (L_.nt - 1);
                     acc += zc_[(size_t)L_.data[(size_t)(i + q)] * L_.nt + gray[v]];
                 }
-                const double m = std::abs(acc);
+                const double m = std::sqrt(std::norm(acc));
                 for (int b = 0; b < nb; b++) { double& r = ((cmb >> (nb - 1 - b)) & 1) ? m1[b] : m0[b]; if (m > r) r = m; }
             }
             for (int b = 0; b < nb; b++) { const double l = m1[b] - m0[b]; out[bi++] = (float)l; sum += l; sum2 += l * l; }
@@ -623,49 +688,74 @@ private:
     bool tryCandidate(const Cand& c, bool mir, FtxDecode& d, std::vector<int>& tones, double& f0out, double& startOut) {
         const double s = mir ? -1 : 1;
         const double f0 = c.bin * binHz_;
-        std::vector<cf32> y;
-        int kc;
-        baseband(f0, mir, y, kc);
         const int nspsb = L_.nsps / L_.ndown;
         const double fsb = L_.rate / L_.ndown;
-        const double base = s * (f0 - kc * df_);
-        const int tc = c.frame * (L_.nsps / 4) / L_.ndown;
-        // fine search: frequency in steps of a sixteenth of the spacing over +- half of it, time over +- half a symbol
-        const int nfq = 9;
-        double bestM = -1e300;
-        int bestT = tc, bestF = 0;
-        std::vector<std::vector<cd>> W((size_t)nfq);
-        for (int q = 0; q < nfq; q++) twiddles(base, (q - nfq / 2) * L_.sp / 16.0, nspsb, fsb, W[(size_t)q]);
-        std::vector<double> mt((size_t)nfq * (size_t)(nspsb + 1));
-        for (int q = 0; q < nfq; q++)
+        // the fit of a candidate (baseband, time, frequency) is kept for the deep stage's frequency retries (nudge_ != 0)
+        if (nudge_ == 0 || !fit_.valid) {
+            baseband(f0, mir, fit_.y, fit_.kc);
+            fit_.base = s * (f0 - fit_.kc * df_);
+            const std::vector<cf32>& y = fit_.y;
+            const double base = fit_.base;
+            const int tc = c.frame * (L_.nsps / 4) / L_.ndown;
+            // fine search by coordinate descent: time over +- half a symbol at the middle frequency, frequency in steps of a sixteenth of the
+            // spacing over +- half of it at that time, then the time again around the best frequency
+            const int nfq = 9;
+            std::vector<std::vector<cd>> W((size_t)nfq);
+            auto Wq = [&](int q) -> std::vector<cd>& {
+                if (W[(size_t)q].empty()) twiddles(base, (q - nfq / 2) * L_.sp / 16.0, nspsb, fsb, W[(size_t)q]);
+                return W[(size_t)q];
+            };
+            double bestM = -1e300;
+            int bestT = tc, bestF = nfq / 2;
             for (int dt = -nspsb / 2; dt <= nspsb / 2; dt++) {
-                const double m = syncMetric(y, tc + dt, W[(size_t)q], nspsb);
-                if (m > bestM) { bestM = m; bestT = tc + dt; bestF = q; }
+                const double m = syncMetric(y, tc + dt, Wq(nfq / 2), nspsb);
+                if (m > bestM) { bestM = m; bestT = tc + dt; }
             }
-        // finer frequency around the best (twice as fine), then a parabola in time and frequency
-        double dfr = (bestF - nfq / 2) * L_.sp / 16.0;
-        {
+            for (int q = 0; q < nfq; q++) {
+                if (q == nfq / 2) continue;
+                const double m = syncMetric(y, bestT, Wq(q), nspsb);
+                if (m > bestM) { bestM = m; bestF = q; }
+            }
+            if (bestF != nfq / 2) {
+                const int t0 = bestT;
+                for (int dt = -3; dt <= 3; dt++) {
+                    if (!dt) continue;
+                    const double m = syncMetric(y, t0 + dt, Wq(bestF), nspsb);
+                    if (m > bestM) { bestM = m; bestT = t0 + dt; }
+                }
+            }
+            // finer frequency around the best (twice as fine), then a parabola in time and frequency
+            double dfr = (bestF - nfq / 2) * L_.sp / 16.0;
+            {
+                std::vector<cd> w;
+                double mm[3];
+                for (int k = -1; k <= 1; k++) { twiddles(base, dfr + k * L_.sp / 32.0, nspsb, fsb, w); mm[k + 1] = syncMetric(y, bestT, w, nspsb); }
+                int kb = 1;
+                if (mm[0] > mm[kb]) kb = 0;
+                if (mm[2] > mm[kb]) kb = 2;
+                dfr += (kb - 1) * L_.sp / 32.0;
+                if (kb == 1) {
+                    const double den = mm[0] - 2 * mm[1] + mm[2];
+                    if (den < 0) dfr += 0.5 * (mm[0] - mm[2]) / den * L_.sp / 32.0;
+                }
+            }
             std::vector<cd> w;
-            double mm[3];
-            for (int k = -1; k <= 1; k++) { twiddles(base, dfr + k * L_.sp / 32.0, nspsb, fsb, w); mm[k + 1] = syncMetric(y, bestT, w, nspsb); }
-            int kb = 1;
-            if (mm[0] > mm[kb]) kb = 0;
-            if (mm[2] > mm[kb]) kb = 2;
-            dfr += (kb - 1) * L_.sp / 32.0;
-            if (kb == 1) {
-                const double den = mm[0] - 2 * mm[1] + mm[2];
-                if (den < 0) dfr += 0.5 * (mm[0] - mm[2]) / den * L_.sp / 32.0;
+            twiddles(base, dfr, nspsb, fsb, w);
+            double tfrac = 0;
+            {
+                const double a = syncMetric(y, bestT - 1, w, nspsb), b = syncMetric(y, bestT, w, nspsb), cc = syncMetric(y, bestT + 1, w, nspsb);
+                const double den = a - 2 * b + cc;
+                if (den < 0 && b >= a && b >= cc) tfrac = std::max(-0.5, std::min(0.5, 0.5 * (a - cc) / den));
             }
+            fit_.valid = true; fit_.bestT = bestT; fit_.dfr = dfr; fit_.tfrac = tfrac;
         }
-        dfr += nudge_ * L_.sp;   // the deep stage's retries a little off the fitted frequency (the coherent metrics need it close)
+        const std::vector<cf32>& y = fit_.y;
+        const double base = fit_.base;
+        const int bestT = fit_.bestT;
+        const double tfrac = fit_.tfrac;
+        const double dfr = fit_.dfr + nudge_ * L_.sp;   // the deep stage's retries a little off the fitted frequency (the coherent metrics need it close)
         std::vector<cd> w;
         twiddles(base, dfr, nspsb, fsb, w);
-        double tfrac = 0;
-        {
-            const double a = syncMetric(y, bestT - 1, w, nspsb), b = syncMetric(y, bestT, w, nspsb), cc = syncMetric(y, bestT + 1, w, nspsb);
-            const double den = a - 2 * b + cc;
-            if (den < 0 && b >= a && b >= cc) tfrac = std::max(-0.5, std::min(0.5, 0.5 * (a - cc) / den));
-        }
         // tone amplitudes of every symbol
         const int ns = L_.nsym;
         std::vector<double> amp((size_t)ns * L_.nt);
@@ -677,7 +767,7 @@ private:
         cd ph(1, 0);
         for (int k = 0; k < ns; k++) {
             symbol(y, bestT + k * nspsb, w, nspsb, z);
-            for (int t = 0; t < L_.nt; t++) { amp[(size_t)k * L_.nt + t] = std::abs(z[t]); zc_[(size_t)k * L_.nt + t] = z[t] * ph; }
+            for (int t = 0; t < L_.nt; t++) { amp[(size_t)k * L_.nt + t] = std::sqrt(std::norm(z[t])); zc_[(size_t)k * L_.nt + t] = z[t] * ph; }
             ph *= rot;
         }
         // noise and signal per bin from the data symbols: the strongest tone of each against the rest
@@ -750,7 +840,9 @@ private:
                 }
             }
             uint8_t cw[kN];
-            bool got = ldpcDecode(llr, 40, cw) == 0 && checkCrc(cw);
+            const int bp0 = ldpcDecode(llr, 40, cw);
+            lastErr_ = bp0;
+            bool got = bp0 == 0 && checkCrc(cw);
             if (!got && !deep_) return false;
             // WSJT-X's other metrics: two and three (FT4 / FT2: two and four) neighbouring symbols taken together coherently
             float llrC[2][kN];
@@ -835,8 +927,7 @@ private:
     void subtract(const std::vector<int>& tones, double f0, double start, bool mir) {
         const int n = (int)x_.size();
         std::vector<float> re((size_t)n, 0.f), im((size_t)n, 0.f);
-        addWave(j_.mode, tones, f0, 1.0, L_.rate, start, mir, 0.0, re);
-        addWave(j_.mode, tones, f0, 1.0, L_.rate, start, mir, -0.5 * hfdig::kPi, im);   // the quadrature copy: sin
+        ftx::addWaveIQ(j_.mode, tones, f0, L_.rate, start, mir, re, im);   // cos and sin of the phase
         // z = x * conj(c), c = re + j im; box filter of one symbol over z and over |c|^2
         const int half = L_.nsps / 2;
         std::vector<cd> cz((size_t)n + 1);
@@ -871,6 +962,8 @@ private:
     int bLo_ = 0, bHi_ = 0, nb_ = 0, nf_ = 0;
     std::vector<float> P_;
     std::vector<cd> zc_;   // complex tone correlations of the candidate being tried, the symbol-to-symbol phase step taken out
+    struct Fit { bool valid = false; std::vector<cf32> y; int kc = 0, bestT = 0; double base = 0, dfr = 0, tfrac = 0; } fit_;
+    int lastErr_ = 0;
     std::array<uint8_t, 7> lastRaw_{};
     std::vector<std::array<uint8_t, 7>> raw_;
 };

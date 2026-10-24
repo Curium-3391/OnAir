@@ -92,6 +92,7 @@ std::vector<int> ftxTones(int mode, const uint8_t* bits77);
 void addWave(int mode, const std::vector<int>& tones, double f0, double amp, double rate, double start, bool mirrored, double phase,
              std::vector<float>& out);
 
+void addWaveIQ(int mode, const std::vector<int>& tones, double f0, double rate, double start, bool mirrored, std::vector<float>& re, std::vector<float>& im);   // cos and sin of the phase, amplitude 1
 // ---------------------------------------------------------------- WSPR (hfdig_wspr.cpp)
 uint32_t nhash(const void* key, size_t length, uint32_t initval);   // Bob Jenkins' lookup3 hashlittle(), as WSJT-X's nhash.c
 // "K1ABC FN42 37", "PJ4/K1ABC 37" (type 2), "<K1ABC> FN42AX 37" (type 3) -> 50 bits in 7 bytes (MSB first)
