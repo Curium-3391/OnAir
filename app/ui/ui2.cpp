@@ -67,24 +67,62 @@ void bodyParent(App& a, float bodyH, ImVec2 disp) {
     }
     // the analysis row gives up height (down to 150) before the tabs above it go below 240; the list on the right narrows with the window
     const float availH = ImGui::GetContentRegionAvail().y;
+    const bool uni = a.layoutUnified && !tx && !a.atsc3Mode;   // Unified: nothing in the central area stays empty (docs/UI-LAYOUT.md)
+    ImGuiStorage* stg = ImGui::GetStateStorage();
+    const ImGuiID kRightEmpty = ImGui::GetID("##uniRightEmpty"), kAnaFold = ImGui::GetID("##uniAnaFold");
+    const bool running = a.engine.running();
+    const float anaHdr = std::floor(kit::px(kit::tokens().headerH));
+    const ImGuiID kAnaNone = ImGui::GetID(("##uniAnaNone" + std::to_string(a.family)).c_str());   // measured: this mode has no charts to show
+    const bool anaOpen = uni && running && !stg->GetBool(kAnaFold, false) && !stg->GetBool(kAnaNone, false);
     float logH = (a.atsc3Mode || tx) ? 0 : std::max(144.f * gUi, std::min(215.f * gUi, availH - gap - 240.f * gUi));
-    if (!a.atsc3Mode && !tx && a.splitBottom > 0) logH = clampPx(a.splitBottom * gUi, 90 * gUi, availH - gap - 150 * gUi);
+    if (uni) logH = anaOpen ? anaHdr + std::floor(120 * gUi) : anaHdr;   // compact charts, or one line while there is nothing to chart
+    if (!a.atsc3Mode && !tx && a.splitBottom > 0 && !uni) logH = clampPx(a.splitBottom * gUi, 90 * gUi, availH - gap - 150 * gUi);
     float rightW = std::floor(std::max(236.f * gUi, std::min(330.f * gUi, ImGui::GetContentRegionAvail().x * 0.30f)));
     if (a.splitRight > 0) rightW = std::floor(clampPx(a.splitRight * gUi, 150 * gUi, ImGui::GetContentRegionAvail().x - gap - 260 * gUi));
     const float mainH = std::max(186.f * gUi, availH - (logH > 0 ? logH + gap : 0));
-    const float mainW = ImGui::GetContentRegionAvail().x - rightW - gap;
+    const bool rightEmpty = uni && stg->GetBool(kRightEmpty, false);   // measured last frame: the list is only a note
+    const float emptyLimit = ImGui::GetTextLineHeightWithSpacing() * 3.2f + 10 * gUi;
+    if (rightEmpty) {   // drawn once more out of sight (clipped away) to learn when it has something to show
+        const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+        ImGui::PushClipRect(rowPos, rowPos, false);
+        ImGui::BeginChild("##right2m", ImVec2(rightW, mainH), 0, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs);
+        const float y0 = ImGui::GetCursorPosY();
+        rightPanel(a);
+        const float used = ImGui::GetCursorPosY() - y0;
+        ImGui::EndChild();
+        ImGui::PopClipRect();
+        ImGui::SetCursorScreenPos(rowPos);
+        if (used > emptyLimit) stg->SetBool(kRightEmpty, false);
+    }
+    const float mainW = rightEmpty ? ImGui::GetContentRegionAvail().x : ImGui::GetContentRegionAvail().x - rightW - gap;
     beginPane("##main2", ImVec2(mainW, mainH));
     tgRect(a, TgMain);
     mainTabs(a);
     endPane();
-    ImGui::SameLine(0, 0);
-    splitter("##splitRight", true, gap, mainH, a.splitRight, rightW, 150 * gUi, mainW + rightW - 260 * gUi, -1, a);
-    ImGui::SameLine(0, 0);
-    beginPane("##right2", ImVec2(0, mainH));
-    tgRect(a, TgRight);
-    rightPanel(a);
-    endPane();
-    if (!a.atsc3Mode && !tx) {
+    if (rightEmpty) a.tgMin[TgRight] = a.tgMax[TgRight] = ImVec2(0, 0);
+    else {
+        ImGui::SameLine(0, 0);
+        splitter("##splitRight", true, gap, mainH, a.splitRight, rightW, 150 * gUi, mainW + rightW - 260 * gUi, -1, a);
+        ImGui::SameLine(0, 0);
+        beginPane("##right2", ImVec2(0, mainH));
+        tgRect(a, TgRight);
+        const float y0 = ImGui::GetCursorPosY();
+        rightPanel(a);
+        if (uni && ImGui::GetCursorPosY() - y0 <= emptyLimit) stg->SetBool(kRightEmpty, true);
+        endPane();
+    }
+    if (uni) {
+        beginPane("##const2", ImVec2(0, logH));
+        tgRect(a, TgConst);
+        bool open = anaOpen;
+        if (kit::panelHeader(running ? (stg->GetBool(kAnaNone, false) ? "ANALYSIS  (none for this mode)" : "ANALYSIS") : "ANALYSIS  (receiver stopped)", &open)) stg->SetBool(kAnaFold, !stg->GetBool(kAnaFold, false));
+        if (anaOpen) {
+            const float y0 = ImGui::GetCursorPosY();
+            constellationsTab(a);
+            if (ImGui::GetCursorPosY() - y0 < ImGui::GetTextLineHeightWithSpacing()) stg->SetBool(kAnaNone, true);
+        }
+        endPane();
+    } else if (!a.atsc3Mode && !tx) {
         {   // the bar between the row above and the lower row, in the gap that is there anyway
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() - gap);
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, 0));

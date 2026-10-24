@@ -20,6 +20,7 @@ struct Tokens {
     float headerH = 20;    // panel header bars
     float radius = 0;      // corner radius (0 in the dev looks)
     float border1 = 1;     // every rule is one pixel
+    bool devLook = false;  // Dev A / Dev B: the components take their flat tool-window form
     float fontSmall = 11, fontBody = 13, fontTitle = 14;   // sizes; the font itself is the one the typography setting loaded
 };
 

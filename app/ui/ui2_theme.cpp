@@ -58,6 +58,7 @@ void loadTheme(int n) {
     }
     for (int k = 0; k < 5; k++) pal::tones()[k] = T.tone[k];
     kit::syncTokens();
+    kit::tokens().devLook = n >= 3;
 }
 
 }  // namespace ui2

@@ -256,6 +256,11 @@ bool runButton(bool running, float size, const char* tip) {
 
 // a collapsible sidebar section; returns whether it is open
 bool section(const char* title, bool openByDefault) {
+    if (kit::tokens().devLook && pal::dev()) {   // Dev looks: the kit's flat section
+        const bool o = kit::collapsingSection(trw(title), openByDefault);
+        if (o) { panel::gSectionTopY = ImGui::GetCursorPosY(); panel::gSectionTopFrame = ImGui::GetFrameCount(); }
+        return o;
+    }
     ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(1, 1, 1, 0.045f));
     const bool open = typo::collapsingHeader(trw(title), openByDefault ? ImGuiTreeNodeFlags_DefaultOpen : 0);
     ImGui::PopStyleColor();
