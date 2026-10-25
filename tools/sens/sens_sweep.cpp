@@ -205,7 +205,11 @@ ScenResult sweep(const Mode& m, const Prepared& P, const Scenario& sc, double ne
 } // namespace
 
 int main(int argc, char** argv) {
-    setenv("DECT2_NOPACE", "1", 1);   // decoder threads wait instead of dropping a frame: deterministic
+#ifdef _WIN32
+    _putenv_s("DECT2_NOPACE", "1");
+#else
+    setenv("DECT2_NOPACE", "1", 1);
+#endif   // decoder threads wait instead of dropping a frame: deterministic
     Cfg cfg;
     std::string modeRe = ".*", scenRe = ".*";
     bool list = false, gaps = false, trialsSet = false;
