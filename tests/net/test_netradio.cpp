@@ -223,6 +223,40 @@ static void testEngineRadioBack() {
     srv.stop();
 }
 
+// #201: a driver app on this device that goes silent for longer than 3 s (the phone pauses it in the background) is waited for: the connection is kept,
+// not closed (the driver logged "Broken pipe" and the stream never came back), and the samples carry on when it wakes up
+static void testRtlTcpLocalStall() {
+    FakeServer srv;
+    CHECK(srv.start());
+    if (!srv.port) return;
+    NetRadio nr; nr.type = NetRadio::RtlTcp; nr.host = "127.0.0.1"; nr.port = srv.port;
+    const auto devs = netRadioDevices({nr});
+    CHECK(devs.size() == 1);
+    if (devs.empty()) { srv.stop(); return; }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    auto src = makeSource(devs[0]);
+    CHECK(src != nullptr);
+    if (!src) { srv.stop(); return; }
+    IqRing ring(1u << 20);
+    TuneSettings s; s.sampleRate = 2.048e6; s.centerHz = 100e6; s.gainDb = 30;
+    std::string err;
+    CHECK(src->start(s, ring, err));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const int before = srv.connections;
+    srv.pause = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(4500));   // longer than the 3 s of a network server
+    CHECK(srv.connections == before);                               // still the same connection
+    uint64_t w0 = 0, w1 = 0; int64_t ns = 0; size_t nn = 0;
+    ring.lastWrite(w0, ns, nn);
+    srv.pause = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ring.lastWrite(w1, ns, nn);
+    CHECK(w1 > w0 + 100000);                                        // and the samples are back
+    CHECK(srv.connections == before);
+    src->stop();
+    srv.stop();
+}
+
 // #201: the link stalls and the source reconnects to a server that accepts but does not greet yet (an Android driver app restarting its
 // radio). The reconnect waits up to 10 s for the greeting; a retune (the UI thread) and Stop must not wait with it.
 static void testRtlTcpReconnectNoBlock() {
@@ -243,7 +277,7 @@ static void testRtlTcpReconnectNoBlock() {
     CHECK(src->start(s, ring, err));
     const int before = srv.connections;
     srv.noGreet = true;
-    srv.pause = true;   // no samples: after 3 s the source drops the link and connects again, and gets no greeting
+    srv.dropNow = true;   // the link goes: the source connects again and gets no greeting (a silent local server is waited for since #201, so it is dropped here)
     bool waiting = false;
     for (int i = 0; i < 600 && !waiting; i++) { waiting = srv.connections >= before + 1; std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
     CHECK(waiting);
@@ -1137,6 +1171,7 @@ int main() {
     testRtlTcp();
     testEngineRadioBack();
     testRtlTcpReconnectNoBlock();
+    testRtlTcpLocalStall();
     testRtlTcpOther();
     testRtlTcpRates();
     testSpyServer();

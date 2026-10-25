@@ -384,6 +384,18 @@ static void testMessages() {
     te.set("short");
     for (int i = 0; i < 100 && td.text() != "short"; i++) { te.next(unit); td.feed(unit); }
     CHECK(td.text() == "short", "second message '%s'", td.text().c_str());
+    // the text message as shown (#299): Chinese UTF-8 stays, control codes and broken bytes do not reach the UI
+    {
+        const std::string zh = "\xE4\xB8\xAD\xE5\x9B\xBD\xE4\xBA\xBA\xE6\xB0\x91\xE5\xB9\xBF\xE6\x92\xAD";
+        CHECK(cleanTextMessage(zh) == zh, "Chinese text unchanged");
+        CHECK(cleanTextMessage("a\x0B" "b\x1F" "c\x01" "d") == "a\nbcd", "control codes");
+        CHECK(cleanTextMessage("x\xE4\xB8y") == "x\xEF\xBF\xBD\xEF\xBF\xBD" "y", "truncated sequence");
+        CHECK(cleanTextMessage("\xC0\x80\xED\xA0\x80") == "\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD", "overlong and surrogate");
+        TextEncoder e2; TextDecoder d2;
+        e2.set(zh + "\x0B" + zh);
+        for (int i = 0; i < 200 && d2.text().size() < 2 * zh.size() + 1; i++) { e2.next(unit); d2.feed(unit); }
+        CHECK(d2.text() == zh + "\n" + zh, "Chinese text message through the segments");
+    }
     // AAC audio super frame: EEP and UEP
     std::mt19937 rng(5);
     for (int nfr : {5, 10}) {

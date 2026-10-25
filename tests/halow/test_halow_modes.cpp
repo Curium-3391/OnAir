@@ -164,8 +164,8 @@ int main() {
         CHECK(t.blocksOk == 0 && t.nets.empty() && t.sigOk == 0 && t.preambles < 10, "noise / tone: %llu frames, %llu SIG, %llu detections", (unsigned long long)t.blocksOk, (unsigned long long)t.sigOk, (unsigned long long)t.preambles);
     }
     {   // 1 MHz beacons off the centre of a 4 Msps capture (the primary channel of a wider BSS): found by the sub-channel scan without the dial being set
-        for (double dial : {-1.5e6, -0.5e6, 0.5e6, 1.5e6, -2.5e6, 2.5e6}) {
-            const double rate = std::abs(dial) > 2e6 ? 8e6 : std::abs(dial) > 1e6 ? 6e6 : 4e6;
+        for (double dial : {-1.5e6, -0.5e6, 0.5e6, 1.5e6, -2.5e6, 2.5e6, -3.5e6, 3.5e6}) {
+            const double rate = std::abs(dial) > 3e6 ? 10e6 : std::abs(dial) > 2e6 ? 8e6 : std::abs(dial) > 1e6 ? 6e6 : 4e6;
             BssSpec b;
             const uint8_t mac[6] = {0x0C, 0xBF, 0x74, 1, 2, 3};   // a Morse Micro OUI
             memcpy(b.bssid, mac, 6); b.ssid = "MorseNet"; b.security = Wpa3Sae; b.opWidthMhz = 4; b.primaryWidthMhz = 1;
@@ -186,7 +186,7 @@ int main() {
         }
     }
     {   // 2 MHz beacons off the centre (a 2 MHz primary of a wider BSS), vendor element and the primary channel frequency of the S1G Operation element
-        struct T { double dial, rate; } tt[] = {{-0.5e6, 4e6}, {0.5e6, 4e6}, {-1.0e6, 6e6}, {1.0e6, 6e6}, {-1.5e6, 8e6}, {1.5e6, 8e6}};
+        struct T { double dial, rate; } tt[] = {{-0.5e6, 4e6}, {0.5e6, 4e6}, {-1.0e6, 6e6}, {1.0e6, 6e6}, {-1.5e6, 8e6}, {1.5e6, 8e6}, {-3.0e6, 10e6}, {3.0e6, 10e6}};
         for (const T& e : tt) {
             BssSpec b;
             const uint8_t mac[6] = {0x02, 0x11, 0x22, 1, 2, 3};

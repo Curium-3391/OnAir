@@ -27,6 +27,18 @@ constexpr int kLocalConnectMs = 10000;   // a driver app on this device (Android
 constexpr int kConnectMs = 8000;   // an unreachable server is reported after this (slow Wi-Fi links on phones need more than 3 s, #201)
 constexpr int kGreetingMs = 10000; // a server still closing the previous client can take seconds to greet
 constexpr int kStallMs = 3000;     // no samples for this long: the connection is taken as lost
+constexpr int kLocalStallMs = 15000; // ... but a driver app on this device (Android) is throttled or paused by the phone while it is in the background or a USB transfer hangs:
+                                     // closing the socket at 3 s made the driver log "Broken pipe" and could not bring the stream back, so wait much longer (#201)
+
+// the last recv() ended because the receive timeout ran out (not because the peer closed the connection)
+bool recvTimedOut() {
+#ifdef _WIN32
+    const int e = WSAGetLastError();
+    return e == WSAETIMEDOUT || e == WSAEWOULDBLOCK;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK;
+#endif
+}
 
 // The tuner's gains, its name and the "host:port" form: net_proto.h (C++ or the Rust crate onair_net)
 std::vector<int> tunerGains(int tuner) { return netp::rtlTunerGains(tuner); }
@@ -121,6 +133,7 @@ protected:
         tuner_ = (int)be32(hdr + 4);
         const uint32_t nGains = be32(hdr + 8);
         gains_ = tunerGains(tuner_);
+        local_ = isLoopbackHost(host);
         sockRecvTimeout(sock_, kStallMs);
         if (detected_) fprintf(stderr, "rtl_tcp: connected to %s (\"%s\", tuner type %d, %u gains): not an RTL-SDR, any rate up to 20 Msps\n", addr_.c_str(),
                                magic.c_str(), tuner_, (unsigned)nGains);
@@ -223,8 +236,17 @@ protected:
         std::vector<unsigned char> buf(1 << 20);   // large reads: at 10 Msps the server sends 20 MB/s
         statT0_ = std::chrono::steady_clock::now();
         uint64_t winBytes = 0, totalBytes = 0;
+        int stalledMs = 0;
         while (run_) {
             const long long k = sockRecv(sock_, buf.data() + (carry_ >= 0 ? 1 : 0), buf.size() - 1);
+            if (k < 0 && local_ && recvTimedOut()) {   // a silent local driver is waited for, the connection stays open
+                stalledMs += kStallMs;
+                if (stalledMs < kLocalStallMs) {
+                    if (stalledMs == kStallMs) { fprintf(stderr, "rtl_tcp: no samples from %s for %d s, still waiting (the driver app may be paused by the phone)\n", addr_.c_str(), kStallMs / 1000); fflush(stderr); }
+                    continue;
+                }
+            }
+            stalledMs = 0;
             if (k <= 0) break;   // closed, failed or stalled
             size_t n = (size_t)k;
             winBytes += n; totalBytes += n;
@@ -281,6 +303,7 @@ private:
     std::mutex sendMu_;
     int tuner_ = kTunerUnknown;
     bool autoNoted_ = false;
+    bool local_ = false;      // the server is on this device (127.x, localhost): a longer stall limit
     bool detected_ = false;   // the greeting says another radio than an RTL-SDR
     std::vector<int> gains_;
     uint32_t sentRate_ = 0, sentFreq_ = 0;

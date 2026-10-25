@@ -81,10 +81,10 @@ struct HalowReceiver::Impl {
         add(4e6, {W2, W1, W4});
         if (rate >= minRateHz(W8) - 1) add(8e6, {W8});
         if (rate >= minRateHz(W16) - 1) add(16e6, {W16});
-        // sub-channel scan: only with the dial on the centre, all widths tried (or 1 MHz chosen) and a radio rate that holds a wider band
+        // sub-channel scan (0.42 of the rate: the outer 1 / 2 MHz channels of an 8 MHz BSS at +-3.5 / +-3 MHz are inside a 10 Msps capture, #192): only with the dial on the centre, all widths tried (or 1 MHz chosen) and a radio rate that holds a wider band
         if (subScan.load() && offset == 0 && (widthMask.load() & 1) && rate >= 2.9e6) {
             std::vector<double> offs;   // the 1 MHz grid around the centre, as far as the passband of the radio's rate holds a whole channel
-            for (double hz = 0.5e6; hz + 0.6e6 <= 0.4 * rate && offs.size() < 12; hz += 1e6) { offs.push_back(-hz); offs.push_back(hz); }
+            for (double hz = 0.5e6; hz + 0.6e6 <= 0.42 * rate && offs.size() < 12; hz += 1e6) { offs.push_back(-hz); offs.push_back(hz); }
             for (double hz : offs) {
                 Sub sb;
                 sb.hz = hz;
@@ -98,7 +98,7 @@ struct HalowReceiver::Impl {
         // the same for 2 MHz channels (a 2 MHz primary of a 4 / 8 / 16 MHz BSS, or a 2 MHz BSS off the centre): 2 MHz grid positions every 0.5 MHz, the whole 2 MHz channel inside the passband
         if (subScan.load() && offset == 0 && (widthMask.load() & 2) && rate >= 4e6 - 1) {
             int n = 0;
-            for (double hz = 0.5e6; hz + 1.1e6 <= 0.4 * rate && n < 16; hz += 0.5e6, n += 2) for (double sgn : {-1.0, 1.0}) {
+            for (double hz = 0.5e6; hz + 1.1e6 <= 0.42 * rate && n < 16; hz += 0.5e6, n += 2) for (double sgn : {-1.0, 1.0}) {
                 Sub sb;
                 sb.hz = sgn * hz;
                 sb.step = std::polar(1.0, -2 * math::kPi * sb.hz / rate);
