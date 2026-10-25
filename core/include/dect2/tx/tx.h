@@ -135,6 +135,7 @@ struct TxRequest {
     std::string callsign;          // FT8, APRS, D-STAR, M17, …
     std::string grid;              // Maidenhead (FT8 / WSPR)
     std::string text;              // RTTY / CW / PSK / pager / APRS comment / free-text
+    std::string payload;           // a message prepared as it goes on the air (the Flipper chat screen: the encrypted octets); empty: built from the fields
     std::string dest;              // APRS destination, D-STAR UR, M17 dst, FT8 report target
     std::string path;              // APRS digipeater path, e.g. WIDE1-1,WIDE2-1
     std::string file;              // .ts / .mp2 for TV, .wav for FM/AM

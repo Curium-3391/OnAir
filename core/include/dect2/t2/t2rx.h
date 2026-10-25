@@ -99,6 +99,7 @@
 #include "dect2/lorawan/lorawan_tel.h"
 #include "dect2/lorasat/lorasat_tel.h"
 #include "dect2/pactor/pactor_tel.h"
+#include "dect2/esubghz/esubghz_tel.h"
 #include "dect2/pskdsp/pskdsp_tel.h"
 #include "dect2/wisun/wisun_tel.h"
 #include "dect2/zwave/zwave_tel.h"
@@ -220,6 +221,7 @@ struct RxTelemetry {
     LorawanTelemetry lorawan; // valid when standard == 201 (LoRaWAN all channels, family 200, engine standard 202)
     LoraSatTelemetry lorasat; // valid when standard == 202 (LoRa satellites, family 201, engine standard 203)
     PactorTelemetry pactor;   // valid when standard == 204 (PACTOR-I monitor, family 203, engine standard 205)
+    EsubghzTelemetry esubghz; // valid when standard == 205 (Flipper Zero Sub-GHz chat, family 204, engine standard 206)
     PskdTelemetry pskd;       // valid when standard == 203 (PSK demodulator, family 202, engine standard 204)
     ZwaveTelemetry zwave;     // valid when standard == 99 (Z-Wave)
     WisunTelemetry wisun;     // valid when standard == 85 (Wi-SUN FAN)
