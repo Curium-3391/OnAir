@@ -258,6 +258,23 @@ pub fn text_from_bytes(p: &[u8], format: i32, ta: bool, out: &mut Buf) {
                 i = 2;
             }
         }
+        // Import radios (Baofeng, TYT, ...) label UTF-16 text big-endian but send it little-endian (#300). Latin text shows it: every
+        // unit has a zero high byte, so the zeros sit at the odd offsets instead of the even ones. Only the big-endian labels are switched.
+        if !le && f != DD_UTF16_LE {
+            let (mut be_z, mut le_z) = (0usize, 0usize);
+            let mut k = i;
+            while k + 1 < n {
+                if p[k] == 0 && p[k + 1] != 0 {
+                    be_z += 1;
+                } else if p[k + 1] == 0 && p[k] != 0 {
+                    le_z += 1;
+                }
+                k += 2;
+            }
+            if le_z > be_z {
+                le = true;
+            }
+        }
         let unit = |i: usize| -> u32 {
             if le {
                 u32::from(p[i]) | (u32::from(p[i + 1]) << 8)
