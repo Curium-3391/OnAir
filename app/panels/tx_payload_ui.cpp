@@ -76,7 +76,7 @@ void hellFontRow() {
         else { msg = tr(err.c_str()); }
     };
     if (!init) { init = true; snprintf(path, sizeof path, "%s", plat::prefs().getS("hellFont", "").c_str()); if (path[0]) apply(path); }
-    if (!ImGui::TreeNode(tr("Advanced: font for other scripts"))) return;
+    if (!ImGui::TreeNode(trw("Advanced: font for other scripts"))) return;
     ImGui::TextWrapped("%s", tr("Letters, digits, accented Latin, Cyrillic and Greek are built in. For Chinese, Japanese, Korean or symbols choose a .ttf or .otf font file that has them "
                                 "(for example GNU Unifont or Noto Sans CJK, downloaded from their own sites; OnAir does not ship it). Characters the font lacks stay '?'."));
     ImGui::SetNextItemWidth(320 * gUi);

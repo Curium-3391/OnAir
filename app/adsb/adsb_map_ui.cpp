@@ -314,8 +314,8 @@ static void mapCorner(App& a, ImVec2 p0, ImVec2 size, bool wrongRef, double area
         if (ImGui::BeginPopup("##mapopts")) {
             unitsControls();
             displayControls();
-            if (ImGui::Checkbox("winds aloft", &S.winds)) { plat::prefs().setB("adsbWinds", S.winds); plat::prefs().flush(); }
-            if (ImGui::Checkbox("GPS interference", &S.jamLayer)) { plat::prefs().setB("adsbGpsJam", S.jamLayer); plat::prefs().flush(); }
+            if (ImGui::Checkbox("winds aloft##popup", &S.winds)) { plat::prefs().setB("adsbWinds", S.winds); plat::prefs().flush(); }
+            if (ImGui::Checkbox("GPS interference##popup", &S.jamLayer)) { plat::prefs().setB("adsbGpsJam", S.jamLayer); plat::prefs().flush(); }
             gPred.load("adsb", true, false); gPred.controls();
             adsbmap::tileControls(nullptr, false);
             ImGui::EndPopup();

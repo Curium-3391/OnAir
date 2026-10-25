@@ -168,7 +168,7 @@ void statusPill(const char* s, ImU32 rgb) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(p, mx, (rgb & 0x00FFFFFFu) | 0x26000000u, 4.0f * gUi);
     dl->AddText(ImVec2(p.x + px, p.y + py), rgb, s);
-    ImGui::SetCursorScreenPos(ImVec2(mx.x + 6.0f * gUi, p.y));
+    ImGui::Dummy(ImVec2(mx.x - p.x, mx.y - p.y)); ImGui::SameLine(0.0f, 6.0f * gUi);
 }
 
 void cardRow(const char* k, const char* v) {
