@@ -430,6 +430,16 @@ void playerTab(App& a) {
     ImGui::Checkbox(tr("Deinterlace##tvdeint"), &a.video.deint);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Removes the comb lines of an interlaced picture (576i, 1080i); a progressive picture is shown as it is"));
     flowNext();
+    {   // how the picture fills the window: an old 4:3 programme on a wide screen can be stretched or zoomed (#318)
+        static const char* const kFit[] = {"Fit", "Stretch 4:3 to 16:9", "Zoom (crop)", "Fill (stretch)"};
+        ImGui::SetNextItemWidth(150.f * gUi);
+        if (ImGui::BeginCombo("##tvfit", tr(kFit[std::clamp(a.video.fit, 0, 3)]))) {
+            for (int i = 0; i < 4; i++) if (ImGui::Selectable(tr(kFit[i]), a.video.fit == i)) { a.video.fit = i; savePrefsSoon(a); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Picture shape: Fit keeps the shape, Stretch widens a 4:3 picture to 16:9, Zoom fills the window and crops the edges, Fill stretches to the window"));
+    }
+    flowNext();
     {   // the preferred language of the guide, the audio and the subtitles (#268)
         static const struct { const char* code; const char* name; } kLangs[] = {
             {"", "Broadcaster's order"}, {"fin", "Finnish"}, {"swe", "Swedish"}, {"eng", "English"}, {"deu", "German"}, {"fra", "French"}, {"spa", "Spanish"}, {"ita", "Italian"},
