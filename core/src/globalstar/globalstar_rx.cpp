@@ -109,7 +109,7 @@ struct GlobalstarReceiver::Impl {
         fft = std::make_unique<Fft>(NF);
         log2n = 0; while ((1 << log2n) < NF) log2n++;
         fre.assign((size_t)NF, 0.f); fim.assign((size_t)NF, 0.f);
-        duty = std::max(1, std::min(2, framesPerSlot / 12));
+        duty = 1;   // 2 skipped alternate frames: Doppler error rms 3.1 kHz in test_globalstar_rx (653 Hz with every frame), so every frame is transformed
         win.resize((size_t)NF);
         wNorm = 0;
         for (int i = 0; i < NF; i++) { win[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2 * kPi * (i + 0.5) / NF)); wNorm += (double)win[(size_t)i] * win[(size_t)i]; }

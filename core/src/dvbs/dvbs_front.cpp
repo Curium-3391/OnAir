@@ -18,7 +18,7 @@ void DvbsFront::configure(const Config& c) {
     rs_.configure(fs1_ / (2.0 * c.symbolRate));
     // exactly two samples per symbol: the resampler would be an identity (its phase-0 taps are a unit impulse), so the samples go to the timing loop as
     // they are and the loop absorbs the small symbol rate offset of the transmitter (about 0.14 CPU-s per s at 10 Msps, 5 Msym/s)
-    bypass_ = std::fabs(fs1_ / (2.0 * c.symbolRate) - 1.0) < 1e-9;
+    bypass_ = false;   // was: skip the resampler at exactly 2 samples per symbol: lost VL-SNR (dvbs_vlsnr) lock, the loop alone cannot absorb the offset
     // the matched filter spans 2 * hs symbols: the tails of a root raised cosine pulse fall off more slowly the smaller the roll-off, so a small
     // roll-off needs a longer filter (the truncation stays below -40 dB; each symbol of span costs four multiply-adds per sample of the filter)
     const int hs = c.rollOff >= 0.30 ? 6 : c.rollOff >= 0.20 ? 8 : c.rollOff >= 0.10 ? 10 : 12;
