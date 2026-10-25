@@ -577,6 +577,23 @@ bool usbVendorPresent(uint16_t vid) {
     return found;
 }
 
+// The same for one product (vid and pid): the LimeSDR Mini shares FTDI's vendor id with every serial adapter
+bool usbDevicePresent(uint16_t vid, uint16_t pid) {
+    if (usbFdPlatform()) { for (const auto& r : usbFdList()) if (r.vid == vid && r.pid == pid) return true; return false; }
+    std::string err;
+    libusb_context* ctx = acquireContext(err);
+    if (!ctx) return false;
+    libusb_device** list = nullptr;
+    const ssize_t n = libusb_get_device_list(ctx, &list);
+    bool found = false;
+    for (ssize_t i = 0; i < n && !found; i++) {
+        libusb_device_descriptor d{};
+        if (libusb_get_device_descriptor(list[i], &d) == 0 && d.idVendor == vid && d.idProduct == pid) found = true;
+    }
+    if (n >= 0) libusb_free_device_list(list, 1);
+    return found;
+}
+
 // Android: the entry of one HackRF the app handed over (h: wrapped for a moment to ask its board; null: named by `why`)
 static DeviceInfo hackrfFdEntry(libusb_device_handle* h, const std::string& serial, const std::string& why) {
     DeviceInfo info;

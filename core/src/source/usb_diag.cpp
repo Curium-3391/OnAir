@@ -18,6 +18,7 @@
 
 namespace dect2 {
 bool usbVendorPresent(uint16_t vid);   // hackrf_usb.cpp
+bool usbDevicePresent(uint16_t vid, uint16_t pid);
 namespace {
 
 namespace fs = std::filesystem;
@@ -132,6 +133,24 @@ std::vector<std::string> usbRadioHints() {
 std::vector<std::string> sdrplayApiHints() {
     if (native::sdrplayApiInstalled() || !usbVendorPresent(0x1df7)) return {};
     return {"An SDRplay RSP is plugged in but the SDRplay API is not installed: install the free Hardware API from sdrplay.com/hardware-api (separately from SDRconnect), then restart OnAir"};
+}
+
+std::vector<std::string> limeLibraryHints() {
+    // the Mini (FTDI FT601, 0403:601f) is on the bus but the radio list has no LimeSDR: LimeSuite is missing, or it lists nothing
+    if (!usbDevicePresent(0x0403, 0x601f)) return {};
+    std::string path;
+    int radios = -1;
+    const bool loaded = native::limeLibraryState(&path, &radios);
+    if (loaded && radios != 0) return {};
+#if defined(_WIN32)
+    const char* how = "install FTDI's FT60x USB 3 driver (Windows Update or ftdichip.com; not a WinUSB driver from Zadig)";
+#elif defined(__APPLE__)
+    const char* how = "install LimeSuite with: brew install limesuite";
+#else
+    const char* how = "install LimeSuite (sudo apt install limesuite, or your distribution's package) and OnAir's udev rules";
+#endif
+    if (!loaded) return {std::string("A LimeSDR Mini is plugged in but the LimeSuite library is not installed: ") + how + ", then restart OnAir"};
+    return {"A LimeSDR Mini is plugged in but LimeSuite (" + path + ") lists no radio: " + how + "; if that is done, run \"LimeUtil --update\" to match the board's firmware to the library"};
 }
 
 } // namespace dect2

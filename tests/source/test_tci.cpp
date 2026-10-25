@@ -35,10 +35,11 @@ struct Fake {
     int port = 0;
     std::thread th;
     std::atomic<bool> run{true};
-    std::atomic<int> dropNow{0}, badBurst{0}, connections{0}, fmt{3};   // fmt: sample type of the blocks (0 int16, 1 int24, 3 float32)
+    std::atomic<int> sendStop{0}, dropNow{0}, badBurst{0}, connections{0}, fmt{3};   // fmt: sample type of the blocks (0 int16, 1 int24, 3 float32)
     std::mutex mu;
     std::vector<std::string> log;   // each client command as "name:args" lower case
     bool streaming = false;
+    std::atomic<bool> radioOn{false};
     std::atomic<uint32_t> rate{48000}, rx{0};
 
     bool has(const std::string& l) { std::lock_guard<std::mutex> lk(mu); for (auto& x : log) if (x == l) return true; return false; }
@@ -119,6 +120,7 @@ struct Fake {
         if (mode == Tci) {   // two messages, the first with several commands
             wsSend(c, 1, "protocol:ExpertSDR3,1.9;device:SunSDR2DX;receive_only:false;trx_count:2;vfo_limits:10000,30000000;");
             wsSend(c, 1, "if_limits:-24000,24000;modulations_list:AM,LSB,USB;ready;");
+            if (sendStop) wsSend(c, 1, "stop;");   // the radio is switched off: no IQ until "start"
         }
         int tick = 0;
         while (run) {
@@ -134,7 +136,7 @@ struct Fake {
             }
             bool s;
             { std::lock_guard<std::mutex> lk(mu); s = streaming; }
-            if (s && (++tick % 5) == 0) wsSend(c, 2, block(rx.load(), rate.load(), (uint32_t)fmt.load(), 0, 2, 0.5f, -0.25f, 1024));
+            if (s && (!sendStop || radioOn) && (++tick % 5) == 0) wsSend(c, 2, block(rx.load(), rate.load(), (uint32_t)fmt.load(), 0, 2, 0.5f, -0.25f, 1024));
             unsigned char h[2];
             if (!rd(c, h, 2, true)) { if (!run) return; if (sockPeekClosed(c) == 0) return; continue; }
             const int op = h[0] & 15;
@@ -154,7 +156,8 @@ struct Fake {
                 for (size_t i = 0; i < cm.second.size(); i++) line += (i ? "," : "") + cm.second[i];
                 std::lock_guard<std::mutex> lk(mu);
                 log.push_back(line);
-                if (cm.first == "iq_start") { streaming = true; rx = cm.second.empty() ? 0 : (uint32_t)atoi(cm.second[0].c_str()); }
+                if (cm.first == "start") radioOn = true;
+                else if (cm.first == "iq_start") { streaming = true; rx = cm.second.empty() ? 0 : (uint32_t)atoi(cm.second[0].c_str()); }
                 else if (cm.first == "iq_stop") streaming = false;
                 else if (cm.first == "iq_samplerate" && !cm.second.empty()) rate = (uint32_t)atoi(cm.second[0].c_str());
             }
@@ -295,6 +298,27 @@ int main() {
         s2->stop();
     }
     srv.stop();
+
+    // a server whose radio is stopped sends no IQ until "start": the client asks for it once
+    {
+        Fake f2; f2.sendStop = 1; CHECK(f2.start());
+        NetRadio n2; n2.type = NetRadio::Tci; n2.host = "127.0.0.1"; n2.port = f2.port;
+        std::string e2;
+        CHECK(probeNetRadio(n2, 2000, e2));
+        const auto dv = netRadioDevices({n2});
+        CHECK(dv.size() == 1);
+        if (!dv.empty()) {
+            auto s3 = native::makeTci(dv[0]);
+            IqRing r3(1u << 20);
+            TuneSettings t3; t3.sampleRate = 48e3; t3.centerHz = 7.1e6;
+            CHECK(s3->start(t3, r3, e2));
+            std::vector<cf32> b3(2048);
+            CHECK(readIq(r3, b3));
+            CHECK(f2.count("start:") == 1);
+            s3->stop();
+        }
+        f2.stop();
+    }
 
     if (fails) { fprintf(stderr, "%d checks failed\n", fails); return 1; }
     printf("test_tci ok\n");

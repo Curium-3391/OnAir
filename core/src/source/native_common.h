@@ -617,6 +617,7 @@ void listLime(std::vector<DeviceInfo>& out);
 void listPluto(std::vector<DeviceInfo>& out);
 void listUsrp(std::vector<DeviceInfo>& out);
 void listSdrplay(std::vector<DeviceInfo>& out);
+bool limeLibraryState(std::string* path, int* radios);   // LimeSuite: loaded or not; the radios its last scan found (-1 = not scanned)
 bool sdrplayApiInstalled();   // the SDRplay API library (sdrplay_api.dll / libsdrplay_api) was found
 std::unique_ptr<IqSource> makeRtl(const DeviceInfo& d);
 std::unique_ptr<IqSource> makeAirspy(const DeviceInfo& d);

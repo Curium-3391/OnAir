@@ -142,8 +142,27 @@ OnAir loads `libLimeSuite` at run time (no link dependency; the Windows packages
   than 10 % or across the input crossover. Calibration blocks for a moment.
 - **Windows:** the Mini needs FTDI's FT60x USB 3 driver (Windows Update or ftdichip.com). Do not use Zadig/WinUSB on it.
 - **Linux:** the udev rules (`install-udev-rules.sh`, vendor `0403` product `601f`) let a normal user open it.
+- **macOS / Linux:** if your package does not include `libLimeSuite`: `brew install limesuite` (macOS) or `sudo apt install limesuite` (Linux), then restart
+  OnAir. When a Mini is plugged in and LimeSuite is missing or lists nothing, the radio list says so with that advice (the radio hints under the list).
 - **Gateware / firmware:** the images in the board must match the library. If the radio is listed but will not open or initialise, run
   `LimeUtil --update` (it loads the images that ship with that library); OnAir's error message says so.
+
+# ELAD FDM-DUO (and FDM-S2 / FDM-SW2 family)
+
+**Through its USB sound card; needs a user test. There is no native driver.** ELAD publishes no SDK or protocol document that a program can build on
+(only a closed Windows ExtIO DLL for SDR#, HDSDR and similar, and the vendor's own FDM-SW2 program), and OnAir does not reverse-engineer closed
+software or load a Windows-only closed DLL. What the radio does offer openly is the USB layout: three USB 2.0 interfaces (CAT control, IQ data,
+and a USB sound card). So the IQ can be taken as a sound card:
+
+1. Start ELAD's own software (FDM-SW2 on Windows) or tune the radio with Hamlib (`rigctl`, model "ELAD FDM-DUO") to the frequency you want, and
+   pick its IQ output at the highest rate the radio offers (up to 192 kHz).
+2. In OnAir choose the radio's capture device in the radio list (**Sound card: ...**), set **Mode** to *I/Q stereo* and the sample rate to the same
+   rate, and type the radio's centre frequency in the frequency field.
+3. A narrow band (up to the sound-card rate) is what this route gives; the radio's full 1 MHz-wide panorama needs its own application.
+
+On macOS and Linux the sound-card interface is a class-compliant USB audio device; Windows may need ELAD's driver for the IQ interface. The
+frequency is not followed automatically (OnAir has no CAT link to the DUO): change it in the ELAD software or with `rigctl`, and type the same
+value in OnAir. Not tried on a real FDM-DUO.
 
 # RFNM
 

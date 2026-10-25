@@ -101,10 +101,13 @@ DDS (panorama centre) and VFO on the tuned frequency and starts the IQ stream (`
 server has more than one). Float32, 24-bit and 16-bit samples are all understood. The frequency range comes from `vfo_limits`. TCI has no RF gain for
 the receiver, so the gain slider does nothing here; the server's AGC stays as it is.
 
-- OnAir never transmits through TCI: it sends only `iq_samplerate`, `dds`, `vfo`, `iq_start` and `iq_stop`, and no audio or CW command.
+- OnAir never transmits through TCI: it sends only `iq_samplerate`, `dds`, `vfo`, `iq_start` and `iq_stop` (and `start`, once, when the server says its radio is stopped, because ExpertSDR3 sends no IQ while the radio is off), and no audio or CW command. The protocol document it follows is TCI 2.1 (older 1.x servers work as well).
 - When the connection drops, OnAir reconnects by itself and counts the samples lost.
 - The TCI server is part of ExpertSDR3: it runs only while ExpertSDR3 runs (with **Options > TCI** enabled); a SunSDR on its own does not
-  answer TCI. When OnAir says "cannot connect", check the port in ExpertSDR3's TCI settings and that its firewall rule allows it.
+  answer TCI, so enter the address of the **computer running ExpertSDR3**, not the SunSDR's own address.
+- ExpertSDR3 listens on `127.0.0.1` by default, which only programs on the same computer can reach. To connect from another computer, set the TCI
+  address in ExpertSDR3 to `0.0.0.0` (or the computer's LAN address). When OnAir says "cannot connect", check this, the port, and the firewall rule.
+- If OnAir connects but no IQ arrives, the radio is probably switched off in ExpertSDR3 (power button); the log says "no IQ arrived".
 - Tested only against a fake server that follows the TCI 1.9 specification. Unverified without a real ExpertSDR3: the URL path, whether the server
   accepts the VFO being moved with the DDS, and the exact meaning of `length` in the block header (the payload size is used).
 
