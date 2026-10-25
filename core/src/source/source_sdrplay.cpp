@@ -4,6 +4,10 @@
 #include "native_common.h"
 #define DECT2_SDRPLAY_CALL DECT2_CALL
 #include "sdrplay_api_min.h"
+#include <chrono>
+#include <condition_variable>
+#include <memory>
+#include <thread>
 
 namespace dect2 {
 namespace native {
@@ -90,7 +94,9 @@ struct SdrplayApi {
     }
     // The API wants Open() first and Close() last; it stays open while OnAir runs (a service that was not running yet is tried again on the
     // next rescan)
-    ~SdrplayApi() { if (opened && selected == 0) Close(); }
+    // Not closed at exit: the API's own atexit/shared-memory state is already torn down by then on Linux, and sdrplay_api_Close() aborted
+    // inside free() on every quit for people who only had the library installed (#319). The service drops a client when its process ends.
+    ~SdrplayApi() = default;
     std::string err(sp::ErrT e) { const char* s = GetErrorString ? GetErrorString(e) : nullptr; return s ? s : "error " + std::to_string((int)e); }
     bool ensureOpen() {
         std::lock_guard<std::mutex> lk(mu);
@@ -414,7 +420,8 @@ protected:
     void closeDevice() override {
         if (!selected_) return;
         SdrplayApi& api = sdrplayApi();
-        api.ReleaseDevice(&dev_);
+        if (!uninitStuck_) api.ReleaseDevice(&dev_);   // (after a stuck Uninit it would block as well)
+        uninitStuck_ = false;
         selected_ = false;
         params_ = nullptr;
         ch_ = nullptr;
@@ -456,10 +463,29 @@ protected:
                 bias_ = false;
             }
         }
-        sdrplayApi().Uninit(dev_.dev);
+        uninitBounded();
     }
 
 private:
+    // sdrplay_api_Uninit() waits for the service; after the radio's USB stream stalled it never came back and Stop Receiver froze the whole
+    // window (#319). It runs on a helper thread now and is given a few seconds; if it does not return, the radio is left selected (releasing
+    // it would block the same way) and OnAir goes on. Needs the radio's driver state: not testable without the hardware.
+    void uninitBounded() {
+        struct St { std::mutex m; std::condition_variable cv; bool done = false; };
+        auto st = std::make_shared<St>();
+        void* dev = dev_.dev;
+        std::thread([st, dev] {
+            sdrplayApi().Uninit(dev);
+            { std::lock_guard<std::mutex> lk(st->m); st->done = true; }
+            st->cv.notify_all();
+        }).detach();
+        std::unique_lock<std::mutex> lk(st->m);
+        if (!st->cv.wait_for(lk, std::chrono::seconds(4), [&] { return st->done; })) {
+            uninitStuck_ = true;
+            fprintf(stderr, "SDRplay: the API did not stop the stream within 4 s (the radio or the SDRplay service is stuck); giving up on it. Unplug the radio or restart the SDRplay API service.\n");
+            fflush(stderr);
+        }
+    }
     // Init runs on the stream thread, also after a rate change. Never report a successful start before the API accepts it.
     bool waitForStreamStart(std::string& err) override {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -571,6 +597,7 @@ private:
     std::string initErr_;
     std::atomic<unsigned> overloads_{0};
     std::atomic<bool> removed_{false};
+    std::atomic<bool> uninitStuck_{false};
 };
 
 bool sdrplayApiInstalled() { return sdrplayApi().ok; }
