@@ -360,13 +360,24 @@ void decoder(App&, bool&) {
     for (int i = 0; i < 8; i++) if (std::fabs(shapeVal[i] - S.cfg.alpha) < 1e-6) si = i;
     ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Pulse shape")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
     if (ImGui::Combo("##pskdpulseshape", &si, shapes, 8)) { S.cfg.alpha = shapeVal[si]; store(); }
-    static const char* spans[] = {"auto (200 kHz)", "10 kHz", "50 kHz", "500 kHz", "2 MHz", "whole capture"};
-    static const double spanVal[] = {0, 10e3, 50e3, 500e3, 2e6, 1e9};
-    int pi = 0;
-    for (int i = 0; i < 6; i++) if (std::fabs(spanVal[i] - S.cfg.spanHz) < 1) pi = i;
-    ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Search span")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
-    if (ImGui::Combo("##pskdsearchspan", &pi, spans, 6)) { S.cfg.spanHz = spanVal[pi]; store(); }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How far around the dial the analyser looks; it takes the signal nearest the dial"));
+    {   // the channel: automatic (200 kHz around the dial), by hand from 2.5 to 200 kHz to cut one signal out of several close together (#308), or wider
+        static const char* spans[] = {"auto (200 kHz)", "manual (2.5 - 200 kHz)", "500 kHz", "2 MHz", "whole capture"};
+        const double sp = S.cfg.spanHz;
+        int pi = sp <= 0 ? 0 : sp <= 200e3 + 1 ? 1 : sp < 1e6 ? 2 : sp < 5e6 ? 3 : 4;
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Channel bandwidth")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
+        if (ImGui::Combo("##pskdsearchspan", &pi, spans, 5)) {
+            static const double fixedVal[] = {0, 0, 500e3, 2e6, 1e9};
+            S.cfg.spanHz = pi == 1 ? (sp > 0 && sp <= 200e3 + 1 ? sp : 25e3) : fixedVal[pi];
+            store();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The width of the channel around the dial that the analyser looks at; it takes the signal nearest the dial.\nAuto is 200 kHz. Make it narrower by hand to isolate one signal when several are close together."));
+        if (pi == 1) {
+            float khz = (float)(S.cfg.spanHz / 1e3);
+            ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Bandwidth")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
+            if (ImGui::SliderFloat("##pskdbwkhz", &khz, 2.5f, 200.f, "%.1f kHz", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) { S.cfg.spanHz = std::clamp((double)khz, 2.5, 200.0) * 1e3; store(); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ctrl-click to type a value. Keep the signal and its sidebands inside it, and the neighbours outside."));
+        }
+    }
     static const char* diffs[] = {"none", "DPSK (symbol differential)", "NRZ-M (1 = change)", "NRZ-S / NRZI (0 = change)"};
     ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Differential")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
     if (ImGui::Combo("##pskddifferenti", &S.cfg.diff, diffs, 4)) store();

@@ -13,7 +13,7 @@ a real satellite. Reports and short IQ recordings of real signals are welcome.
 
 Tune the dial onto (or near) the signal. Nothing else needs setting:
 
-1. The receiver looks at 200 kHz around the dial (Decoder options > Search span to change it) and takes the signal nearest the dial.
+1. The receiver looks at 200 kHz around the dial (Decoder options > Channel bandwidth: Auto, or by hand from 2.5 to 200 kHz to cut one signal out of several close together) and takes the signal nearest the dial.
 2. Twice a second, until it locks, the analyser measures it: bandwidth, symbol rate, order, pulse shape, carrier and Eb/N0. A narrow
    signal in the wide span is zoomed into and analysed over up to 30 s, so slow signals (75 - 300 Bd) are found too.
 3. Once the constellation settles it locks, demodulates continuously (starting from the samples it analysed, so a burst is not lost) and
@@ -38,7 +38,7 @@ decoded bits, packed into bytes (first bit in the top bit), to a new file in the
 | Modulation | BPSK, QPSK, OQPSK or 8PSK instead of the analyser's choice |
 | Symbol rate | a known rate (0 = found by the analyser) |
 | Pulse shape | rectangular, or a root-raised cosine roll-off |
-| Search span | 10 kHz to the whole capture around the dial |
+| Channel bandwidth | Auto (200 kHz), manual 2.5 - 200 kHz, 500 kHz, 2 MHz or the whole capture, around the dial |
 | Differential | DPSK (symbol differential), NRZ-M (a 1 is a change), NRZ-S / NRZI (a 0 is a change) |
 | Descrambler | G3RUH (1 + x^12 + x^17, self-synchronising, as 9600 bd packet) or the CCSDS randomiser (x^8+x^7+x^5+x^3+1, restarted after each sync word) |
 | Sync word | bits or hex, for example `1ACFFC1D` (CCSDS). It resolves the phase ambiguity of the carrier (every rotation and the spectral sense are tried; OQPSK also the pairing of the rails), and starts each line of the bit view |
