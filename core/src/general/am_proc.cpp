@@ -91,6 +91,7 @@ struct AmProcessor::Impl {
     // noise blanker
     double nbMean = -1;
     int nbHold = 0;
+    long nbRun = -1;
     cf32 nbG1{0, 0}, nbG2{0, 0}, nbFill{0, 0};
     double nbThr = 0;
     uint64_t nbCount = 0, nbBlanked = 0;
@@ -182,7 +183,7 @@ struct AmProcessor::Impl {
         AmProcConfig keep = cfg;
         nbMean = -1; nbHold = 0; nbG1 = nbG2 = nbFill = cf32(0, 0); nbCount = nbBlanked = 0;
         acqBuf.clear(); acqPow.assign(kAnaN, 0.0); acqFrames = 0; acquired = false;
-        ph = fr = 0; carC = cf32(0, 0); carMag = carLong = 0; tLock = unlockFor = sinceAcq = lockQ = 0; locked = fade = false; envMean = -1; dcS = 0;
+        ph = fr = 0; carC = cf32(0, 0); carMag = carLong = 0; carLongN = 0; tLock = unlockFor = sinceAcq = lockQ = 0; locked = fade = false; envMean = -1; dcS = 0;
         envIdx = -1; prevDet = 0; detFade = 0;
         hHist.assign(2 * kHil, cf32(0, 0)); hPos = 0;
         anaBuf.clear(); pU.assign(kAnaN / 2, 0.0); pL.assign(kAnaN / 2, 0.0); qU.assign(kAnaN / 2, 0.0); qL.assign(kAnaN / 2, 0.0); anaFrames = 0; floorP = 0; cands.clear();
@@ -212,6 +213,7 @@ struct AmProcessor::Impl {
         // auto: when more than 5 % of the samples get blanked, the threshold is too low for this signal
         double thr = std::pow(10.0, (thrDb + nbThr) / 10.0);
         const double a = 1.0 / (0.05 * fs);
+        nbRun = nbHold > 0 ? 0 : -1;
         for (size_t i = 0; i < n; i++) {
             const double p = std::norm(x[i]);
             if (nbMean < 0) nbMean = p;
@@ -219,12 +221,25 @@ struct AmProcessor::Impl {
             nbMean += (std::min(p, thr * std::max(nbMean, 1e-30)) - nbMean) * a;
             if (nbMean <= 0) nbMean = p;
             if (imp) {
-                if (nbHold == 0) { nbFill = nbG2; if (i > 0) x[i - 1] = nbFill; }
+                if (nbHold == 0) {   // the samples before it go too (the channel filter rings ahead of an impulse as well)
+                    const size_t back = std::min<size_t>(i, 3);
+                    nbFill = i > back ? x[i - back - 1] : nbG1;
+                    for (size_t k = i - back; k < i; k++) x[k] = nbFill;
+                    nbRun = (long)(i - back);
+                }
                 nbHold = 4;
             }
             nbCount++;
             if (nbHold > 0) { x[i] = nbFill; nbHold--; nbBlanked++; }
-            else { nbG2 = nbG1; nbG1 = x[i]; }
+            else {
+                // the gap is closed with a straight line from the last good sample to this one
+                if (nbRun >= 0) {
+                    const long len = (long)i - nbRun;
+                    for (long k = 0; k < len; k++) x[(size_t)(nbRun + k)] = nbFill + (x[i] - nbFill) * (float)(k + 1) / (float)(len + 1);
+                    nbRun = -1;
+                }
+                nbG2 = nbG1; nbG1 = x[i];
+            }
         }
         if (nbCount >= (uint64_t)fs) {
             const double pct = 100.0 * nbBlanked / nbCount;
@@ -459,6 +474,7 @@ struct AmProcessor::Impl {
         return a;
     }
 
+    uint64_t carLongN = 0;
     void process(const cf32* xin, size_t n, std::vector<float>& out) {
         std::vector<cf32> x(xin, xin + n);
         for (auto& v : x) if (!std::isfinite(v.real()) || !std::isfinite(v.imag())) v = cf32(0, 0);
@@ -478,8 +494,8 @@ struct AmProcessor::Impl {
             carMag += carK * (std::abs(r) - carMag);
             // the carrier's level over a second: from the carrier filter once locked (an adjacent station does not count), else the envelope
             const double m = locked ? std::abs(carC) : std::abs(z);
-            carLong += longK * (m - carLong);
-            if (carLong <= 0) carLong = m;
+            // a running mean while the record is young (the one-second filter would start from zero and the sound gain would creep for seconds), then the filter
+            carLong += std::max(longK, 1.0 / (double)++carLongN) * (m - carLong);
             if (acquired) {
                 sinceAcq += 1 / fs;
                 const double bn = sinceAcq < 0.3 ? 40.0 : 12.0, wn = 2 * bn / (0.707 + 1 / (4 * 0.707)), wT = wn / fs;
@@ -557,12 +573,12 @@ struct AmProcessor::Impl {
                 exEnv += 0.001 * (std::fabs(b) - exEnv);
             }
             if (cfg.agc) {
-                // leveler: 10 ms rms, attack 10 ms, release 1 s after a hang of 0.5 s, within +-12 dB
-                lvlRms += (y * y - lvlRms) * (1.0 / (0.01 * fs));
+                // leveler: 30 ms rms, attack 60 ms, release 1 s after a hang of 0.5 s, within +-12 dB
+                lvlRms += (y * y - lvlRms) * (1.0 / (0.03 * fs));
                 const double r = std::sqrt(lvlRms);
                 if (r > 1e-4 && cfg.leveler) {
                     const double want = std::clamp(tgt / r, 0.25, 4.0);
-                    if (want < lvlGain) { lvlGain += (want - lvlGain) * (1.0 / (0.01 * fs)); lvlHang = 0.5; }
+                    if (want < lvlGain) { lvlGain += (want - lvlGain) * (1.0 / (0.06 * fs)); lvlHang = 0.5; }
                     else if (lvlHang > 0) lvlHang -= 1 / fs;
                     else lvlGain += (want - lvlGain) * (1.0 / (1.0 * fs));
                 }

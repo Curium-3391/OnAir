@@ -305,8 +305,10 @@ struct GeneralReceiver::Impl {
     int nbHold = 0;
     cf32 nbG1{0, 0}, nbG2{0, 0}, nbFill{0, 0};   // the last two samples passed, the value an impulse is replaced with
     uint64_t nbBlanked = 0;
+    long nbRun = -1;                              // where the current run of blanked samples starts in this block (-1 none)
     void blank(std::vector<cf32>& v, double rate) {
         const double thr = std::pow(10.0, cfg.nbDb / 10.0), a = 1.0 / (0.1 * rate);
+        nbRun = nbHold > 0 ? 0 : -1;
         for (size_t i = 0; i < v.size(); i++) {
             const double p = std::norm(v[i]);
             if (nbMean < 0) nbMean = p;
@@ -316,11 +318,25 @@ struct GeneralReceiver::Impl {
             nbMean += (std::min(p, thr * std::max(nbMean, 1e-30)) - nbMean) * a;
             if (nbMean <= 0) nbMean = p;
             if (imp) {
-                if (nbHold == 0) { nbFill = nbG2; if (i > 0) v[i - 1] = nbFill; }   // the edge before it goes too
-                nbHold = 3;
+                if (nbHold == 0) {   // the samples before it go too (the channel filter rings ahead of an impulse as well)
+                    const size_t back = std::min<size_t>(i, 3);
+                    nbFill = i > back ? v[i - back - 1] : nbG1;
+                    for (size_t k = i - back; k < i; k++) v[k] = nbFill;
+                    nbRun = (long)(i - back);
+                }   // the edge before it goes too
+                nbHold = 4;
             }
-            if (nbHold > 0) { v[i] = nbFill; nbHold--; nbBlanked++; }
-            else { nbG2 = nbG1; nbG1 = v[i]; }
+            if (nbHold > 0) {
+                v[i] = nbFill; nbHold--; nbBlanked++;
+            } else {
+                // the gap is closed with a straight line from the last good sample to this one (a held value makes a step at each end)
+                if (nbRun >= 0) {
+                    const long s = nbRun, len = (long)i - s;
+                    for (long k = 0; k < len; k++) v[(size_t)(s + k)] = nbFill + (v[i] - nbFill) * (float)(k + 1) / (float)(len + 1);
+                    nbRun = -1;
+                }
+                nbG2 = nbG1; nbG1 = v[i];
+            }
         }
     }
     // AM through the processor (Auto quality, or a synchronous detector chosen by hand)
