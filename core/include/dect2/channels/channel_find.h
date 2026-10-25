@@ -21,6 +21,10 @@ public:
     double offsetHz() const { return offset_; }    // where the channel was found (0: in the middle, or nothing found)
     // the offset was just found: the samples given so far were not mixed (a receiver may restart its search); cleared by the call
     bool takeChanged() { const bool c = changed_; changed_ = false; return c; }
+    // Opt-in: instead of staying on the first channel found for good, a receiver that has not locked goes back to the middle after `dwellSec`, then
+    // tries the next strongest block (up to three), then the middle again for twice as long, and so on until it locks (a strong neighbour on
+    // the band next to a weak channel, #275). Without it the receiver is left on whatever it was moved to.
+    void setRetry(double dwellSec) { retry_ = dwellSec > 0; dwell_ = dwellSec; }
     void freeze() { decided_ = true; }   // stop hunting: the decoder has locked (do not mix later and flush the buffer)
 
 private:
@@ -33,6 +37,12 @@ private:
     size_t fill_ = 0, seen_ = 0;
     bool decided_ = true, changed_ = false;
     double offset_ = 0, ph_ = 0, dph_ = 0;
+    bool retry_ = false;
+    double dwell_ = 4;
+    std::vector<double> cands_;          // the blocks to try, strongest first
+    size_t tryIdx_ = 0;
+    bool trying_ = false;
+    size_t phaseSeen_ = 0, homeLen_ = 0;
 };
 
 } // namespace dect2

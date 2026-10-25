@@ -19,6 +19,7 @@ void ChannelCentre::reset() {
     fill_ = 0; seen_ = 0;
     offset_ = 0; ph_ = 0; dph_ = 0;
     changed_ = false; haveCand_ = false; measured_ = false; cand_ = 0;
+    cands_.clear(); tryIdx_ = 0; trying_ = false; phaseSeen_ = 0; homeLen_ = (size_t)std::max(1.0, wait_ * rate_);
     decided_ = rate_ <= 0 || bw_ <= 0 || bw_ >= rate_;
 }
 
@@ -39,7 +40,21 @@ void ChannelCentre::process(cf32* x, size_t n, bool locked) {
                     if ((double)seen_ >= measure_ * rate_) { measure(); measured_ = true; if (!haveCand_) decided_ = true; }
                 }
             }
-            if (measured_ && !decided_ && (double)seen_ >= wait_ * rate_) {
+            if (retry_ && measured_ && !decided_ && !cands_.empty()) {
+                // centre -> candidate (dwell) -> centre (twice as long) -> next candidate ...
+                phaseSeen_++;
+                if (!trying_ && phaseSeen_ >= homeLen_) {
+                    trying_ = true; phaseSeen_ = 0;
+                    offset_ = cands_[tryIdx_ % cands_.size()];
+                    dph_ = -2 * M_PI * offset_ / rate_; ph_ = 0; changed_ = true;
+                } else if (trying_ && (double)phaseSeen_ >= dwell_ * rate_) {
+                    trying_ = false; phaseSeen_ = 0; tryIdx_++;
+                    homeLen_ = std::min(homeLen_ * 2, (size_t)(16.0 * rate_));
+                    offset_ = 0; dph_ = 0; ph_ = 0; changed_ = true;
+                }
+                continue;
+            }
+            if (!retry_ && measured_ && !decided_ && (double)seen_ >= wait_ * rate_) {
                 decided_ = true;
                 offset_ = cand_;
                 dph_ = -2 * M_PI * offset_ / rate_;
@@ -83,13 +98,38 @@ void ChannelCentre::measure() {
     const double floorP = bins[bins.size() / 10] * w;
     if (bestP < 4.0 * floorP) return;               // nothing stands out: leave it to the receiver
     // the middle of the channel: its half-power edges in a lightly smoothed spectrum, searched outwards from the strongest window
-    const double level = bestP / w, half = 0.5 * level;
     auto sm = [&](int k) { k = std::max(2, std::min(N - 3, k)); return (s[(size_t)k - 2] + s[(size_t)k - 1] + s[(size_t)k] + s[(size_t)k + 1] + s[(size_t)k + 2]) / 5; };
-    int a = best + w / 2, b = best + w / 2;
-    while (a > 2 && a > best - w && sm(a - 1) > half) a--;
-    while (b < N - 3 && b < best + 2 * w && sm(b + 1) > half) b++;
-    cand_ = ((a + b) / 2.0 - c) * hz;
-    haveCand_ = std::fabs(cand_) > keep_ && b - a >= w / 3;   // a carrier or a narrow interferer is not a channel
+    auto refine = [&](int at, double power, double& centreHz) {
+        const double level = power / w, half = 0.5 * level;
+        int a = at + w / 2, b = at + w / 2;
+        while (a > 2 && a > at - w && sm(a - 1) > half) a--;
+        while (b < N - 3 && b < at + 2 * w && sm(b + 1) > half) b++;
+        centreHz = ((a + b) / 2.0 - c) * hz;
+        return b - a >= w / 3;   // a carrier or a narrow interferer is not a channel
+    };
+    double cand = 0;
+    const bool wide = refine(best, bestP, cand);
+    cand_ = cand;
+    haveCand_ = std::fabs(cand_) > keep_ && wide;
+    if (!retry_ || !haveCand_) return;
+    // the next strongest blocks that stand out and do not overlap the ones taken (the first is cand_)
+    cands_.assign(1, cand_);
+    std::vector<int> taken(1, best);
+    for (int pick = 0; pick < 2; pick++) {
+        int b2 = -1; double p2 = -1;
+        for (int a2 = lo; a2 <= hi; a2++) {
+            bool clash = false;
+            for (int t : taken) if (std::abs(a2 - t) < w) { clash = true; break; }
+            if (clash) continue;
+            const double p = box(a2);
+            if (p > p2) { p2 = p; b2 = a2; }
+        }
+        if (b2 < 0 || p2 < 4.0 * floorP) break;
+        double c2 = 0;
+        if (!refine(b2, p2, c2) || std::fabs(c2) <= keep_) break;
+        taken.push_back(b2);
+        cands_.push_back(c2);
+    }
 }
 
 } // namespace dect2

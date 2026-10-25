@@ -284,6 +284,7 @@ struct CdrReceiver::Impl {
         rs = ExactResampler();
         if (curRate > 0) rs.configure(curRate, kFs);
         cc.configure(curRate, 100e3, 70e3, 1.5);   // DAB uses 1.5 s; 6 s deferred mixing mid-search caused late lock / delock on file replay
+        cc.setRetry(3.0);   // a loud FM neighbour is the strongest block of band II: if moving to it brings no lock, go back and try the others (#275)
         buf.clear(); buf0 = 0; searchFloor = 0; mirror = false;
         startSearch(0);
         locked = false; lay.reset(); tm = sm = 0;
