@@ -4,9 +4,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#ifdef _WIN32
+#include <ctime>
+#else
 #include <sys/resource.h>
+#endif
 using namespace dect2;
+#ifdef _WIN32
+static double cpu() { return double(clock()) / CLOCKS_PER_SEC; }
+#else
 static double cpu() { rusage r; getrusage(RUSAGE_SELF, &r); return r.ru_utime.tv_sec + r.ru_stime.tv_sec + 1e-6 * (r.ru_utime.tv_usec + r.ru_stime.tv_usec); }
+#endif
 static double env(const char* n, double d) { const char* s = getenv(n); return s ? atof(s) : d; }
 int main() {
     const double rate = env("MB_RATE", 32e6), secs = env("MB_SECS", 2), centre = env("MB_CENTRE", 14e6);
