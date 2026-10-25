@@ -407,7 +407,7 @@ void payloadPanel(TxUi& s, const TxModeSpec& mode, bool running) {
         break;
     case TxPayloadKind::Packet:
         if (ImGui::InputText(tr("Callsign"), s.callsign, sizeof s.callsign)) saveStr("tx.callsign", s.callsign);
-        ImGui::InputText(tr("Destination"), s.dest, sizeof s.dest);
+        ImGui::InputText((std::string(tr("Destination")) + "##pktdest").c_str(), s.dest, sizeof s.dest);   // not the same ID as the Destination combo above (#302)
         ImGui::InputText(tr("Path"), s.path, sizeof s.path);
         if (ImGui::InputText(tr("Comment"), s.text, sizeof s.text)) saveStr("tx.text", s.text);
         ImGui::InputDouble(tr("Latitude"), &s.lat, 0, 0, "%.5f");
