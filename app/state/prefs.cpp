@@ -3,6 +3,7 @@
 // spectrum range, the FM station lists, the wide-capture mask) are written out below the table.
 #include "../app.h"
 #include "state_internal.h"
+#include <algorithm>
 #include <climits>
 #include <cstring>
 #include <chrono>
@@ -344,9 +345,30 @@ void saveSpectrumRanges(plat::Prefs& d, const App& a) {
 
 }  // namespace
 
+namespace {
+// The network radios the user added are one list for the whole program, whichever receiver's window added them. Each receiver keeps what it
+// last saw (netRadiosSeen); its own change is the difference to that, and is applied to the saved list. Before, only RX 1 saved the list, so a
+// radio added in RX 3 was lost at the next start (and the receivers fell back to the first radio, issue #314).
+std::vector<NetRadio> mergedNetRadios(const App& a) {
+    std::vector<NetRadio> shared = netRadiosFromString(plat::prefs().getS("netRadios", ""));
+    auto has = [](const std::vector<NetRadio>& v, const NetRadio& r) { return std::find(v.begin(), v.end(), r) != v.end(); };
+    for (const NetRadio& r : a.netRadiosSeen)
+        if (!has(a.netRadios, r)) shared.erase(std::remove(shared.begin(), shared.end(), r), shared.end());   // removed here
+    for (const NetRadio& r : a.netRadios)
+        if (!has(a.netRadiosSeen, r) && !has(shared, r)) shared.push_back(r);   // added here
+    return shared;
+}
+}  // namespace
+
+void syncNetRadios(App& a) {
+    a.netRadios = mergedNetRadios(a);
+    a.netRadiosSeen = a.netRadios;
+}
+
 void loadPrefs(App& a) {
     plat::Prefs& d = plat::prefs();
     a.netRadios = netRadiosFromString(d.getS("netRadios", ""));
+    a.netRadiosSeen = a.netRadios;
     a.synthGroups = synthGroupsFromString(d.getS("synthGroups", ""));
     a.hamlibRigs = hamlibRigsFromString(d.getS("hamlibRigs", ""));
     {   // radios hidden from the list, one name per line
@@ -424,8 +446,12 @@ void savePrefs(const App& a) {
     const double t0 = nowSec();
     struct Timer { double t0; ~Timer() { const double ms = (nowSec() - t0) * 1000; gTuneStats.saves++; gTuneStats.saveMsSum += ms; if (ms > gTuneStats.saveMsMax) gTuneStats.saveMsMax = ms; } } timer{t0};
     plat::Prefs& d = plat::prefs();
+    {   // the shared list: any receiver's change is kept, and the other receivers' changes with it
+        const std::vector<NetRadio> merged = mergedNetRadios(a);
+        d.setS("netRadios", netRadiosToString(merged));
+        a.netRadiosSeen = merged;
+    }
     if (a.rxId == 1) {
-        d.setS("netRadios", netRadiosToString(a.netRadios));
         d.setS("synthGroups", synthGroupsToString(a.synthGroups));
         d.setS("hamlibRigs", hamlibRigsToString(a.hamlibRigs));
         { std::string j; for (const auto& n : a.hiddenRadios) j += n + "\n"; d.setS("hiddenRadios", j); }
