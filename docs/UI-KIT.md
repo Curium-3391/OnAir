@@ -5,7 +5,7 @@ A small set of components on top of Dear ImGui (ImGui stays). One theme file, on
 ## Rules
 1. No raw `ImGui::SameLine` chains for toolbars: use `kit::beginFlow` / `kit::flowItem(width)` so items wrap and are never clipped.
 2. No literal colours or pixel sizes in panels: read `kit::tokens()` (colour roles bg0..bg3, border, text, textDim, accent, ok, warn, error, selection, hover; spacing s2..s16; rowH, controlH, headerH) and scale with `kit::px()`.
-3. The presets (Classic, Dev A, Dev B) fill the colour roles in `ui2_theme.cpp` (`kit::syncTokens()` follows `ui2::T`). Panels never pick a preset.
+3. The presets (Classic, Dev A (default since 3.2), Dev B) fill the colour roles in `ui2_theme.cpp` (`kit::syncTokens()` follows `ui2::T`). Panels never pick a preset.
 4. Accent means selected or active, nothing else. ok / warn / error mean status, nothing else.
 
 ## Components (kit.h)

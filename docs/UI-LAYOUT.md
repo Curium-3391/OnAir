@@ -8,5 +8,5 @@
 6. The tabs of the decoded region stay (Receiver, History, mode tabs); "Overview" (it was only the spectrum) is not made.
 7. The left controls panel folds to an icon rail (`<<` button; expand, start/stop, tune icons).
 8. Modes keep drawing their own content; the shell lays out the central region once for all of them (`app/ui/main_tabs_unified.inc`).
-9. Looks (Settings > Display > Look): Classic, Dev A (graphite) and Dev B (terminal green) are theme presets in `ui2_theme.cpp`: flat fills, 1 px lines, one accent for selection, colour only for meaning.
+9. Looks (Settings > Display > Look, or View > Look): Classic, Dev A (graphite, the default since 3.2) and Dev B (terminal green) are theme presets in `ui2_theme.cpp`: flat fills, 1 px lines, one accent for selection, colour only for meaning.
 10. The status line at the bottom is unchanged. Dev flags: `--layout unified`, `--theme 3|4`.
