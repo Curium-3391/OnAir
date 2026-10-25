@@ -48,10 +48,10 @@ carrier at the centre), `test_atv_radio_sweep` (radio rates, tuning errors, mirr
 | Item | Status |
 |---|---|
 | D / D2-MAC over FM | done (MAC TV mode) |
-| A-MAC, B-MAC, C-MAC, E-MAC, D / D2-MAC in AM (cable) | not now: C-MAC has its data as PSK in the carrier, B-MAC is a different multilevel format; no public test signals |
+| A-MAC, B-MAC, C-MAC, E-MAC, D / D2-MAC in AM (cable) | not possible with the MAC code as it is: D and D2 are duobinary in the baseband, which is what the receiver and the generator share (`core/src/mac`, variants `kD2` and `kD`). C-MAC puts its data as 2-PSK in the carrier at 20.25 Mbit/s (more than the radios sample), B-MAC is a different data format (ETS / EBU Tech 3258 family, no free text here), and there is no public recording of any of them to test with |
 | HD-MAC, HDB-MAC | not now: needs the D2-MAC decoder plus the HD assistance and motion decoding of ETS 300 352; no signals to test with |
 | MUSE (E, T, narrow, 9) | not now: sub-Nyquist sampling with motion compensation, no free full specification and no test signals |
-| NTSC-FM, PAL-FM, SECAM-FM (satellite) | partly: the FM video decoder of FPV video receives FM video at 16 Msps and above; satellite audio subcarriers and de-emphasis, energy dispersal are not done |
+| NTSC-FM, PAL-FM, SECAM-FM (satellite) | partly: the FM video decoder of FPV video receives FM video at 16 Msps and above (the picture of NTSC and PAL FM links is decoded). A real analogue satellite transponder is 27 MHz wide or more, beyond what the supported radios sample (20 Msps at most); satellite de-emphasis (ITU-R BT.405) and energy-dispersal removal are not added, because there is no signal and no spec text at hand to check the numbers against |
 | Extended PAL | not now: needs an exact description (PALplus helper signal?) |
 | NICAM-728 | added now |
 | A2 (Zweikanalton) | added now |
@@ -63,3 +63,9 @@ carrier at the centre), `test_atv_radio_sweep` (radio rates, tuning errors, mirr
 | 300, 343, 375, 441, 455, 567 lines | not now: electronic systems with MHz of video bandwidth, not the audio-band NBTV scheme |
 | SECAM-I, NTSC-I, OSKM (NTSC D/K) | done (system and colour system are chosen independently) |
 | NTSC-A (405), SECAM-E (819), NIIR | not now: 405 and 819 are monochrome in the system table |
+
+## Picture shape (issue 318)
+
+In the TV player the box next to Deinterlace sets how the picture fills its window (also in the pop-out and full screen): **Fit** keeps the shape (black bars),
+**Stretch 4:3 to 16:9** widens a 4:3 programme (a 16:9 picture is left alone), **Zoom (crop)** fills the window and cuts the edges, **Fill (stretch)** fills the
+window whatever the shape. It is saved (`videoFit`). Test: `test_video_fit`.

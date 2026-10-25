@@ -97,6 +97,7 @@ struct SubOpt {
     bool fallback = false;            // teletext without a subtitling entry: page 888, else 777
 };
 
+#include "ui/video_fit.h"
 struct VideoTex {
     gfx::Video* tex = nullptr;
     double pts = 0;          // presentation time (seconds, as in the stream) of the newest picture: subtitles are timed against it
@@ -111,6 +112,7 @@ struct VideoTex {
     double dar = 0;          // display aspect of the newest picture (0 = use w / h); it can change between programmes
     uint64_t seq = 0;
     bool deint = true;
+    int fit = 0;             // how the picture fills its box: 0 fit (keep aspect), 1 stretch 4:3 to 16:9, 2 zoom (fill the box, crop the edges), 3 stretch to the box
     bool has() const { return tex != nullptr; }
     void update(Player& pl) {
         auto f = pl.videoFrame(seq);
@@ -126,15 +128,20 @@ struct VideoTex {
         if (!yuv) { tex->uploadRGBA(f->rgba.data()); return; }
         tex->uploadNV12(f->y.data(), f->uv.data(), f->bt709, f->fullRange, f->interlaced && deint);
     }
+    // The size the picture is drawn at inside box and the part of the texture shown (fit modes, issue 318).
+    void fitRect(ImVec2 box, ImVec2& sz, ImVec2& uv0, ImVec2& uv1) const {
+        const float ar = dar > 0.05 ? (float)dar : (h > 0 ? (float)w / h : 1.f);
+        const vfit::Rect r = vfit::rect(box.x, box.y, ar, fit);
+        sz = ImVec2(r.w, r.h); uv0 = ImVec2(r.u0, r.v0); uv1 = ImVec2(r.u1, r.v1);
+    }
     void draw(ImVec2 box) {
         if (!tex) return;
         if (box.x < 1 || box.y < 1 || h <= 0) return;
-        float ar = dar > 0.05 ? (float)dar : (float)w / h;
-        ImVec2 sz = box;
-        if (box.x / box.y > ar) sz.x = box.y * ar; else sz.y = box.x / ar;
+        ImVec2 sz, uv0, uv1;
+        fitRect(box, sz, uv0, uv1);
         ImVec2 p = ImGui::GetCursorPos();
         ImGui::SetCursorPos(ImVec2(p.x + (box.x - sz.x) * 0.5f, p.y + (box.y - sz.y) * 0.5f));
-        ImGui::Image(tex->texture(), sz);
+        ImGui::Image(tex->texture(), sz, uv0, uv1);
         if (overlayFn) overlayFn(overlayCtx, ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), sz);
         ImGui::SetCursorPos(p);
     }

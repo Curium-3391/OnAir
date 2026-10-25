@@ -148,11 +148,11 @@ void popOutFrame(App& a) {
     gDl->PushTexture(ImGui::GetIO().Fonts->TexRef);
     const VideoTex& v = a.video;
     if (v.has() && v.h > 0) {   // the whole picture at its display aspect, black bars around it
-        const float ar = v.dar > 0.05 ? (float)v.dar : (float)v.w / v.h;
-        float sw = (float)ww, sh = (float)wh;
-        if (sw / sh > ar) sw = sh * ar; else sh = sw / ar;
+        ImVec2 sz, uv0, uv1;
+        v.fitRect(ImVec2((float)ww, (float)wh), sz, uv0, uv1);
+        const float sw = sz.x, sh = sz.y;
         const ImVec2 p0(((float)ww - sw) * 0.5f, ((float)wh - sh) * 0.5f);
-        gDl->AddImage(v.tex->texture(), p0, ImVec2(p0.x + sw, p0.y + sh));
+        gDl->AddImage(v.tex->texture(), p0, ImVec2(p0.x + sw, p0.y + sh), uv0, uv1);
         if (v.overlayFn) v.overlayFn(v.overlayCtx, gDl, p0, ImVec2(sw, sh));   // subtitles
     } else {
         const char* t = "no picture";

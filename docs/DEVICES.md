@@ -19,3 +19,11 @@ Transmit is only possible through the Arm + licence confirmation + band-plan che
 The TX window shows a radio that cannot transmit as a short line ("2 receive-only radios hidden", with a show toggle); the reason names the radio once, e.g. "USRP B210 000000001 cannot transmit in this build: the installed UHD has no transmit functions".
 
 Not tested on real hardware: the USRP TX path was written against UHD's C API and tested with fakes only (open without UHD, classification, texts). Test with a dummy load and the Arm gate.
+
+## DVB-T / DVB-T2 / DVB-C USB sticks with an RTL2832P (issue 180)
+
+Sticks such as the Astrometa DVB-T2/C (USB id 15f4:0131; the HanfTek DAB+/FM stick is 15f4:0133) carry an RTL2832P and an R828D tuner. OnAir opens them
+as an ordinary RTL-SDR (the ids are in the RTL tables of the Linux udev rules, the desktop USB list and the Android device filter), so they show up in the radio
+list and work in every mode that takes raw samples; DVB-T and DVB-T2 are decoded by OnAir's own software demodulator. The stick's own hardware demodulator (the
+separate demodulator chip of the DVB-T2/C models) is **not** used. On Linux the kernel DVB driver may grab the stick first: blacklist `dvb_usb_rtl28xxu`.
+Sticks with another id: report the `lsusb` line. Needs a user test on the DVB-T2/C model.
