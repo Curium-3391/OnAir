@@ -34,6 +34,10 @@ struct VdesAsm {
     uint32_t aisMmsi = 0;           // bits 8 .. 37 read as an MMSI (shown only for a plausible AIS type)
     float snrDb = 0;
     float cfoHz = 0;
+    // the position, when the payload is an AIS message with one (types 1 - 3, 9, 18, 19, 21, 27 ...): decoded with the AIS message layer
+    bool hasPos = false;
+    double lat = 0, lon = 0;
+    float sogKt = -1, cogDeg = -1;
 };
 
 struct VdeBurst {

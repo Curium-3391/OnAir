@@ -331,6 +331,7 @@ void collectFrom(App& rx, std::vector<Track>& v, std::unordered_set<std::string>
         }
     } else fromMarkers(v, seen, dect2::markersFromAdsb(rx.rx.adsb), rx.rx.adsb.timeSec);
     fromMarkers(v, seen, dect2::markersFromAis(rx.rx.ais), rx.rx.ais.timeSec);
+    fromMarkers(v, seen, dect2::markersFromVdes(rx.rx.vdes), rx.rx.vdes.timeSec);
     fromMarkers(v, seen, dect2::markersFromAprs(rx.rx.packet), rx.rx.packet.timeSec);
     fromMarkers(v, seen, dect2::markersFromSonde(rx.rx.sonde), rx.rx.sonde.streamTimeS);
 

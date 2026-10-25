@@ -5,6 +5,8 @@
 #include "dect2/dsp/exact_resampler.h"
 #include "dect2/dsp/fftutil.h"
 #include "dect2/results/results_io.h"
+#include "dect2/ais/ais_proto.h"
+#include "dect2/net/feeds.h"
 #include "dect2/vdes/vdes_gen.h"
 #include <algorithm>
 #include <chrono>
@@ -88,6 +90,8 @@ struct VdesReceiver::Impl {
     std::function<void(const std::string&)> log;
     double fs = 0, offsetHz = 0, dialHz = 0;
     bool isReady = false, wallClock = false;
+    bool forwardNmea = true;
+    int nmeaSeq = 0;
     AisReceiver ais;
     bool asmInView = false;
     Band band[2];
@@ -174,6 +178,17 @@ struct VdesReceiver::Impl {
                 uint32_t m = 0;
                 for (int k = 8; k < 38; k++) m = (m << 1) | (bits[(size_t)k] & 1);
                 a.aisMmsi = m;
+            }
+        }
+        {   // an AIS-like payload: its position for the map, and the sentence for the AIS data feed (NMEA over UDP, the same as the AIS mode)
+            ais::AisMsg am;
+            const bool dec = ais::decodeMessage(bits, am);
+            if (ais::acceptableAis(am, dec)) {
+                if (am.hasPos) { a.hasPos = true; a.lat = am.lat; a.lon = am.lon; a.sogKt = am.sog; a.cogDeg = am.cog; }
+                if (forwardNmea && Feeds::get().wantAis()) {
+                    Feeds::get().ais(ais::toNmea(bits, ch == 'B' ? 'B' : 'A', nmeaSeq));
+                    if (bits.size() > 6 * 60) nmeaSeq = (nmeaSeq + 1) % 10;
+                }
             }
         }
         asms.push_front(a);
@@ -427,6 +442,7 @@ VdesReceiver::~VdesReceiver() = default;
 void VdesReceiver::configure(double inputRateHz) { std::lock_guard<std::mutex> lk(p_->procMu); p_->configure(inputRateHz); }
 void VdesReceiver::setSignalOffset(double hz) { std::lock_guard<std::mutex> lk(p_->procMu); p_->offsetHz = hz; if (p_->isReady) p_->plan(); }
 void VdesReceiver::setDialHz(double hz) { std::lock_guard<std::mutex> lk(p_->procMu); if (hz == p_->dialHz) return; p_->dialHz = hz; if (p_->isReady) { p_->plan(); p_->resetState(); } }
+void VdesReceiver::setForwardNmea(bool on) { std::lock_guard<std::mutex> lk(p_->procMu); p_->forwardNmea = on; }
 void VdesReceiver::setWallClock(bool on) { std::lock_guard<std::mutex> lk(p_->procMu); p_->wallClock = on; }
 bool VdesReceiver::ready() const { std::lock_guard<std::mutex> lk(p_->procMu); return p_->isReady; }
 void VdesReceiver::reset() { std::lock_guard<std::mutex> lk(p_->procMu); if (p_->isReady) p_->resetState(); }

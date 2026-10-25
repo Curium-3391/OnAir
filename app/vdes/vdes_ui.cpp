@@ -53,12 +53,24 @@ void asmView(App& a) {
                         "it is read as an AIS message only when its first bits look like one.");
     ImGui::PopTextWrapPos();
     if (ImGui::SmallButton("Clear")) { a.engine.vdes().clearResults(); S.selKey = 0; }
+    {   // positions of AIS-like frames: on the Map tab (AIS ships layer) and, as !AIVDM sentences, on the AIS data feed (UDP) for a chart program
+        static bool nmea = plat::prefs().getB("vdesNmea", true), pushed = false;
+        ImGui::SameLine(0, 10 * gUi);
+        const bool ch = ImGui::Checkbox("Send as NMEA (UDP)", &nmea);
+        if (ch) plat::prefs().setB("vdesNmea", nmea);
+        if (ch || !pushed) { a.engine.vdes().setForwardNmea(nmea); pushed = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Frames that are AIS messages go out as !AIVDM sentences, like the AIS mode's, to the host and port of 'NMEA !AIVDM (UDP)' in Settings, Data feeds (switch that on there). Decoded positions are on the Map tab.");
+        size_t np = 0;
+        for (const dect2::VdesAsm& f : fr) if (f.hasPos) np++;
+        ImGui::SameLine(0, 10 * gUi);
+        ImGui::TextDisabled("%zu with a position", np);
+    }
     const float h = ImGui::GetContentRegionAvail().y;
     const float listH = S.selKey ? h * 0.55f : h;
-    if (ImGui::BeginTable("##vdt", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
+    if (ImGui::BeginTable("##vdt", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Time"); ImGui::TableSetupColumn("Channel"); ImGui::TableSetupColumn("Bits"); ImGui::TableSetupColumn("SNR");
-        ImGui::TableSetupColumn("AIS type"); ImGui::TableSetupColumn("Payload", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("AIS type"); ImGui::TableSetupColumn("Position"); ImGui::TableSetupColumn("Payload", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         for (const dect2::VdesAsm& f : fr) {
             const uint64_t k = keyOf(f);
@@ -70,6 +82,7 @@ void asmView(App& a) {
             ImGui::TableNextColumn(); ImGui::Text("%d", f.bits);
             ImGui::TableNextColumn(); ImGui::Text("%.1f dB", f.snrDb);
             ImGui::TableNextColumn(); if (f.aisType) ImGui::Text("%d", f.aisType); else ImGui::TextUnformatted("-");
+            ImGui::TableNextColumn(); if (f.hasPos) ImGui::Text("%.4f %.4f", f.lat, f.lon); else ImGui::TextUnformatted("-");
             ImGui::TableNextColumn(); ImGui::PushFont(a.mono, 0); ImGui::TextUnformatted(f.hex.substr(0, 96).c_str()); ImGui::PopFont();
             ImGui::PopID();
         }
@@ -85,6 +98,7 @@ void asmView(App& a) {
                 kvRow(a, "received", "%s, SNR %.1f dB, offset %+.0f Hz", clock(f.wallTime, f.timeSec).c_str(), f.snrDb, f.cfoHz);
                 kvRow(a, "length", "%d bits (CRC-16 good)", f.bits);
                 if (f.aisType) kvRow(a, "as AIS", "message type %d, MMSI %u", f.aisType, f.aisMmsi);
+                if (f.hasPos) kvRow(a, "position", "%.5f %.5f%s%s", f.lat, f.lon, f.sogKt >= 0 && f.sogKt < 102.3f ? (", " + std::to_string((int)std::lround(f.sogKt)) + " kn").c_str() : "", f.cogDeg >= 0 && f.cogDeg < 360 ? (", course " + std::to_string((int)std::lround(f.cogDeg))).c_str() : "");
                 ImGui::TextDisabled("hex");
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Copy")) ImGui::SetClipboardText(f.hex.c_str());
