@@ -129,14 +129,14 @@ double stepHz() { return kSteps[S.step[S.demod]]; }
 void edges(double& lo, double& hi) { dect2::generalFilterEdges(S.demod, S.width[S.demod], lo, hi); }
 
 // Put the channel on hz: inside the band the radio covers it only moves the marker; outside, the radio is retuned onto it
-void setListen(App& a, double hz) {
+void setListen(App& a, double hz, bool centre = false) {   // centre: the target button is on, so a click retunes the radio even inside the band (#301)
     hz = std::max(1e3, hz);
     const double fs = a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate;
     const double rc = radioCenterMhz(a) * 1e6;
     double lo, hi;
     edges(lo, hi);
     const fmodel::ListenPlan p = fmodel::planListen(hz, rc, fs, lo, hi, a.tuningMode == 1);
-    if (p.retune) {
+    if (p.retune || (centre && a.tuningMode != 1)) {
         S.chanOff = 0;
         tuneFreq(a, hz / 1e6);
         S.lastDial = a.freqMhz;
@@ -767,7 +767,7 @@ void generalPlotMouse(App& a, int plotId) {
     if (ImGui::IsMouseClicked(0)) S.dragged = false;
     const double to = snap(mhz * 1e6);
     const ImVec2 dd = ImGui::GetMouseDragDelta(0, 0);
-    if (ImGui::IsMouseReleased(0) && !S.dragged && std::fabs(dd.x) < 4 && std::fabs(dd.y) < 4) { setListen(a, to); return; }
+    if (ImGui::IsMouseReleased(0) && !S.dragged && std::fabs(dd.x) < 4 && std::fabs(dd.y) < 4) { setListen(a, to, a.centreTuning); return; }
     if (std::fabs(to - listenHz(a)) > 0.5) {
         const double lx[2] = {to / 1e6, to / 1e6}, ly[2] = {lim.Y.Min, lim.Y.Max};
         plt::Spec ls; ls.LineColor = ImVec4(0.95f, 0.25f, 0.25f, 0.5f); ls.LineWeight = 1.f;

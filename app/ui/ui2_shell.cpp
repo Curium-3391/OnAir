@@ -26,6 +26,10 @@
 #include "../panels/backup_ui.h"
 #include "../gfx/render_caps.h"
 
+// the byte length of the UTF-8 character that starts with `lead` (1 for ASCII and for a stray byte)
+static size_t utf8Len(char lead) { const unsigned char c = (unsigned char)lead; return c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1; }
+
+
 void clearAllButtonAt(App& a, bool sameLine);   // update_ui.cpp: Clear all, without its own SameLine
 using namespace ui2;
 
@@ -215,10 +219,10 @@ void sidebar(App& a) {
         const float col = ImGui::GetCursorPosX() + ImGui::CalcTextSize(tr("Waterfall")).x + 8 * gUi;   // the controls line up after the longer label
         const float autoW = ImGui::CalcTextSize(tr("Auto")).x + ImGui::GetStyle().FramePadding.x * 2 + 4 * gUi;
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Spectrum")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
-        ImGui::DragFloatRange2("##specdb", &a.yMin, &a.yMax, 1, -160, 20, "%.0f", "%.0f");
+        if (ImGui::DragFloatRange2("##specdb", &a.yMin, &a.yMax, 1, -160, 20, "%.0f", "%.0f")) a.specAutoDb = false;
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Waterfall")); ImGui::SameLine(col);
         ImGui::SetNextItemWidth(std::min(104.f * gUi, ImGui::GetContentRegionAvail().x - autoW));
-        if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
+        if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = a.specAutoDb = false;
         ImGui::SameLine(0, 4 * gUi);
         wfAutoButton(a);
         ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Layout")); ImGui::SameLine(col); ImGui::SetNextItemWidth(std::min(150.f * gUi, ImGui::GetContentRegionAvail().x));
@@ -366,7 +370,7 @@ void statusLine(App& a) {
         ImFont* mono = typo::fonts().mono ? typo::fonts().mono : a.mono;
         ImFont* monoB = typo::fonts().monoBold ? typo::fonts().monoBold : mono;
         const auto upper = [](std::string s) { for (char& c : s) if (c >= 'a' && c <= 'z') c = (char)(c - 32); return s; };
-        const auto capW = [&](const std::string& s) { ImGui::PushFont(nullptr, capS); float w = 0; for (char c : s) { char t[2] = {c, 0}; w += ImGui::CalcTextSize(t).x + spc; } ImGui::PopFont(); return w; };
+        const auto capW = [&](const std::string& s) { ImGui::PushFont(nullptr, capS); float w = 0; for (size_t i = 0; i < s.size();) { const size_t n = utf8Len(s[i]); const std::string t = s.substr(i, n); w += ImGui::CalcTextSize(t.c_str()).x + spc; i += n; } ImGui::PopFont(); return w; };
         const auto textW = [&](const std::string& s, ImFont* f, float sz) { ImGui::PushFont(f, sz); const float w = ImGui::CalcTextSize(s.c_str()).x; ImGui::PopFont(); return w; };
         const std::string capF = upper(tr("Frequency")), capM = upper(tr("Mode")), capR = upper(tr("Receiver")), capS2 = upper(tr("State")), capC = "CPU";
         const std::string stateTxt = tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped");
@@ -393,7 +397,7 @@ void statusLine(App& a) {
             if (!pl.captions || s.empty()) return;
             ImGui::PushFont(nullptr, capS);
             float px = cx + padX;
-            for (char c : s) { char t[2] = {c, 0}; dl2->AddText(ImVec2(px, capY), u32(T.dim), t); px += ImGui::CalcTextSize(t).x + spc; }
+            for (size_t i = 0; i < s.size();) { const size_t n = utf8Len(s[i]); const std::string t = s.substr(i, n); dl2->AddText(ImVec2(px, capY), u32(T.dim), t.c_str()); px += ImGui::CalcTextSize(t.c_str()).x + spc; i += n; }   // by character, not by byte: a Chinese caption was bytes shown as "?" (#297)
             ImGui::PopFont();
         };
         const auto valueAt = [&](float cx, float cw, float tw, float vy, float sz, ImFont* f, ImU32 col, const std::string& s) {   // centred in the value row
@@ -548,11 +552,11 @@ static void viewMenu(App& a) {
             ImGui::TextDisabled("%s", tr("Ctrl + / Ctrl - / Ctrl 0"));
             ImGui::EndMenu();
         }
-        if (!a.touchUi && ImGui::MenuItem(tr("Reset layout"))) layoutReset();   // forgets the saved window positions of every mode
         if (ImGui::MenuItem(tr("Touch interface"), nullptr, &a.touchUi)) savePrefs(a);   // the same flag as the side panel: big targets, bottom dock (ui/touch.h)
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("For tablets and touch screens: big buttons, an on-screen keypad for the frequency, a full-screen mode picker."));
         dockMenu(a);   // View > Docking (ui2_dock.cpp)
-        if (ImGui::MenuItem(tr("Reset layout"))) { a.splitSide = a.splitRight = a.splitBottom = a.splitDock = a.splitBot2 = 0; savePrefs(a); }
+        if (ImGui::MenuItem(tr("Reset layout"))) { if (!a.touchUi) layoutReset();   // forgets the saved window positions of every mode
+            a.splitSide = a.splitRight = a.splitBottom = a.splitDock = a.splitBot2 = 0; savePrefs(a); }
         if (ImGui::MenuItem(tr("Reset spectrum"))) resetSpectrum(a);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Put the panels back to their automatic sizes (drag the bars between panels to resize them)"));
         if (ImGui::MenuItem(tr("Full screen"), "F11", gWindow && glfwGetWindowMonitor(gWindow))) toggleFullscreen();
@@ -871,9 +875,9 @@ void modeCombo(App& a, float w) {
 void displayControls(App& a, bool wide) {
     if (ImGui::Checkbox(tr("Peak hold"), &a.peakHold)) savePrefs(a);
     ImGui::SameLine(0, 12 * gUi); ImGui::TextDisabled("%s", tr("Spectrum")); ImGui::SameLine(0, 4 * gUi); ImGui::SetNextItemWidth((wide ? 130 : 104) * gUi);
-    ImGui::DragFloatRange2("##specdb", &a.yMin, &a.yMax, 1, -160, 20, "%.0f", "%.0f");
+    if (ImGui::DragFloatRange2("##specdb", &a.yMin, &a.yMax, 1, -160, 20, "%.0f", "%.0f")) a.specAutoDb = false;
     ImGui::SameLine(0, 12 * gUi); ImGui::TextDisabled("%s", tr("Waterfall")); ImGui::SameLine(0, 4 * gUi); ImGui::SetNextItemWidth((wide ? 130 : 104) * gUi);
-    if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
+    if (ImGui::DragFloatRange2("##wfdb", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = a.specAutoDb = false;
     ImGui::SameLine(0, 4 * gUi);
     wfAutoButton(a);
 }

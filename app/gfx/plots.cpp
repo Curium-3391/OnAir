@@ -607,8 +607,8 @@ static void setLinkedDbRange(App& a, float lo, float hi) {
     clampDbEndpoints(lo, hi);
     a.yMin = lo;
     a.yMax = hi;
-    a.wf.autoTrack = false;
-    a.specAutoDb = false;   // the user set the range: it stays
+    a.wf.autoTrack = a.specAutoDb = false;
+    // (specAutoDb is off above) the user set the range: it stays
     a.wf.minDb = lo;
     a.wf.maxDb = hi;
 }
@@ -657,7 +657,7 @@ static void dbRangeSliders(App& a, ImVec2 colMin, float colW, float h) {
         hi = std::max(hi, a.yMin + kDbMinSpan);
         a.yMax = hi;
         a.wf.maxDb = hi;
-        a.wf.autoTrack = false;
+        a.wf.autoTrack = a.specAutoDb = false;
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Top of the dB range (higher = more vertical stretch)"));
@@ -676,7 +676,7 @@ static void dbRangeSliders(App& a, ImVec2 colMin, float colW, float h) {
         lo = std::min(lo, a.yMax - kDbMinSpan);
         a.yMin = lo;
         a.wf.minDb = lo;
-        a.wf.autoTrack = false;
+        a.wf.autoTrack = a.specAutoDb = false;
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Bottom of the dB range (raises or lowers the trace on screen)"));
@@ -717,7 +717,7 @@ bool specDbRangeKeys(App& a) {
     if (hi - lo < 10) return false;
     a.yMin = lo;
     a.yMax = hi;
-    a.wf.autoTrack = false;
+    a.wf.autoTrack = a.specAutoDb = false;
     a.wf.minDb = lo;
     a.wf.maxDb = hi;
     return true;
@@ -974,7 +974,7 @@ void wfDisplayPopup(App& a) {
     // the levels first: they are what is changed most
     ImGui::TextDisabled("%s", tr("Intensity (dB)"));
     ImGui::SetNextItemWidth(170 * gUi);
-    if (ImGui::DragFloatRange2("##wfdbp", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = false;
+    if (ImGui::DragFloatRange2("##wfdbp", &a.wf.minDb, &a.wf.maxDb, 1, -160, 20, "%.0f", "%.0f")) a.wf.autoTrack = a.specAutoDb = false;
     if (ImGui::IsItemDeactivatedAfterEdit()) savePrefs(a);
     ImGui::SameLine(0, 6 * gUi);
     wfAutoButton(a);
@@ -1650,12 +1650,12 @@ static void wfScaleBarInput(App& a) {
     const float span = std::max(10.f, a.wf.maxDb - a.wf.minDb), h = std::max(20.f, gScale.p1.y - gScale.p0.y);
     if (ImGui::IsItemActive() && ImGui::GetIO().MouseDelta.y != 0) {
         const float d = ImGui::GetIO().MouseDelta.y / h * span;   // drag down: the colours move down (weaker signals get brighter)
-        a.wf.autoTrack = false; a.wf.minDb += d; a.wf.maxDb += d;
+        a.wf.autoTrack = a.specAutoDb = false; a.wf.minDb += d; a.wf.maxDb += d;
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
         const float wh = ImGui::GetIO().MouseWheel;
-        if (wh != 0) { a.wf.autoTrack = false; const float c = (a.wf.minDb + a.wf.maxDb) / 2, ns = std::max(10.f, std::min(150.f, span * (wh > 0 ? 0.9f : 1.1f))); a.wf.minDb = c - ns / 2; a.wf.maxDb = c + ns / 2; ImGui::GetIO().MouseWheel = 0; }
+        if (wh != 0) { a.wf.autoTrack = a.specAutoDb = false; const float c = (a.wf.minDb + a.wf.maxDb) / 2, ns = std::max(10.f, std::min(150.f, span * (wh > 0 ? 0.9f : 1.1f))); a.wf.minDb = c - ns / 2; a.wf.maxDb = c + ns / 2; ImGui::GetIO().MouseWheel = 0; }
         if (ImGui::IsMouseDoubleClicked(0)) { a.wf.autoTrack = true; a.wf.fitRange(a.smooth, true); }
         ImGui::SetTooltip("%s", a.wf.autoTrack ? tr("Waterfall colour range (automatic, on the noise floor). Drag to move it, scroll to widen or narrow it.")
                                                : tr("Waterfall colour range. Drag to move it, scroll to widen or narrow it, double click for automatic."));

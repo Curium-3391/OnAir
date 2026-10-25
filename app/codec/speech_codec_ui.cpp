@@ -309,6 +309,7 @@ void voiceCodecsWindow(App& a) {
                 const bool onDisk = !hits.empty();
                 if (plug) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "plug-in loaded from %s", p.c_str());
                 else if (mbe) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "libmbe loaded: %s", p.c_str());
+                else if (onDisk && plat::basePrefs().getB(prefKey(id).c_str(), false)) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.6f, 1), "plug-in file found, notice already accepted: it loads when a voice mode starts");
                 else if (onDisk) ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "plug-in file found: accept the notice or start the mode to load it");
                 else ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1), "missing: %s", cd::speechCodecFileName(id).c_str());
                 if (!plug && onDisk) ImGui::TextDisabled("found in %s", hits[0].path.c_str());

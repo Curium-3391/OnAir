@@ -405,11 +405,14 @@ bool draw(View& v, ImVec2 size) {
     ImGui::InvisibleButton("##map", size, ImGuiButtonFlags_MouseButtonLeft);
     const bool hov = ImGui::IsItemHovered();
     gClicked = false;
+    static bool panned = false;   // IsMouseDragging is false on the release frame itself: remember that this press was a drag (#235)
+    if (ImGui::IsItemActivated()) panned = false;
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0, 3.f)) {   // pan
+        panned = true;
         const ImVec2 d = ImGui::GetIO().MouseDelta;
         v.lon = lonOf(mercX(v.lon, v.zoom) - d.x, v.zoom);
         v.lat = latOf(mercY(v.lat, v.zoom) - d.y, v.zoom);
-    } else if (ImGui::IsItemDeactivated() && !ImGui::IsMouseDragging(0, 3.f) && hov) { gClicked = true; gClickPos = ImGui::GetIO().MousePos; }
+    } else if (ImGui::IsItemDeactivated() && !panned && hov) { gClicked = true; gClickPos = ImGui::GetIO().MousePos; }
     if (hov && ImGui::GetIO().MouseWheel != 0) {   // zoom around the pointer
         const ImVec2 m = ImGui::GetIO().MousePos;
         const double mx = mercX(v.lon, v.zoom) + (m.x - (p0.x + size.x * 0.5f)), my = mercY(v.lat, v.zoom) + (m.y - (p0.y + size.y * 0.5f));
