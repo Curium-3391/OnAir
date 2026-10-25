@@ -1,8 +1,8 @@
-// TCI (Transceiver Control Interface of Expert Electronics' ExpertSDR3, spec 1.9; also served by SunSDR and other programs), receive only. A WebSocket
+// TCI (Transceiver Control Interface of Expert Electronics' ExpertSDR3, spec 1.9 to 2.1; also served by SunSDR and other programs), receive only. A WebSocket
 // connection (ws://host:50001): text messages hold commands "name:arg,arg;" (several per message), binary messages hold stream blocks of a 64-byte
 // header (16 little-endian uint32: receiver, sample_rate, format, codec, crc, length, type, channels, reserv[8]) and the samples. After connecting the
 // server sends its initialization commands (device, protocol, vfo_limits, trx_count, ..., ready). We ask for iq_samplerate, put dds (and vfo) on the
-// centre, and send iq_start; type 0 blocks carry the IQ of that receiver. Only these are ever sent: iq_samplerate, dds, vfo, iq_start, iq_stop. No
+// centre, and send iq_start; type 0 blocks carry the IQ of that receiver. Only these are ever sent: iq_samplerate, dds, vfo, iq_start, iq_stop, and start (once, only when the server reports "stop;": ExpertSDR3 sends no IQ while its radio is off). No
 // transmit command (trx, tune, drive, ...) and no audio stream command is sent.
 // Verified from the public spec: the command names and arguments, the header, the stream/sample types, the IQ rates 48/96/192/384 kHz, the default port.
 // Assumed (marked ASSUMED): the URL path "/", length being the real-sample count (the payload size is used instead), the VFO following the DDS being
@@ -55,6 +55,7 @@ struct TciInfo {
     double vfoLo = 0, vfoHi = 0;
     int trx = 1;
     double iqRate = 0;   // the rate the server confirmed
+    bool stopped = false;   // the server reported "stop;" (its radio is switched off: ExpertSDR3 sends no IQ then)
 };
 std::mutex gInfoMu;
 std::map<std::string, TciInfo> gInfo;
@@ -73,6 +74,8 @@ void absorb(const Cmds& cs, TciInfo& i) {
         else if (n == "vfo_limits" && a.size() >= 2) { i.vfoLo = atof(a[0].c_str()); i.vfoHi = atof(a[1].c_str()); }
         else if (n == "trx_count" && !a.empty()) i.trx = std::min(8, std::max(1, atoi(a[0].c_str())));
         else if (n == "receive_only" && !a.empty()) i.receiveOnly = lowerStr(a[0]) == "true";
+        else if (n == "stop") i.stopped = true;
+        else if (n == "start") i.stopped = false;
         else if (n == "iq_samplerate" && !a.empty()) { const double r = atof(a[0].c_str()); if (r > 0 && r < 1e8) i.iqRate = r; }
     }
 }
@@ -83,7 +86,9 @@ std::string addrOf(const std::string& host, int port) { return (host.find(':') !
 bool connectAndAsk(WsClient& ws, const std::string& host, int port, int timeoutMs, TciInfo& info, std::string& err) {
     const std::string addr = addrOf(host, port);
     const sock_t s = tcpConnect(host, port, timeoutMs, err);
-    if (s == kBadSock) { err = "cannot connect to a TCI server at " + addr + ": " + err + " (is ExpertSDR3 running with its TCI server on?)"; return false; }
+    if (s == kBadSock) { err = "cannot connect to a TCI server at " + addr + ": " + err +
+        " (the TCI server is a part of ExpertSDR3 on the computer the SunSDR is connected to, not of the SunSDR itself: start ExpertSDR3, switch TCI on in its settings"
+        " and, to reach it from another computer, set its TCI address to 0.0.0.0 instead of 127.0.0.1)"; return false; }
     ws.attach(s);
     sockRecvTimeout(s, timeoutMs);
     std::string e;
@@ -210,8 +215,11 @@ protected:
         std::vector<unsigned char> m;
         Cmds cs;
         uint64_t bad = 0;
+        bool gotIq = false;
+        startSent_ = false;
         while (run_) {
             const auto kind = ws_.readMessage(m, kMaxMessage);
+            if (kind == WsClient::Kind::Timeout && !gotIq) { fprintf(stderr, "TCI: connected to %s but no IQ arrived in %d s (is the radio switched on in ExpertSDR3, and is the receiver number right?)\n", addr_.c_str(), kStallMs / 1000); fflush(stderr); }
             if (kind == WsClient::Kind::Closed || kind == WsClient::Kind::Timeout) break;
             if (kind == WsClient::Kind::Bad) { fprintf(stderr, "TCI: bad data from %s, dropping the connection\n", addr_.c_str()); fflush(stderr); break; }
             if (kind == WsClient::Kind::Text) {
@@ -219,13 +227,21 @@ protected:
                 TciInfo i;
                 { std::lock_guard<std::mutex> lk(infoMu_); absorb(cs, info_); i = info_; }
                 if (i.iqRate > 0 && std::fabs(i.iqRate - rate_) > 0.5) rate_ = i.iqRate;
+                // ExpertSDR3 sends IQ only while its radio runs ("start;"). It reports "stop;" when the radio is switched off: start it, once per
+                // connection (a receive-only command; whoever stopped it on purpose can stop it again)
+                if (i.stopped && !startSent_ && !gotIq) {
+                    startSent_ = true;
+                    ws_.sendText("start;");
+                    fprintf(stderr, "TCI: the server's radio is stopped, sending start\n");
+                    fflush(stderr);
+                }
                 continue;
             }
             // binary: the 64-byte header, then the samples; only the IQ stream (type 0) of the receiver we started
             if (m.size() < kHeader) { bad++; continue; }
             const uint32_t recv = rd32(&m[0]), srate = rd32(&m[4]), fmt = rd32(&m[8]), length = rd32(&m[20]), type = rd32(&m[24]), ch = rd32(&m[28]);
             if (type != 0 || recv != (uint32_t)rx_) continue;
-            if (ch != 2 || fmt > 3) { bad++; continue; }
+            if ((ch != 2 && ch != 0) || fmt > 3) { bad++; continue; }   // channels 0: a server that leaves it out (IQ is always two)
             const size_t bps = fmt == 0 ? 2 : fmt == 1 ? 3 : 4;
             const size_t payload = m.size() - kHeader;
             const size_t n = payload / (bps * 2);
@@ -244,6 +260,7 @@ protected:
                 }
                 conv_[k] = cf32(v[0], v[1]);
             }
+            if (!gotIq) { gotIq = true; fprintf(stderr, "TCI: IQ is arriving (%u Hz, format %u)\n", srate, fmt); fflush(stderr); }
             push(conv_.data(), n);
         }
         if (bad) { fprintf(stderr, "TCI: %llu malformed or unusable blocks ignored\n", (unsigned long long)bad); fflush(stderr); }
@@ -261,6 +278,7 @@ private:
     std::mutex infoMu_;
     TciInfo info_;
     int rx_ = 0;
+    bool startSent_ = false;
     long long sentFreq_ = -1, sentRate_ = -1;
     std::chrono::steady_clock::time_point lostAt_{};
 };
