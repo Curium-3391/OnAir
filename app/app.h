@@ -559,7 +559,7 @@ struct App {
     bool scanShowAll = true;            // the TV scan list: the services of every scanned transponder (off: only the tuned one)
     MuxId liveMux; bool liveMuxValid = false;   // what the live service list belongs to (a change empties it)
     std::unique_ptr<Updater> upd;      // update check and installer
-    bool updCheck = true, updAuto = true, updPre = false, updStarted = false;   // official updates on; betas off until asked
+    bool updCheck = true, updAuto = false, updPre = false, updStarted = false;   // check for official updates by default; download/install only when the user turns it on; betas off until asked
     double updLast = 0;                // when the last check was made (seconds since 1970)
     int updSrc = 0;                    // update source: 0 automatic (GitHub), 1 GitHub only, 2 mirror only
     bool updMirrorOn = false;          // automatic: also try the mirror when GitHub fails (off until the user turns it on)
