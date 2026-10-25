@@ -1484,16 +1484,12 @@ every %.0f s	kas %.0f s
 back to back	iš eilės
 Fast wideband sweep with a noise-floor measurement, signal log and waterfall	Greitas plačiajuostis nuskaitymas su triukšmo lygio matavimu, signalų žurnalu ir krioklio vaizdu
 Record audio	Įrašyti garsą
-Only audio	Tik garsas
 Split	Skaidyti
-Keep going	Tęsti
 Show recording	Rodyti įrašą
 Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)	Išsaugo girdimą garsą į failą bet kuriuo režimu (prieš garsumo reguliatorių, todėl lygis nuo jo nepriklauso)
 MP3 needs the LAME library (libmp3lame), which is not installed	MP3 reikia LAME bibliotekos (libmp3lame), kuri neįdiegta
 WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo.	WAV: 16 bitų, didelis. FLAC: be nuostolių, maždaug perpus mažesnis. MP3: mažas (reikia libmp3lame). FM stereo išsaugomas kaip stereo.
-Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail	Įrašo tik kol yra garso (kaip triukšmo slopintuvas): tyla iškerpama, paliekant trumpą pradžią ir pabaigą
 One file per transmission: a new file starts after 3 s of silence	Vienas failas vienam perdavimui: po 3 s tylos pradedamas naujas failas
-Keeps recording when the mode or the frequency changes. Off: the recording stops then.	Tęsia įrašymą pasikeitus režimui ar dažniui. Išjungta: tada įrašymas sustoja.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir, and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	Šioje OnAir įdiegtyje trūksta SoapyRemote modulio, todėl nepavyksta pasiekti nuotolinio radijo. Iš naujo įdiekite OnAir, o jei pasikartotų, praneškite. Radijo kompiuteryje turi veikti SoapySDRServer --bind.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir (or run brew install soapyremote), and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	Šioje OnAir įdiegtyje trūksta SoapyRemote modulio, todėl nepavyksta pasiekti nuotolinio radijo. Iš naujo įdiekite OnAir (arba paleiskite brew install soapyremote), o jei pasikartotų, praneškite. Radijo kompiuteryje turi veikti SoapySDRServer --bind.
 SoapySDR here has no SoapyRemote client module, so it cannot reach a remote radio. Install it (Debian/Ubuntu: sudo apt install soapysdr-module-remote; other systems: github.com/pothosware/SoapyRemote), then restart OnAir. The radio's computer must run SoapySDRServer --bind.	Šis SoapySDR neturi SoapyRemote kliento modulio, todėl nepavyksta pasiekti nuotolinio radijo. Įdiekite jį (Debian/Ubuntu: sudo apt install soapysdr-module-remote; kitos sistemos: github.com/pothosware/SoapyRemote) ir paleiskite OnAir iš naujo. Radijo kompiuteryje turi veikti SoapySDRServer --bind.
@@ -1562,14 +1558,10 @@ Each receiver pairs a radio with a mode. This strip switches between them and ch
 Listen plays the demodulated signal. Volume and mute are here; Record audio saves it to a file.	Listen groja demoduliuotą signalą. Garsumas ir nutildymas čia; Record audio įrašo garsą į failą.
 Server sends decoded positions to the public map. Support helps fund development.	Serveris siunčia dekoduotas pozicijas į viešą žemėlapį. Parama padeda finansuoti kūrimą.
 Documentation, troubleshooting, credits and licences are here. Guided tour starts this tour again.	Čia rasite dokumentaciją, trikčių šalinimą, padėkas ir licencijas. Gidas paleidžia šį gidą iš naujo.
-Monitor audio	Garso stebėjimas
-Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound.	Klausykitės suderinto kanalo bet kuriuo režimu, kad atpažintumėte signalą: radijo mėginiai demoduliuojami kaip USB, LSB, siaura FM arba AM. Tylu, kol režimas groja savo garsą.
 Auto: USB below 30 MHz, narrow FM above	Auto: USB žemiau 30 MHz, siaura FM aukščiau
 Volume of the monitor	Stebėjimo garsas
 Fine tuning from the tuned frequency, in Hz (an SSB signal is heard 1 to 2 kHz above or below its carrier)	Tikslus derinimas nuo suderinto dažnio, Hz (SSB signalas girdimas 1–2 kHz virš ar žemiau nešlio)
 (the mode plays)	(režimas groja)
-Audio...	Garsas...
-Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream	Stebėjimo išvesties įrenginiai, antra išvestis (pvz., virtualus garso kabelis fldigi ar WSJT-X) ir vietinis tinklo srautas
 System default	Sistemos numatytasis
 Output 1	Išvestis 1
 Output 2	Išvestis 2
@@ -1805,11 +1797,9 @@ Adds this receiver to the Network radios (it does not connect until you pick it 
 The downloaded list has no receivers OnAir can read.	Atsisiųstame sąraše nėra imtuvų, kuriuos OnAir gali perskaityti.
 Could not download the list. Check the internet connection.	Nepavyko atsisiųsti sąrašo. Patikrinkite interneto ryšį.
 # live transcripts (docs/TRANSCRIBE.md)
-Transcribing speech: %s	Kalba transkribuojama: %s
 Voice (radio calls)	Kalba (radijo skambučiai)
 No radio call with this aircraft's callsign heard yet	Su šio orlaivio šaukiniu skambučių dar negirdėta
 Live transcription is off (View > Transcripts). Airband calls would be listed here by callsign.	Tiesioginė transkripcija išjungta (Rodymas > Transkripcijos). Aviacijos juostos skambučiai čia būtų išvardyti pagal šaukinį.
-Live captions: loading the speech model ...	Tiesioginiai subtitrai: įkeliamas kalbos modelis ...
 Live captions: off.	Tiesioginiai subtitrai: išjungti.
 Set up transcripts	Nustatyti transkripcijas
 Turns what is said on the airband channels into text as it is heard. It needs a speech model that you download or put in the models folder.	Aviacijos juostos kanalais pasakytus žodžius paverčia tekstu, kai tik jie girdimi. Reikia kalbos modelio, kurį atsisiunčiate arba įdedate į modelių aplanką.
@@ -1818,16 +1808,12 @@ working ...	dirba ...
 listening ...	klausosi ...
 Transcripts	Transkripcijos
 Airband is off in the transcript settings	Aviacijos juosta išjungta transkripcijos nustatymuose
-Nothing heard yet.	Dar nieko negirdėta.
 Cannot write %s	Nepavyksta įrašyti: %s
 Saved %s	Išsaugota: %s
-Privacy: what is said on public aviation radio is public, but the speech engine runs here on your computer and the text is kept in your data folder. Do not use it on private conversations: marine, amateur, CB and every other mode are off until you choose them, and a visible line shows whenever transcription is on.	Privatumas: tai, kas sakoma viešame aviacijos radijuje, yra vieša, bet kalbos variklis veikia čia, jūsų kompiuteryje, o tekstas laikomas jūsų duomenų aplanke. Nenaudokite privatiems pokalbiams: jūrų, mėgėjų, CB ir visi kiti režimai išjungti, kol jų nepasirinksite, o matoma eilutė rodo, kada transkripcija įjungta.
 Transcribe speech	Transkribuoti kalbą
 Master switch. While a transmission is going on the audio is cut out, sent to the speech engine and turned into text. Nothing runs while the channels are quiet.	Pagrindinis jungiklis. Kol vyksta perdavimas, garsas iškerpamas, perduodamas kalbos varikliui ir paverčiamas tekstu. Kol kanalai tylūs, niekas neveikia.
 Airband channels	Aviacijos juostos kanalai
 Marine VHF	Jūrų VHF
-Any other mode that plays sound (amateur, CB, FM ...)	Bet kuris kitas režimas, grojantis garsą (mėgėjų, CB, FM ...)
-Takes the sound you hear. Music and private conversations are not meant for this: leave it off unless you need it.	Paima garsą, kurį girdite. Muzikai ir privatiems pokalbiams tai neskirta: palikite išjungta, jei nereikia.
 Speech model	Kalbos modelis
 none	nėra
 Open models folder	Atidaryti modelių aplanką
@@ -3249,7 +3235,6 @@ separation	atskyrimas
 stereo phase	stereo fazė
 
 # auto subtitles (captions)
-Generating captions from the sound	Kuriami subtitrai iš garso
 Captions	Subtitrai
 Save SRT	Įrašyti SRT
 Save VTT	Įrašyti VTT

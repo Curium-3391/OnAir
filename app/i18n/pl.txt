@@ -1484,16 +1484,12 @@ every %.0f s	co %.0f s
 back to back	bez przerwy
 Fast wideband sweep with a noise-floor measurement, signal log and waterfall	Szybkie przemiatanie szerokopasmowe z pomiarem szumu, dziennikiem sygnałów i wodospadem
 Record audio	Nagraj dźwięk
-Only audio	Tylko dźwięk
 Split	Dziel
-Keep going	Kontynuuj
 Show recording	Pokaż nagranie
 Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)	Zapisuje do pliku dźwięk, który słyszysz, w każdym trybie (przed regulacją głośności, więc poziom od niej nie zależy)
 MP3 needs the LAME library (libmp3lame), which is not installed	MP3 wymaga biblioteki LAME (libmp3lame), która nie jest zainstalowana
 WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo.	WAV: 16 bitów, duży. FLAC: bezstratny, około połowy rozmiaru. MP3: mały (wymaga libmp3lame). Stereo FM zostaje stereo.
-Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail	Zapisuje tylko gdy jest dźwięk (jak squelch): cisza jest wycinana, z krótkim początkiem i końcem
 One file per transmission: a new file starts after 3 s of silence	Jeden plik na transmisję: po 3 s ciszy zaczyna się nowy plik
-Keeps recording when the mode or the frequency changes. Off: the recording stops then.	Nagrywa dalej po zmianie trybu lub częstotliwości. Wyłączone: nagrywanie wtedy się zatrzymuje.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir, and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	W tej instalacji OnAir brakuje modułu SoapyRemote, więc nie dociera do zdalnego radia. Zainstaluj OnAir ponownie, a jeśli się powtórzy, zgłoś to. Komputer z radiem musi uruchomić SoapySDRServer --bind.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir (or run brew install soapyremote), and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	W tej instalacji OnAir brakuje modułu SoapyRemote, więc nie dociera do zdalnego radia. Zainstaluj OnAir ponownie (lub uruchom brew install soapyremote), a jeśli się powtórzy, zgłoś to. Komputer z radiem musi uruchomić SoapySDRServer --bind.
 SoapySDR here has no SoapyRemote client module, so it cannot reach a remote radio. Install it (Debian/Ubuntu: sudo apt install soapysdr-module-remote; other systems: github.com/pothosware/SoapyRemote), then restart OnAir. The radio's computer must run SoapySDRServer --bind.	To SoapySDR nie ma modułu klienta SoapyRemote, więc nie dociera do zdalnego radia. Zainstaluj go (Debian/Ubuntu: sudo apt install soapysdr-module-remote; inne systemy: github.com/pothosware/SoapyRemote) i uruchom OnAir ponownie. Komputer z radiem musi uruchomić SoapySDRServer --bind.
@@ -1562,14 +1558,10 @@ Each receiver pairs a radio with a mode. This strip switches between them and ch
 Listen plays the demodulated signal. Volume and mute are here; Record audio saves it to a file.	Listen odtwarza zdemodulowany sygnał. Głośność i wyciszenie są tutaj; Record audio zapisuje dźwięk do pliku.
 Server sends decoded positions to the public map. Support helps fund development.	Serwer wysyła zdekodowane pozycje na publiczną mapę. Wsparcie pomaga finansować rozwój.
 Documentation, troubleshooting, credits and licences are here. Guided tour starts this tour again.	Tu znajdziesz dokumentację, rozwiązywanie problemów, podziękowania i licencje. Przewodnik uruchamia tę wycieczkę ponownie.
-Monitor audio	Podsłuch audio
-Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound.	Słuchaj dostrojonego kanału w dowolnym trybie, by rozpoznać sygnał: próbki radia są demodulowane jako USB, LSB, wąskie FM lub AM. Cisza, gdy tryb gra własny dźwięk.
 Auto: USB below 30 MHz, narrow FM above	Auto: USB poniżej 30 MHz, wąskie FM powyżej
 Volume of the monitor	Głośność podsłuchu
 Fine tuning from the tuned frequency, in Hz (an SSB signal is heard 1 to 2 kHz above or below its carrier)	Dostrojenie względem częstotliwości w Hz (sygnał SSB słychać 1–2 kHz nad lub pod nośną)
 (the mode plays)	(tryb gra)
-Audio...	Audio...
-Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream	Urządzenia wyjściowe podsłuchu, drugie wyjście (np. wirtualny kabel audio dla fldigi lub WSJT-X) i lokalny strumień sieciowy
 System default	Domyślne systemowe
 Output 1	Wyjście 1
 Output 2	Wyjście 2
@@ -1805,11 +1797,9 @@ Adds this receiver to the Network radios (it does not connect until you pick it 
 The downloaded list has no receivers OnAir can read.	Pobrana lista nie zawiera odbiorników, które OnAir potrafi odczytać.
 Could not download the list. Check the internet connection.	Nie udało się pobrać listy. Sprawdź połączenie z internetem.
 # live transcripts (docs/TRANSCRIBE.md)
-Transcribing speech: %s	Transkrypcja mowy: %s
 Voice (radio calls)	Głos (rozmowy radiowe)
 No radio call with this aircraft's callsign heard yet	Nie słyszano jeszcze rozmowy z znakiem wywoławczym tego statku powietrznego
 Live transcription is off (View > Transcripts). Airband calls would be listed here by callsign.	Transkrypcja na żywo jest wyłączona (Widok > Transkrypcje). Rozmowy z pasma lotniczego byłyby tu wypisane według znaku wywoławczego.
-Live captions: loading the speech model ...	Napisy na żywo: ładowanie modelu mowy ...
 Live captions: off.	Napisy na żywo: wyłączone.
 Set up transcripts	Skonfiguruj transkrypcje
 Turns what is said on the airband channels into text as it is heard. It needs a speech model that you download or put in the models folder.	Zamienia na tekst to, co mówi się na kanałach pasma lotniczego, w miarę jak jest słyszane. Potrzebny jest model mowy, który pobierzesz lub włożysz do folderu modeli.
@@ -1818,16 +1808,12 @@ working ...	pracuje ...
 listening ...	nasłuchuje ...
 Transcripts	Transkrypcje
 Airband is off in the transcript settings	Pasmo lotnicze jest wyłączone w ustawieniach transkrypcji
-Nothing heard yet.	Jeszcze nic nie słyszano.
 Cannot write %s	Nie można zapisać: %s
 Saved %s	Zapisano: %s
-Privacy: what is said on public aviation radio is public, but the speech engine runs here on your computer and the text is kept in your data folder. Do not use it on private conversations: marine, amateur, CB and every other mode are off until you choose them, and a visible line shows whenever transcription is on.	Prywatność: to, co mówi się w publicznej łączności lotniczej, jest publiczne, ale silnik mowy działa tu, na twoim komputerze, a tekst trafia do twojego folderu danych. Nie używaj go do prywatnych rozmów: łączność morska, krótkofalarska, CB i wszystkie inne tryby są wyłączone, dopóki ich nie wybierzesz, a widoczny wiersz pokazuje, kiedy transkrypcja jest włączona.
 Transcribe speech	Transkrybuj mowę
 Master switch. While a transmission is going on the audio is cut out, sent to the speech engine and turned into text. Nothing runs while the channels are quiet.	Włącznik główny. Podczas nadawania dźwięk jest wycinany, wysyłany do silnika mowy i zamieniany na tekst. Gdy kanały milczą, nic nie działa.
 Airband channels	Kanały pasma lotniczego
 Marine VHF	Morski VHF
-Any other mode that plays sound (amateur, CB, FM ...)	Każdy inny tryb odtwarzający dźwięk (krótkofalarski, CB, FM ...)
-Takes the sound you hear. Music and private conversations are not meant for this: leave it off unless you need it.	Bierze dźwięk, który słyszysz. Muzyka i prywatne rozmowy nie są do tego przeznaczone: zostaw wyłączone, jeśli nie jest potrzebne.
 Speech model	Model mowy
 none	brak
 Open models folder	Otwórz folder modeli
@@ -3249,7 +3235,6 @@ separation	separacja
 stereo phase	faza stereo
 
 # auto subtitles (captions)
-Generating captions from the sound	Tworzenie napisów z dźwięku
 Captions	Napisy
 Save SRT	Zapisz SRT
 Save VTT	Zapisz VTT

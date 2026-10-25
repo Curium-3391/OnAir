@@ -1484,16 +1484,12 @@ every %.0f s	%.0f 秒ごと
 back to back	連続
 Fast wideband sweep with a noise-floor measurement, signal log and waterfall	ノイズフロア測定、信号ログ、ウォーターフォール付きの高速広帯域スイープ
 Record audio	音声を録音
-Only audio	音声のみ
 Split	分割
-Keep going	継続
 Show recording	録音を表示
 Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)	どのモードでも、聞こえている音をファイルに保存します（音量の前の信号なので、レベルは音量に左右されません）
 MP3 needs the LAME library (libmp3lame), which is not installed	MP3にはLAMEライブラリ(libmp3lame)が必要ですが、インストールされていません
 WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo.	WAV: 16ビット、大きい。FLAC: ロスレスで約半分のサイズ。MP3: 小さい(libmp3lameが必要)。FMステレオはステレオのまま保存します。
-Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail	音がある間だけ保存します（スケルチのように）。無音は削除され、前後に短い余白が付きます
 One file per transmission: a new file starts after 3 s of silence	送信ごとに1ファイル：3秒の無音の後に新しいファイルを開始します
-Keeps recording when the mode or the frequency changes. Off: the recording stops then.	モードや周波数が変わっても録音を続けます。オフの場合、その時点で録音を停止します。
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir, and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	このOnAirにはSoapyRemoteモジュールが含まれていないため、リモートのラジオに接続できません。OnAirを再インストールしてください。再発する場合はご報告ください。ラジオのコンピューターでSoapySDRServer --bindを実行しておく必要があります。
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir (or run brew install soapyremote), and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	このOnAirにはSoapyRemoteモジュールが含まれていないため、リモートのラジオに接続できません。OnAirを再インストールしてください(またはbrew install soapyremoteを実行)。再発する場合はご報告ください。ラジオのコンピューターでSoapySDRServer --bindを実行しておく必要があります。
 SoapySDR here has no SoapyRemote client module, so it cannot reach a remote radio. Install it (Debian/Ubuntu: sudo apt install soapysdr-module-remote; other systems: github.com/pothosware/SoapyRemote), then restart OnAir. The radio's computer must run SoapySDRServer --bind.	このSoapySDRにはSoapyRemoteクライアントモジュールがないため、リモートのラジオに接続できません。インストールして(Debian/Ubuntu: sudo apt install soapysdr-module-remote、その他: github.com/pothosware/SoapyRemote)、OnAirを再起動してください。ラジオのコンピューターでSoapySDRServer --bindを実行しておく必要があります。
@@ -1562,14 +1558,10 @@ Each receiver pairs a radio with a mode. This strip switches between them and ch
 Listen plays the demodulated signal. Volume and mute are here; Record audio saves it to a file.	Listen は復調した信号を再生します。音量とミュートはここにあり、Record audio はファイルに保存します。
 Server sends decoded positions to the public map. Support helps fund development.	サーバーはデコードした位置情報を公開マップに送信します。サポートは開発資金に役立ちます。
 Documentation, troubleshooting, credits and licences are here. Guided tour starts this tour again.	ドキュメント、トラブルシューティング、クレジット、ライセンスはここにあります。ガイドツアーでこのツアーを再開できます。
-Monitor audio	音声モニター
-Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound.	どのモードでも同調したチャンネルを聞いて信号を識別できます。無線のサンプルをUSB、LSB、狭帯域FM、AMとして復調します。モードが自分の音を出している間は無音です。
 Auto: USB below 30 MHz, narrow FM above	自動: 30 MHz未満はUSB、以上は狭帯域FM
 Volume of the monitor	モニターの音量
 Fine tuning from the tuned frequency, in Hz (an SSB signal is heard 1 to 2 kHz above or below its carrier)	同調周波数からの微調整(Hz)。SSB信号はキャリアの1〜2 kHz上または下で聞こえます
 (the mode plays)	(モードが再生中)
-Audio...	音声...
-Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream	モニターの出力デバイス、2つ目の出力(fldigiやWSJT-X用の仮想オーディオケーブルなど)、ローカルネットワークストリーム
 System default	システム既定
 Output 1	出力1
 Output 2	出力2
@@ -1805,11 +1797,9 @@ Adds this receiver to the Network radios (it does not connect until you pick it 
 The downloaded list has no receivers OnAir can read.	ダウンロードしたリストに OnAir が読めるレシーバーがありません。
 Could not download the list. Check the internet connection.	リストをダウンロードできませんでした。インターネット接続を確認してください。
 # live transcripts (docs/TRANSCRIBE.md)
-Transcribing speech: %s	音声を文字起こし中: %s
 Voice (radio calls)	音声（無線交信）
 No radio call with this aircraft's callsign heard yet	この機体のコールサインでの交信はまだ聞こえていません
 Live transcription is off (View > Transcripts). Airband calls would be listed here by callsign.	ライブ文字起こしはオフです（表示 > 文字起こし）。航空無線の交信はここにコールサイン別に並びます。
-Live captions: loading the speech model ...	ライブ字幕: 音声モデルを読み込み中 ...
 Live captions: off.	ライブ字幕: オフ。
 Set up transcripts	文字起こしの設定
 Turns what is said on the airband channels into text as it is heard. It needs a speech model that you download or put in the models folder.	航空無線チャンネルで話された内容を、聞こえたそばから文字にします。ダウンロードするか、モデルフォルダーに置いた音声モデルが必要です。
@@ -1818,16 +1808,12 @@ working ...	処理中 ...
 listening ...	待機中 ...
 Transcripts	文字起こし
 Airband is off in the transcript settings	文字起こし設定で航空無線がオフです
-Nothing heard yet.	まだ何も聞こえていません。
 Cannot write %s	書き込めません: %s
 Saved %s	保存しました: %s
-Privacy: what is said on public aviation radio is public, but the speech engine runs here on your computer and the text is kept in your data folder. Do not use it on private conversations: marine, amateur, CB and every other mode are off until you choose them, and a visible line shows whenever transcription is on.	プライバシー: 公開の航空無線で話された内容は公開情報ですが、音声認識はこのコンピューター上で動き、テキストはデータフォルダーに保存されます。私的な会話には使わないでください。海上、アマチュア、CB などその他のモードは、選ぶまでオフで、文字起こし中は常に表示が出ます。
 Transcribe speech	音声を文字起こしする
 Master switch. While a transmission is going on the audio is cut out, sent to the speech engine and turned into text. Nothing runs while the channels are quiet.	マスタースイッチ。送信中の音声を切り出して音声認識に渡し、テキストにします。チャンネルが静かな間は何も動きません。
 Airband channels	航空無線チャンネル
 Marine VHF	海上VHF
-Any other mode that plays sound (amateur, CB, FM ...)	音を出すその他のモード（アマチュア、CB、FM ...）
-Takes the sound you hear. Music and private conversations are not meant for this: leave it off unless you need it.	聞こえている音を取り込みます。音楽や私的な会話向けではありません。必要がなければオフのままにしてください。
 Speech model	音声モデル
 none	なし
 Open models folder	モデルフォルダーを開く
@@ -3249,7 +3235,6 @@ separation	分離度
 stereo phase	ステレオ位相
 
 # auto subtitles (captions)
-Generating captions from the sound	音声から字幕を作成中
 Captions	字幕
 Save SRT	SRTを保存
 Save VTT	VTTを保存

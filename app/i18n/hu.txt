@@ -1470,16 +1470,12 @@ every %.0f s	%.0f s-onként
 back to back	egymás után
 Fast wideband sweep with a noise-floor measurement, signal log and waterfall	Gyors szélessávú söprés zajpadló-méréssel, jelnaplóval és vízeséssel
 Record audio	Hang felvétele
-Only audio	Csak hang
 Split	Szétosztás
-Keep going	Folytatás
 Show recording	Felvétel megjelenítése
 Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)	Fájlba menti a hallott hangot, bármely módban (a hangerő előtt, így a szint nem függ tőle)
 MP3 needs the LAME library (libmp3lame), which is not installed	Az MP3-hoz a LAME könyvtár (libmp3lame) kell, amely nincs telepítve
 WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo.	WAV: 16 bites, nagy. FLAC: veszteségmentes, nagyjából fele méret. MP3: kicsi (libmp3lame kell). Az FM sztereó sztereó marad.
-Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail	Csak akkor ment, amikor van hang (mint egy zajzár): a csend kimarad, rövid előzmény és lecsengés marad
 One file per transmission: a new file starts after 3 s of silence	Adásonként egy fájl: 3 s csend után új fájl kezdődik
-Keeps recording when the mode or the frequency changes. Off: the recording stops then.	Folytatja a felvételt, ha a mód vagy a frekvencia változik. Kikapcsolva: ilyenkor leáll a felvétel.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir, and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	Ebből az OnAir-telepítésből hiányzik a SoapyRemote modul, ezért nem éri el a távoli rádiót. Telepítse újra az OnAir-t, és jelezze, ha újra előfordul. A rádió számítógépén futnia kell a SoapySDRServer --bind parancsnak.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir (or run brew install soapyremote), and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	Ebből az OnAir-telepítésből hiányzik a SoapyRemote modul, ezért nem éri el a távoli rádiót. Telepítse újra az OnAir-t (vagy futtassa: brew install soapyremote), és jelezze, ha újra előfordul. A rádió számítógépén futnia kell a SoapySDRServer --bind parancsnak.
 SoapySDR here has no SoapyRemote client module, so it cannot reach a remote radio. Install it (Debian/Ubuntu: sudo apt install soapysdr-module-remote; other systems: github.com/pothosware/SoapyRemote), then restart OnAir. The radio's computer must run SoapySDRServer --bind.	Ebből a SoapySDR-ből hiányzik a SoapyRemote kliensmodul, ezért nem éri el a távoli rádiót. Telepítse (Debian/Ubuntu: sudo apt install soapysdr-module-remote; más rendszereken: github.com/pothosware/SoapyRemote), majd indítsa újra az OnAir-t. A rádió számítógépén futnia kell a SoapySDRServer --bind parancsnak.
@@ -1548,14 +1544,10 @@ Each receiver pairs a radio with a mode. This strip switches between them and ch
 Listen plays the demodulated signal. Volume and mute are here; Record audio saves it to a file.	A Listen a demodulált jelet játssza le. A hangerő és a némítás itt van; a Record audio fájlba menti.
 Server sends decoded positions to the public map. Support helps fund development.	A Szerver a dekódolt pozíciókat a nyilvános térképre küldi. A Támogatás segít finanszírozni a fejlesztést.
 Documentation, troubleshooting, credits and licences are here. Guided tour starts this tour again.	Itt található a dokumentáció, a hibaelhárítás, a közreműködők és a licencek. Az Útmutató újra elindítja ezt a bemutatót.
-Monitor audio	Hang figyelése
-Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound.	Hallgasd a behangolt csatornát bármely módban egy jel felismeréséhez: a rádió mintáit USB, LSB, keskeny FM vagy AM szerint demodulálja. Néma, amíg a mód saját hangot játszik.
 Auto: USB below 30 MHz, narrow FM above	Auto: USB 30 MHz alatt, keskeny FM felette
 Volume of the monitor	A figyelés hangereje
 Fine tuning from the tuned frequency, in Hz (an SSB signal is heard 1 to 2 kHz above or below its carrier)	Finomhangolás a behangolt frekvenciához képest, Hz-ben (az SSB jel 1–2 kHz-cel a vivő felett vagy alatt hallható)
 (the mode plays)	(a mód játszik)
-Audio...	Hang...
-Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream	A figyelés kimeneti eszközei, egy második kimenet (pl. virtuális audiokábel fldigihez vagy WSJT-X-hez) és helyi hálózati adatfolyam
 System default	Rendszer alapértelmezett
 Output 1	1. kimenet
 Output 2	2. kimenet
@@ -1791,11 +1783,9 @@ Adds this receiver to the Network radios (it does not connect until you pick it 
 The downloaded list has no receivers OnAir can read.	A letöltött listában nincs olyan vevő, amelyet az OnAir olvasni tud.
 Could not download the list. Check the internet connection.	A listát nem sikerült letölteni. Ellenőrizd az internetkapcsolatot.
 # live transcripts (docs/TRANSCRIBE.md)
-Transcribing speech: %s	Beszéd átírása: %s
 Voice (radio calls)	Hang (rádióhívások)
 No radio call with this aircraft's callsign heard yet	Még nem hallatszott hívás ennek a légijárműnek a hívójelével
 Live transcription is off (View > Transcripts). Airband calls would be listed here by callsign.	Az élő átírás ki van kapcsolva (Nézet > Átiratok). A repülési sáv hívásai itt jelennének meg hívójel szerint.
-Live captions: loading the speech model ...	Élő feliratok: a beszédmodell betöltése ...
 Live captions: off.	Élő feliratok: kikapcsolva.
 Set up transcripts	Átiratok beállítása
 Turns what is said on the airband channels into text as it is heard. It needs a speech model that you download or put in the models folder.	A repülési sáv csatornáin elhangzottakat szöveggé alakítja hallás közben. Beszédmodell kell hozzá, amelyet letöltesz vagy a modellek mappájába teszel.
@@ -1804,16 +1794,12 @@ working ...	dolgozik ...
 listening ...	figyel ...
 Transcripts	Átiratok
 Airband is off in the transcript settings	A repülési sáv ki van kapcsolva az átírási beállításokban
-Nothing heard yet.	Még semmi sem hallatszott.
 Cannot write %s	Nem írható: %s
 Saved %s	Mentve: %s
-Privacy: what is said on public aviation radio is public, but the speech engine runs here on your computer and the text is kept in your data folder. Do not use it on private conversations: marine, amateur, CB and every other mode are off until you choose them, and a visible line shows whenever transcription is on.	Adatvédelem: ami a nyilvános repülési rádión elhangzik, az nyilvános, de a beszédfelismerő itt, a számítógépeden fut, és a szöveg az adatmappádban marad. Ne használd magánbeszélgetésekre: a tengeri, amatőr, CB és minden más üzemmód ki van kapcsolva, amíg be nem kapcsolod, és egy látható sor jelzi, ha az átírás működik.
 Transcribe speech	Beszéd átírása
 Master switch. While a transmission is going on the audio is cut out, sent to the speech engine and turned into text. Nothing runs while the channels are quiet.	Főkapcsoló. Adás közben a hangot kivágja, a beszédfelismerőnek adja, és szöveggé alakítja. Amíg a csatornák csendesek, semmi sem fut.
 Airband channels	Repülési sáv csatornái
 Marine VHF	Tengeri URH
-Any other mode that plays sound (amateur, CB, FM ...)	Bármely más üzemmód, amely hangot ad (amatőr, CB, FM ...)
-Takes the sound you hear. Music and private conversations are not meant for this: leave it off unless you need it.	A hallott hangot veszi. Zene és magánbeszélgetések nem erre valók: hagyd kikapcsolva, ha nincs rá szükség.
 Speech model	Beszédmodell
 none	nincs
 Open models folder	Modellek mappájának megnyitása
@@ -3235,7 +3221,6 @@ separation	csatornaszétválás
 stereo phase	sztereó fázis
 
 # auto subtitles (captions)
-Generating captions from the sound	Feliratok készítése a hangból
 Captions	Feliratok
 Save SRT	SRT mentése
 Save VTT	VTT mentése

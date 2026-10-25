@@ -1484,16 +1484,12 @@ every %.0f s	elke %.0f s
 back to back	achter elkaar
 Fast wideband sweep with a noise-floor measurement, signal log and waterfall	Snelle breedband-sweep met ruisvloermeting, signaallogboek en waterval
 Record audio	Audio opnemen
-Only audio	Alleen audio
 Split	Splitsen
-Keep going	Doorgaan
 Show recording	Opname tonen
 Saves the sound you hear, in any mode, to a file (before the volume slider, so the level does not depend on it)	Slaat het geluid dat je hoort in elke modus op in een bestand (vóór het volume, dus het niveau hangt er niet van af)
 MP3 needs the LAME library (libmp3lame), which is not installed	MP3 heeft de LAME-bibliotheek (libmp3lame) nodig, die niet is geïnstalleerd
 WAV: 16-bit, large. FLAC: lossless, about half the size. MP3: small (needs libmp3lame). FM stereo is kept as stereo.	WAV: 16 bit, groot. FLAC: verliesvrij, ongeveer half zo groot. MP3: klein (heeft libmp3lame nodig). FM-stereo blijft stereo.
-Saves only while there is sound (like a squelch): silence is cut out, with a short lead-in and tail	Slaat alleen op zolang er geluid is (zoals een squelch): stilte wordt weggelaten, met een korte aanloop en uitloop
 One file per transmission: a new file starts after 3 s of silence	Eén bestand per uitzending: na 3 s stilte begint een nieuw bestand
-Keeps recording when the mode or the frequency changes. Off: the recording stops then.	Blijft opnemen als de modus of frequentie verandert. Uit: dan stopt de opname.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir, and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	De SoapyRemote-module ontbreekt in deze OnAir-installatie, dus OnAir kan geen radio op afstand bereiken. Installeer OnAir opnieuw, en meld het als het weer gebeurt. De computer van de radio moet SoapySDRServer --bind draaien.
 The SoapyRemote module is missing from this installation of OnAir, so it cannot reach a remote radio. Reinstall OnAir (or run brew install soapyremote), and please report it if it happens again. The radio's computer must run SoapySDRServer --bind.	De SoapyRemote-module ontbreekt in deze OnAir-installatie, dus OnAir kan geen radio op afstand bereiken. Installeer OnAir opnieuw (of voer brew install soapyremote uit), en meld het als het weer gebeurt. De computer van de radio moet SoapySDRServer --bind draaien.
 SoapySDR here has no SoapyRemote client module, so it cannot reach a remote radio. Install it (Debian/Ubuntu: sudo apt install soapysdr-module-remote; other systems: github.com/pothosware/SoapyRemote), then restart OnAir. The radio's computer must run SoapySDRServer --bind.	Deze SoapySDR heeft geen SoapyRemote-clientmodule, dus kan geen radio op afstand bereiken. Installeer die (Debian/Ubuntu: sudo apt install soapysdr-module-remote; andere systemen: github.com/pothosware/SoapyRemote) en start OnAir opnieuw. De computer van de radio moet SoapySDRServer --bind draaien.
@@ -1562,14 +1558,10 @@ Each receiver pairs a radio with a mode. This strip switches between them and ch
 Listen plays the demodulated signal. Volume and mute are here; Record audio saves it to a file.	Listen speelt het gedemoduleerde signaal af. Volume en dempen staan hier; Record audio slaat het op in een bestand.
 Server sends decoded positions to the public map. Support helps fund development.	Server stuurt gedecodeerde posities naar de openbare kaart. Steun helpt de ontwikkeling te financieren.
 Documentation, troubleshooting, credits and licences are here. Guided tour starts this tour again.	Hier staan documentatie, probleemoplossing, dankwoord en licenties. Rondleiding start deze rondleiding opnieuw.
-Monitor audio	Audio meeluisteren
-Listen to the tuned channel in any mode, to recognise a signal: the radio's samples are demodulated as USB, LSB, narrow FM or AM. Silent while the mode plays its own sound.	Luister in elke modus naar het afgestemde kanaal om een signaal te herkennen: de samples van de radio worden gedemoduleerd als USB, LSB, smalle FM of AM. Stil zolang de modus eigen geluid speelt.
 Auto: USB below 30 MHz, narrow FM above	Auto: USB onder 30 MHz, smalle FM erboven
 Volume of the monitor	Volume van het meeluisteren
 Fine tuning from the tuned frequency, in Hz (an SSB signal is heard 1 to 2 kHz above or below its carrier)	Fijnafstemming ten opzichte van de afgestemde frequentie, in Hz (een SSB-signaal hoor je 1 tot 2 kHz boven of onder de draaggolf)
 (the mode plays)	(de modus speelt)
-Audio...	Audio...
-Output devices for the monitor, a second output (for example a virtual audio cable for fldigi or WSJT-X) and a local network stream	Uitvoerapparaten voor het meeluisteren, een tweede uitgang (bijv. een virtuele audiokabel voor fldigi of WSJT-X) en een lokale netwerkstream
 System default	Systeemstandaard
 Output 1	Uitgang 1
 Output 2	Uitgang 2
@@ -1805,11 +1797,9 @@ Adds this receiver to the Network radios (it does not connect until you pick it 
 The downloaded list has no receivers OnAir can read.	De gedownloade lijst bevat geen ontvangers die OnAir kan lezen.
 Could not download the list. Check the internet connection.	De lijst kon niet worden gedownload. Controleer de internetverbinding.
 # live transcripts (docs/TRANSCRIBE.md)
-Transcribing speech: %s	Spraak wordt getranscribeerd: %s
 Voice (radio calls)	Spraak (radio-oproepen)
 No radio call with this aircraft's callsign heard yet	Nog geen oproep met de roepletters van dit vliegtuig gehoord
 Live transcription is off (View > Transcripts). Airband calls would be listed here by callsign.	Live transcriptie staat uit (Beeld > Transcripties). Oproepen op de luchtvaartband zouden hier per roepletters staan.
-Live captions: loading the speech model ...	Live ondertiteling: spraakmodel wordt geladen ...
 Live captions: off.	Live ondertiteling: uit.
 Set up transcripts	Transcripties instellen
 Turns what is said on the airband channels into text as it is heard. It needs a speech model that you download or put in the models folder.	Zet wat op de luchtvaartkanalen wordt gezegd om in tekst terwijl het wordt gehoord. Daarvoor is een spraakmodel nodig dat je downloadt of in de modellenmap zet.
@@ -1818,16 +1808,12 @@ working ...	bezig ...
 listening ...	luistert ...
 Transcripts	Transcripties
 Airband is off in the transcript settings	Luchtvaartband staat uit in de transcriptie-instellingen
-Nothing heard yet.	Nog niets gehoord.
 Cannot write %s	Kan niet schrijven: %s
 Saved %s	Opgeslagen: %s
-Privacy: what is said on public aviation radio is public, but the speech engine runs here on your computer and the text is kept in your data folder. Do not use it on private conversations: marine, amateur, CB and every other mode are off until you choose them, and a visible line shows whenever transcription is on.	Privacy: wat op de openbare luchtvaartradio wordt gezegd is openbaar, maar de spraakengine draait hier op je computer en de tekst blijft in je gegevensmap. Gebruik het niet voor privégesprekken: marifoon, amateur, CB en elke andere modus staan uit tot je ze kiest, en een zichtbare regel toont wanneer transcriptie aan staat.
 Transcribe speech	Spraak transcriberen
 Master switch. While a transmission is going on the audio is cut out, sent to the speech engine and turned into text. Nothing runs while the channels are quiet.	Hoofdschakelaar. Tijdens een uitzending wordt het geluid uitgeknipt, naar de spraakengine gestuurd en omgezet in tekst. Zolang de kanalen stil zijn, draait er niets.
 Airband channels	Luchtvaartkanalen
 Marine VHF	Marifoon (VHF)
-Any other mode that plays sound (amateur, CB, FM ...)	Elke andere modus die geluid afspeelt (amateur, CB, FM ...)
-Takes the sound you hear. Music and private conversations are not meant for this: leave it off unless you need it.	Neemt het geluid dat je hoort. Muziek en privégesprekken zijn hier niet voor bedoeld: laat het uit tenzij je het nodig hebt.
 Speech model	Spraakmodel
 none	geen
 Open models folder	Modellenmap openen
@@ -3249,7 +3235,6 @@ separation	scheiding
 stereo phase	stereofase
 
 # auto subtitles (captions)
-Generating captions from the sound	Ondertitels maken van het geluid
 Captions	Ondertitels
 Save SRT	SRT opslaan
 Save VTT	VTT opslaan
