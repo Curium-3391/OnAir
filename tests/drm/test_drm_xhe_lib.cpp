@@ -69,6 +69,9 @@ static void testParser() {
 
 // issue 266: a libfdk-aac put in the OnAir codecs folder (any usual or odd name) must be among the places tried
 static void testCodecFolder() {
+#if defined(_WIN32)
+    return; // POSIX HOME/XDG paths do not apply to the Windows codecs folder
+#else
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / "onair_fdk_test_home";
     fs::remove_all(root);
@@ -103,6 +106,7 @@ static void testCodecFolder() {
     UsacLib::rescan();
     CHECK(UsacLib::generation() == g + 1, "rescan bumps the generation");
     fs::remove_all(root);
+#endif
 }
 
 int main() {
