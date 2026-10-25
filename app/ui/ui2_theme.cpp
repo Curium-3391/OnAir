@@ -1,6 +1,7 @@
 // The new interface: its three palettes (terminal, instrument, mono), the accent colour, the Dark / Light / High
 // contrast choice and applying the theme to ImGui's style. The shared declarations are in ui2_internal.h.
 // Split from ui2.cpp; the shared declarations are in ui2_internal.h.
+#include "dect2/common/time_source.h"
 #include "ui2_internal.h"
 
 using namespace ui2;
@@ -123,6 +124,20 @@ void timeDisplayChoice(bool menu) {
     bool lab = dect2::timefmt::label();
     const bool hit = menu ? ImGui::MenuItem(tr("Show (UTC) / (local) after times"), nullptr, lab) : ImGui::Checkbox(tr("Show (UTC) / (local) after times"), &lab);
     if (hit) { if (menu) lab = !lab; dect2::timefmt::setLabel(lab); plat::prefs().setB("timeLabel", lab); }
+    // #218: one clock for every decoder's logs and exports. The computer clock is read when a result is decoded, so lost samples and
+    // Stop / Start cannot shift it; signal time counts from the start of the stream (files and the time machine: the same on every run).
+    ImGui::TextDisabled("%s", tr("Timestamps in logs and exports"));
+    const bool sig = dect2::timesrc::source() == dect2::timesrc::Source::Signal;
+    auto pickSrc = [&](const char* name, bool isSig) {
+        const bool h = menu ? ImGui::MenuItem(tr(name), nullptr, sig == isSig) : ImGui::RadioButton(tr(name), sig == isSig);
+        if (h && sig != isSig) {
+            dect2::timesrc::setSource(isSig ? dect2::timesrc::Source::Signal : dect2::timesrc::Source::Computer);
+            plat::prefs().setB("timeFromSignal", isSig);
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(isSig ? "Times counted from the start of the signal: repeatable for recorded files, but they fall behind the clock when samples are lost." : "The computer's clock, read when each result is decoded. Best for a live radio."));
+    };
+    pickSrc(N_("From the computer clock"), false);
+    pickSrc(N_("From the signal time"), true);
 }
 
 // View > Theme: Dark (the palettes), Light (every colour's lightness turned over, main.cpp), High contrast (below)

@@ -294,11 +294,12 @@ struct App {
     bool modeVisOpen = false;    // the Modes shown window
     std::string modeGroupsOpen;   // the mode list groups left unfolded, by name, separated by |
     int uiVariant = 0;        // layout of the new interface: 0 sidebar (the default), 1 scope, 2 tiles, 3 faceplate, 4-6 scope children, 7 panel
+    bool lookNotice = false;  // 3.2: moved from the old default look to Dev A: a one-time notice with a way back (not saved; "lookNoticeDone" is)
     bool touchUi = false;     // the touch interface (ui/touch.h): big targets, a bottom dock, full-screen picker and sheets; Settings > Touch interface, --touch
     float touchScale = 1.35f; // the touch interface's own text scale, on top of uiTextScale: 1.0 .. 2.0
     float uiTextScale = 1.f;  // View > Text size: 0.8 .. 2.0, on top of the display scale (Ctrl +, Ctrl -, Ctrl 0)
     float splitSide = 0, splitRight = 0, splitBottom = 0, splitDock = 0, splitBot2 = 0;   // dragged panel sizes in unscaled points (0 = automatic): sidebar, instruments, lower row; scope layout: instruments, lower row
-    int uiTheme = 1;          // its palette: 0 terminal, 1 instrument, 2 mono, 3 Dev A (graphite), 4 Dev B (terminal green)
+    int uiTheme = 3;          // its palette: 0 terminal, 1 instrument, 2 mono, 3 Dev A (graphite), 4 Dev B (terminal green)
     int devViewMenu = 0;          // dev: --viewmenu (1) or --viewmenu2 (2, with the Layout submenu): a hidden shot with the View menu open
     bool kitGallery = false;      // dev: --kitgallery
     bool layoutUnified = false;   // Settings > Display > Layout: Unified = spectrum and waterfall always above the decoded views (main_tabs.cpp); off = Classic tabs

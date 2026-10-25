@@ -1,5 +1,6 @@
 // Mesh (LoRa) receiver: the channel plan of the region, one channel filter per frequency and bandwidth, one LoRa demodulator per
 // setting, the packet layer on every good frame, and the tables of MeshTelemetry.
+#include "dect2/common/time_source.h"
 #include "dect2/net/feeds.h"
 #include "dect2/automation/engine.h"
 #include "dect2/mesh/mesh_rx.h"
@@ -299,7 +300,7 @@ struct MeshReceiver::Impl {
         } else if (f.hdr.crc) tel.blocksBad++;
         MeshPacket row;
         row.timeSec = t; row.protocol = di.protocol; row.preset = di.preset;
-        row.unixTime = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+        row.unixTime = timesrc::stamp();   // the computer clock, or 0 when times follow the signal (#218)
         row.freqHz = c.freqHz + f.cfoHz; row.cfoHz = f.cfoHz;
         row.sf = di.sf; row.cr = f.hdr.cr; row.bwHz = di.bwHz;
         row.levelDb = (float)f.levelDb; row.snrDb = (float)f.snrDb;
@@ -393,7 +394,7 @@ struct MeshReceiver::Impl {
             if (u.batteryPct >= 0 || u.voltage >= 0 || u.hasEnv || u.hasPosition) {   // a telemetry or position report: kept with its time
                 MeshReading rd;
                 rd.timeSec = t; rd.protocol = pr; rd.id = u.nodeId;
-                rd.unixTime = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+                rd.unixTime = timesrc::stamp();   // the computer clock, or 0 when times follow the signal (#218)
                 rd.batteryPct = u.batteryPct; rd.voltage = u.voltage; rd.channelUtilPct = u.channelUtilPct; rd.airUtilTxPct = u.airUtilTxPct;
                 rd.uptimeS = u.uptimeS; rd.hasEnv = u.hasEnv; rd.tempC = u.tempC; rd.humidity = u.humidity; rd.pressureHpa = u.pressureHpa;
                 rd.hasPosition = u.hasPosition; rd.lat = u.lat; rd.lon = u.lon; rd.altM = u.altM;

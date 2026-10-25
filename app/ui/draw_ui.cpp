@@ -310,6 +310,17 @@ void drawUI(App& a, ImVec2 disp, bool draw) {
     if (a.touchUi) touch::shell(a, disp);   // the touch interface (ui/touch_shell.cpp) over either interface's panels
     else if (a.newUi) drawShell2(a, disp);
     else classicShell(a, disp);
+    if (a.lookNotice && !a.touchUi) {   // one-time, non-blocking: the look changed to Dev A in 3.2
+        ImGui::SetNextWindowPos(ImVec2(disp.x - 12 * gUi, disp.y - 48 * gUi), ImGuiCond_Always, ImVec2(1, 1));
+        ImGui::SetNextWindowBgAlpha(0.95f);
+        if (ImGui::Begin("##looknotice", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+            ImGui::TextUnformatted(tr("OnAir now uses the new Dev A look. You can switch back in View > Look."));
+            if (ImGui::Button(tr("Switch back to Classic"))) { a.uiTheme = 1; a.lookNotice = false; plat::prefs().setB("lookNoticeDone", true); savePrefs(a); }
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Dismiss"))) { a.lookNotice = false; plat::prefs().setB("lookNoticeDone", true); }
+        }
+        ImGui::End();
+    }
     floatingWindows(a, disp);
     commandPalette(a);   // Ctrl+K (ui/command_palette.h)
     crashNotePopup(disp);

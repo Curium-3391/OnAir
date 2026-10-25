@@ -185,7 +185,15 @@ static void kinetic() {
     CHECK(s.step(0.016f) == 0 && !s.moving(), "stop");
 }
 
+static void autoStart() {
+    CHECK(autoTouch(800, 480, false) && autoTouch(1024, 600, false) && autoTouch(720, 720, false), "handhelds start in touch");
+    CHECK(!autoTouch(1920, 1080, false) && !autoTouch(1366, 768, false) && !autoTouch(1280, 680, false), "laptops do not");
+    CHECK(!autoTouch(800, 480, true), "a saved choice is kept");
+    CHECK(!autoTouch(0, 0, false), "unknown screen size");
+}
+
 int main() {
+    autoStart();
     keypad();
     parse();
     gestures();

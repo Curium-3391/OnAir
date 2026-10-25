@@ -4,6 +4,7 @@
 #ifdef __linux__
 #include <unistd.h>
 #endif
+#include "dect2/common/time_source.h"
 #include "app.h"
 #include "ui/contrast.h"
 #include "transcribe/transcribe_app.h"
@@ -327,6 +328,7 @@ int main(int argc, char** argv) {
     {   // View > Time display: UTC (default) or the computer's local time, with an optional (UTC)/(local) label
         dect2::timefmt::setZone(plat::prefs().getB("timeLocal", false) ? dect2::timefmt::Zone::Local : dect2::timefmt::Zone::Utc);
         dect2::timefmt::setLabel(plat::prefs().getB("timeLabel", false));
+        dect2::timesrc::setSource(plat::prefs().getB("timeFromSignal", false) ? dect2::timesrc::Source::Signal : dect2::timesrc::Source::Computer);   // #218
     }
     applyTheme();
     typo::applyStyle(ImGui::GetStyle());
@@ -353,6 +355,9 @@ int main(int argc, char** argv) {
     startApp(app, argc, argv);
     DevOpts o;
     parseDevFlags(app, argc, argv, o);
+    if (!o.shotPath && argc <= 1 && touch::autoTouch(gWorkAreaW, gWorkAreaH, plat::prefs().has("touchUi") || plat::prefs().has("touchAutoSeen"))) {   // #139: a small screen starts in the touch interface (View > Touch interface turns it off)
+        app.touchUi = true; plat::prefs().setB("touchAutoSeen", true); savePrefs(app);
+    }
     double last = glfwGetTime();
     double frameNext = 0, lastInputT = 0;
     while (!glfwWindowShouldClose(window)) {

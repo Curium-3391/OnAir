@@ -165,7 +165,7 @@ const std::vector<PrefKey>& keyTable() {
         shared(flagI("lightUi", AT(a.lightUi), false)), shared(flagI("highContrast", AT(a.highContrast), false)),
         shared(text("uiLang", AT(a.uiLang))),
         shared(text("bandPlan", AT(a.bandPlan))),
-        shared(num("uiTheme", AT(a.uiTheme), 1, 0, 4, true)),
+        shared(num("uiTheme32", AT(a.uiTheme), 3, 0, 4, true)),   // 3.2: Dev A is the default look; an older "uiTheme" is carried over once in loadPrefs
         shared(flagB("layoutUnified", AT(a.layoutUnified), false, true)), shared(flagB("sideCollapsed", AT(a.sideCollapsed), false, true)),
         shared(num("uniSide", AT(a.uniSide), 0, 0, 2, true)), shared(text("uniSplit", AT(a.uniSplit))),
         shared(num("audioIq", AT(a.audioIqMode), 0, 0, 3)),
@@ -422,6 +422,11 @@ void loadPrefs(App& a) {
     if (a.rxId == 1) loadFeedPrefs(a);   // the feeds are shared by all receivers: RX 1 owns their settings
     a.channels = d.getChannels();
     tvHdLoad(a);
+    if (!d.has("uiTheme32") && d.has("uiTheme")) {   // 3.2: the old key defaulted to Classic (1), so 1 means "never changed" and moves to Dev A; any other choice is kept
+        const int t = (int)d.getI("uiTheme", 1);
+        a.uiTheme = (t >= 0 && t <= 4 && t != 1) ? t : 3;
+        if (t == 1 && !d.getB("lookNoticeDone", false)) a.lookNotice = true;   // not a new install: tell them once
+    }
 }
 
 // Tuning events (a click, a drag, the wheel, a step button) used to rewrite the whole settings file at once, on the UI thread, every time:

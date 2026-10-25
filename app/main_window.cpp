@@ -64,6 +64,8 @@ static bool glfwOnWayland() {
 
 // glfwInit (the platform on Linux), the hints, the window and its size; null when there is no window
 static std::string gGlfwError;   // the last text GLFW reported, for the message when no window opens (#283)
+int gWorkAreaW = 0, gWorkAreaH = 0;
+
 GLFWwindow* createMainWindow(int argc, char** argv) {
     glfwSetErrorCallback([](int code, const char* text) {
         gGlfwError = text ? text : "";
@@ -114,6 +116,7 @@ GLFWwindow* createMainWindow(int argc, char** argv) {
         const float s = std::max(1.f, std::max(xs, ys));
         int wx = 0, wy = 0, ww = 0, wh = 0;
         if (GLFWmonitor* mon = primaryMonitor()) glfwGetMonitorWorkarea(mon, &wx, &wy, &ww, &wh);
+        gWorkAreaW = ww; gWorkAreaH = wh;
         int fl = 0, ft = 0, fr = 0, fb = 0;   // the frame and title bar around the window's content
         glfwGetWindowFrameSize(window, &fl, &ft, &fr, &fb);
         int w = (int)(1500 * s), h = (int)(900 * s);

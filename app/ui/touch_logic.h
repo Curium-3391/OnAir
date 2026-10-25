@@ -191,4 +191,11 @@ struct Kinetic {
 // Whether a drag (px moved so far) is a scroll gesture and not a click on a row: beyond the slop.
 inline bool isDrag(float dx, float dy, float slop = 10.f) { return std::hypot(dx, dy) > slop; }
 
+// First start on a small screen (a handheld, a 7 inch Raspberry Pi panel, a cyberdeck, #139): the touch interface is the better start than a
+// desktop layout squeezed into 800 x 480. Only when the user never chose (no saved touch setting) and the usable screen is small.
+inline bool autoTouch(int workW, int workH, bool chosenBefore) {
+    if (chosenBefore || workW <= 0 || workH <= 0) return false;
+    return workW <= 1100 || workH <= 560;   // 800 x 480, 1024 x 600, 720 x 720: yes; a 1280 x 720 laptop: no
+}
+
 }   // namespace touch

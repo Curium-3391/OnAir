@@ -8,5 +8,9 @@
 6. The tabs of the decoded region stay (Receiver, History, mode tabs); "Overview" (it was only the spectrum) is not made.
 7. The left controls panel folds to an icon rail (`<<` button; expand, start/stop, tune icons).
 8. Modes keep drawing their own content; the shell lays out the central region once for all of them (`app/ui/main_tabs_unified.inc`).
-9. Looks (Settings > Display > Look): Classic, Dev A (graphite) and Dev B (terminal green) are theme presets in `ui2_theme.cpp`: flat fills, 1 px lines, one accent for selection, colour only for meaning.
+9. Looks (Settings > Display > Look, or View > Look): Classic, Dev A (graphite, the default since 3.2) and Dev B (terminal green) are theme presets in `ui2_theme.cpp`: flat fills, 1 px lines, one accent for selection, colour only for meaning.
 10. The status line at the bottom is unchanged. Dev flags: `--layout unified`, `--theme 3|4`.
+
+## Timestamps (#218)
+
+View > Time display > "Timestamps in logs and exports": **From the computer clock** (default) or **From the signal time**. The computer clock is read when a result is decoded (`dect2::timesrc::stamp()`, `core/include/dect2/common/time_source.h`), so lost samples and Stop / Start cannot shift it; signal time counts from the start of the stream and is repeatable for files. Decoders store the stamp with the result and the screens and exports call `timesrc::epoch()`; exports use ISO 8601 with milliseconds and the offset (`timesrc::iso8601`). The mesh decoders use it so far; other modes already stamp results with the computer clock when they are decoded.
