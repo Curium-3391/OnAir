@@ -75,7 +75,7 @@ template <class F> static void unifiedCentre(App& a, F tabs) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::BeginChild("##uniSpec", sz, 0, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleVar();
-        if (specWaterfallSplit() > 0.5f) specWaterfallSplit() = 0.5f;   // the waterfall is at least as tall as the spectrum plot
+        // the divider moves both ways (#304): it is clamped to 20 - 80 % in spectrumWaterfall; it used to be held at 50 % here, so the spectrum could not grow
         spectrumWaterfall(a, specWaterfallSplit(), true);
         ImGui::EndChild();
     };

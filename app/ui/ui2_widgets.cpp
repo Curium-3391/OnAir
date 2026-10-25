@@ -208,7 +208,14 @@ float freqDigits(App& a, float fontSize) {
     const double centreMhz = radioCenterMhz(a);
     double shown = showCentre ? centreMhz : listenMhz(a);
     float end = freqDigitsImpl(a, shown, mt ? mt->minMhz : 0.001, dect2::kMaxTuneMhz,
-                               [&a](double v) { if (showCentre) tuneFreq(a, v); else tuneListen(a, v); }, fontSize);
+                               [&a](double v) {
+                                   if (!showCentre) { tuneListen(a, v); return; }
+                                   if (fileVfoActive(a)) { tuneFreq(a, v); return; }   // a recording: the axis never moves, no tune offset
+                                   // the readout is the radio's centre, which sits the mode's tune offset above the dial (#304): tuneFreq wants the dial, so a click
+                                   // on a digit of 3.876 MHz did not make 3.886 but moved the radio by the digit plus the offset every time
+                                   const double shiftMhz = a.engine.running() ? a.engine.decodeShiftHz() / 1e6 : 0.0;
+                                   tuneFreq(a, v - (radioCenterMhz(a) - (a.freqMhz - shiftMhz)));
+                               }, fontSize);
     const ImVec2 hzPos = ImGui::GetItemRectMin();   // the "Hz" label
     if (gFreqHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("##readoutopt");
     if (ImGui::BeginPopup("##readoutopt")) {
