@@ -764,6 +764,24 @@ void listPluto(std::vector<DeviceInfo>& out) {
     if (const char* u = getenv("DECT2_PLUTO_URI")) add(u, "");   // a PlutoSDR on the network, e.g. ip:192.168.2.1
 }
 
+// A PlutoSDR that SoapyPlutoSDR found on the network (soapyArgs "driver=plutosdr, uri=ip:..."): the same board as the native driver's entry for that address.
+// The Soapy module asks the kernel for big buffers, which the Pluto's small CMA area refuses at 10 Msps and more (issue #316: only the scanned entry failed,
+// the same radio added by hand worked), so it is shown as the native entry. false: not a network Pluto, or no libiio for the native driver.
+bool plutoFromSoapy(const std::string& soapyArgs, const std::string& name, DeviceInfo& out) {
+    if (!iio().ok) return false;
+    size_t p = soapyArgs.find("uri=");
+    if (p == std::string::npos) return false;
+    p += 4;
+    std::string uri = soapyArgs.substr(p, soapyArgs.find(',', p) == std::string::npos ? std::string::npos : soapyArgs.find(',', p) - p);
+    while (!uri.empty() && uri.back() == ' ') uri.pop_back();
+    if (uri.rfind("ip:", 0) != 0) return false;
+    out = plutoEntry(uri, "", false, false);
+    if (!defaultAddress(uri)) out.steadyRateHz = 0;   // a Pluto on a real network: the converter's limit only
+    if (!name.empty()) out.name = name;
+    out.network = true;
+    return true;
+}
+
 std::unique_ptr<IqSource> makePluto(const DeviceInfo& d) {
     return std::make_unique<PlutoSource>(d.nativeArgs);
 }

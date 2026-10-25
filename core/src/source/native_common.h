@@ -629,6 +629,8 @@ std::unique_ptr<TxSink> makeUsrpTx(const DeviceInfo& d);   // source_usrp.cpp: t
 std::unique_ptr<IqSource> makeSdrplay(const DeviceInfo& d);
 // network radios the user added (netradio.cpp): a PlutoSDR at a libiio URI ("ip:host"), an rtl_tcp server
 DeviceInfo plutoDevice(const std::string& uri);
+// a network Pluto that SoapyPlutoSDR found, as the native entry for the same address (false: not one, or no libiio)
+bool plutoFromSoapy(const std::string& soapyArgs, const std::string& name, DeviceInfo& out);
 // the steady rate (DeviceInfo::steadyRateHz) of a Pluto found at uri: 4 Msps on USB, 3 on its USB-gadget network address, 0 elsewhere
 double plutoLinkRate(const std::string& uri);
 // whether listing may ask the Pluto at uri which firmware it runs: only an "ip:" address the user added (never a scanned one, #215)

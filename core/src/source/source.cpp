@@ -4,6 +4,7 @@
 #include "dect2/common/stable_random.h"
 #include "dect2/source/hamlib_rig.h"
 #include "dect2/source/source.h"
+#include "native_common.h"
 #include "dect2/net/netradio.h"
 #include "dect2/source/synth_group.h"
 #include "dect2/dsp/gen_util.h"
@@ -631,6 +632,15 @@ std::vector<DeviceInfo> listRadios(std::string& err) {
         bool dup = false;
         // the same driver, or the same serial on the same vendor (SDRplay lists "SDRplay Dev0 RSP1B" next to the native entry)
         for (auto& n : native) if (soapyName(n.board) == lowerS(d.board) || (!n.serial.empty() && n.serial == d.serial && lowerS(d.name).rfind(lowerS(n.board), 0) == 0)) dup = true;
+        if (!dup && lowerS(d.board) == "plutosdr") {   // a network Pluto from the Soapy scan: opened by the native driver, like the one added by hand (#316)
+            DeviceInfo nd;
+            if (native::plutoFromSoapy(d.soapyArgs, d.name, nd)) {
+                bool have = false;
+                for (const auto& o : out) if (o.board == "pluto" && o.nativeArgs == nd.nativeArgs) have = true;
+                if (!have) out.push_back(nd);
+                continue;
+            }
+        }
         if (!dup) out.push_back(d);
     }
     if (err.empty()) err = e2;
