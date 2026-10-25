@@ -273,7 +273,8 @@ struct HfdigRtty::Impl {
         } else {                                          // stop: must be mark
             fsm = 0;
             const double q = soft / 7.0;
-            if (!m || q < 0.3) { tel.framingErrors++; return; }
+            if (q < 0.3) return;                          // no signal behind these decisions (carrier gone, noise): not a framing error
+            if (!m) { tel.framingErrors++; return; }
             eye = 0.9f * eye + 0.1f * (float)std::min(1.0, q);
             lastCharAt = pos;
             emit(code);
