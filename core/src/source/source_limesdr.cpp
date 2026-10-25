@@ -75,6 +75,14 @@ LimeApi& lime() {
     return *gLime;
 }
 
+static std::atomic<int> gLimeScan{-1};   // what the last device scan found (-1: not scanned)
+bool limeLibraryState(std::string* path, int* radios) {
+    LimeApi& a = lime();
+    if (path) *path = a.ok ? a.lib.path : std::string();
+    if (radios) *radios = gLimeScan.load();
+    return a.ok;
+}
+
 namespace {
 
 // LMS_CLOCK_EXTREF (LimeSuite.h): the external reference clock, LMS_SetClockFreq(dev, LMS_CLOCK_EXTREF, Hz). Not LMS_CLOCK_REF (0), which is
@@ -272,6 +280,7 @@ void logLimeScan(const LimeApi& a, int n) {
 void listLime(std::vector<DeviceInfo>& out) {
     if (!lime().ok) return;
     int n = lime().get_device_list(nullptr);
+    gLimeScan = n;
     logLimeScan(lime(), n);
 #ifdef _WIN32
     static std::vector<std::string> tried;   // the copies that were asked and found nothing (asked once each)
@@ -291,6 +300,7 @@ void listLime(std::vector<DeviceInfo>& out) {
                 std::lock_guard<std::mutex> lk(gLimeMu);
                 gLime = other;
                 n = m;
+                gLimeScan = m;
                 break;
             }
         }
