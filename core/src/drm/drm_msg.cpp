@@ -178,6 +178,33 @@ bool TextDecoder::feed(const uint8_t* four) {
     return changed_;
 }
 
+// The text message is UTF-8 (clause 6.5) with three control codes: 0x0A line feed, 0x0B end of headline, 0x1F hyphenation point. The UI draws any other
+// control byte, and any byte that is not valid UTF-8, as a "?" box, which showed as garbage inside Chinese messages (#299). Keep the text, fix those.
+std::string cleanTextMessage(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    const size_t n = in.size();
+    for (size_t i = 0; i < n;) {
+        const unsigned char c = (unsigned char)in[i];
+        if (c < 0x80) {
+            if (c == 0x0A || c == 0x0B) { if (!out.empty() && out.back() != '\n') out += '\n'; }
+            else if (c == 0x1F || c == 0x7F || c < 0x20) { /* a hyphenation point or a stray control code: not shown */ }
+            else out += (char)c;
+            i++;
+            continue;
+        }
+        const int len = c >= 0xF0 && c <= 0xF4 ? 4 : c >= 0xE0 ? 3 : c >= 0xC2 && c < 0xE0 ? 2 : 0;
+        bool ok = len > 0 && c < 0xF5 && i + (size_t)len <= n;
+        for (int k = 1; ok && k < len; k++) ok = ((unsigned char)in[i + (size_t)k] & 0xC0) == 0x80;
+        if (ok && len == 3) { const unsigned cp = ((c & 0x0Fu) << 12) | (((unsigned char)in[i + 1] & 0x3Fu) << 6); ok = cp >= 0x800 && (cp & 0xF800) != 0xD800; }
+        if (ok && len == 4) { const unsigned cp = ((c & 0x07u) << 18) | (((unsigned char)in[i + 1] & 0x3Fu) << 12); ok = cp >= 0x10000 && cp <= 0x10FFFF; }
+        if (ok) { out.append(in, i, (size_t)len); i += (size_t)len; }
+        else { out += "\xEF\xBF\xBD"; i++; }   // U+FFFD
+    }
+    while (!out.empty() && out.back() == '\n') out.pop_back();
+    return out;
+}
+
 void TextDecoder::finishSegment() {
     const drmp::TextSeg s = drmp::textSegment(seg_.data(), seg_.size(), need_);   // the CRC-16 and the header fields
     const int n = need_ - 4;
@@ -199,6 +226,7 @@ void TextDecoder::finishSegment() {
     if (last_ >= 0 && (got_ & ((1u << (last_ + 1)) - 1)) == ((1u << (last_ + 1)) - 1)) {
         std::string t;
         for (int i = 0; i <= last_; i++) t += parts_[i];
+        t = cleanTextMessage(t);
         if (t != text_) { text_ = t; changed_ = true; }
     }
 }

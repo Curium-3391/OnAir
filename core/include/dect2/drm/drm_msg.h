@@ -104,6 +104,9 @@ int dateToMjd(int y, int m, int d);
 
 // ---------------------------------------------------------------- text message (clause 6.5): one 4 byte unit per logical frame of an audio stream
 
+// Text message as the UI shows it: 0x0A/0x0B -> line break, other control codes dropped, bytes that are not UTF-8 -> U+FFFD (#299)
+std::string cleanTextMessage(const std::string& in);
+
 class TextDecoder {
 public:
     void reset();
