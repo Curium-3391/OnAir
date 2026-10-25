@@ -403,6 +403,7 @@ void loadPrefs(App& a) {
     if (!d.has("uiTheme32") && d.has("uiTheme")) {   // 3.2: the old key defaulted to Classic (1), so 1 means "never changed" and moves to Dev A; any other choice is kept
         const int t = (int)d.getI("uiTheme", 1);
         a.uiTheme = (t >= 0 && t <= 4 && t != 1) ? t : 3;
+        if (t == 1 && !d.getB("lookNoticeDone", false)) a.lookNotice = true;   // not a new install: tell them once
     }
 }
 

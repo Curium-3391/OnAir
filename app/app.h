@@ -286,6 +286,7 @@ struct App {
     bool modeVisOpen = false;    // the Modes shown window
     std::string modeGroupsOpen;   // the mode list groups left unfolded, by name, separated by |
     int uiVariant = 0;        // layout of the new interface: 0 sidebar (the default), 1 scope, 2 tiles, 3 faceplate, 4-6 scope children, 7 panel
+    bool lookNotice = false;  // 3.2: moved from the old default look to Dev A: a one-time notice with a way back (not saved; "lookNoticeDone" is)
     bool touchUi = false;     // the touch interface (ui/touch.h): big targets, a bottom dock, full-screen picker and sheets; Settings > Touch interface, --touch
     float touchScale = 1.35f; // the touch interface's own text scale, on top of uiTextScale: 1.0 .. 2.0
     float uiTextScale = 1.f;  // View > Text size: 0.8 .. 2.0, on top of the display scale (Ctrl +, Ctrl -, Ctrl 0)
