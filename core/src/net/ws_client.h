@@ -71,7 +71,7 @@ public:
         int kind = -1;   // opcode of the first fragment
         for (;;) {
             unsigned char h[2];
-            const int r0 = recvExact(h, 2);
+            const int r0 = recvExact(h, 2, true);
             if (r0 != 1) return r0 == 0 ? Kind::Timeout : Kind::Closed;
             const bool fin = h[0] & 0x80;
             const int op = h[0] & 0x0F;
@@ -106,12 +106,19 @@ public:
 
 private:
     // 1: all n bytes. 0: nothing came within the timeout (at the start of a frame only). -1: the connection went, or stopped in a frame.
-    int recvExact(void* d, size_t n) {
+    int recvExact(void* d, size_t n, bool start = false) {
         char* p = (char*)d;
         size_t got = 0;
+        int midStalls = 0;
         while (got < n) {
             const long long k = sockRecv(s_, p + got, n - got);
-            if (k <= 0) return got == 0 && k < 0 && timedOut() ? 0 : -1;
+            if (k <= 0) {
+                if (start && got == 0 && k < 0 && timedOut()) return 0;
+                // a timeout in the middle of a frame (a slow or congested link, a frame split over TCP segments) is not a lost connection:
+                // wait on for the rest, up to 10 receive timeouts, instead of dropping the frame and the whole stream (KiwiSDR, #257)
+                if (k < 0 && timedOut() && ++midStalls <= 10) continue;
+                return -1;
+            }
             got += (size_t)k;
         }
         return 1;

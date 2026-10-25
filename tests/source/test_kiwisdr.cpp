@@ -54,7 +54,7 @@ struct Fake {
     int port = 0;
     std::thread th;
     std::atomic<bool> run{true};
-    std::atomic<int> dropNow{0}, timeLimit{0}, junk{0}, gap{0}, hugeFrame{0}, connections{0}, resetSeq{0};
+    std::atomic<int> dropNow{0}, timeLimit{0}, junk{0}, gap{0}, hugeFrame{0}, connections{0}, resetSeq{0}, slowFrame{0};
     std::atomic<int> noIq{0};   // 1: MSG lines instead of IQ frames, 2: mono audio frames instead of IQ (the connection stays open: a stall)
     std::mutex mu;
     std::vector<std::string> log;   // each text command of the client
@@ -140,6 +140,14 @@ struct Fake {
                 wsSend(c, 2, "W/F\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");    // a waterfall line: not asked for, ignored
                 wsSend(c, 2, msgFrame("no_equals_token a=%zz b=%41 foo"));
                 wsSend(c, 10, "pong");
+            }
+            if (slowFrame.exchange(0)) {   // a frame that arrives in two parts with a pause longer than the client's receive timeout (a slow link)
+                std::string fr = sndFrame(seq++, 512, 16384, -8192, 0x08, 700), w;
+                w += (char)0x82; w += (char)126; w += (char)(fr.size() >> 8); w += (char)(fr.size() & 255);
+                w += fr.substr(0, 100);
+                sockSendAll(c, w.data(), w.size());
+                std::this_thread::sleep_for(std::chrono::milliseconds(1400));
+                sockSendAll(c, fr.data() + 100, fr.size() - 100);
             }
             if (gap.exchange(0)) seq += 5;
             if (resetSeq.exchange(0)) seq = 0;   // the server counts from a new start
@@ -437,6 +445,17 @@ int main() {
         CHECK(eventually([&] { return srv.connections > cs; }, 8000));
         ring.clear();
         CHECK(readIq(ring, buf));
+    }
+
+    // a frame cut in two by a slow link, the pause longer than the receive timeout: the rest is waited for, the connection stays (#257)
+    {
+        const int cs = srv.connections;
+        srv.slowFrame = 1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+        CHECK(srv.connections == cs);
+        ring.clear();
+        CHECK(readIq(ring, buf));
+        CHECK(srv.connections == cs);
     }
 
     // an oversize message: the connection is dropped, and opened again after the pause (80 ms in the test)
