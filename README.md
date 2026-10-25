@@ -89,7 +89,7 @@ OnAir is a receiver first. It can also send test signals through a transmit-capa
 | **Two-way radio** | 12 | DMR, P25 (phase 1 and 2, with a trunking follower), NXDN, dPMR, D-STAR, M17, TETRA, TETRAPOL, tone decoders (CTCSS, DCS, DTMF, selcall) |
 | **Cellular and rail** | 5 | LTE, 5G NR and NB-IoT cells, GSM-R, LBJ, KLW, TDCS |
 | **Pagers** | 3 | POCSAG, FLEX, Multitone |
-| **IoT and sensors** | 18 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, BLE tracker detector, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+, Sigfox, NFC / RFID |
+| **IoT and sensors** | 19 | ISM sensors, LoRaWAN, Meshtastic, MeshCore, Bluetooth LE, BLE tracker detector, Zigbee, Wi-Fi, Wi-SUN, Wireless M-Bus, Z-Wave, DECT, ANT+, Sigfox, NFC / RFID, Flipper Zero Sub-GHz chat |
 | **Weather and science** | 8 | Radiosondes, Horus balloons, HRPT, SAME alerts, time signals, e-Czas, ionospheric sounders, radio astronomy, meteor scatter |
 | **Amateur** | 34 | FT8, FT4, WSPR, JS8Call, RTTY, PSK, MT63, FSQ, IFKP, ARDOP, SSTV, FreeDV, APRS, LoRa APRS, MeshCom and more |
 | **HF utility** | 6 | ALE, beacons, Datawell buoys, CODAR |
@@ -320,6 +320,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 - **Sigfox** (uplinks at 868.130 / 902.200 MHz and the other zones, 100 and 600 bit/s: device ID, message counter, payload hex, the three repetitions merged, CRC checked; the authentication code is never checked and nothing is decrypted; [details](docs/sigfox.md)).
 - **LoRaWAN** (EU868 / US915, all spreading factors; clear headers only, payloads stay encrypted), **Meshtastic** and **MeshCore** (nodes, map, chat, telemetry, exports), **LoRa (raw)** (plain point-to-point LoRa; hex and text frames, no decryption).
 - **Bluetooth LE** (advertising, never connects), **Zigbee / 802.15.4** (needs a fast radio), **Wi-Fi networks** (2.4 GHz beacons, passive), **Wi-Fi HaLow** (802.11ah sub-GHz beacons), **Z-Wave** (G.9959 R1 / R2 / R3, encrypted payloads stay encrypted), **Wi-SUN FAN** (smart meter and street light mesh, all regional band plans), **ANT+ sensors** and **DECT cordless phones** (base stations from beacons; calls are encrypted, no voice; Europe 1880-1900 MHz, US/Canada DECT 6.0 1920-1930 MHz, Brazil, Latin America and the US 900 MHz ISM band, see docs/DECT.md).
+- **Flipper Zero Sub-GHz chat** (receive and send: chat with Flippers running the Enhanced Sub-GHz Chat app on 433.92 MHz or any frequency they use, plain or AES-256-GCM encrypted with their password or hex key; a HackRF pauses its receiver while a line goes out; [details](docs/esubghz.md)).
 - **NFC / RFID 13.56 MHz** (*in development*): ISO/IEC 14443 Type A and Type B and ISO/IEC 15693, receive only. Tag UIDs, ATQA / SAK / ATS, CRC checks and NDEF text / URI from Type 2 tags, with a frame log and a tag table. Needs an HF-capable receiver at a few Msps so the 847.5 kHz load-modulation subcarrier fits. An active reader can transmit through the TX gate (13.553-13.567 MHz ISM band only). Nothing is cloned and no encrypted content is decoded; pet microchips are 134.2 kHz, a different band. See docs/NFC.md.
 
 ### Weather and science

@@ -101,6 +101,7 @@ This list is taken from the tables in `core/src/tx/tx.cpp` (`txModes()`).
 | cquam | AM stereo (C-QUAM) | 109 | makeCquamSynth |
 | ardop | ARDOP | 109 | makeArdopSynth |
 | zwave | Z-Wave | 100 | makeZwaveSynth |
+| esubghz | Flipper Zero Sub-GHz chat | 206 | makeEsubghzTxGenerator (one plain line; encrypted lines from the mode's Chat screen) |
 | mscatter | Meteor scatter | 106 | makeMscatterSynth |
 | goesdcs | GOES DCS | 109 | makeGoesDcsSynth |
 | modeac | Mode A/C | 107 | makeModeAcSynth |
