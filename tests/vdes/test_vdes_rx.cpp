@@ -1,5 +1,6 @@
 // VDES: ASM bursts (GMSK 9.6 kbit/s, AIS framing) decode with the payload sent; VDE-TER bursts of 25 / 50 / 100 kHz are detected, their bandwidth, band,
 // level and modulation (pi/4-QPSK, 8PSK, 16QAM) reported; offsets, noise and clock errors; noise alone gives nothing.
+#include "dect2/ais/ais_proto.h"
 #include "dect2/dsp/gen_util.h"
 #include "dect2/vdes/vdes_gen.h"
 #include "dect2/vdes/vdes_rx.h"
@@ -135,6 +136,26 @@ int main() {
             printf("levels: %.1f and %.1f dBFS, difference %.1f dB\n", t.bursts[1].rssiDb, t.bursts[0].rssiDb, d);
             CHECK(std::fabs(d - 6.0) < 1.2, "level difference %.1f dB", d);
         }
+    }
+    // an ASM that is an AIS position report (type 1): the receiver reads the position out of it (#303), a payload that is not AIS gets none
+    {
+        ais::Bits pos;
+        ais::putU(pos, 0, 6, 1); ais::putU(pos, 6, 2, 0); ais::putU(pos, 8, 30, 244123456); ais::putU(pos, 38, 4, 0); ais::putS(pos, 42, 8, -128);
+        ais::putU(pos, 50, 10, 125); ais::putU(pos, 60, 1, 1);
+        ais::putS(pos, 61, 28, (int32_t)std::lround(5.25 * 600000.0)); ais::putS(pos, 89, 27, (int32_t)std::lround(52.5 * 600000.0));
+        ais::putU(pos, 116, 12, 800); ais::putU(pos, 128, 9, 80); ais::putU(pos, 137, 6, 10); ais::putU(pos, 143, 25, 0);
+        std::mt19937 rng(11);
+        std::vector<AisBurstSpec> sp;
+        AisBurstSpec a; a.payload = pos; a.channel = 'A'; a.startSec = 0.3; sp.push_back(a);
+        AisBurstSpec b; b.payload = payload(rng, 120); b.payload[0] = 1; b.payload[1] = 1; b.channel = 'B'; b.startSec = 0.7; sp.push_back(b);   // type 48+: not AIS
+        VdesRenderConfig rc; rc.rate = 1e6; rc.durationSec = 1.4; rc.snrDb = 30;
+        const VdesTelemetry t = feedAll(renderVdes(sp, {}, rc), 1e6);
+        int withPos = 0;
+        for (const VdesAsm& f : t.asms) if (f.hasPos) {
+            withPos++;
+            CHECK(f.aisMmsi == 244123456 && std::fabs(f.lat - 52.5) < 1e-4 && std::fabs(f.lon - 5.25) < 1e-4 && std::fabs(f.sogKt - 12.5) < 0.05 && std::fabs(f.cogDeg - 80) < 0.05, "position %.5f %.5f", f.lat, f.lon);
+        }
+        CHECK(withPos == 1, "%d ASM frames with a position", withPos);
     }
     // noise alone, and the generator's silence: no ASM, no burst
     {

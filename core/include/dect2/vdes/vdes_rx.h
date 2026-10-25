@@ -25,6 +25,7 @@ public:
     void setSignalOffset(double hz);       // where the dial frequency sits relative to 0 Hz of the input
     void setDialHz(double hz);             // the frequency tuned (0: unknown, a file: 161.9 MHz is assumed)
     void setWallClock(bool on);
+    void setForwardNmea(bool on);          // AIS-like ASM frames also go out as !AIVDM sentences on the AIS data feed (UDP), when that feed is on (default on)
     bool ready() const;
     void reset();
     void feed(const cf32* x, size_t n);

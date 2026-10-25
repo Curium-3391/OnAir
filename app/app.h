@@ -847,6 +847,8 @@ double halowWantedWidthMhz();     // and the widest channel it means, for the sp
 // The sample rate chosen per mode and per radio (prefs "rate.<mode id>.<radioKeyOf>", in Hz; absent or 0 = Auto, the mode's own rate)
 std::string rateModeId(const App& a);
 std::string rateContext(const App& a);
+double rxWidthMhz(int stdMode);               // state/rx_width.cpp: the receive bandwidth chosen for VDL2, TETRA, TETRAPOL (0 = Auto)
+void rxWidthControl(App& a, bool& retune);    // and its control (the decoder options of those three modes)
 double savedSampleRate(const App& a);
 void saveSampleRate(App& a, double hz);
 double modeMinSampleRate(const App& a);

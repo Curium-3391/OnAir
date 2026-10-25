@@ -1,4 +1,5 @@
 // application state: preferences, device list, bandwidth, ingesting spectrum and receiver telemetry, channel list
+#include "rx_width.h"
 #include "../rooms/rooms.h"
 #include "../app.h"
 #include "../clips/clips_ui.h"
@@ -245,7 +246,7 @@ static std::string ratePrefKey(const App& a) {
     const std::string rk = radioKeyOf(a.devices[a.devIdx]);
     return rk.empty() ? "" : "rate." + rateModeId(a) + "." + rk;
 }
-std::string rateContext(const App& a) { return ratePrefKey(a) + "|" + std::to_string(a.devIdx) + "|" + std::to_string(a.family) + "." + std::to_string(a.sub) + "|" + std::to_string(a.bwIdx) + "|" + std::to_string(a.dtmbBwMhz); }
+std::string rateContext(const App& a) { return ratePrefKey(a) + "|" + std::to_string(a.devIdx) + "|" + std::to_string(a.family) + "." + std::to_string(a.sub) + "|" + std::to_string(a.bwIdx) + "|" + std::to_string(a.dtmbBwMhz) + "|" + std::to_string(a.family >= 6 && modeTuning(a.family + 2) ? rxWidthMhz(modeTuning(a.family + 2)->stdMode) : 0.0); }
 double savedSampleRate(const App& a) {
     const std::string k = ratePrefKey(a);
     return k.empty() ? 0 : plat::prefs().getD(k.c_str(), 0);
@@ -311,6 +312,10 @@ void applyBandwidth(App& a) {
     a.tune.synth.mode = engineStd(a) >= 4 ? engineStd(a) : 0;   // the test signal of DAB (4), ATSC 3.0 (5), ISDB-T (6), FM (7) and the modes after them
     if (const ModeTuning* mt = a.family >= 6 ? modeTuning(a.family + 2) : nullptr) {   // the mode says what the radio should do
         a.tune.bandwidthMhz = mt->bandwidthMhz; a.tune.sampleRate = mt->sampleRate; a.tune.basebandFilterHz = mt->basebandHz;
+        if (rxWidthMode(mt->stdMode)) {   // VDL2, TETRA, TETRAPOL: the receive bandwidth the user set (Auto leaves the mode's own values)
+            const RxWidthPlan rw = rxWidthPlan(rxWidthMhz(mt->stdMode), mt->bandwidthMhz, mt->sampleRate, mt->basebandHz, mt->minSampleRate);
+            a.tune.bandwidthMhz = rw.bandwidthMhz; a.tune.sampleRate = rw.sampleRate; a.tune.basebandFilterHz = rw.basebandHz;
+        }
         if (mt->stdMode == 9) {   // DTMB: the channel width the user picked (6 MHz in Cuba); the test signal follows it
             a.tune.bandwidthMhz = a.dtmbBwMhz; a.tune.basebandFilterHz = a.dtmbBwMhz * 1e6;
             a.tune.synth.modeOpt[7] = a.dtmbBwMhz == 6 ? 1 : 0;

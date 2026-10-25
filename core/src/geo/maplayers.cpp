@@ -57,6 +57,25 @@ std::vector<MapMarker> markersFromAis(const AisTelemetry& t) {
     return v;
 }
 
+std::vector<MapMarker> markersFromVdes(const VdesTelemetry& t) {
+    std::vector<MapMarker> v;
+    std::vector<uint32_t> seen;
+    for (const VdesAsm& a : t.asms) {   // newest first: the first frame of an MMSI is its latest position
+        if (!a.hasPos || !a.aisMmsi) continue;
+        if (std::find(seen.begin(), seen.end(), a.aisMmsi) != seen.end()) continue;
+        seen.push_back(a.aisMmsi);
+        MapMarker m; m.layer = LayerAis; m.id = std::to_string(a.aisMmsi);
+        m.label = "VDES " + m.id;
+        m.lat = a.lat; m.lon = a.lon;
+        if (a.sogKt >= 0 && a.sogKt < 102.3f) { m.hasSpeed = true; m.speedKt = a.sogKt; }
+        m.headingDeg = a.cogDeg >= 0 && a.cogDeg < 360 ? a.cogDeg : -1;
+        m.ageSec = std::max(0.0, t.timeSec - a.timeSec);
+        m.detail = "VDES ASM, AIS message " + std::to_string(a.aisType);
+        v.push_back(std::move(m));
+    }
+    return v;
+}
+
 std::vector<MapMarker> markersFromAprs(const PacketTelemetry& t) {
     std::vector<MapMarker> v;
     for (const PacketStation& s : t.stations) {

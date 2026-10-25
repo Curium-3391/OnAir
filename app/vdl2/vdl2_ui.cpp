@@ -6,6 +6,9 @@
 #include "map/pos_predict.h"
 #include "map/derived_kin.h"
 #include "state/results_export.h"
+#include "vdl2_log.h"
+#include "dect2/common/u8file.h"
+#include <fstream>
 #include "dect2/adsb/adsb_tel.h"
 #include "dect2/vdl2/vdl2_tel.h"
 #include <algorithm>
@@ -51,6 +54,7 @@ struct State {
     uint32_t selAir = 0;
 };
 State S;
+vdl2log::Log gLog;   // every frame of the session, with its UTC date and time (the screen keeps 400)
 
 bool live(const App& a) { return a.rx.standard == 28; }
 
@@ -148,6 +152,7 @@ bool positionNow(const dect2::Vdl2Aircraft& c, double now, double& lat, double& 
 
 void tick(App& a) {
     loadState();
+    gLog.feed(a.rx.vdl2);
     feedEstimates(a.rx.vdl2);
     if (!a.engine.running()) { S.wasRunning = false; S.pushedChans[0] = '\x01'; S.pushedChans[1] = 0; return; }
     a.engine.vdl2().setWholeSpan(a.family == 27 && a.wideDecode);   // the Whole span switch (top right of the spectrum)
@@ -200,7 +205,7 @@ void filterRow() {
 void detailPane(const App& a, const dect2::Vdl2Telemetry& t, const dect2::Vdl2Message* m) {
     if (!m) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("Click a message to see every layer of it."); ImGui::PopTextWrapPos(); return; }
     auto kv = [&](const char* k, const char* fmt, auto... v) { ImGui::TextDisabled("%s", k); kvColumn(100 * gUi); ImGui::PushFont(a.mono, 0); ImGui::PushTextWrapPos(0); ImGui::Text(fmt, v...); ImGui::PopTextWrapPos(); ImGui::PopFont(); };
-    kv("time", "%s%s  %.3f MHz  %.0f dBFS  SNR %.0f dB  %+.0f Hz", clock(m->wallTime).c_str(), dect2::timefmt::sfx(), m->freqHz / 1e6, m->levelDb, m->snrDb, m->cfoHz);
+    kv("time", "%s UTC  %.3f MHz  %.0f dBFS  SNR %.0f dB  %+.0f Hz", vdl2log::utc(m->wallTime).c_str(), m->freqHz / 1e6, m->levelDb, m->snrDb, m->cfoHz);
     kv("from", "%s  (%s)", who(t, m->src, m->srcType).c_str(), m->srcType == 1 ? "aircraft" : m->srcType == 4 || m->srcType == 5 ? "ground station" : m->srcType == 7 ? "all stations" : "reserved");
     kv("to", "%s  (%s)", who(t, m->dst, m->dstType).c_str(), m->dstType == 1 ? "aircraft" : m->dstType == 4 || m->dstType == 5 ? "ground station" : m->dstType == 7 ? "all stations" : "reserved");
     if (m->rsFixed) kv("repaired", "%d octet%s by the Reed-Solomon code", m->rsFixed, m->rsFixed == 1 ? "" : "s");
@@ -226,9 +231,35 @@ void detailPane(const App& a, const dect2::Vdl2Telemetry& t, const dect2::Vdl2Me
     ImGui::EndChild();
 }
 
+// the whole session's frames with their UTC date and time (#309), saved as CSV, JSON or text
+void logExportRow() {
+    static int fmt = 0;
+    static std::string note;
+    ImGui::TextDisabled("Session log: %zu frames", gLog.size());
+    ImGui::SameLine(0, 8 * gUi);
+    ImGui::SetNextItemWidth(80 * gUi);
+    ImGui::Combo("##vdlfmt", &fmt, "CSV\0JSON\0Text\0");
+    ImGui::SameLine(0, 6 * gUi);
+    if (ImGui::SmallButton("Save log...")) {
+        const vdl2log::Fmt f = fmt == 0 ? vdl2log::Fmt::Csv : fmt == 1 ? vdl2log::Fmt::Json : vdl2log::Fmt::Text;
+        const std::string path = saveFileDialog(("vdl2-log-" + resexp::stamp() + vdl2log::fmtExt(f)).c_str());
+        if (!path.empty()) {
+            std::ofstream o(dect2::u8file(path), std::ios::binary);
+            o << gLog.render(f);
+            o.flush();
+            note = o ? "saved " + path : "could not write " + path;
+        }
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Every frame heard since the receiver started (not only the list below), each with its UTC date and time, ground stations and link frames included.");
+    ImGui::SameLine(0, 6 * gUi);
+    if (ImGui::SmallButton("Clear log")) { gLog.clear(); note.clear(); }
+    if (!note.empty()) { ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("%s", note.c_str()); }
+}
+
 void messageView(App& a) {
     const dect2::Vdl2Telemetry& t = a.rx.vdl2;
     const bool on = live(a);
+    logExportRow();
     filterRow();
     const float H = ImGui::GetContentRegionAvail().y;
     const float listH = std::max(120.f * gUi, H * 0.55f);
@@ -696,6 +727,7 @@ const ModeUi kVdl2Ui = {
     .status = status,
     .summary = summary,
     .tuner = tuner,
+    .decoder = rxWidthControl,
     .synth = synth,
     .tick = tick,
     .meters = meters,

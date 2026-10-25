@@ -37,6 +37,15 @@ int main() {
         CHECK(m[0].detail == "to ROTTERDAM", "detail");
         CHECK(m[1].label == "257000001" && !m[1].hasSpeed && m[1].headingDeg == 45, "mmsi label");
     }
+    {   // VDES: the latest AIS position per MMSI, frames without a position skipped
+        VdesTelemetry t; t.timeSec = 100;
+        VdesAsm a; a.hasPos = true; a.lat = 52.5; a.lon = 5.25; a.aisMmsi = 244123456; a.aisType = 1; a.timeSec = 90; a.sogKt = 12.5f; a.cogDeg = 80;
+        VdesAsm old = a; old.lat = 52.0; old.timeSec = 50;
+        VdesAsm np; np.aisMmsi = 999; np.timeSec = 95;
+        t.asms = {np, a, old};
+        auto m = markersFromVdes(t);
+        CHECK(m.size() == 1 && m[0].layer == LayerAis && m[0].id == "244123456" && m[0].lat == 52.5 && m[0].hasSpeed && m[0].headingDeg == 80 && std::fabs(m[0].ageSec - 10) < 1e-9, "vdes marker");
+    }
     {   // APRS: age from signal time
         PacketTelemetry t; t.timeSec = 1000;
         PacketStation s; s.call = "LY2XX-9"; s.hasPos = true; s.lat = 54.7; s.lon = 25.3; s.lastHeardSec = 940; s.hasSpeed = true; s.speedKnots = 30; s.hasCourse = true; s.courseDeg = 270; s.comment = "mobile";

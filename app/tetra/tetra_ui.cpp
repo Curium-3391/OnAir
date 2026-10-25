@@ -545,5 +545,6 @@ const ModeUi kTetraUi = {
     .list = list,
     .status = status,
     .summary = summary,
+    .decoder = rxWidthControl,
     .tick = tick,
 };

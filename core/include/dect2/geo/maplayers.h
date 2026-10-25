@@ -5,6 +5,7 @@
 #include "dect2/ais/ais_tel.h"
 #include "dect2/dmr/dmr_tel.h"
 #include "dect2/packet/packet_tel.h"
+#include "dect2/vdes/vdes_tel.h"
 #include "passes.h"
 #include "dect2/sonde/sonde_tel.h"
 #include <string>
@@ -30,6 +31,7 @@ struct MapMarker {
 
 std::vector<MapMarker> markersFromAdsb(const AdsbTelemetry& t);     // aircraft with a position
 std::vector<MapMarker> markersFromAis(const AisTelemetry& t);       // vessels with a position
+std::vector<MapMarker> markersFromVdes(const VdesTelemetry& t);     // VDES ASM frames that carried an AIS position, the latest per MMSI (drawn on the AIS ships layer)
 std::vector<MapMarker> markersFromAprs(const PacketTelemetry& t);   // stations and objects with a position
 std::vector<MapMarker> markersFromSonde(const SondeTelemetry& t);   // sondes with a position, their flight track
 std::vector<MapMarker> markersFromDmr(const DmrTelemetry& t);       // radios with a position, their movement track
