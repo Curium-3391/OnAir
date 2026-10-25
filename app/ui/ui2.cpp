@@ -309,7 +309,10 @@ void drawShell2(App& a, ImVec2 disp) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10 * gUi, 6 * gUi));
         ImGui::BeginChild("##txbody", ImVec2(0, bodyH), ImGuiChildFlags_AlwaysUseWindowPadding);
         ImGui::PopStyleVar();
+        // the TX panel greys out its settings while it transmits and is mostly dim text: on the Light skin that was grey on grey (#320)
+        if (a.lightUi) ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, 0.85f);
         txPanel(a);
+        if (a.lightUi) ImGui::PopStyleVar();
         ImGui::EndChild();
     } else if (dockActive(a)) dockBody(a, bodyH);   // View > Docking: the panels are windows in a dock space
     else switch (a.uiVariant) {
