@@ -6,6 +6,7 @@
 #include "app.h"
 #include "state/results_export.h"
 #include "panels/gallery.h"
+#include "dvbs/dvbs_autoservice.h"
 #include "i18n/i18n.h"
 #include "dect2/qo100/qo100_auto.h"
 #include "dect2/hfdig/hfdig_sstv.h"
@@ -88,6 +89,7 @@ struct State {
     std::string note;
     // the DVB-S/S2 decoder under the wideband view (Engine::setSecondaryDvbs): the carrier clicked, its report, why it was refused
     bool dvbsOn = false, autoPlay = false;
+    dect2::AutoServiceState autoSvc;
     dect2::Qo100Datv dvbsCarrier;
     RxTelemetry rx2;
     uint64_t rx2Seq = 0;
@@ -757,6 +759,10 @@ void tick(App& a) {
                     if (video) { pick = &sv; break; }
                 }
                 if (pick) { pl.select(pick->id); pl.setVolume(a.volume); S.autoPlay = false; }
+            }
+            if (dvbsAutoService()) {   // a signal with one service: play it, and follow it when the view is moved to another carrier (#322)
+                const int id = dect2::autoServicePick(S.autoSvc, a.ts.services, pl.selected(), S.rx2.dvbs.tsLock, glfwGetTime());
+                if (id >= 0) { pl.select(id); pl.setVolume(a.volume); S.autoPlay = false; }
             }
         } else if (S.dvbsRefused.empty()) S.dvbsOn = false;   // another second mode took the place
     }
