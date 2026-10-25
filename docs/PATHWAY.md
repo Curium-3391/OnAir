@@ -644,3 +644,6 @@ DVB-S/S2 Whole span: transponder detector (core/src/engine/transponders.cpp, pur
 Checked 16 UI/platform issues against v3.0.0: 15 already fixed there; #291 fixed (server setvbuf size 0 on Windows, ONAIR_NO_CRASH_REPORT env). Table: docs/ISSUES-2026-10-24-ui.md. fix-spectrum-axis-030 still unmerged.
 ## 2026-10-24: issue-feat-031 (4 small 3.1 features)
 #165 already done in 3.0 (checked). #225 Hellschreiber user font file for CJK/symbols (hfdig_kbd_hellfont.cpp, stb_truetype from imgui, nothing bundled). #233 Airspy lna/mixer/vga and SDRplay LNA state / IF reduction as radio settings (-1 = follow the slider). #236 Whole span for VDL2 (worldwide channel set) and HFDL (table + list). Tests: test_vdl2_rx, test_hfdig_kbd, test_native. Status table: docs/ISSUES-2026-10-24-feat.md.
+
+### 2026-10-25 feat32-tv
+#318 picture shape box in the TV player (Fit / Stretch 4:3 to 16:9 / Zoom / Fill), shared by player, pop-out and full screen, saved as videoFit; pure maths in app/ui/video_fit.h, test_video_fit. #73 reviewed: D/D2-MAC and FM video exist; B/C-MAC, HD-MAC, MUSE, satellite FM video not possible (rates, no spec text, no signals), reasons in docs/ANALOGUE-TV.md. #180 Astrometa 15f4:0131 already in every RTL id table; documented in docs/DEVICES.md that the stick's demodulator is not used.
