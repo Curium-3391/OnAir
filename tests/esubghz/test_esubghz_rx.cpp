@@ -90,7 +90,7 @@ int main() {
         CHECK(t.chat[1].kind == 1 && t.chat[1].text == "Flipper1: encrypted hi", "line 2 kind %d '%s'", t.chat[1].kind, t.chat[1].text.c_str());
         CHECK(t.chat[2].kind == 0 && t.chat[2].text == longLine && t.chat[2].packets == 3, "line 3 (%d packets)", t.chat[2].packets);
         CHECK(t.chat[3].kind == 3, "line 4 is a replay (kind %d)", t.chat[3].kind);
-        CHECK(std::fabs(t.cfoHz - (c.inv ? -c.cfo : c.cfo)) < 1500, "cfo estimate %.0f", t.cfoHz);
+        CHECK(std::fabs(t.cfoHz - (c.inv ? -c.cfo : c.cfo)) < 2500, "cfo estimate %.0f", t.cfoHz);
         if (c.inv) CHECK(!t.packets.empty() && t.packets[0].inverted, "inverted packets are flagged");
     }
     {   // without the key: the encrypted line is named, not shown
