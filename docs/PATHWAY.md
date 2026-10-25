@@ -644,3 +644,6 @@ DVB-S/S2 Whole span: transponder detector (core/src/engine/transponders.cpp, pur
 Checked 16 UI/platform issues against v3.0.0: 15 already fixed there; #291 fixed (server setvbuf size 0 on Windows, ONAIR_NO_CRASH_REPORT env). Table: docs/ISSUES-2026-10-24-ui.md. fix-spectrum-axis-030 still unmerged.
 ## 2026-10-24: issue-feat-031 (4 small 3.1 features)
 #165 already done in 3.0 (checked). #225 Hellschreiber user font file for CJK/symbols (hfdig_kbd_hellfont.cpp, stb_truetype from imgui, nothing bundled). #233 Airspy lna/mixer/vga and SDRplay LNA state / IF reduction as radio settings (-1 = follow the slider). #236 Whole span for VDL2 (worldwide channel set) and HFDL (table + list). Tests: test_vdl2_rx, test_hfdig_kbd, test_native. Status table: docs/ISSUES-2026-10-24-feat.md.
+
+## 2026-10-25: fix32-bcast (3.2 bug fixes: broadcast + digital voice)
+#313 ISDB-T one-seg without a PAT: TsDemux builds the service from the partial-reception PMT on 0x1FC8-0x1FCF (ts.cpp), test in test_ts. #300 DMR: UTF-16 text labelled big-endian but sent little-endian by import radios is detected by the zero-byte positions and read as LE (rust/onair_dmr/src/text.rs), cargo test. #249 DAB: TII ids and FIG 0/22 positions are decoded and shown; the empty map is a data gap (no dab-tii/DE.csv in OnAir-channels, German networks do not send FIG 0/22), no code change.
