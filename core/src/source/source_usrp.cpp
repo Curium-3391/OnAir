@@ -145,6 +145,59 @@ std::map<std::string, std::pair<double, double>> gRange;
 // ... and the receive inputs (channel, antenna) it reported then: the radios other than the B2xx, whose inputs are not known before
 std::map<std::string, std::vector<std::pair<size_t, std::string>>> gInputs;
 
+std::string usrpDeviceArgs(const std::string& args_, bool warn) {
+    std::string dargs = args_;
+    const bool net = contains(args_, "addr") || contains(args_, "type=usrp2") || contains(args_, "type=x300") || contains(args_, "type=n3xx");
+    if (net) {
+#ifdef __linux__
+        if (!contains(dargs, "recv_buff_size")) dargs += std::string(dargs.empty() ? "" : ",") + "recv_buff_size=50000000";
+        if (warn) if (FILE* f = fopen("/proc/sys/net/core/rmem_max", "r")) {
+            long v = 0;
+            if (fscanf(f, "%ld", &v) == 1 && v < 50000000) fprintf(stderr, "USRP: the socket receive buffer limit is small (%ld); to avoid dropped samples run: sudo sysctl -w net.core.rmem_max=50000000\n", v);
+            fclose(f);
+        }
+#endif
+        if (!contains(dargs, "num_recv_frames")) dargs += std::string(dargs.empty() ? "" : ",") + "num_recv_frames=512";
+    }
+    const bool bus = contains(args_, "type=b200");
+    if (bus) {
+        if (!contains(dargs, "num_recv_frames")) dargs += std::string(dargs.empty() ? "" : ",") + "num_recv_frames=128";
+    }
+    return dargs;
+}
+
+// One UHD handle per device arguments, shared by the receiver and the transmitter of the same USRP: a USB USRP cannot be opened twice, so the
+// transmitter used to be refused while the receiver ran (issue #294: receive on RX2, transmit on TX/RX). The count frees the handle with the last user.
+std::mutex gDevMu;
+std::map<std::string, std::pair<UhdApi::usrp_t*, int>> gDevs;
+std::map<std::string, int> gRxOnTxRx;   // device arguments of the receivers that listen on the TX/RX connector (the transmitter needs it)
+bool rxHoldsTxRx(const std::string& dargs) { std::lock_guard<std::mutex> lk(gDevMu); auto it = gRxOnTxRx.find(dargs); return it != gRxOnTxRx.end() && it->second > 0; }
+void rxTxRx(const std::string& dargs, int d) { std::lock_guard<std::mutex> lk(gDevMu); gRxOnTxRx[dargs] += d; }
+bool usrpAcquire(const std::string& dargs, UhdApi::usrp_t** out) {
+    std::lock_guard<std::mutex> lk(gDevMu);
+    auto it = gDevs.find(dargs);
+    if (it != gDevs.end()) { it->second.second++; *out = it->second.first; return true; }
+    UhdApi::usrp_t* d = nullptr;
+    if (uhd().make(&d, dargs.c_str()) != 0 || !d) {
+        if (d) uhd().free_(&d);
+        *out = nullptr;
+        return false;
+    }
+    gDevs[dargs] = {d, 1};
+    *out = d;
+    return true;
+}
+void usrpRelease(UhdApi::usrp_t** dev) {
+    if (!*dev) return;
+    std::lock_guard<std::mutex> lk(gDevMu);
+    for (auto it = gDevs.begin(); it != gDevs.end(); ++it)
+        if (it->second.first == *dev) {
+            if (--it->second.second <= 0) { UhdApi::usrp_t* d = *dev; uhd().free_(&d); gDevs.erase(it); }
+            break;
+        }
+    *dev = nullptr;
+}
+
 } // namespace
 
 class UsrpSource : public NativeSource {
@@ -165,26 +218,8 @@ protected:
         otw_ = radioOption(s, "wire", "sc16") == "sc8" ? "sc8" : "sc16";
         // a network USRP (USRP2, N2xx, X3xx, N3xx) drops samples with the small default socket buffers: ask for the ones UHD's docs recommend
         // unless the user set them in the device arguments (issues #61/#62)
-        std::string dargs = args_;
-        const bool net = contains(args_, "addr") || contains(args_, "type=usrp2") || contains(args_, "type=x300") || contains(args_, "type=n3xx");
-        if (net) {
-#ifdef __linux__
-            if (!contains(dargs, "recv_buff_size")) dargs += std::string(dargs.empty() ? "" : ",") + "recv_buff_size=50000000";
-            if (FILE* f = fopen("/proc/sys/net/core/rmem_max", "r")) {
-                long v = 0;
-                if (fscanf(f, "%ld", &v) == 1 && v < 50000000) fprintf(stderr, "USRP: the socket receive buffer limit is small (%ld); to avoid dropped samples run: sudo sysctl -w net.core.rmem_max=50000000\n", v);
-                fclose(f);
-            }
-#endif
-            if (!contains(dargs, "num_recv_frames")) dargs += std::string(dargs.empty() ? "" : ",") + "num_recv_frames=512";
-        }
-        const bool bus = contains(args_, "type=b200");
-        if (bus) {
-            if (!contains(dargs, "num_recv_frames")) dargs += std::string(dargs.empty() ? "" : ",") + "num_recv_frames=128";
-        }
-        if (uhd().make(&dev_, dargs.c_str()) != 0 || !dev_) {
-            if (dev_) uhd().free_(&dev_);
-            dev_ = nullptr;
+        const std::string dargs = usrpDeviceArgs(args_, true);
+        if (!usrpAcquire(dargs, &dev_)) {
             const std::string t = uhd().text(nullptr);
             if (contains(t, "images_downloader") || contains(t, "could not find path for image") || contains(t, "UHD_IMAGES_DIR") || contains(t, "image not found")) {
                 err = "USRP firmware/FPGA images not found: run uhd_images_downloader once (or set UHD_IMAGES_DIR)";
@@ -236,6 +271,7 @@ protected:
         if (!antenna_.empty()) {   // the default entry leaves UHD's choice alone (RX2 on a B2xx)
             if (!uhd().set_rx_antenna) { err = "USRP: this UHD cannot pick the antenna input (no uhd_usrp_set_rx_antenna)"; openFailure_ = OpenFailure::Final; return false; }
             if (uhd().set_rx_antenna(dev_, antenna_.c_str(), ch_) != 0) { err = "USRP: the antenna input " + antenna_ + " was refused: " + uhd().text(dev_); openFailure_ = OpenFailure::Final; return false; }
+            if (antenna_ == "TX/RX" && !onTxRx_) { onTxRx_ = true; rxTxRx(dargs, 1); dargsKept_ = dargs; }
         }
         if (UhdApi::range_t_* rg = nullptr; uhd().get_rx_freq_range && uhd().meta_range_make(&rg) == 0 && rg) {
             double a = 0, b = 0;
@@ -293,8 +329,8 @@ protected:
     }
     void closeDevice() override {
         stopReceiving();
-        if (dev_) uhd().free_(&dev_);
-        dev_ = nullptr;
+        if (onTxRx_) { rxTxRx(dargsKept_, -1); onTxRx_ = false; }
+        usrpRelease(&dev_);
     }
     void streamLoop() override {
         size_t maxN = 0;
@@ -392,6 +428,8 @@ private:
     }
     std::string otw_ = "sc16";   // the wire format ("wire" setting)
     std::string lockNote_;   // "reference locked" / not locked, shown with the start message
+    bool onTxRx_ = false;
+    std::string dargsKept_;
     std::string args_, antenna_;   // antenna_: the input the user picked ("" = UHD's default)
     size_t ch_ = 0;                // the receive channel (the B210's RF A = 0, RF B = 1)
     UhdApi::usrp_t* dev_ = nullptr;
@@ -412,9 +450,9 @@ public:
         close();
         if (!uhd().ok) { err = "USRP: UHD is not installed, it cannot transmit"; return false; }
         if (!uhd().hasTx) { err = "USRP: the installed UHD has no transmit functions (uhd_usrp_set_tx_rate, uhd_tx_streamer_send, ...); install UHD 3.15 or newer"; return false; }
-        if (uhd().make(&dev_, args_.c_str()) != 0 || !dev_) {
-            if (dev_) uhd().free_(&dev_);
-            dev_ = nullptr;
+        const std::string dargs = usrpDeviceArgs(args_, false);
+        if (rxHoldsTxRx(dargs)) { err = "USRP: the receiver is listening on the TX/RX connector, which the transmitter needs. Pick the RX2 input for receiving, or stop the receiver first."; return false; }
+        if (!usrpAcquire(usrpDeviceArgs(args_, false), &dev_)) {
             const std::string x = uhd().text(nullptr);
             err = "USRP: cannot open the radio" + (x.empty() ? std::string(" (in use by a receiver?)") : ": " + x);
             return false;
@@ -490,8 +528,7 @@ private:
     void shut() {
         if (st_) uhd().tx_streamer_free(&st_);
         st_ = nullptr;
-        if (dev_) uhd().free_(&dev_);
-        dev_ = nullptr;
+        usrpRelease(&dev_);
     }
     std::string args_;
     UhdApi::usrp_t* dev_ = nullptr;
@@ -549,6 +586,7 @@ void listUsrp(std::vector<DeviceInfo>& out) {
             d.gainMinDb = 0; d.gainMaxDb = 76;
             // Transmit: every receive entry of one USRP is the same device; the TX window lists it once under txName (not-hasTx UHD: receive-only)
             d.canTransmit = uhd().hasTx;
+            d.txFullDuplex = d.canTransmit && in.antenna != "TX/RX";   // receiving on RX2 and transmitting on TX/RX share the one open radio (#294)
             d.txName = "USRP " + prod + (d.serial.empty() ? "" : " " + d.serial) + " (native, experimental)";
             d.txChannels = prod == "B210" ? 2 : 1;
             d.txMinRateHz = 0.2e6; d.txMaxRateHz = 56e6;
