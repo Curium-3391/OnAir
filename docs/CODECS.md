@@ -362,7 +362,7 @@ folder. Sound needs a plug-in `onair-codec-iridium` (id `iridium`, ABI in `core/
 yourself. Each call to `onair_speech_decode` gets the 39 bytes (312 bits) of the voice field exactly as received (over-the-air bit order,
 MSB first; no de-scrambling or de-interleaving by OnAir) and returns PCM. **Unverified:** this has only been tested with synthetic
 bursts and a stub plug-in, never a real Iridium recording; whether the voice field needs further de-interleaving or FEC before the vocoder
-is for the plug-in. **There is no ready-made `onair-codec-iridium` and no build recipe:** OnAir ships neither the plug-in nor a wrapper around osmo-ir77, so the Iridium voice stays silent until someone writes one (a small C library that exports the functions of `speech_codec.h`, for example around the AMBE decoder of osmo-ir77, built for your platform: on 64-bit Windows with MSYS2 a 64-bit DLL, with the MinGW runtime DLLs beside it). Until then use **Save for iridium-toolkit** below. No public description defines an "encrypted" marker, so none is shown: frames that fail their checks or that the
+is for the plug-in. **The Iridium voice plug-in is not distributed with OnAir.** Without one the voice stays silent; use **Save for iridium-toolkit** below. No public description defines an "encrypted" marker, so none is shown: frames that fail their checks or that the
 plug-in refuses are listed as "not readable" and stay silent, and OnAir never decodes encrypted traffic or works on keys.
 
 Alternatively, **Save for iridium-toolkit** writes a `.bits` file. Then:
