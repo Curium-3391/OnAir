@@ -72,6 +72,8 @@ const std::set<std::string>& restrictedKnownKinds() {
     "tones", "uplink", "vdes", "vdl4", "vor", "vorils", "wifi", "wisun", "wmbus", "zigbee", "zwave",
     // 3.0 modes: blocked until the owner approves them for web listeners
     "argos", "asterix", "horus", "isdbs", "lorasat", "lorawanwide", "nfc", "sbas", "sigfox",
+    // 3.1 modes: blocked likewise
+    "pactor", "pskd",
     };
     return s;
 }
