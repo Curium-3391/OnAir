@@ -1,6 +1,7 @@
 // Flipper Zero Sub-GHz chat: packets, CRC, keys, AES-256-GCM and messages, see esubghz_proto.h
 #include "dect2/esubghz/esubghz_proto.h"
 #include "dect2/mesh/mesh_crypto.h"
+#include <algorithm>
 #include <cstring>
 #include <random>
 
@@ -46,9 +47,9 @@ bool keyFromHex(const std::string& hex, Key& out) {
     std::string h;
     for (char c : hex) if (c != ' ' && c != ':' && c != '-' && c != '\t') h += c;
     std::vector<uint8_t> b;
-    if (h.size() != 64 || !meshcrypto::hexDecode(h, b) || b.size() != 32) return false;
+    if (h.size() != 2 * sizeof out.k || !meshcrypto::hexDecode(h, b) || b.size() != sizeof out.k) return false;
     out.on = true;
-    std::memcpy(out.k, b.data(), 32);
+    std::copy_n(b.begin(), sizeof out.k, out.k);
     return true;
 }
 
@@ -96,8 +97,8 @@ struct Ghash {
     Block h, s;
     void absorb(const uint8_t* p, size_t n) {
         for (size_t i = 0; i < n; i += 16) {
-            uint8_t blk[16] = {};
-            std::memcpy(blk, p + i, std::min<size_t>(16, n - i));
+            uint8_t blk[16] = {};   // a short last block is padded with zeros
+            std::copy_n(p + i, std::min(sizeof blk, n - i), blk);
             const Block b = load(blk);
             s.hi ^= b.hi; s.lo ^= b.lo;
             s = gmul(s, h);
@@ -111,7 +112,8 @@ struct Ghash {
 
 void gcmCore(const meshcrypto::Aes& aes, const uint8_t iv[12], const uint8_t* in, size_t n, uint8_t* out) {
     uint8_t ctr[16], ks[16];
-    std::memcpy(ctr, iv, 12);
+    static_assert(sizeof ctr == kIvOctets + 4, "the IV and a 32-bit counter fill the block");
+    std::copy_n(iv, kIvOctets, ctr);
     uint32_t c = 2;   // J0 = IV || 1 makes the tag; the data starts at inc32(J0)
     for (size_t i = 0; i < n; i += 16) {
         ctr[12] = (uint8_t)(c >> 24); ctr[13] = (uint8_t)(c >> 16); ctr[14] = (uint8_t)(c >> 8); ctr[15] = (uint8_t)c;
@@ -129,7 +131,8 @@ void gcmTag(const meshcrypto::Aes& aes, const uint8_t iv[12], const uint8_t* aad
     g.absorb(aad, aadLen);
     g.absorb(c, n);
     g.lengths(aadLen, n);
-    std::memcpy(j0, iv, 12);
+    static_assert(sizeof j0 == kIvOctets + 4, "the IV and a 32-bit counter fill the block");
+    std::copy_n(iv, kIvOctets, j0);
     j0[12] = 0; j0[13] = 0; j0[14] = 0; j0[15] = 1;
     uint8_t ek[16], sb[16];
     aes.encryptBlock(j0, ek);
@@ -168,10 +171,11 @@ std::vector<uint8_t> encodePlain(const std::string& line) {
 }
 
 std::vector<uint8_t> encodeEncrypted(const Key& k, uint64_t runId, uint32_t counter, const uint8_t iv[12], const std::string& line) {
+    static_assert(kOverhead == kHeaderOctets + kIvOctets + kTagOctets, "header, IV and tag come before the text");
     std::vector<uint8_t> m(kOverhead + line.size());
     for (size_t i = 0; i < 8; i++) m[i] = (uint8_t)(runId >> (8 * i));   // the Flipper copies its native (little-endian) uint64_t
     m[8] = (uint8_t)(counter >> 24); m[9] = (uint8_t)(counter >> 16); m[10] = (uint8_t)(counter >> 8); m[11] = (uint8_t)counter;
-    std::memcpy(m.data() + kHeaderOctets, iv, kIvOctets);
+    std::copy_n(iv, kIvOctets, m.begin() + kHeaderOctets);
     gcmEncrypt(k.k, iv, m.data(), kHeaderOctets, (const uint8_t*)line.data(), line.size(), m.data() + kOverhead, m.data() + kHeaderOctets + kIvOctets);
     return m;
 }

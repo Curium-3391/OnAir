@@ -26,7 +26,7 @@ public:
     void setSignalOffset(double hz);           // where the channel sits from the radio's centre
     bool ready() const;
     void reset();                              // the front end only: the chat, the packets and the replay guard are kept
-    void clearResults();                       // forget the chat and the packets
+    void clearResults();                       // forget the chat, the packets and a message half received (the replay guard is kept)
     void setKey(const esubghz::Key& k);        // !k.on: no encryption
     // A line OnAir sent (the chat screen calls it once the radio has sent it), shown in the chat in order with what was heard
     void noteSent(const std::string& line, bool encrypted, size_t octets);

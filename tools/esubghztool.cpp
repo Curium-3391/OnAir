@@ -9,6 +9,7 @@
 #include "dect2/esubghz/esubghz_proto.h"
 #include "dect2/esubghz/esubghz_rx.h"
 #include "dect2/esubghz/esubghz_tel.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -22,8 +23,6 @@ static int usage() {
                     "esubghztool tx <out.cs8> \"<line>\" [--rate Hz] [--if Hz] [--password P | --hex KEY]\n");
     return 2;
 }
-
-static bool endsWith(const std::string& s, const char* e) { const size_t n = strlen(e); return s.size() >= n && s.compare(s.size() - n, n, e) == 0; }
 
 int main(int argc, char** argv) {
     if (argc < 3) return usage();
@@ -47,7 +46,7 @@ int main(int argc, char** argv) {
     if (cmd == "rx") {
         FILE* f = fopen(path.c_str(), "rb");
         if (!f) { perror(path.c_str()); return 1; }
-        const bool isFloat = endsWith(path, ".cf32") || endsWith(path, ".fc32");
+        const bool isFloat = path.ends_with(".cf32") || path.ends_with(".fc32");
         EsubghzReceiver rx;
         rx.configure(rate);
         rx.setSignalOffset(offset);
@@ -64,9 +63,13 @@ int main(int argc, char** argv) {
             rx.feed(blk.data(), n);
             secs += (double)n / rate;
         }
-        // half a second of silence so the last message is complete
+        // silence past the message gap (kMessageGapSec) so the last message is complete
         std::fill(blk.begin(), blk.end(), cf32(0, 0));
-        for (double s = 0; s < 0.7; s += (double)blk.size() / rate) rx.feed(blk.data(), blk.size());
+        for (size_t left = (size_t)std::ceil((esubghz::kMessageGapSec + 0.2) * rate); left > 0;) {
+            const size_t k = std::min(left, blk.size());
+            rx.feed(blk.data(), k);
+            left -= k;
+        }
         fclose(f);
         EsubghzTelemetry t;
         rx.telemetry(t, 0);

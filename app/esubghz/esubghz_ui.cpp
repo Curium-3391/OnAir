@@ -19,6 +19,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -342,9 +343,9 @@ void list(App& a) {
     for (const EsgChatLine& c : t.chat) {
         if (c.dir != 0 || c.kind > 1) continue;
         std::string n = c.text;
-        auto cut = [&](const char* tail) { const size_t k = strlen(tail); if (n.size() <= k || n.compare(n.size() - k, k, tail) != 0) return false; n.resize(n.size() - k); return true; };
+        auto cut = [&](std::string_view tail) { if (n.size() <= tail.size() || !n.ends_with(tail)) return false; n.resize(n.size() - tail.size()); return true; };
         const size_t q = n.find(": ");
-        if (q != std::string::npos && q <= 32) n = n.substr(0, q);
+        if (q != std::string::npos && q <= 32) n.resize(q);
         else if (!cut(" joined chat.") && !cut(" left chat.")) continue;
         auto it = std::find_if(who.begin(), who.end(), [&](const auto& w) { return w.first == n; });
         if (it == who.end()) who.push_back({n, c.wallTime}); else it->second = c.wallTime;

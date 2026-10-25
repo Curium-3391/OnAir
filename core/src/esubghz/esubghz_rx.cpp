@@ -90,8 +90,8 @@ struct EsubghzReceiver::Impl {
     std::vector<cf32> cur;
     size_t s0 = 0;
     float nzAtStart = 0;
-    uint64_t nSamp = 0;
-    // message being joined (analysis thread)
+    std::atomic<uint64_t> nSamp{0};   // read by telemetry() and noteSent() on other threads
+    // message being joined (under mu: clearResults() drops it from another thread)
     std::vector<uint8_t> pending;
     int pendingPackets = 0;
     double lastPacketSec = -1e9;
@@ -286,6 +286,9 @@ void EsubghzReceiver::setKey(const esubghz::Key& k) { std::lock_guard<std::mutex
 void EsubghzReceiver::clearResults() {
     std::lock_guard<std::mutex> lk(p_->mu);
     p_->chat.clear(); p_->packets.clear();
+    // a message half received before Clear would otherwise come out afterwards, or be joined to the next one. The replay guard is kept: a
+    // Flipper's counter only goes up, so it rejects nothing genuine, and forgetting it would let a recording made before Clear play again.
+    p_->pending.clear(); p_->pendingPackets = 0; p_->lastPacketSec = -1e9;
     p_->ok = p_->bad = p_->bursts = p_->messages = p_->decrypted = p_->unreadable = p_->replays = p_->sent = 0;
     p_->seq++;
 }
@@ -307,7 +310,10 @@ void EsubghzReceiver::feed(const cf32* x, size_t n) {
     if (p->resetReq) p->rebuild();
     p->feedSamples(x, n);
     p->nSamp += n;
-    if (!p->pending.empty() && p->now() - p->lastPacketSec > esubghz::kMessageGapSec) p->finishMessage();
+    {
+        std::lock_guard<std::mutex> lk(p->mu);
+        if (!p->pending.empty() && p->now() - p->lastPacketSec > esubghz::kMessageGapSec) p->finishMessageLocked();
+    }
     while (p->now() >= p->nextReport) {
         std::lock_guard<std::mutex> lk(p->mu);
         const int old = p->state;

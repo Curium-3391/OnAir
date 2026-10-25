@@ -54,7 +54,7 @@ static void deviationCheck() {
     for (size_t i = ramp; i + ramp < v.size(); i++) if (std::fabs(std::abs(v[i]) - 1.f) > 1e-3f) { CHECK(false, "constant envelope between the ramps"); break; }
     float step = 0;
     for (size_t i = 1; i < v.size(); i++) step = std::max(step, std::fabs(std::abs(v[i]) - std::abs(v[i - 1])));
-    CHECK(std::abs(v.front()) < 0.01f && std::abs(v.back()) < 0.05f && step < 0.05f, "ramps: first %.3f last %.3f step %.3f", std::abs(v.front()), std::abs(v.back()), step);
+    CHECK(std::abs(v.front()) < 0.01f && std::abs(v.back()) < 0.05f && step < 0.05f, "ramps: first %.3f last %.3f step %.3f", (double)std::abs(v.front()), (double)std::abs(v.back()), (double)step);
 }
 
 int main() {
@@ -119,6 +119,41 @@ int main() {
         CHECK(t.chat.size() == 1 && t.chat[0].text == "OnAir: via the TX row", "TX generator line: %s", t.chat.empty() ? "(none)" : t.chat[0].text.c_str());
         r.payload = std::string(1100, 'x');
         CHECK(!makeEsubghzTxGenerator(r, 2e6, err) && !err.empty(), "a message longer than 1024 octets is refused");
+    }
+    {   // Clear in the middle of a three-packet message: the half received is dropped, not shown later or joined to the next message;
+        // an encrypted line heard before Clear and sent again afterwards is still a replay
+        const double rate = 2e6, off = -300e3;
+        esubghz::Sender f(0x5EED);
+        const auto e1 = f.encode(&key, "Flipper1: before Clear");
+        Air before, after;
+        before.silence(0.05, rate);
+        before.message(e1, rate, off);
+        before.silence(0.7, rate);
+        const auto part = esubghzMessageIq(esubghz::encodePlain(longLine), rate, off, 0.3f, 0.003, 0.0);
+        before.iq.insert(before.iq.end(), part.begin(), part.begin() + (long)(part.size() / 2));
+        after.silence(0.7, rate);
+        after.message(esubghz::encodePlain("Flipper1: after Clear"), rate, off);
+        after.silence(0.7, rate);
+        after.message(e1, rate, off);
+        after.silence(0.7, rate);
+        EsubghzReceiver rx;
+        rx.configure(rate);
+        rx.setSignalOffset(off);
+        rx.setKey(key);
+        auto feed = [&](const Air& air) { for (size_t i = 0; i < air.iq.size(); i += 4096) rx.feed(air.iq.data() + i, std::min<size_t>(4096, air.iq.size() - i)); };
+        feed(before);
+        EsubghzTelemetry t;
+        rx.telemetry(t, 0);
+        CHECK(t.chat.size() == 1 && t.blocksOk >= 2, "before Clear: %zu lines, %llu packets", t.chat.size(), (unsigned long long)t.blocksOk);
+        rx.clearResults();
+        feed(after);
+        rx.telemetry(t, 0);
+        CHECK(t.chat.size() == 2, "after Clear: %zu chat lines (wanted the new line and the replay)", t.chat.size());
+        if (t.chat.size() == 2) {
+            CHECK(t.chat[0].kind == 0 && t.chat[0].text == "Flipper1: after Clear" && t.chat[0].packets == 1, "after Clear: line 1 kind %d, %d packets, '%s'",
+                  t.chat[0].kind, t.chat[0].packets, t.chat[0].text.c_str());
+            CHECK(t.chat[1].kind == 3 && t.replays == 1, "after Clear: the line from before is a replay (kind %d)", t.chat[1].kind);
+        }
     }
     {   // a weak signal: count how many of 40 single-packet lines come through at 9 dB
         Air air;
