@@ -63,6 +63,11 @@ void startApp(App& app, int argc, char** argv) {
     if (safeStart) app.engine.log("safe start: no radio opened by itself; saved network radios are in the settings file, see docs/NETWORK_RADIOS.md");
     for (int i = 0; i < (int)app.devices.size() && !safeStart; i++)
         if (app.devices[i].isRadio()) { app.devIdx = i; break; }
+    if (!safeStart) {   // the radio RX 1 had at the last exit, when it is in the list (before, RX 1 always took the first radio, #314)
+        const std::string had = plat::prefs().getS("devName", "");
+        for (int i = 2; i < (int)app.devices.size() && !had.empty(); i++)
+            if (app.devices[i].isRadio() && app.devices[i].name == had) { app.devIdx = i; break; }
+    }
     {   // "Get me listening": a start with no source configured (no radio, none remembered), unless the user said not to show it
         bool sourceSet = !plat::prefs().getS("devName", "").empty();
         for (const DeviceInfo& d : app.devices) if (d.isRadio()) sourceSet = true;

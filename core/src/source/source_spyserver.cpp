@@ -52,8 +52,9 @@ struct SpyInfo {
 std::mutex gInfoMu;
 std::map<std::string, SpyInfo> gInfo;
 SpyInfo infoFor(const std::string& addr) { std::lock_guard<std::mutex> lk(gInfoMu); auto it = gInfo.find(addr); return it == gInfo.end() ? SpyInfo{} : it->second; }
-void noteInfo(const std::string& addr, const SpyInfo& i) { std::lock_guard<std::mutex> lk(gInfoMu); gInfo[addr] = i; }
 
+
+// (noteInfo is defined after widenRange, below)
 void parseDeviceInfo(const unsigned char* b, uint32_t n, SpyInfo& i) {
     uint32_t v[12];
     netp::spyDeviceInfo(b, n, v);
@@ -67,6 +68,14 @@ void parseClientSync(const unsigned char* b, uint32_t n, SpyInfo& i) {
     i.canControl = v[0] != 0; i.gain = v[1]; i.devCenter = v[2]; i.iqCenter = v[3]; i.minIqCenter = v[5]; i.maxIqCenter = v[6];
     i.synced = true;
 }
+// The tuning range of the server's radio: what its DEVICE_INFO says, widened to the IQ centre range its CLIENT_SYNC allows (the limits the server
+// really accepts; SDR# tunes an Airspy One past the 1.8 GHz of the stock DEVICE_INFO this way, issue #321). Nothing is narrowed.
+void widenRange(SpyInfo& i) {
+    if (!i.synced || i.maxIqCenter == 0 || i.maxIqCenter < i.minIqCenter) return;
+    if (i.maxIqCenter > i.maxFreq) i.maxFreq = i.maxIqCenter;
+    if (i.minIqCenter > 0 && (i.minFreq == 0 || i.minIqCenter < i.minFreq)) i.minFreq = i.minIqCenter;
+}
+void noteInfo(const std::string& addr, const SpyInfo& in) { SpyInfo i = in; widenRange(i); std::lock_guard<std::mutex> lk(gInfoMu); gInfo[addr] = i; }
 
 bool sendCommand(sock_t s, uint32_t type, const unsigned char* body, uint32_t n) {
     const std::string b = netp::spyCommand(type, body, n);
@@ -177,6 +186,7 @@ protected:
         sockRecvTimeout(sock_, kConnectMs);
         SpyInfo info;
         if (!handshake(sock_, info, addr_, e)) { err = "SpyServer: " + e; return false; }
+        widenRange(info);
         noteInfo(addr_, info);
         { std::lock_guard<std::mutex> lk(infoMu_); info_ = info; }
         sockRecvTimeout(sock_, kStallMs);

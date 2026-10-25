@@ -136,6 +136,7 @@ void refreshDevices(App& a) {
     DeviceInfo f; f.kind = DeviceInfo::File; f.name = "IQ recording file…"; a.devices.push_back(f);
     for (auto& d : listAudioDevices()) a.devices.push_back(d);
     std::string err;
+    syncNetRadios(a);   // the list is shared by all receivers: what another one added or removed
     setNetworkRadios(a.netRadios);   // the ones the user added by address come after the ones found
     setHamlibRigs(a.hamlibRigs);
     setSynthGroups(a.synthGroups);   // the saved radio groups: listed after the radios they are made of

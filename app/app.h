@@ -209,6 +209,7 @@ struct App {
     std::vector<DeviceInfo> devices; // [0]=synthetic, [1]=file, then sound cards, then radios
     // radios on the network the user added (prefs "netRadios"; listed by refreshDevices) and the "Add network radio" window
     std::vector<NetRadio> netRadios;
+    mutable std::vector<NetRadio> netRadiosSeen;   // the list as last loaded or saved by this receiver: what it added or removed since is its change (the list is shared by every receiver, #314)
     std::vector<std::string> hiddenRadios;   // prefs "hiddenRadios": radios the user hid from the list (by name)
     bool devicesDirty = false;               // the radio list must be rescanned (a radio was hidden or shown)
     std::vector<HamlibRig> hamlibRigs;   // prefs "hamlibRigs"; serial-CAT rigs listed with the other radios
@@ -935,6 +936,7 @@ void txTick(App& a);               // every frame: gives the radio back when a t
 void txShutdown();                 // stops a running transmission (the radio goes quiet before it returns); the program's end
 bool txActive();
 void savePrefs(const App& a);
+void syncNetRadios(App& a);         // takes the shared list of added network radios (saved by any receiver) into this receiver, keeping its own changes
 void savePrefsSoon(const App& a);   // a tuning event: the save follows 0.6 s after the last one, not on the UI thread's mouse path
 void savePrefsTick();               // each frame
 void savePrefsFlush();              // at exit
