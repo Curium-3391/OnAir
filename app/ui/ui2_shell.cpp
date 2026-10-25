@@ -26,6 +26,10 @@
 #include "../panels/backup_ui.h"
 #include "../gfx/render_caps.h"
 
+// the byte length of the UTF-8 character that starts with `lead` (1 for ASCII and for a stray byte)
+static size_t utf8Len(char lead) { const unsigned char c = (unsigned char)lead; return c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1; }
+
+
 void clearAllButtonAt(App& a, bool sameLine);   // update_ui.cpp: Clear all, without its own SameLine
 using namespace ui2;
 
@@ -366,7 +370,7 @@ void statusLine(App& a) {
         ImFont* mono = typo::fonts().mono ? typo::fonts().mono : a.mono;
         ImFont* monoB = typo::fonts().monoBold ? typo::fonts().monoBold : mono;
         const auto upper = [](std::string s) { for (char& c : s) if (c >= 'a' && c <= 'z') c = (char)(c - 32); return s; };
-        const auto capW = [&](const std::string& s) { ImGui::PushFont(nullptr, capS); float w = 0; for (char c : s) { char t[2] = {c, 0}; w += ImGui::CalcTextSize(t).x + spc; } ImGui::PopFont(); return w; };
+        const auto capW = [&](const std::string& s) { ImGui::PushFont(nullptr, capS); float w = 0; for (size_t i = 0; i < s.size();) { const size_t n = utf8Len(s[i]); const std::string t = s.substr(i, n); w += ImGui::CalcTextSize(t.c_str()).x + spc; i += n; } ImGui::PopFont(); return w; };
         const auto textW = [&](const std::string& s, ImFont* f, float sz) { ImGui::PushFont(f, sz); const float w = ImGui::CalcTextSize(s.c_str()).x; ImGui::PopFont(); return w; };
         const std::string capF = upper(tr("Frequency")), capM = upper(tr("Mode")), capR = upper(tr("Receiver")), capS2 = upper(tr("State")), capC = "CPU";
         const std::string stateTxt = tr(run ? "Receiving" : scanning ? "Channel scan" : "Stopped");
@@ -393,7 +397,7 @@ void statusLine(App& a) {
             if (!pl.captions || s.empty()) return;
             ImGui::PushFont(nullptr, capS);
             float px = cx + padX;
-            for (char c : s) { char t[2] = {c, 0}; dl2->AddText(ImVec2(px, capY), u32(T.dim), t); px += ImGui::CalcTextSize(t).x + spc; }
+            for (size_t i = 0; i < s.size();) { const size_t n = utf8Len(s[i]); const std::string t = s.substr(i, n); dl2->AddText(ImVec2(px, capY), u32(T.dim), t.c_str()); px += ImGui::CalcTextSize(t.c_str()).x + spc; i += n; }   // by character, not by byte: a Chinese caption was bytes shown as "?" (#297)
             ImGui::PopFont();
         };
         const auto valueAt = [&](float cx, float cw, float tw, float vy, float sz, ImFont* f, ImU32 col, const std::string& s) {   // centred in the value row
