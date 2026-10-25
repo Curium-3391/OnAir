@@ -33,10 +33,10 @@ int main() {
     const std::string modeUi = readFile("app/panels/modeui.cpp");
     CHECK(modeUi.find("case 155: return &kMarineVhfUi;") != std::string::npos, "family 155 not mapped");
     const std::string cm = readFile("CMakeLists.txt");
-    CHECK(cm.find(" marinevhf)") != std::string::npos, "marinevhf not in DECT2_MODES");
+    CHECK(cm.find(" marinevhf ") != std::string::npos, "marinevhf not in DECT2_MODES");
     CHECK(cm.find("marine_vhf_channels.csv") != std::string::npos, "the channel table is not compiled in");
     const std::string ui = readFile("app/marinevhf/marinevhf_ui.cpp");
-    for (const char* s : {"Watch channel 16", "Automatic: the strongest open channel", "Call log", "Record##mvrec", "Open the DSC mode", "Open the AIS mode", "return a.rx.standard == 149;"})
+    for (const char* s : {"Watch channel 16", "Automatic: the strongest open channel", "Call log", "Record##mvrec", "Open the DSC mode", "Open the AIS mode", "return a.rx.standard == 156;"})
         CHECK(ui.find(s) != std::string::npos, "screen string missing: %s", s);
     const std::string marineUi = readFile("app/marine/marine_ui.cpp");
     CHECK(marineUi.find("Listen on VHF channel") != std::string::npos && marineUi.find("marineVhfJump(a,") != std::string::npos, "the DSC screen has no jump to the channel");

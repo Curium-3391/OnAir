@@ -40,7 +40,7 @@ int main() {
     const std::string modeUi = readFile("app/panels/modeui.cpp");
     CHECK(has(modeUi, "case 200: return &kLorawanUi;") && has(modeUi, "case 201: return &kLoraSatUi;"), "panels not mapped");
     const std::string cm = readFile("CMakeLists.txt");
-    CHECK(has(cm, "prop lorawan lorasat)"), "modes missing in CMakeLists.txt");
+    CHECK(has(cm, " lorawan lorasat "), "modes missing in CMakeLists.txt");
     const std::string lw = readFile("app/lorawan/lorawan_ui.cpp");
     for (const char* s : {"Receive only and keyless", "never decrypts", "never checks a MIC", "DevAddr", "FPort", "Gateway downlinks"}) CHECK(has(lw, s), "LoRaWAN panel string missing: %s", s);
     const std::string ls = readFile("app/lorasat/lorasat_ui.cpp");

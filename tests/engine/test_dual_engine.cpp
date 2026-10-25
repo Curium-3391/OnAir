@@ -105,10 +105,10 @@ int main() {
     for (int i = 0; i < 500 && !(again = e.latestRx2(r2, s2) && r2.standard == 28); i++) std::this_thread::sleep_for(std::chrono::milliseconds(20));
     CHECK(again, "second report after the restart");
     printf("  second again: %llu frames (%llu before)\n", (unsigned long long)r2.vdl2.blocksOk, (unsigned long long)before);
-    // a retune that moves the capture out of reach suspends it, moving back resumes it
+    // a recording keeps its own centre whatever the VFO does (IQ file playback tunes by offset), so a retune leaves the second mode running
     TuneSettings t2 = t; t2.centerHz = 128e6;
     e.retuneReset(t2);
-    CHECK(!e.secondaryRunning() && e.secondaryStandard() == 29 && e.secondaryNote().find("suspended") == 0, "after moving away: '%s'", e.secondaryNote().c_str());
+    CHECK(e.secondaryRunning() && e.secondaryStandard() == 29 && e.secondaryNote().empty(), "after moving the VFO of a recording: '%s'", e.secondaryNote().c_str());
     e.retuneReset(t);
     CHECK(e.secondaryRunning() && e.secondaryNote().empty(), "after moving back: '%s'", e.secondaryNote().c_str());
     e.clearSecondary();

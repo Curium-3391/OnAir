@@ -107,11 +107,10 @@ int main() {
     CHECK(e.setSecondaryDvbs(centre + off2, rs2) && e.secondaryRunning(), "the other carrier: '%s'", e.secondaryNote().c_str());
     run(rs2, 16.6, "0.5 Msym/s carrier");   // the noise floor is the first carrier's: 0.6 times its amplitude at half the symbol rate, 1.4 dB less Es/N0
 
-    // out of reach (the capture is retuned away: the carrier lies beyond it): suspended with the reason, back again when it fits
+    // a recording keeps its own centre whatever the VFO does (IQ file playback tunes by offset): a retune leaves the second mode running
     TuneSettings t2 = t; t2.centerHz = centre + 4e6;
     e.retuneReset(t2);
-    CHECK(!e.secondaryRunning() && e.secondaryStandard() == 8 && e.secondaryNote().find("suspended") == 0, "after moving away: '%s'", e.secondaryNote().c_str());
-    printf("  suspended: %s\n", e.secondaryNote().c_str());
+    CHECK(e.secondaryRunning() && e.secondaryStandard() == 8 && e.secondaryNote().empty(), "after moving the VFO of a recording: '%s'", e.secondaryNote().c_str());
     e.retuneReset(t);
     CHECK(e.secondaryRunning() && e.secondaryNote().empty(), "after moving back: '%s'", e.secondaryNote().c_str());
 

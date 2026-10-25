@@ -37,7 +37,7 @@ int main() {
     fs::create_directories(dir);
     const double rate = 96000, centre = 433.5e6;
     const std::vector<cf32> x = signal(40000);
-    const char* names[] = {"sigmf_cf32", "sigmf_ci16", "sigmf_ci8", "raw_cf32", "wav"};
+    const char* names[] = {"sigmf_cf32", "sigmf_ci16", "sigmf_ci8", "raw_cf32", "wav", "blue_cf32", "blue_ci16", "blue_ci8"};
 
     for (int f = 0; f < kIqFileFormats; f++) {
         const IqFileFormat fmt = (IqFileFormat)f;
@@ -73,18 +73,19 @@ int main() {
             if (fmt != IqFileFormat::WavIq16) CHECK(std::fabs(info.centerHz - centre) < 1, "%s: centre %.1f", names[f], info.centerHz);
             const auto b = readAll(info.dataPath);
             const uint64_t end = info.endBytes ? info.endBytes : b.size();
-            const size_t bps = fmt == IqFileFormat::SigmfCf32 ? 8 : fmt == IqFileFormat::SigmfCs8 ? 2 : 4;
+            const bool isF = fmt == IqFileFormat::SigmfCf32 || fmt == IqFileFormat::BlueCf32, isB = fmt == IqFileFormat::SigmfCs8 || fmt == IqFileFormat::BlueCs8;
+            const size_t bps = isF ? 8 : isB ? 2 : 4;
             CHECK(end - info.offsetBytes == x.size() * bps, "%s: data bytes %llu", names[f], (unsigned long long)(end - info.offsetBytes));
-            CHECK(info.format == (fmt == IqFileFormat::SigmfCf32 ? FileFormat::CF32 : fmt == IqFileFormat::SigmfCs8 ? FileFormat::CS8 : FileFormat::CI16), "%s: format", names[f]);
+            CHECK(info.format == (isF ? FileFormat::CF32 : isB ? FileFormat::CS8 : FileFormat::CI16), "%s: format", names[f]);
             y.resize(x.size());
             for (size_t i = 0; i < x.size() && info.offsetBytes + (i + 1) * bps <= b.size(); i++) {
                 const unsigned char* p = b.data() + info.offsetBytes + i * bps;
-                if (fmt == IqFileFormat::SigmfCf32) memcpy(&y[i], p, 8);
-                else if (fmt == IqFileFormat::SigmfCs8) y[i] = cf32((float)(int8_t)p[0] / 127.f, (float)(int8_t)p[1] / 127.f);
+                if (isF) memcpy(&y[i], p, 8);
+                else if (isB) y[i] = cf32((float)(int8_t)p[0] / 127.f, (float)(int8_t)p[1] / 127.f);
                 else y[i] = cf32((float)(int16_t)(p[0] | (p[1] << 8)) / 32767.f, (float)(int16_t)(p[2] | (p[3] << 8)) / 32767.f);
             }
         }
-        const float tol = fmt == IqFileFormat::SigmfCs8 ? 0.01f : fmt == IqFileFormat::SigmfCi16 || fmt == IqFileFormat::WavIq16 ? 0.0001f : 0.f;
+        const float tol = fmt == IqFileFormat::SigmfCs8 || fmt == IqFileFormat::BlueCs8 ? 0.01f : fmt == IqFileFormat::SigmfCi16 || fmt == IqFileFormat::BlueCi16 || fmt == IqFileFormat::WavIq16 ? 0.0001f : 0.f;
         float worst = 0;
         for (size_t i = 0; i < x.size() && i < y.size(); i++) worst = std::max(worst, std::max(std::fabs(x[i].real() - y[i].real()), std::fabs(x[i].imag() - y[i].imag())));
         CHECK(y.size() == x.size() && worst <= tol, "%s: samples differ by %.6f (tolerance %.6f)", names[f], (double)worst, (double)tol);
