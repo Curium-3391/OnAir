@@ -162,6 +162,19 @@ int main() {
         if (sv.streams.size() == 2) CHECK(sv.streams[0].codec == "H.264" && sv.streams[1].codec == "AAC" && sv.streams[1].lang == "eng", "stream parse: %s / %s %s", sv.streams[0].codec.c_str(), sv.streams[1].codec.c_str(), sv.streams[1].lang.c_str());
     }
     CHECK(sn.onid == 0x2310 && sn.tsid == 7, "ids onid %x tsid %x", sn.onid, sn.tsid);
+    // ISDB-T one-seg without a PAT (#313): the partial-reception PMT on 0x1FC8 alone builds the service
+    {
+        TsDemux o;
+        int c5 = 0;
+        std::vector<uint8_t> opmt = {0x02, 0xB0, 0, 0x06, 0x48, 0xC1, 0, 0, 0xE2, 0x11, 0xF0, 0x00,
+                                     0x1B, 0xE2, 0x11, 0xF0, 0x00, 0x0F, 0xE2, 0x12, 0xF0, 0x00};
+        opmt[2] = (uint8_t)(opmt.size() - 3 + 4);
+        feedSection(o, 0x1FC8, section(opmt), c5);
+        feedSection(o, 0x300, section(opmt), c5);   // not a partial-reception PID: ignored
+        auto osn = o.snapshot();
+        CHECK(osn.services.size() == 1 && osn.services[0].id == 0x648 && osn.services[0].pmtPid == 0x1FC8 && osn.services[0].havePmt && osn.services[0].streams.size() == 2,
+              "one-seg PMT without PAT: %zu services", osn.services.size());
+    }
     // text decoding
     const uint8_t arabic[] = {0x02, 0xE5, 0xD1, 0xCD, 0xC8, 0xC7}; // ISO-8859-6: "مرحبا"
     CHECK(dvbText(arabic, 6) == "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7", "ISO-8859-6 decode");

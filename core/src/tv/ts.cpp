@@ -94,7 +94,7 @@ void TsDemux::feed(const uint8_t* p) {
     const int off = hd.payloadOff;
     if (off < 0) return;
     // only PSI/SI PIDs and PMT PIDs carry sections we care about
-    const bool psi = pid == 0 || pid == 1 || pid == 0x10 || pid == 0x11 || pid == 0x12 || pid == 0x14 || pid == 0x1FFB || pmtToService_.count(pid);
+    const bool psi = pid == 0 || pid == 1 || pid == 0x10 || pid == 0x11 || pid == 0x12 || pid == 0x14 || pid == 0x1FFB || (pid >= 0x1FC8 && pid <= 0x1FCF) || pmtToService_.count(pid);
     if (!psi) return;
     SectionBuf& sb = sec_[pid];
     const uint8_t* d = p + off;
@@ -182,10 +182,21 @@ void TsDemux::parsePat(const uint8_t* s, int len) {
 
 void TsDemux::parsePmt(int pid, const uint8_t* s, int len) {
     auto it = pmtToService_.find(pid);
-    if (it == pmtToService_.end()) return;
-    TsService& sv = services_[it->second];
     tsp::Pmt pmt;
-    if (!tsp::parsePmt(s, len, pmt) || pmt.prog != sv.id) return;
+    if (it == pmtToService_.end()) {
+        // ISDB-T partial reception (one-seg): its PMT sits at a fixed PID 0x1FC8-0x1FCF (ARIB STD-B10). When the PAT has not arrived
+        // (it can be carried in a layer that is not received) the service is built from the PMT itself, so the one-seg still plays.
+        if (pid < 0x1FC8 || pid > 0x1FCF) return;
+        if (!tsp::parsePmt(s, len, pmt)) return;
+        TsService& nsv = services_[pmt.prog];
+        nsv.id = pmt.prog;
+        if (!nsv.pmtPid) nsv.pmtPid = pid;
+        pmtToService_[pid] = pmt.prog;
+        it = pmtToService_.find(pid);
+    }
+    TsService& sv = services_[it->second];
+    if (pmt.prog == 0 && !tsp::parsePmt(s, len, pmt)) return;
+    if (pmt.prog != sv.id) return;
     sv.pcrPid = pmt.pcrPid;
     std::vector<TsStream> streams;
     for (const tsp::PmtStream& ps : pmt.streams) {
