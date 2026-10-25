@@ -55,17 +55,21 @@ std::vector<uint8_t> bytesToMillerSeq(const std::vector<uint8_t>& bytes, int bit
         if (bit) { seq.push_back(1); prev = 1; }           // X
         else { seq.push_back(prev == 1 ? 0 : 2); prev = 0; } // Y after a 1, else Z
     }
-    seq.push_back(0);   // EOF = logic 0 (Y), followed by no modulation
+    // end of communication: a logic 0 (a Z after a 0, a Y after a 1) followed by a Y
+    seq.push_back(prev == 1 ? 0 : 2);
+    seq.push_back(0);
     return seq;
 }
 
 std::vector<uint8_t> millerSeqToBytes(const std::vector<uint8_t>& seq, int& bits, bool& parityOk) {
     bits = 0; parityOk = true;
-    if (seq.size() < 2) return {};
+    if (seq.size() < 3) return {};
     std::vector<uint8_t> all;   // bits after the SOF, one per symbol (X->1, Y/Z->0)
     for (size_t i = 1; i < seq.size(); i++) all.push_back(seq[i] == 1 ? 1 : 0);
     if (all.empty()) return {};
-    all.pop_back();   // drop the EOF logic-0
+    all.pop_back();   // drop the Y of the end of communication
+    all.pop_back();   // and its logic 0
+    if (all.empty()) return {};
     if (all.size() == 7) return bitsToBytes(all, bits, parityOk);
     // trim to a whole number of (8 + parity) groups
     const size_t groups = all.size() / 9;
@@ -77,6 +81,7 @@ std::vector<uint8_t> millerSeqToBytes(const std::vector<uint8_t>& seq, int& bits
 namespace {
 constexpr double kIdleEtu = 6.0;        // a gap of this many etu ends a burst (must exceed an ISO 15693 Manchester gap: a bit is
                                         // 4 etu, so a "1" then "0" leaves up to 4 etu of no subcarrier within one frame)
+constexpr float kMinField = 0.003f;     // below this the carrier is not there (0.4 LSB of an 8-bit capture)
 constexpr float kPauseFrac = 0.4f;      // envelope below this fraction of the field = a pause (a 100% ASK reader pause goes to ~0;
                                         // a tag's weaker load modulation never dips this far, so the two are told apart)
 }
@@ -85,6 +90,7 @@ struct Demod::State {
     double fs = 0;
     // carrier / field envelope smoothing
     double fieldLevel = 0;              // slow running maximum of |x| (the un-paused field)
+    double noiseA = 0, noiseV = 0;      // running level of the two subcarrier detectors while nothing is happening: the quantisation / thermal noise they show
     // subcarrier mixers (Type A/B at 847.5 kHz, 15693 at 423.75 kHz), each with a 3-pole low-pass after the down-mix so the carrier
     // leakage at the (negative) subcarrier image is well below the detection threshold while the data band passes.
     double phA = 0, phV = 0;
@@ -113,7 +119,7 @@ void Demod::setFs(double fs) {
 
 void Demod::reset() {
     State& s = *st_;
-    s.fieldLevel = 0; s.phA = s.phV = 0;
+    s.fieldLevel = 0; s.noiseA = s.noiseV = 0; s.phA = s.phV = 0;
     for (int i = 0; i < 3; i++) { s.lpA[i] = {0,0}; s.lpV[i] = {0,0}; }
     s.env.clear(); s.subA.clear(); s.subV.clear();
     s.inBurst = false; s.idleRun = 0; s.sampleTime = 0; s.sampleIdx = 0;
@@ -122,7 +128,22 @@ void Demod::reset() {
 
 // Convert a subcarrier-magnitude envelope burst into bits via Manchester (first vs second half of each etu). The tag SOF is one
 // full-on etu (both halves high), which aligns the bit grid and is skipped.
-static std::vector<uint8_t> manchesterBits(const std::vector<float>& e, double spEtu) {
+// Does a decoded Type A tag answer have the shape of one? In a weak capture the leakage of a reader's pauses and the quantisation noise
+// reach the subcarrier detector and decode to a byte or two that pass parity half the time, so short answers must be an ATQA (2 bytes,
+// reserved bits clear, UID size not 3), a SAK / CRC_A-carrying frame, or the 5 bytes of a UID with its BCC; a longer one must pass its
+// parity or its CRC_A.
+static bool tagFramePlausible(const std::vector<uint8_t>& b, bool parityOk, size_t parityErrors) {
+    if (b.empty()) return false;
+    if (b.size() >= 3 && crcAOk(b)) return true;
+    if (b.size() == 5) { return !(b[0] ^ b[1] ^ b[2] ^ b[3] ^ b[4]); }   // UID and BCC: the XOR check is strong enough on its own
+    if (b.size() == 2) return parityOk && (b[0] >> 6) != 3 && !(b[0] & 0x20) && !(b[1] & 0xF0);   // ATQA
+    if (b.size() <= 4) return false;
+    return parityOk || (b.size() >= 8 && parityErrors <= std::max<size_t>(1, b.size() / 16));   // a long run with a stray bit error is a real answer (shown with its parity flagged); noise fails half its bytes
+}
+
+static std::vector<uint8_t> manchesterBits(const std::vector<float>& e, double spEtu, float* contrast = nullptr) {
+    double cSum = 0; int cN = 0;
+    if (contrast) *contrast = 0;
     float peak = 0; for (float v : e) peak = std::max(peak, v);
     if (peak <= 0 || spEtu < 2) return {};
     const float th = peak * 0.3f;
@@ -143,7 +164,9 @@ static std::vector<uint8_t> manchesterBits(const std::vector<float>& e, double s
         for (size_t i = h; i < (size_t)(c + spEtu) && i < e.size(); i++) second += e[i];
         if (first < th * spEtu * 0.25 && second < th * spEtu * 0.25) break;   // EOF: no subcarrier in either half
         bits.push_back(first > second ? 1 : 0);   // subcarrier in the first half = logic 1
+        cSum += std::fabs(first - second) / (first + second + 1e-12); cN++;   // a real Manchester bit has the subcarrier in one half only
     }
+    if (contrast) *contrast = cN ? (float)(cSum / cN) : 0.f;
     return bits;
 }
 
@@ -153,9 +176,10 @@ void Demod::processReaderEnvelope(const float*, size_t, double) {}
 // decode one captured burst (field envelope + the two subcarrier envelopes), emit any frames found
 static void decodeBurst(const std::function<void(const RawFrame&)>& onFrame, double fs,
                         const std::vector<float>& env, const std::vector<float>& subA, const std::vector<float>& subV,
-                        double t0, float fieldLevel) {
+                        double t0, float fieldLevel, float noiseA, float noiseV) {
     const double spEtu = fs * kEtu;   // samples per etu
     if (spEtu < 4) return;
+    if (fieldLevel < kMinField) return;   // no carrier: the 'pauses' and 'subcarriers' of a bare noise floor are not frames
 
     float subAPk = 0, subVPk = 0, envMin = fieldLevel;
     for (float v : subA) subAPk = std::max(subAPk, v);
@@ -167,19 +191,29 @@ static void decodeBurst(const std::function<void(const RawFrame&)>& onFrame, dou
     auto db = [](float lin) { return lin > 0 ? 20.0f * std::log10(lin) : -200.0f; };
 
     if (!hasPause) {   // tag answer
-        if (subAPk > fieldLevel * 0.05f && subAPk >= subVPk) {   // Type A/B on 847.5 kHz
-            const std::vector<uint8_t> bits = manchesterBits(subA, spEtu);
+        // an answer must stand clear of the detectors' own noise (a weak 8-bit capture: the quantisation noise of the carrier alone
+        // reaches 5 % of it) and, when its parity fails, by a wide margin: a noise burst is not shown as a frame (#271)
+        const float gateA = std::max(fieldLevel * 0.05f, noiseA * 10.f), gateV = std::max(fieldLevel * 0.05f, noiseV * 10.f);
+        if (subAPk > gateA && subAPk >= subVPk) {   // Type A/B on 847.5 kHz
+            float contrast = 0;
+            const std::vector<uint8_t> bits = manchesterBits(subA, spEtu, &contrast);
             int b = 0; bool par = true;
             std::vector<uint8_t> bytes = bitsToBytes(bits, b, par);
+            if (contrast < 0.2f) bytes.clear();                                    // the halves do not differ like Manchester: noise
+            size_t perr = 0;
+            for (size_t g = 0; g + 9 <= bits.size(); g += 9) { int ones = 0; for (int k = 0; k < 9; k++) ones += bits[g + (size_t)k]; if (!(ones & 1)) perr++; }
+            if (!tagFramePlausible(bytes, par, perr)) bytes.clear();                     // a noise burst has the shape of no tag answer
             if (!bytes.empty()) {
                 RawFrame f; f.proto = Proto::TypeA; f.fromReader = false; f.bits = b; f.parityOk = par;
                 f.bytes = bytes; f.timeSec = t0; f.levelDb = db(subAPk);
                 onFrame(f);
             }
-        } else if (subVPk > fieldLevel * 0.05f) {   // ISO 15693 on 423.75 kHz (high data rate fc/512 = 4 etu/bit, no per-byte parity)
-            const std::vector<uint8_t> bits = manchesterBits(subV, spEtu * 4.0);
+        } else if (subVPk > gateV) {   // ISO 15693 on 423.75 kHz (high data rate fc/512 = 4 etu/bit, no per-byte parity)
+            float contrast = 0;
+            const std::vector<uint8_t> bits = manchesterBits(subV, spEtu * 4.0, &contrast);
             std::vector<uint8_t> bytes;
             for (size_t i = 0; i + 8 <= bits.size(); i += 8) { uint8_t by = 0; for (int k = 0; k < 8; k++) by |= (uint8_t)(bits[i+k] << k); bytes.push_back(by); }
+            if (contrast < 0.2f || bytes.size() < 3) bytes.clear();                 // an ISO 15693 answer is a flag, data and a CRC_16 at least
             if (!bytes.empty()) {
                 RawFrame f; f.proto = Proto::V15693; f.fromReader = false; f.bits = (int)bytes.size()*8; f.parityOk = true;
                 f.bytes = bytes; f.timeSec = t0; f.levelDb = db(subVPk);
@@ -230,42 +264,40 @@ static void decodeBurst(const std::function<void(const RawFrame&)>& onFrame, dou
         return;
     }
 
-    // ISO 14443 Type A reader: lock the etu grid at the first pause and read symbols.
-    const double sof = (double)pauseCentre.front() - spEtu * 0.25;   // SOF pause sits in the first half of the start Z
-    std::vector<uint8_t> seq;
-    seq.push_back(2);   // SOF Z
-    const size_t lastPause = pauseCentre.back();
-    for (double c = sof + spEtu; c <= (double)lastPause + spEtu; c += spEtu) {
-        // any pause in [c, c+spEtu)? which half?
-        int sym = 0;   // Y (none)
-        for (size_t p : pauseCentre) if (p >= (size_t)c && p < (size_t)(c + spEtu)) {
-            sym = (p - (size_t)c) < (size_t)(spEtu / 2) ? 2 /*Z 1st half*/ : 1 /*X 2nd half*/;
-            break;
-        }
-        seq.push_back((uint8_t)sym);
+    // ISO 14443 Type A reader: the first pause is the start of communication (Z). Every other pause sits on the half-etu grid from it:
+    // on a whole etu it is a Z (first half), on a half it is an X (second half). The last pause ends the frame: a Z there is the
+    // logic 0 of the end of communication (the data ends one etu before it); an X there is the last data bit (a 1), and the end of
+    // communication after a 1 is a Y without any pause. So the bit count follows exactly, and a 7-bit short frame (REQA, WUPA) is
+    // told from a 9-bits-per-byte one.
+    const double c0 = (double)pauseCentre.front();
+    std::vector<int> half;   // pause position in half etus from the first pause
+    bool onGrid = true;
+    for (size_t pi = 1; pi < pauseCentre.size(); pi++) {
+        const double h = 2.0 * ((double)pauseCentre[pi] - c0) / spEtu;
+        const int hi = (int)std::lround(h);
+        if (std::fabs(h - hi) > 0.45) onGrid = false;
+        if (hi > 0 && (half.empty() || hi != half.back())) half.push_back(hi);
     }
-    seq.push_back(0);   // EOF Y
-
-    // The grid may leave the frame one pause-free symbol short or long. Try removing / keeping / adding a trailing Y and score each
-    // candidate by its parity and, when it carries a CRC_A, the CRC. Keep the best.
-    RawFrame best; int bestScore = -1;
-    for (int delta = -1; delta <= 1; delta++) {
-        std::vector<uint8_t> s = seq;
-        if (delta < 0) { if (s.size() < 3) continue; s.erase(s.end() - 2); }       // drop one symbol before the EOF
-        else for (int e = 0; e < delta; e++) s.insert(s.end() - 1, 0);             // add trailing Y symbols
-        int b = 0; bool par = false;
-        std::vector<uint8_t> bytes = millerSeqToBytes(s, b, par);
-        if (bytes.empty()) continue;
-        int score = 0;
-        if (par) score += 2;
-        if (bytes.size() >= 3 && crcAOk(bytes)) score += 4;
-        if (score > bestScore) {
-            bestScore = score;
-            best = RawFrame{}; best.proto = Proto::TypeA; best.fromReader = true; best.bits = b; best.parityOk = par;
-            best.bytes = bytes; best.timeSec = t0; best.levelDb = db(fieldLevel);
-        }
+    if (half.empty() || half.back() > 2 * 4096) return;
+    const int lastH = half.back();
+    const int dataEtus = (lastH % 2 == 0) ? lastH / 2 - 1 : (lastH - 1) / 2;
+    if (dataEtus < 7) return;                                   // shorter than a REQA: not a frame
+    std::vector<uint8_t> bits((size_t)dataEtus, 0);
+    bool legal = onGrid;
+    for (int h : half) {
+        const int etu = h / 2;
+        if (h % 2) { if (etu >= 1 && etu <= dataEtus) bits[(size_t)etu - 1] = 1; }
+        else if (etu >= 1 && etu <= dataEtus && etu >= 2 && bits[(size_t)etu - 2] == 1) legal = false;   // a Z straight after an X cannot happen
     }
-    if (bestScore >= 0) onFrame(best);
+    RawFrame best; best.proto = Proto::TypeA; best.fromReader = true; best.timeSec = t0; best.levelDb = db(fieldLevel);
+    int b = 0; bool par = false;
+    std::vector<uint8_t> use = bits;
+    if (use.size() != 7 && use.size() % 9 != 0) use.resize(use.size() / 9 * 9);   // a timing slip: keep whole bytes only
+    std::vector<uint8_t> bytes = bitsToBytes(use, b, par);
+    if (bytes.empty()) return;
+    if (!par && bytes.size() <= 2) return;   // a short fragment that fails its parity is a glitch, not a frame
+    best.bits = b; best.parityOk = par && legal && use.size() == bits.size(); best.bytes = bytes;
+    onFrame(best);
 }
 
 void Demod::feed(const std::complex<float>* x, size_t n) {
@@ -292,7 +324,12 @@ void Demod::feed(const std::complex<float>* x, size_t n) {
 
         // activity: a pause (reader) or subcarrier (tag)
         const bool pause = s.fieldLevel > 1e-6 && mag < (float)s.fieldLevel * kPauseFrac;
-        const bool subc = sa > (float)s.fieldLevel * 0.05f || sv > (float)s.fieldLevel * 0.05f;
+        if (s.fieldLevel > 1e-6) {   // the detectors' own noise: follows a fall at once and a rise slowly, so an answer (a few ms at most) does not lift it
+            if (s.noiseA == 0) { s.noiseA = sa; s.noiseV = sv; }
+            s.noiseA += (sa - s.noiseA) * (sa < s.noiseA ? 0.01 : 0.0002);
+            s.noiseV += (sv - s.noiseV) * (sv < s.noiseV ? 0.01 : 0.0002);
+        }
+        const bool subc = sa > std::max((float)s.fieldLevel * 0.05f, (float)s.noiseA * 4.f) || sv > std::max((float)s.fieldLevel * 0.05f, (float)s.noiseV * 4.f);
         const bool active = pause || subc;
 
         if (active) { if (!s.inBurst) { s.inBurst = true; s.env.clear(); s.subA.clear(); s.subV.clear(); s.sampleTime = (double)s.sampleIdx / s.fs; } s.idleRun = 0; }
@@ -301,10 +338,10 @@ void Demod::feed(const std::complex<float>* x, size_t n) {
             s.subA.push_back(sa);
             s.subV.push_back(sv);
             if (!active && ++s.idleRun > (size_t)(kIdleEtu * s.fs * kEtu)) {
-                decodeBurst(onFrame_, s.fs, s.env, s.subA, s.subV, s.sampleTime, (float)s.fieldLevel);
+                decodeBurst(onFrame_, s.fs, s.env, s.subA, s.subV, s.sampleTime, (float)s.fieldLevel, (float)s.noiseA, (float)s.noiseV);
                 s.inBurst = false; s.idleRun = 0;
             } else if (s.env.size() > (size_t)(s.fs * 0.02)) {   // safety cap ~20 ms
-                decodeBurst(onFrame_, s.fs, s.env, s.subA, s.subV, s.sampleTime, (float)s.fieldLevel);
+                decodeBurst(onFrame_, s.fs, s.env, s.subA, s.subV, s.sampleTime, (float)s.fieldLevel, (float)s.noiseA, (float)s.noiseV);
                 s.inBurst = false; s.idleRun = 0;
             }
         }

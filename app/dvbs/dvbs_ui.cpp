@@ -2,6 +2,7 @@
 // and the options of the test signal.
 #include "app.h"
 #include "dect2/dvbs/dvbs_s2.h"
+#include "dvbs_autoservice.h"
 #include <cfloat>
 #include <cmath>
 #include <deque>
@@ -16,6 +17,8 @@ struct State {
     double searchSince = -1;            // ImGui time when the receiver started looking without finding a carrier
     double pushedSr = -1; int pushedStd = -1;
     uint64_t lastSeq = 0;
+    bool autoSvc = true;                // start the only service of a signal by itself, and follow it when retuning (#322)
+    dect2::AutoServiceState as;
     std::deque<float> snr;              // Es/N0 of the reports, newest last
 };
 State S;
@@ -32,6 +35,7 @@ void loadState() {
     S.stdHint = (int)std::max(0L, std::min(2L, d.getI("dvbsStd", 0)));
     S.txPol = (int)std::max(0L, std::min(2L, d.getI("dvbsTxPol", 0)));
     S.lnbPol = (int)std::max(0L, std::min(2L, d.getI("dvbsLnbPol", 0)));
+    S.autoSvc = d.getB("dvbsAutoSvc", true);
 }
 
 void saveState(App& a) {
@@ -40,6 +44,7 @@ void saveState(App& a) {
     d.setI("dvbsStd", S.stdHint);
     d.setI("dvbsTxPol", S.txPol);
     d.setI("dvbsLnbPol", S.lnbPol);
+    d.setB("dvbsAutoSvc", S.autoSvc);
     savePrefs(a);
 }
 
@@ -118,6 +123,11 @@ void tick(App& a) {
         S.pushedSr = S.srMsym; S.pushedStd = S.stdHint;
     }
     S.wasRunning = run;
+    if (run && S.autoSvc && live(a)) {   // one service in the signal: play it, and again after a retune to another signal
+        Player& pl = a.engine.player();
+        const int id = dect2::autoServicePick(S.as, a.ts.services, pl.selected(), a.rx.dvbs.tsLock, ImGui::GetTime());
+        if (id >= 0) { pl.select(id); pl.setVolume(a.volume); }
+    }
     if (live(a) && a.rx.seq != S.lastSeq) {
         S.lastSeq = a.rx.seq;
         const DvbsTelemetry& t = a.rx.dvbs;
@@ -651,6 +661,8 @@ void tuner(App& a, bool& retune) {
         ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Auto tries DVB-S2 and DVB-S. Choose one to skip the other search on a weak signal.");
+    if (ImGui::Checkbox("Play a single service by itself##dvbsautosvc", &S.autoSvc)) { if (S.autoSvc) S.as = dect2::AutoServiceState(); ch = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("When the signal carries one service, start its decoder as soon as the transport stream locks, and again after you move to another signal (QO-100 carriers).\nA signal with several services stays manual. Stopping the service by hand keeps it stopped until the signal changes.");
     {   // polarisation: the radio cannot switch the LNB (13 V vertical, 18 V horizontal), so this only warns when the two do not match
         static const char* pn[] = {"not set", "vertical", "horizontal"};
         ImGui::SetNextItemWidth(std::min(110 * gUi, ImGui::GetContentRegionAvail().x));
@@ -876,6 +888,7 @@ void meters(const App& a, std::vector<ModeMeter>& out) {
 
 // The spectrum explorer hands a carrier over: its symbol rate (Msym/s, 0 = automatic) becomes the manual setting
 double dvbsSymbolRateMsym() { loadState(); return S.srMsym; }
+bool dvbsAutoService() { loadState(); return S.autoSvc; }
 
 void dvbsSetSymbolRate(App& a, double msym) {
     loadState();
