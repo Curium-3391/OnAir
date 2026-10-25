@@ -353,6 +353,9 @@ int main(int argc, char** argv) {
     startApp(app, argc, argv);
     DevOpts o;
     parseDevFlags(app, argc, argv, o);
+    if (!o.shotPath && argc <= 1 && touch::autoTouch(gWorkAreaW, gWorkAreaH, plat::prefs().has("touchUi") || plat::prefs().has("touchAutoSeen"))) {   // #139: a small screen starts in the touch interface (View > Touch interface turns it off)
+        app.touchUi = true; plat::prefs().setB("touchAutoSeen", true); savePrefs(app);
+    }
     double last = glfwGetTime();
     double frameNext = 0, lastInputT = 0;
     while (!glfwWindowShouldClose(window)) {

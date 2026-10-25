@@ -21,6 +21,7 @@ extern std::string gCrashNote;   // main.cpp: set when the last run crashed or t
 extern bool gIdentifyDev;        // ui/draw_ui.cpp: --identify
 extern bool gWayland;            // main_window.cpp: running on a native Wayland display (Linux)
 
+extern int gWorkAreaW, gWorkAreaH;                                    // main_window.cpp: the primary monitor's usable size in points (0: unknown)
 GLFWwindow* createMainWindow(int argc, char** argv);            // main_window.cpp: null when there is no window
 void loadFonts(App& app, ImGuiIO& io);                           // main_window.cpp
 void startApp(App& app, int argc, char** argv);                               // main_start.cpp: startup guard, first-run dialogs, radios, last results
