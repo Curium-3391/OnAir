@@ -32,8 +32,9 @@ struct NfcReceiver::Impl {
 
     // session reassembly for the tag table
     NfcTag build;        // the tag being assembled from the current anticollision/select exchange
-    std::vector<uint8_t> uidAcc;
+    std::vector<uint8_t> uidAcc, selAcc;
     bool haveBuild = false;
+    bool crypto = false;   // a MIFARE Classic authentication was requested: what follows is encrypted (Crypto1) until the next wake-up / halt
 
     void emit(const std::string& s) { if (log) log(s); }
 
@@ -44,8 +45,9 @@ struct NfcReceiver::Impl {
         snap.inputRate = rate;
         snap.centerHz = centerHz;
         build = NfcTag();
-        uidAcc.clear();
+        uidAcc.clear(); selAcc.clear();
         haveBuild = false;
+        crypto = false;
     }
 
     void touch() { snap.seq = ++seq; }
@@ -78,6 +80,18 @@ struct NfcReceiver::Impl {
             le.note = a.note;
             le.crcChecked = a.crcPresent; le.crcOk = a.crcOk;
             handleA(a, f.timeSec);
+            // MIFARE Classic: AUTH A / AUTH B (0x60 / 0x61, block, CRC_A) opens an encrypted session. The traffic after it (the reader's
+            // nonces, the reads and writes, and the parity bits that go with them) is Crypto1: OnAir names it and shows the bytes as
+            // they came, and does not try to decode it (no keys are used or searched for).
+            const bool wake = a.kind == nfc::AKind::Reqa || a.kind == nfc::AKind::Wupa || a.kind == nfc::AKind::Hlta || a.kind == nfc::AKind::AnticollReq || a.kind == nfc::AKind::SelectReq;
+            if (wake) crypto = false;
+            if (f.fromReader && f.bytes.size() == 4 && (f.bytes[0] == 0x60 || f.bytes[0] == 0x61) && nfc::crcAOk(f.bytes)) {
+                char nb[96]; snprintf(nb, sizeof nb, "MIFARE Classic authentication request: key %c, block %u", f.bytes[0] == 0x60 ? 'A' : 'B', f.bytes[1]);
+                le.note = nb; crypto = true;
+            } else if (crypto && !wake && !(a.crcPresent && a.crcOk) && (a.kind == nfc::AKind::Unknown || a.kind == nfc::AKind::Apdu)) {
+                le.note = "encrypted (MIFARE Classic Crypto1), not decoded";
+                le.parityOk = true;   // the parity bits are encrypted too, so a failing check means nothing here
+            }
         } else if (f.proto == nfc::Proto::TypeB) {
             nfc::ATypeB b = nfc::parseTypeB(f.bytes, f.fromReader);
             le.note = b.valid ? b.note : "Type B frame";
@@ -115,7 +129,21 @@ struct NfcReceiver::Impl {
     void handleA(const nfc::ATypeA& a, double t) {
         using K = nfc::AKind;
         if (a.fromReader) {
-            if (a.kind == K::Reqa || a.kind == K::Wupa) { build = NfcTag(); uidAcc.clear(); haveBuild = true; build.firstSeen = t; }
+            if (a.kind == K::Reqa || a.kind == K::Wupa) { build = NfcTag(); uidAcc.clear(); selAcc.clear(); haveBuild = true; build.firstSeen = t; }
+            // The reader's SELECT names the tag too (its UID, with BCC and CRC_A checked). A weak capture of a phone or a reader next to
+            // the antenna hears the field well and the tag's answer not at all, so the tag table is filled from it as well.
+            if (a.kind == K::SelectReq && a.bccOk && a.crcPresent && a.crcOk && a.uidPart.size() == 4) {
+                if (a.cascadeLevel == 1) selAcc.clear();
+                if (a.cascadeTag) { for (int i = 1; i < 4; i++) selAcc.push_back(a.uidPart[(size_t)i]); }
+                else {
+                    for (uint8_t v : a.uidPart) selAcc.push_back(v);
+                    NfcTag nt; nt.uid = toHex(selAcc); nt.uid.erase(std::remove(nt.uid.begin(), nt.uid.end(), ' '), nt.uid.end());
+                    nt.type = "ISO 14443-A (UID from the reader's SELECT)"; nt.firstSeen = nt.lastSeen = t;
+                    upsertTag(nt);
+                    char b[96]; snprintf(b, sizeof b, "NFC: tag %s selected by the reader", nt.uid.c_str()); emit(b);
+                    selAcc.clear();
+                }
+            }
             return;
         }
         // tag answers
@@ -228,7 +256,7 @@ ModeTuning nfcTuning() {
     t.sampleRate = 4000000;          // covers the +-847.5 kHz subcarrier sidebands with room to spare
     t.basebandHz = 0;
     t.bandwidthMhz = 2.4;
-    t.minSampleRate = 2400000;       // enough to see +-1.2 MHz, so the 847.5 kHz subcarrier fits
+    t.minSampleRate = 2000000;       // +-1 MHz holds the 847.5 kHz subcarrier and its data sidebands; the 2 Msps recordings of an RTL-SDR / HackRF are taken (#271)
     t.tuneOffsetHz = 0;              // the carrier is the wanted signal and sits at the centre
     t.carrierAtCentre = true;        // do not let the DC-spike removal eat the carrier
     t.notCircular = true;            // not circular around the centre

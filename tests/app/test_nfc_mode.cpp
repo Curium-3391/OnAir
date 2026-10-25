@@ -21,7 +21,7 @@ int main() {
     CHECK(t.stdMode == 150, "stdMode %d, want 150", t.stdMode);
     CHECK(std::string(t.id) == "nfc", "id '%s'", t.id);
     CHECK(t.minMhz > 13.5 && t.maxMhz < 13.6 && t.defMhz > 13.55 && t.defMhz < 13.57, "13.56 MHz band");
-    CHECK(t.minSampleRate >= 2400000, "min sample rate %.0f covers the subcarrier", t.minSampleRate);
+    CHECK(t.minSampleRate >= 2000000, "min sample rate %.0f covers the subcarrier", t.minSampleRate);
     CHECK(t.carrierAtCentre, "carrierAtCentre must be set (the carrier is the wanted signal)");
     const dect2::ModeTuning* reg = dect2::modeTuning(150);
     CHECK(reg != nullptr, "modeTuning(150) not registered");

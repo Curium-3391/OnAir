@@ -27,7 +27,7 @@ NDEF descriptions. No proprietary stack or GPL source was read.
     subcarrier), Manchester, at the high (~26 kbit/s) or low data rate.
 
 Because the answer sits on sidebands at ±847.5 kHz, the receiver must sample fast enough to see them. The mode asks for 4 Msps
-and refuses below 2.4 Msps (which still covers ±1.2 MHz). Any HF-capable receiver works: RTL-SDR V4 in direct-HF mode, HackRF,
+and refuses below 2 Msps (±1 MHz still holds the 847.5 kHz subcarrier; the transmit side keeps 2.4 Msps). Any HF-capable receiver works: RTL-SDR V4 in direct-HF mode, HackRF,
 Airspy HF+, or an RX888.
 
 ## What OnAir decodes
@@ -49,6 +49,20 @@ A synthetic generator produces a scripted reader↔tag exchange (Type A poll/sel
 Type B REQB/ATQB) so the receiver and the loopback tests have a signal without any real card present. The loopback tests check a
 clean capture, a 20 dB-SNR capture, a capture with a 12 kHz carrier offset, and 40 noise-only runs that must not fabricate a
 CRC-valid frame.
+
+## Weak recordings, and what is not decoded (#271)
+
+A phone or reader held next to a small SDR antenna gives a strong field and almost no answer: at 8 bits the tag's load modulation is
+far below one quantisation step (a real 2 Msps HackRF capture of a phone reading a MIFARE Classic card showed a carrier of about 4 LSB
+and no subcarrier at all). OnAir therefore decodes the **reader's frames exactly** (REQA / WUPA as 7-bit frames, anticollision,
+SELECT with the UID, AUTH, HLTA, RATS and the rest, with the end-of-communication pause read as the standard defines it) and fills
+the tag table from the reader's SELECT when the tag's own answer is not heard. A subcarrier burst is shown as a tag frame only when it
+has the shape of one (an ATQA, a UID with its BCC, a CRC_A frame, a long frame with at most a stray parity error), so the
+quantisation noise and the ringing after a pause do not produce frames.
+
+A MIFARE Classic authentication (AUTH A / B, `60`/`61` + block) is named in the log. Everything after it, until the next wake-up or
+halt (the reader's nonces, the reads and writes, and their parity bits), is Crypto1-encrypted: those frames are shown as the bytes
+that were sent, labelled "encrypted (MIFARE Classic Crypto1), not decoded". OnAir does not search for or use keys.
 
 ## Antenna / loop notes
 
