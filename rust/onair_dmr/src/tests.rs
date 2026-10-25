@@ -100,3 +100,17 @@ fn text_formats() {
     let n = b.n;
     assert_eq!(&buf[..n], b"Hi");
 }
+
+#[test]
+fn utf16_le_sent_under_a_be_label_is_read_as_le() {
+    // #300: the import radios send little-endian text under the big-endian format code
+    for &fmt in &[text::DD_UTF16_BE, text::DD_UTF16] {
+        for (src, want) in [(&[b'H', 0, b'i', 0, b'!', 0][..], &b"Hi!"[..]), (&[0, b'H', 0, b'i'][..], &b"Hi"[..])] {
+            let mut buf = [0u8; 64];
+            let mut b = Buf::new(&mut buf);
+            text::text_from_bytes(src, fmt, false, &mut b);
+            let n = b.n;
+            assert_eq!(&buf[..n], want);
+        }
+    }
+}
