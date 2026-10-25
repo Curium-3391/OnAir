@@ -1,5 +1,6 @@
 // Mesh (LoRa) screens: the node table, telemetry table, packet log and the APRS station table.
 // Split from mesh_ui.cpp; the shared state is declared in mesh_internal.h.
+#include "dect2/common/time_source.h"
 #include "dect2/common/time_fmt.h"
 #include "mesh_internal.h"
 #include "ui/ui_common.h"
@@ -31,12 +32,14 @@ float hdrW(const char* header, const char* sample) { return std::max(ImGui::Calc
 // the clock time of a signal time (seconds since the receiver started): the export's time column
 double meshEpoch(const dect2::MeshTelemetry& t, double sec, double now) { return sec < 0 ? 0 : now - (t.timeSec - sec); }
 
+// the same for a row that may carry the computer clock it was decoded at (Settings: Timestamps)
+double meshEpochOf(const dect2::MeshTelemetry& t, double stamped, double sec, double now) { return dect2::timesrc::epoch(dect2::timesrc::source(), stamped, sec, t.timeSec, now); }
+
 std::string meshTime(double epoch) {
     if (epoch <= 0) return "";
     const std::time_t tt = (std::time_t)epoch;
-    char b[24];
-    snprintf(b, sizeof b, "%s", dect2::timefmt::show((int64_t)tt, dect2::timefmt::Style::DateClock).c_str());
-    return b;
+    (void)tt;
+    return dect2::timesrc::iso8601(epoch);   // ISO 8601 with milliseconds and the offset, so rebroadcasts of one packet sort and logs compare (#218)
 }
 
 void nodeTable(const App& a, bool compact) {
@@ -47,7 +50,7 @@ void nodeTable(const App& a, bool compact) {
         resexp::Table x;
         x.cols = {"time", "frequency_hz", "mode", "name", "short_name", "id", "hardware", "role", "lat", "lon", "alt_m", "snr_db", "hops", "battery_pct",
                   "voltage", "battery_time", "temp_c", "humidity_pct", "pressure_hpa", "sensors_time", "heard_s_ago", "packets"};
-        const double now = (double)std::time(nullptr);
+        const double now = dect2::timesrc::wallNow();
         for (const dect2::MeshNode* n : sortedNodes(a)) {
             const double ep = meshEpoch(t, n->lastHeard, now);
             x.add({meshTime(ep), resexp::num(a.freqMhz * 1e6, 0), protoName(n->protocol), n->longName, n->shortName, n->id, n->hwModel, n->role,
@@ -134,9 +137,9 @@ void telemetryTable(const App& a) {
         resexp::Table x;
         x.cols = {"time", "frequency_hz", "mode", "name", "id", "battery_pct", "voltage", "channel_util_pct", "air_util_tx_pct", "uptime_s", "temp_c", "humidity_pct",
                   "pressure_hpa", "lat", "lon", "alt_m"};
-        const double now = (double)std::time(nullptr);
+        const double now = dect2::timesrc::wallNow();
         for (const auto& r : t.readings) {
-            const double ep = r.unixTime > 0 ? r.unixTime : meshEpoch(t, r.timeSec, now);
+            const double ep = meshEpochOf(t, r.unixTime, r.timeSec, now);
             x.add({meshTime(ep), resexp::num(a.freqMhz * 1e6, 0), protoName(r.protocol), nameOf(r), r.id, opt(r.batteryPct, 0), opt(r.voltage, 2), opt(r.channelUtilPct, 1),
                    opt(r.airUtilTxPct, 1), r.uptimeS >= 0 ? std::to_string(r.uptimeS) : "", r.hasEnv ? resexp::num(r.tempC, 1) : "", r.hasEnv ? resexp::num(r.humidity, 0) : "",
                    r.hasEnv ? resexp::num(r.pressureHpa, 1) : "", r.hasPosition ? resexp::num(r.lat, 6) : "", r.hasPosition ? resexp::num(r.lon, 6) : "",
@@ -162,7 +165,7 @@ void telemetryTable(const App& a) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();   // clock time (this is a history), the date in the tooltip
                 {
-                    const std::string full = meshTime(r.unixTime > 0 ? r.unixTime : meshEpoch(t, r.timeSec, (double)std::time(nullptr)));
+                    const std::string full = meshTime(meshEpochOf(t, r.unixTime, r.timeSec, dect2::timesrc::wallNow()));
                     ImGui::TextUnformatted(full.size() > 11 ? full.c_str() + 11 : clock(r.timeSec).c_str());
                     if (!full.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%s after the start)", full.c_str(), clock(r.timeSec).c_str());
                 }
@@ -188,9 +191,9 @@ void packetTable(const App& a) {
         resexp::Table x;
         x.cols = {"time", "frequency_hz", "mode", "type", "from", "to", "channel", "bytes", "decrypted", "hop_limit", "hop_start", "snr_db", "level_dbfs", "sf", "bw_hz",
                   "detail", "raw", "packet_id", "relay_node", "next_hop", "via_mqtt", "cfo_hz"};
-        const double now = (double)std::time(nullptr);
+        const double now = dect2::timesrc::wallNow();
         for (const dect2::MeshPacket& p : t.packets) {
-            const double ep = p.unixTime > 0 ? p.unixTime : meshEpoch(t, p.timeSec, now);
+            const double ep = meshEpochOf(t, p.unixTime, p.timeSec, now);
             // Meshtastic header: the packet id ties together the copies of one packet (flood) and the same packet seen by the node or MQTT;
             // relay_node is who sent this copy, next_hop who should send it on (last byte of the node number, 0 = none)
             const bool mt = p.protocol == 1 && p.parsed;
