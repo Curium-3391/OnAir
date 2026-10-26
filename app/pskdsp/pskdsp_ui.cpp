@@ -6,6 +6,7 @@
 #include "gfx/gfx.h"
 #include "i18n/i18n.h"
 #include "dect2/common/time_fmt.h"
+#include "../state/rx_width.h"
 #include "dect2/pskdsp/pskdsp_rx.h"
 #include "dect2/pskdsp/pskdsp_tel.h"
 #include <algorithm>
@@ -21,6 +22,8 @@ namespace {
 struct State {
     bool loaded = false, wasRunning = false, dirty = true;
     dect2::PskdSettings cfg;
+    bool spanCustom = false;      // the Custom tick of the channel bandwidth (3.2): off = the standard 200 kHz (cfg.spanHz 0)
+    double customSpan = 0;        // the custom width, kept while the tick is off
     char sync[80] = {};
     int view = 0;                 // 0 analyser, 1 bits, 2 log
     int bitView = 0;              // 0 hex + text, 1 bits
@@ -36,7 +39,9 @@ void load() {
     S.cfg.order = (int)p.getI("pskdOrder", 0);
     S.cfg.baud = p.getD("pskdBaud", 0);
     S.cfg.alpha = p.getD("pskdAlpha", -2);
-    S.cfg.spanHz = p.getD("pskdSpan", 0);
+    S.customSpan = p.getD("pskdSpan", 0);
+    S.spanCustom = bwCustomTicked((int)p.getI("pskdSpanCustom", -1), S.customSpan);   // saved before the tick existed: a set width stays on
+    S.cfg.spanHz = bwEffective(S.spanCustom, S.customSpan);
     S.cfg.snapStandard = p.getB("pskdSnap", true);
     S.cfg.followDoppler = p.getB("pskdFollow", true);
     S.cfg.diff = (int)p.getI("pskdDiff", 0);
@@ -47,7 +52,7 @@ void load() {
 }
 void store() {
     auto& p = plat::prefs();
-    p.setI("pskdOrder", S.cfg.order); p.setD("pskdBaud", S.cfg.baud); p.setD("pskdAlpha", S.cfg.alpha); p.setD("pskdSpan", S.cfg.spanHz);
+    p.setI("pskdOrder", S.cfg.order); p.setD("pskdBaud", S.cfg.baud); p.setD("pskdAlpha", S.cfg.alpha); p.setD("pskdSpan", S.customSpan); p.setI("pskdSpanCustom", S.spanCustom ? 1 : 0);
     p.setB("pskdSnap", S.cfg.snapStandard); p.setB("pskdFollow", S.cfg.followDoppler); p.setI("pskdDiff", S.cfg.diff); p.setI("pskdScr", S.cfg.scrambler);
     p.setS("pskdSync", S.cfg.sync); p.setB("pskdInvert", S.cfg.invert);
     S.dirty = true;
@@ -360,22 +365,30 @@ void decoder(App&, bool&) {
     for (int i = 0; i < 8; i++) if (std::fabs(shapeVal[i] - S.cfg.alpha) < 1e-6) si = i;
     ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Pulse shape")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
     if (ImGui::Combo("##pskdpulseshape", &si, shapes, 8)) { S.cfg.alpha = shapeVal[si]; store(); }
-    {   // the channel: automatic (200 kHz around the dial), by hand from 2.5 to 200 kHz to cut one signal out of several close together (#308), or wider
-        static const char* spans[] = {"auto (200 kHz)", "manual (2.5 - 200 kHz)", "500 kHz", "2 MHz", "whole capture"};
-        const double sp = S.cfg.spanHz;
-        int pi = sp <= 0 ? 0 : sp <= 200e3 + 1 ? 1 : sp < 1e6 ? 2 : sp < 5e6 ? 3 : 4;
-        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Channel bandwidth")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
-        if (ImGui::Combo("##pskdsearchspan", &pi, spans, 5)) {
-            static const double fixedVal[] = {0, 0, 500e3, 2e6, 1e9};
-            S.cfg.spanHz = pi == 1 ? (sp > 0 && sp <= 200e3 + 1 ? sp : 25e3) : fixedVal[pi];
-            store();
+    {   // the channel: the standard 200 kHz around the dial, or Custom (tick) from 2.5 to 200 kHz to cut one signal out of several close together (#308), or wider
+        char sb[64]; std::snprintf(sb, sizeof sb, "%s: 200 kHz (%s)", tr("Channel bandwidth"), tr("standard"));
+        ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", S.spanCustom ? tr("Channel bandwidth") : sb); ImGui::SameLine(170 * gUi);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The width of the channel around the dial that the analyser looks at; it takes the signal nearest the dial.\nThe standard is 200 kHz. Tick Custom to make it narrower by hand and isolate one signal, or wider."));
+        if (ImGui::Checkbox(tr("Custom##pskdbwcustom"), &S.spanCustom)) {
+            if (S.spanCustom && S.customSpan <= 0) S.customSpan = 25e3;
+            S.cfg.spanHz = bwEffective(S.spanCustom, S.customSpan); store();
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The width of the channel around the dial that the analyser looks at; it takes the signal nearest the dial.\nAuto is 200 kHz. Make it narrower by hand to isolate one signal when several are close together."));
-        if (pi == 1) {
-            float khz = (float)(S.cfg.spanHz / 1e3);
-            ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Bandwidth")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
-            if (ImGui::SliderFloat("##pskdbwkhz", &khz, 2.5f, 200.f, "%.1f kHz", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) { S.cfg.spanHz = std::clamp((double)khz, 2.5, 200.0) * 1e3; store(); }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ctrl-click to type a value. Keep the signal and its sidebands inside it, and the neighbours outside."));
+        if (S.spanCustom) {
+            static const char* spans[] = {"manual (2.5 - 200 kHz)", "500 kHz", "2 MHz", "whole capture"};
+            const double sp = S.customSpan;
+            int pi = sp <= 200e3 + 1 ? 0 : sp < 1e6 ? 1 : sp < 5e6 ? 2 : 3;
+            ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Width")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
+            if (ImGui::Combo("##pskdsearchspan", &pi, spans, 4)) {
+                static const double fixedVal[] = {0, 500e3, 2e6, 1e9};
+                S.customSpan = pi == 0 ? (sp > 0 && sp <= 200e3 + 1 ? sp : 25e3) : fixedVal[pi];
+                S.cfg.spanHz = S.customSpan; store();
+            }
+            if (pi == 0) {
+                float khz = (float)(S.customSpan / 1e3);
+                ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", tr("Bandwidth")); ImGui::SameLine(170 * gUi); ImGui::SetNextItemWidth(w);
+                if (ImGui::SliderFloat("##pskdbwkhz", &khz, 2.5f, 200.f, "%.1f kHz", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) { S.customSpan = std::clamp((double)khz, 2.5, 200.0) * 1e3; S.cfg.spanHz = S.customSpan; store(); }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ctrl-click to type a value. Keep the signal and its sidebands inside it, and the neighbours outside."));
+            }
         }
     }
     static const char* diffs[] = {"none", "DPSK (symbol differential)", "NRZ-M (1 = change)", "NRZ-S / NRZI (0 = change)"};

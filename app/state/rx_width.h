@@ -1,5 +1,5 @@
 // User-set receive bandwidth (#274) for the modes that listen to several channels in one capture: VDL2, TETRA and TETRAPOL.
-// Automatic (0) leaves the mode's own tuning untouched; a width (0.05 - 2 MHz) sets the analysis passband, the radio's sample rate
+// Fixed (0, the default) leaves the mode's own tuning untouched; a width (0.05 - 2 MHz) sets the analysis passband, the radio's sample rate
 // that carries it and the radio's analogue filter. Only these three modes read it, so no other mode changes. The plan is pure
 // (tests/state/test_rx_width.cpp); the saved width and the control are in rx_width.cpp.
 #pragma once
@@ -24,3 +24,10 @@ inline RxWidthPlan rxWidthPlan(double widthMhz, double autoBwMhz, double autoRat
     p.basebandHz = 0.9 * p.sampleRate;
     return p;
 }
+
+// "Custom" tick of a per-mode bandwidth control (3.2): the mode uses its standard fixed bandwidth unless the user ticks Custom. flagPref is
+// the saved tick (-1 = never saved: a user from before the tick), savedWidth the saved custom width (0 = Auto in the old control). A user who
+// had saved a width keeps it, so the tick starts on for them and nothing changes; everybody else starts on the standard bandwidth.
+inline bool bwCustomTicked(int flagPref, double savedWidth) { return flagPref >= 0 ? flagPref != 0 : savedWidth > 0; }
+// the width the mode receives with: the custom one when ticked, 0 (the mode's own standard value) otherwise
+inline double bwEffective(bool custom, double savedWidth) { return custom && savedWidth > 0 ? savedWidth : 0; }

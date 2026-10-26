@@ -18,6 +18,9 @@ int main() {
     CHECK(floor.sampleRate == 800000);                                               // never below what the mode needs
     CHECK(rxWidthMode(29) && rxWidthMode(48) && rxWidthMode(81));
     CHECK(!rxWidthMode(28) && !rxWidthMode(47) && !rxWidthMode(8) && !rxWidthMode(0) && !rxWidthMode(30));   // every other mode: untouched
+    CHECK(!bwCustomTicked(-1, 0) && bwCustomTicked(-1, 0.5) && bwCustomTicked(-1, 2.0));   // never saved: a saved width keeps working, Auto stays standard
+    CHECK(bwCustomTicked(1, 0) && !bwCustomTicked(0, 0.5) && bwCustomTicked(1, 0.5));      // a saved tick wins over the width
+    CHECK(bwEffective(true, 0.5) == 0.5 && bwEffective(false, 0.5) == 0 && bwEffective(true, 0) == 0);   // unticked: the standard value, the width is kept for later
     std::printf(fails ? "rx_width FAILED\n" : "rx_width ok\n");
     return fails ? 1 : 0;
 }
