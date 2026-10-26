@@ -320,8 +320,15 @@ void controls(App& a) {
                 if (!S.amAuto) S.amDet = 1;
                 tuneFreq(a, dect2::swBandCentreKhz(sw[i]) / 1e3); S.lastDial = a.freqMhz; save();
             }
-            tip((std::string(sw[i].name) + ": " + std::to_string((int)sw[i].startKhz) + " - " + std::to_string((int)sw[i].endKhz) + " kHz" +
-                 (sw[i].tropical ? " (tropical band)" : "") + (*sw[i].note ? std::string(". ") + sw[i].note : std::string())).c_str());
+            {
+                std::string t = std::string(sw[i].name) + (sw[i].tropical ? " (tropical zone only)" : "");
+                for (int r = 1; r <= 3; r++) {
+                    double s0, e0;
+                    t += "\nRegion " + std::to_string(r) + ": " + (dect2::swBandInRegion(sw[i], r, s0, e0) ? std::to_string((int)s0) + " - " + std::to_string((int)e0) + " kHz" : std::string("no broadcasting"));
+                }
+                if (*sw[i].note) t += std::string("\n") + sw[i].note;
+                tip(t.c_str());
+            }
             ImGui::PopID();
         }
         ImGui::TextDisabled("MW steps are 9 kHz (Europe, Asia) or 10 kHz (Americas); the shortwave buttons use 5 kHz. Needs a radio that reaches medium wave and shortwave (HF / direct sampling).");

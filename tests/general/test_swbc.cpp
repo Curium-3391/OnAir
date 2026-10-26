@@ -30,21 +30,37 @@ int main() {
     CHECK(!swBandAt(8000) && !swBandAt(14100), "outside the bands");
     CHECK(b[0].tropical && b[1].tropical && b[3].tropical && !b[4].tropical, "tropical flags 120/90/60 m");
 
-    // the built-in band plan carries the same table
+    // the hull is the widest region range; region 2 41 m and the missing 75 m are as ITU says
+    for (size_t i = 0; i < n; i++) {
+        double lo = 1e9, hi = 0;
+        for (int r = 1; r <= 3; r++) { double s0, e0; if (swBandInRegion(b[i], r, s0, e0)) { lo = std::fmin(lo, s0); hi = std::fmax(hi, e0); CHECK(s0 >= b[i].startKhz && e0 <= b[i].endKhz, "%s region %d inside the hull", b[i].name, r); } }
+        CHECK(lo == b[i].startKhz && hi == b[i].endKhz, "%s hull is the widest region range", b[i].name);
+    }
+    double s0, e0;
+    CHECK(!swBandInRegion(b[2], 2, s0, e0), "75 m not broadcast in region 2");
+    CHECK(swBandInRegion(b[2], 1, s0, e0) && s0 == 3950 && e0 == 4000, "75 m region 1 3950-4000");
+    CHECK(swBandInRegion(b[2], 3, s0, e0) && s0 == 3900 && e0 == 4000, "75 m region 3 3900-4000");
+    CHECK(swBandInRegion(b[5], 2, s0, e0) && s0 == 7300 && e0 == 7400, "41 m region 2 7300-7400");
+    CHECK(swBandInRegion(b[3], 1, s0, e0) && s0 == 4750 && e0 == 5060, "60 m 4750-5060");
+
+    // each built-in plan carries its own region's table
     dect2::bandplan::Registry reg;
-    const dect2::bandplan::Plan* p = reg.find("de");
-    CHECK(p != nullptr, "plan de");
-    if (p) {
-        size_t k = 0;
-        for (const auto& bd : p->bands)
+    for (const auto& pl : reg.plans()) {
+        const int r = pl.ituRegion ? pl.ituRegion : 1;
+        size_t k = 0, want = 0;
+        for (size_t i = 0; i < n; i++) { if (swBandInRegion(b[i], r, s0, e0)) want++; }
+        bool hasMw = false;
+        for (const auto& bd : pl.bands) if (bd.service == "am" && bd.name == "MW") hasMw = true;
+        if (!hasMw) continue;
+        for (const auto& bd : pl.bands)
             if (bd.service == "am" && bd.name.find(" m") != std::string::npos) {
                 bool ok = false;
                 for (size_t i = 0; i < n; i++)
-                    if (bd.name == b[i].name) ok = std::fabs(bd.startHz - b[i].startKhz * 1e3) < 1 && std::fabs(bd.endHz - b[i].endKhz * 1e3) < 1;
-                CHECK(ok, "plan band %s matches the table", bd.name.c_str());
+                    if (bd.name == b[i].name && swBandInRegion(b[i], r, s0, e0)) ok = std::fabs(bd.startHz - s0 * 1e3) < 1 && std::fabs(bd.endHz - e0 * 1e3) < 1;
+                CHECK(ok, "%s: plan band %s matches region %d", pl.id.c_str(), bd.name.c_str(), r);
                 k++;
             }
-        CHECK(k == n, "plan has %zu shortwave bands, got %zu", n, k);
+        CHECK(k == want, "%s: %zu shortwave bands, want %zu", pl.id.c_str(), k, want);
     }
     std::printf(failures ? "swbc: %d FAILED\n" : "swbc: ok\n", failures);
     return failures ? 1 : 0;
