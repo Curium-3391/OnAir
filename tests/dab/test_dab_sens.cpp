@@ -210,6 +210,11 @@ int main(int argc, char** argv) {
         {"RA4, Doppler 30 Hz", ra4, 30, 0, 0, 9},
         {"SFN 2 paths 0 dB, 300 samples", {{0, 0}, {300, 0}}, 0, 0, 0, 5},
     };
+    // lock-only conditions at 10 dB: offsets beyond the threshold tests, fading, an echo (3.2 quality pass)
+    std::vector<Cond> lc = {cs[0], cs[1], cs[2], cs[3], cs[5],
+                            {"AWGN, +20 kHz", {{0, 0}}, 0, 20000, 0, 99}, {"AWGN, -20 kHz", {{0, 0}}, 0, -20000, 0, 99},
+                            {"AWGN, +100 kHz", {{0, 0}}, 0, 100000, 0, 99}, cs[8]};
+    std::vector<std::vector<Lock>> lockC(lc.size(), std::vector<Lock>(10));
     testjobs::Jobs jobs;
     std::vector<Thr> thr(cs.size());
     const bool doThr = what == "all" || what == "thr", doLock = what == "all" || what == "lock";
@@ -224,7 +229,20 @@ int main(int argc, char** argv) {
     if (doLock)
         for (int s = 0; s < 4; s++)
             for (int k = 0; k < trials; k++) jobs.add([&, s, k] { locks[(size_t)s][(size_t)k] = lockOnce(cs[0], lockSnr[s], 100 + (uint32_t)(s * 1000 + k)); });
+    if (doLock && !only)
+        for (size_t i = 0; i < lc.size(); i++)
+            for (int k = 0; k < 10; k++) jobs.add([&, i, k] { lockC[i][(size_t)k] = lockOnce(lc[i], 10, 500 + (uint32_t)(i * 100 + k)); });
     jobs.run(4);
+    if (doLock && !only) {
+        jprintf("time to lock at 10 dB by condition (s, 10 starts): median / p90 [missing]   sync, first audio\n");
+        for (size_t i = 0; i < lc.size(); i++) {
+            std::vector<double> a, b;
+            for (const Lock& l : lockC[i]) { a.push_back(l.sync); b.push_back(l.audio); }
+            double m[2], p[2]; int miss[2];
+            stats(a, m[0], p[0], miss[0]); stats(b, m[1], p[1], miss[1]);
+            jprintf("%-24s %5.2f / %5.2f [%d]   %5.2f / %5.2f [%d]\n", lc[i].name, m[0], p[0], miss[0], m[1], p[1], miss[1]);
+        }
+    }
     if (doThr) {
         jprintf("%-34s %9s %9s   SNR:FIB%%/AU%%\n", "condition", "FIC thr", "DAB+ thr");
         for (size_t i = 0; i < cs.size(); i++) {
