@@ -186,9 +186,9 @@ static void firmware() {
     // sanity of the RAM writes
     {   auto t = good; t.front().data = {0}; CHECK(!recordsProblem(t).empty()); }                          // does not hold the CPU first
     {   auto t = good; t.back().data = {1}; CHECK(!recordsProblem(t).empty()); }                           // does not release it last
-    {   auto t = r; t[1].wValue = 0x3fff; CHECK(!recordsProblem(t).empty()); }                          // runs past the code RAM
-    {   auto t = r; t[1].wValue = 0xE000; CHECK(!recordsProblem(t).empty()); }                          // outside the code RAM
-    {   auto t = r; t[1].data.clear(); CHECK(!recordsProblem(t).empty()); }
+    {   auto t = good; t[1].wValue = 0x3fff; CHECK(!recordsProblem(t).empty()); }                          // runs past the code RAM
+    {   auto t = good; t[1].wValue = 0xE000; CHECK(!recordsProblem(t).empty()); }                          // outside the code RAM
+    {   auto t = good; t[1].data.clear(); CHECK(!recordsProblem(t).empty()); }
     CHECK(!recordsProblem({}).empty());
     CHECK(recordsProblem(good).empty());
 
