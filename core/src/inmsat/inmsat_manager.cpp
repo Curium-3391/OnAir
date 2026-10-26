@@ -286,6 +286,13 @@ struct Manager::Impl {
             r.voiceCandidate = c.cls == CarrierClass::Wide && r.state < 2 && det.nowSec() - c.firstSeen > 20;
             s.carriers.push_back(r);
         }
+        {   // the common prefix
+            int best = 0; float bestSnr = 0;
+            for (const auto& r : s.carriers) { best = std::max(best, r.state); if (r.state >= 2) bestSnr = std::max(bestSnr, r.ebn0Db); }
+            s.state = best >= 2 ? 2 : (!s.carriers.empty() ? 1 : 0);
+            s.snrDb = bestSnr; s.dataValid = s.messagesTotal > 0 || !s.egc.empty();
+            s.blocksOk = s.susOk; s.blocksBad = s.susBad;
+        }
         std::lock_guard<std::mutex> lk(snapMu);
         s.seq = ++seq;
         snap = std::move(s);
@@ -318,6 +325,9 @@ bool Manager::snapshot(Snapshot& out, uint64_t lastSeq) {
     out = p_->snap;
     return true;
 }
+void Manager::setCenter(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.centerHz = hz; }
+void Manager::setBudget(double u) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.budget = std::max(1.0, u); }
+void Manager::setInmcOn(bool on) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.inmcOn = on; }
 void Manager::setFocus(int id) { std::lock_guard<std::mutex> lk(p_->mu); p_->focusId = id; }
 void Manager::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }
 

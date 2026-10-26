@@ -60,6 +60,12 @@ struct Snapshot {
     std::vector<InmcMessage> egc;               // Inmarsat-C messages, newest first, up to 150
     uint64_t messagesTotal = 0, positionsTotal = 0, susOk = 0, susBad = 0;
     float floorDb = 0;
+    // the common prefix the engine copies into RxTelemetry (status bar, history plot): same meaning as in every other mode
+    int state = 0;                              // 0 searching, 1 carriers found, 2 decoding
+    double cfoHz = 0;
+    float snrDb = 0;                            // best Eb/N0 of a decoding carrier
+    bool dataValid = false;                     // a message was decoded
+    uint64_t blocksOk = 0, blocksBad = 0;       // SUs with a good / bad check, all carriers
 };
 
 struct ManagerConfig {
@@ -81,6 +87,9 @@ public:
     void clearResults();
     void feed(const cf32* x, size_t n);
     bool snapshot(Snapshot& out, uint64_t lastSeq);
+    void setCenter(double hz);                   // absolute frequency of the capture centre, for the carrier table
+    void setBudget(double units);
+    void setInmcOn(bool on);
     void setFocus(int carrierId);                // 0 none; a focused carrier's window is never parked
     void setLogCallback(std::function<void(const std::string&)> cb);
 private:

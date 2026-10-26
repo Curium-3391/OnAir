@@ -1266,6 +1266,10 @@ if(DECT2_BUILD_TESTS)
     target_link_libraries(test_ebicab_mode PRIVATE dect2core)
     target_compile_definitions(test_ebicab_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
     add_test(NAME ebicab_mode COMMAND test_ebicab_mode)
+    add_executable(test_inmsat_mode tests/app/test_inmsat_mode.cpp)   # Inmsat: tuning, mode row, engine / panel wiring, honesty strings
+    target_link_libraries(test_inmsat_mode PRIVATE dect2core)
+    target_compile_definitions(test_inmsat_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
+    add_test(NAME inmsat_mode COMMAND test_inmsat_mode)
     add_executable(test_esubghz_mode tests/app/test_esubghz_mode.cpp)   # Flipper Zero Sub-GHz chat: tuning, mode row, engine / panel / TX wiring, transmit rules
     target_link_libraries(test_esubghz_mode PRIVATE dect2core)
     target_compile_definitions(test_esubghz_mode PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
