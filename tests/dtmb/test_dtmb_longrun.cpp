@@ -11,7 +11,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 
 using namespace dect2;
 using namespace dect2::dtmb;
@@ -20,11 +22,15 @@ static int failures = 0;
 #define CHECK(c, ...) do { if (!(c)) { failures++; printf("FAIL line %d: %s  ", __LINE__, #c); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static double rssMb() {
+#ifdef _WIN32
+    return 0.0;   // no getrusage on Windows: the growth check is skipped there
+#else
     rusage ru; getrusage(RUSAGE_SELF, &ru);
 #ifdef __APPLE__
     return (double)ru.ru_maxrss / 1048576.0;
 #else
     return (double)ru.ru_maxrss / 1024.0;
+#endif
 #endif
 }
 static double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }

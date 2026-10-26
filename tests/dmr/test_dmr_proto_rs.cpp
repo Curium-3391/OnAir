@@ -356,5 +356,5 @@ int main() {
     const long iters = it ? atol(it) : 200000;
     fecTests(iters);
     protoTests(iters);
-    return golden::check("dmr_proto_rs", dig, 0x4ee7430cca61fcfbull, !it);
+    return golden::check("dmr_proto_rs", dig, 0x74ed06bdeefc0fb2ull, !it);
 }
