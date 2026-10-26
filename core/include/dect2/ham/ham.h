@@ -42,7 +42,7 @@ struct QsoRecord {
     double freqHz = 0, startUtc = 0, endUtc = 0;
 };
 bool hamCbBand(double hz);                                    // 26.965-27.405 MHz: 11 m, the CB band (never an amateur band: the gate warns, the operator decides)
-std::string rxBandNameFor(double hz);                         // bandNameFor, plus "11m" for CB: names a receive band only, never used by the TX gate
+std::string rxBandNameFor(double hz);                         // bandNameFor, plus "11m" for CB: names 11 m (CB) as well; the TX gate only warns outside the amateur bands
 std::string bandNameFor(double hz);                          // "20m" ADIF band name, "" outside amateur bands
 std::string adifRecord(const QsoRecord& q);                  // one record, ends with <EOR>
 std::string adifHeader();

@@ -91,7 +91,7 @@ bool hamSignalInBand(double dialHz, double audioHz, double bwHz) {
     return b && hi <= b->hiHz;
 }
 std::string bandNameFor(double hz) { const HamBand* b = hamBandAt(hz); return b ? b->name : ""; }
-// 11 m is the CB band, not an amateur one. It is never in hamBands(), so the TX gate (hamSignalInBand) keeps refusing it; it only names a receive band.
+// 11 m is the CB band, not an amateur one. It is never in hamBands(), so hamSignalInBand is false for it; transmitting there shows a warning instead of being refused (3.2).
 bool hamCbBand(double hz) { return hz >= 26.965e6 && hz <= 27.405e6; }
 std::string rxBandNameFor(double hz) { return hamCbBand(hz) ? "11m" : bandNameFor(hz); }
 

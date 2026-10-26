@@ -304,7 +304,7 @@ void hamPanel(App& a) {
     h.beacon.cfg.myCall = h.call; h.beacon.cfg.myGrid = h.grid;
     o.myCall = h.call; o.myGrid = h.grid;
     const bool isBeacon = h.mode == 3, isKbd = h.kbdIdx >= 0;
-    const std::string band = ham::bandNameFor(a.freqMhz * 1e6), modeName = ham::hamModeName(h.mode), rxBand = ham::rxBandNameFor(a.freqMhz * 1e6);   // rxBand: also names 11 m (CB), receive only
+    const std::string band = ham::bandNameFor(a.freqMhz * 1e6), modeName = ham::hamModeName(h.mode), rxBand = ham::rxBandNameFor(a.freqMhz * 1e6);   // rxBand: also names 11 m (CB), which can transmit with a warning
     if (o.workedDirty) { o.worked.build(o.log.qsos()); o.workedDirty = false; }
     const bool stationOk = ham::hamCallValid(h.call) && ham::hamGridValid(h.grid);
     const bool canCq = stationOk;   // a callsign and a locator are needed to build the messages; the licence box is a reminder, not a lock
