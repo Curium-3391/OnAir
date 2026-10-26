@@ -69,6 +69,12 @@ static void tickReceiver(App& a) {
     if (a.playReq >= 0) for (auto& sv : a.ts.services) if (sv.id == a.playReq && sv.havePmt) { a.engine.player().select(sv.id); a.engine.player().setVolume(a.volume); a.playReq = -1; break; }
 }
 
+// analog TV (standard 9) and FPV (102): their pictures in the video-only view (#326)
+bool atvFullPicture(ImVec2 disp); bool atvHasPicture();
+bool fpvFullPicture(ImVec2 disp); bool fpvHasPicture();
+bool analogFullPicture(App& a, ImVec2 disp) { return a.rx.standard == 9 ? atvFullPicture(disp) : a.rx.standard == 102 ? fpvFullPicture(disp) : false; }
+bool analogHasPicture(const App& a) { return a.rx.standard == 9 ? atvHasPicture() : a.rx.standard == 102 ? fpvHasPicture() : false; }
+
 // F toggles the video-only view; Escape leaves it
 static void videoOnlyKeys(App& a) {
     clipsui::tick(a);   // radio clips: settings, the audio ring, the C key and the dialog
@@ -78,7 +84,7 @@ static void videoOnlyKeys(App& a) {
     if (a.identifyTool && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) a.identifyTool = false;
     if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
         if (a.videoOnly) { a.videoOnly = false; if (glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
-        else if (a.video.has()) { a.videoOnly = true; if (!glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
+        else if (a.video.has() || analogHasPicture(a)) { a.videoOnly = true; if (!glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
     }
     if (a.videoOnly && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { a.videoOnly = false; if (glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
 }
@@ -89,7 +95,7 @@ static void videoOnlyWindow(App& a, ImVec2 disp) {
     ImGui::SetNextWindowSize(disp);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 1));
     ImGui::Begin("##vonly", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-    if (a.video.has()) a.video.draw(disp); else { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("no picture - press Esc")); ImGui::PopTextWrapPos(); }
+    if (a.video.has()) a.video.draw(disp); else if (analogFullPicture(a, disp)) {} else { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", tr("no picture - press Esc")); ImGui::PopTextWrapPos(); }
     if (ImGui::IsWindowHovered() && ImGui::IsMouseDoubleClicked(0)) { a.videoOnly = false; if (glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }
     ImGui::End();
     ImGui::PopStyleColor();

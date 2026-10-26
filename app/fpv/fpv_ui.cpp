@@ -229,6 +229,8 @@ void picture(App& a, ImVec2 box) {
     ImVec2 sz = box;
     if (box.x / box.y > ar) sz.x = box.y * ar; else sz.y = box.x / ar;
     const ImVec2 q0(p0.x + (box.x - sz.x) * 0.5f, p0.y + (box.y - sz.y) * 0.5f), q1(q0.x + sz.x, q0.y + sz.y);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) && S.img && S.frame) { a.videoOnly = true; if (!glfwGetWindowMonitor(gWindow)) toggleFullscreen(); }   // double-click: full screen (#326)
+    if (ImGui::IsItemHovered() && S.img && S.frame) ImGui::SetTooltip("%s", tr("Double-click (or press F) for full screen, Esc to leave"));
     if (S.img && S.frame) {
         dl->AddImage(S.img->texture(), q0, q1);
         if (!on || t.state != 2) dl->AddRectFilled(q0, q1, IM_COL32(0, 0, 0, 150));   // an old picture
@@ -606,6 +608,17 @@ void synth(App& a, bool& changed) {
 }
 
 } // namespace
+
+bool fpvFullPicture(ImVec2 disp) {
+    if (!S.img || !S.frame) return false;
+    const float ar = S.imgH > 0 ? (float)S.imgW / S.imgH : 4.f / 3.f;
+    ImVec2 sz = disp;
+    if (disp.x / disp.y > ar) sz.x = disp.y * ar; else sz.y = disp.x / ar;
+    ImGui::SetCursorPos(ImVec2((disp.x - sz.x) * 0.5f, (disp.y - sz.y) * 0.5f));
+    ImGui::Image(S.img->texture(), sz);
+    return true;
+}
+bool fpvHasPicture() { return S.img && S.frame; }
 
 extern const ModeUi kFpvUi;
 const ModeUi kFpvUi = {
