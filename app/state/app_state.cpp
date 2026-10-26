@@ -103,6 +103,15 @@ void setMode(App& a, int f, int sub) {
         else if (a.family == 5 || f >= 6) { a.tune.lnaDb = 32; a.tune.vgaDb = 34; a.tune.ampOn = false; }   // the amp is off unless the user turns it on (it can be damaged by strong signals): its 14 dB are in the VGA
         else a.tune.ampOn = false;   // a mode without remembered gains (the TV modes) never inherits another mode's amp
     }
+    // #338: between two satellite modes the frequency stays when it is on the LNB's output
+    double carryMhz = 0;
+    if (a.family >= 6 && f >= 6 && a.family != f) {
+        const ModeTuning* ot = modeTuning(a.family + 2);
+        const ModeTuning* nt = modeTuning(f + 2);
+        // both cover the LNB's output (1000 to 2100 MHz, where DVB-S, ISDB-S, D2-MAC, the sat beacon decoder and QO-100 live) and the frequency is in it
+        const auto lnb = [](const ModeTuning* t) { return t->minMhz <= 1000 && t->maxMhz >= 2100; };
+        if (ot && nt && lnb(ot) && lnb(nt) && a.freqMhz >= 1000 && a.freqMhz <= 2100) carryMhz = a.freqMhz;
+    }
     a.sub = sub;
     setFamilyFlags(a, f);
     if (f >= 6) {
@@ -110,6 +119,7 @@ void setMode(App& a, int f, int sub) {
         const SubMode* sm = curSub(a);
         const double def = sm ? sm->defMhz : mt ? mt->defMhz : a.freqMhz;
         a.freqMhz = mt && a.famFreq[to] >= mt->minMhz && a.famFreq[to] <= mt->maxMhz ? a.famFreq[to] : def;
+        if (carryMhz > 0) a.freqMhz = carryMhz;
     }
     if (f == 0 && !(a.freqMhz >= 170 && a.freqMhz <= 870)) a.freqMhz = 522.0;       // a TV channel, not a leftover FM or DAB frequency
     if (f == 1 && !(a.freqMhz >= 170 && a.freqMhz <= 870)) a.freqMhz = 473.0;
