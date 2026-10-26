@@ -24,8 +24,10 @@ void rxWidthControl(App& a, bool& retune) {
     static const double kPre[] = {0.25, 0.5, 1.0, 1.5, 2.0};
     char pv[48];
     if (cur > 0) std::snprintf(pv, sizeof pv, "%g MHz", cur); else std::snprintf(pv, sizeof pv, "%s", tr("Auto"));
+    flowNext(10 * gUi);   // wraps with the rest of the row when the bar is narrow (it was cut off at the right edge)
     ImGui::TextDisabled("%s", tr("Advanced: receive bandwidth"));
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("How much spectrum the radio captures around the frequency, up to 2 MHz, to receive several channels at once. Auto uses the mode's own width. A wider capture needs a higher sample rate and more processor time."));
+    flowNext(6 * gUi);
     ImGui::SetNextItemWidth(130 * gUi);
     double pick = -1;
     bool openCustom = false;

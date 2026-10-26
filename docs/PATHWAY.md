@@ -670,3 +670,6 @@ Dev A is the default Look (prefs key uiTheme32, an old uiTheme of 1 moves to Dev
 
 ## 2026-10-25: 3.2 integration (integ-32)
 Merged fix32-drivers, fix32-ui, fix32-dtmb, fix32-bcast, fix32-misc, feat32-tv, feat32-avmar, feat32-dec, feat32-radios, feat32-ui and feat32-update onto pub/main (only conflicts: docs/PATHWAY.md, both sides kept). CODECS.md now says the Iridium voice plug-in is not distributed with OnAir. Release build of app + tests, CI dispatched, hidden GUI checks on a renamed copy.
+
+## 2026-10-26: 3.2.0 release prep
+Version 3.2.0 in CMakeLists.txt, onair.rc and Info.plist (tools/release/check_versions.sh 3.2.0 passes); docs/CHANGELOG-3.2.md written from the merged branches and the seven merged pull requests. UI fix: the VDL2 / TETRA / TETRAPOL "Advanced: receive bandwidth" control now uses flowNext, so it wraps with the classic toolbar instead of being cut off at the right edge (checked with a hidden 1100x700 screenshot on a renamed copy). Release packages are built from this commit; the GitHub release is a draft until the owner publishes it.
