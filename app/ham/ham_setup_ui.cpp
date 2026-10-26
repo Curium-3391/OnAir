@@ -63,7 +63,7 @@ void hamSetupWizard(App& a, char* call, size_t callN, char* grid, size_t gridN, 
         break;
     }
     case 1: {
-        ImGui::TextWrapped("%s", tr("OnAir transmits only when you confirm the licence, press Arm, and the signal lies inside an amateur band. Your own licence class and your country's band plan may allow less: they are yours to follow."));
+        ImGui::TextWrapped("%s", tr("OnAir transmits only after you press Arm. It warns you when no licence is set or the signal lies outside an amateur band or your country's plan, and then leaves the decision to you: you are responsible for being allowed to transmit. Your own licence class and band plan are yours to follow."));
         ImGui::SetNextItemWidth(220 * gUi);
         if (ImGui::BeginCombo(tr("Licence class"), lic[0] ? lic : tr("choose or type"))) {
             for (const char* c : {"Full (CEPT / HAREC)", "Extra", "General", "Intermediate", "Technician", "Foundation / Novice", "Other"})
@@ -78,7 +78,7 @@ void hamSetupWizard(App& a, char* call, size_t callN, char* grid, size_t gridN, 
         if (const int s = suggestRegion(grid); s && s != o.region) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Use the region of my grid"))) o.region = s; }
         ImGui::TextDisabled("%s", tr("The band bar warns when the dial is outside your region's band."));
         ImGui::Checkbox(tr("I hold an amateur licence for this callsign and will follow its rules"), &licence);
-        if (!licence) ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "%s", tr("Without it OnAir receives and logs, but never transmits."));
+        if (!licence) ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "%s", tr("Without it OnAir warns you when you transmit: you are responsible for being allowed to."));
         canNext = true;   // receiving and logging work without a licence
         break;
     }
@@ -145,8 +145,9 @@ void hamGuideTab(App& a) {
         "3. Answer a CQ: double click it, press Call on the picked station, or F7 for the best CQ of the last slot. Calling CQ yourself: CQ or F6.\n"
         "4. Arm TX. Nothing is sent before that. Auto-seq answers the replies (report, R-report, RR73, 73) and logs the QSO.", true);
     sec("Safety",
-        "Every transmission passes one gate: the licence box ticked, Arm pressed (never saved, cleared by Halt and by the watchdog), a valid callsign and "
-        "grid, and the whole signal (dial + audio frequency + bandwidth) inside an amateur band. Halt TX (Esc) stops at once and releases PTT. The "
+        "Every transmission needs Arm pressed (never saved, cleared by Halt and by the watchdog). No licence set, a signal (dial + audio frequency + bandwidth) "
+        "outside the amateur bands or your country's plan, or an odd callsign or grid are warnings: OnAir says so and still sends, because the decision and "
+        "the responsibility are yours. Halt TX (Esc) stops at once and releases PTT. The "
         "watchdog halts after 6 minutes without an operator action; a call is given up after its retries. The band bar warns when the dial is outside "
         "your IARU region's band; your national rules and licence class are yours to follow.");
     sec("The decode list",

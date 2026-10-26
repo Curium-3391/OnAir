@@ -116,12 +116,13 @@ int main() {
             ham::HamTxCheck g = gate(m & 4 ? 14.074e6 : 13.9e6);
             g.licenceConfirmed = m & 1; g.armed = m & 2;
             const bool ok = tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err);
-            CHECK(ok == (m == 7) && (c->pttOn > 0) == (m == 7) && (a->frames > 0) == (m == 7) && (c->opens > 0) == (m == 7),
+            const bool arm = (m & 2) != 0;   // licence and band are warnings now: only Arm keys
+            CHECK(ok == arm && (c->pttOn > 0) == arm && (a->frames > 0) == arm && (c->opens > 0) == arm,
                   "CAT licence %d arm %d band %d: sent %d keyed %d", m & 1, (m >> 1) & 1, (m >> 2) & 1, ok, c->pttOn);
             if (m == 7) CHECK(c->hz == 14.074e6 && c->mode == "PKTUSB" && c->pttOff == 1, "tuned to the checked frequency, released");
             keyed += c->pttOn;
         }
-        CHECK(keyed == 1, "one key-up in 8 tries");
+        CHECK(keyed == 4, "a key-up in the 4 armed combinations of 8");
         auto* c = new FakeCat; RigKeeper k{std::unique_ptr<RigCat>(c)}; k.setProfile(rig7300()); k.connect(err);
         CatRigIo io(k, std::make_unique<FakeAudio>());
         CHECK(!io.ptt(true, err) && c->pttOn == 0, "CatRigIo: no PTT without the gate (%s)", err.c_str());
@@ -192,13 +193,14 @@ int main() {
         const auto old = hamlibRigsFromString("3073,/dev/cu.x,IC,dev,19200");
         CHECK(old.size() == 1 && old[0].pttType == 0 && !old[0].split && old[0].baud == 19200, "an older entry reads with defaults");
     }
-    // ---- the Hamlib transmit sink keys only inside the amateur bands (dummy rig, no radio) ----
+    // ---- the Hamlib transmit sink warns outside the amateur bands and keys (dummy rig, no radio) ----
     if (hamlibSupported()) {
         HamlibRig r; r.model = 1; r.path = "dummy";
         auto devs = hamlibRigDevices({r});
         auto s = makeTxSink(devs[0]);
         TxTune t; t.centerHz = 100e6; t.sampleRate = 48000;
-        CHECK(s && !s->open(t, err) && err.find("amateur") != std::string::npos, "100 MHz: the CAT rig is not keyed (%s)", err.c_str());
+        CHECK(s && s->open(t, err), "100 MHz: a warning on stderr, the CAT rig is keyed (%s)", err.c_str());
+        if (s) s->close();
         t.centerHz = 14.074e6;
         CHECK(s && s->open(t, err), "14.074 MHz on the dummy rig: %s", err.c_str());
         if (s) s->close();

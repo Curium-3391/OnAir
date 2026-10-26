@@ -172,4 +172,4 @@ font file (`.ttf` / `.otf`) under Advanced in the transmit panel of Hellschreibe
 built-in glyphs lack from that file, 10 pixels high inside the 14-pixel column (the receiver finds the column start from the blank rows above and
 below), at most 16 columns wide. Characters the font does not have stay `?`. No font is bundled: download one (GNU Unifont or Noto Sans CJK, from their
 own sites) and keep its licence. The choice is remembered (setting `hellFont`). The built-in glyphs always win for ASCII, Latin-1, Cyrillic and Greek,
-so the fldigi-compatible picture is unchanged. Transmitting is still behind Arm, the licence box and the band plan.
+so the fldigi-compatible picture is unchanged. Transmitting is still behind Arm; a missing licence or a frequency outside the amateur bands is a warning (see HAM_PLAN.md, "Warnings, not locks").

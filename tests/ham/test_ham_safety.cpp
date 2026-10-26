@@ -59,9 +59,9 @@ int main() {
         for (const char* c : {"DE", "GB", "US", "AU", "JP", "LT"})
             for (const auto& b : hamCountryBands(c)) CHECK(hamBandAt((b.loHz + b.hiHz) / 2) != nullptr, "%s %s lies inside the ITU table", c, b.name.c_str());
         HamTxCheck g = gate(7.25e6);
-        CHECK(hamTxAllowed(g, why), "no country: the ITU union allows 7.25 MHz");
+        CHECK(hamTxAllowed(g, why) && why.empty(), "no country: the ITU union allows 7.25 MHz, no warning");
         g.country = "LT";
-        CHECK(!hamTxAllowed(g, why), "with the country: refused");
+        CHECK(hamTxAllowed(g, why) && why.find("Lithuania") != std::string::npos && why.find("responsible") != std::string::npos, "with the country: a warning, not a refusal (%s)", why.c_str());
         g = gate(); g.dialHz = std::nan("");
         CHECK(!hamTxAllowed(g, why), "NaN frequency refused");
         g = gate(); g.bwHz = std::nan("");
@@ -69,7 +69,7 @@ int main() {
         g = gate(); g.bwHz = -100;
         CHECK(!hamTxAllowed(g, why), "negative bandwidth refused");
     }
-    // ---- the gate on both HamSlotTx paths: only licence + Arm + band keys ----
+    // ---- the gate on both HamSlotTx paths: only Arm keys; no licence or a band outside the plan is a warning, the burst goes out ----
     for (int path = 0; path < 2; path++) {
         int keyed = 0;
         for (int m = 0; m < 8; m++) {
@@ -79,11 +79,12 @@ int main() {
             std::string err;
             const bool ok = path == 0 ? tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err)
                                       : tx.sendAudio(g, std::vector<float>(48000, 0.3f), 100, 0.5, err, "PSK31");
-            CHECK(ok == (m == 7) && (f.ptt1 > 0) == (m == 7) && (f.prepares > 0) == (m == 7) && (f.frames > 0) == (m == 7),
+            const bool arm = (m & 2) != 0;
+            CHECK(ok == arm && (f.ptt1 > 0) == arm && (f.prepares > 0) == arm && (f.frames > 0) == arm,
                   "path %d licence %d arm %d band %d: sent %d, prepared %d, keyed %d", path, m & 1, (m >> 1) & 1, (m >> 2) & 1, ok, f.prepares, f.ptt1);
             keyed += f.ptt1;
         }
-        CHECK(keyed == 1, "path %d: keyed once in 8 tries", path);
+        CHECK(keyed == 4, "path %d: keyed in the 4 armed combinations of 8", path);
     }
     {   // the radio's prepare() sees the checked frequency; a refusal keys nothing
         Fake f; HamSlotTx tx(f); std::string err;

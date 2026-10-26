@@ -164,8 +164,8 @@ int main() {
         Rec r; HamSlotTx tx(r); TxDuty duty;
         HamTxCheck g = gate(14.227e6); g.armed = false;
         CHECK(!sstvSend(tx, duty, g, src, c, 0.4, 0, err) && r.ptt1 == 0, "disarmed: nothing keyed");
-        CHECK(!sstvSend(tx, duty, gate(14.349e6), src, c, 0.4, 0, err) && r.ptt1 == 0, "over the 20 m edge: nothing keyed");
-        CHECK(sstvSend(tx, duty, gate(14.227e6), src, c, 0.4, 0, err) && r.ptt1 == 1 && r.ptt0 == 1, "14.230 SSTV armed: sent (%s)", err.c_str());
+        CHECK(sstvSend(tx, duty, gate(14.349e6), src, c, 0.4, 0, err) && r.ptt1 == 1, "over the 20 m edge: a warning, sent");
+        CHECK(sstvSend(tx, duty, gate(14.227e6), src, c, 0.4, 0, err) && r.ptt1 == 2 && r.ptt0 == 2, "14.230 SSTV armed: sent (%s)", err.c_str());
         TxDuty full; full.add(0, 290);
         CHECK(!sstvSend(tx, full, gate(14.227e6), src, c, 0.4, 290, err) && err.find("duty") != std::string::npos, "duty limit");
         SstvPicture none;

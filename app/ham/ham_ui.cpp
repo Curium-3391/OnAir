@@ -2,7 +2,7 @@
 // station, the licence box, Halt TX and Arm. Then the tabs: Operate (meters, the slot timeline, the decode list coloured by CQ / new DXCC /
 // new grid / worked before, the QSO panel with the auto-sequence steps, the six messages, macros), Log, Awards, Map, Spots, Contest, Guide
 // (ham_log_ui.cpp, ham_map_ui.cpp, ham_setup_ui.cpp). The logic is in core/include/dect2/ham/ (tested). Transmission goes only through the
-// slot scheduler below and HamSlotTx, behind the gate hamTxAllowed (licence confirmed, explicit Arm, inside an amateur band): docs/HAM_PLAN.md.
+// slot scheduler below and HamSlotTx, behind the gate hamTxAllowed (explicit Arm; no licence, a band outside the amateur bands, a country plan miss are warnings): docs/HAM_PLAN.md.
 #include "../app.h"
 #include "ham_kbd_ui.h"
 #include "ham_ops_ui.h"
@@ -307,7 +307,7 @@ void hamPanel(App& a) {
     const std::string band = ham::bandNameFor(a.freqMhz * 1e6), modeName = ham::hamModeName(h.mode), rxBand = ham::rxBandNameFor(a.freqMhz * 1e6);   // rxBand: also names 11 m (CB), receive only
     if (o.workedDirty) { o.worked.build(o.log.qsos()); o.workedDirty = false; }
     const bool stationOk = ham::hamCallValid(h.call) && ham::hamGridValid(h.grid);
-    const bool canCq = stationOk && h.licence;
+    const bool canCq = stationOk;   // a callsign and a locator are needed to build the messages; the licence box is a reminder, not a lock
 
     HfdigFtxTelemetry f;
     a.engine.hfdig().ftx().telemetry(f);
@@ -396,7 +396,7 @@ void hamPanel(App& a) {
             if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
             if (ImGui::SmallButton(b.band)) setBand(b.band);
             if (on) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip(std::string(b.band) == "11m" ? "%.4f MHz, CB (not an amateur band: receive only; the transmit gate refuses it) (Alt+Up / Alt+Down)" : "%.4f MHz (Alt+Up / Alt+Down)", ham::dialFor(b.band, h.mode));
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(std::string(b.band) == "11m" ? "%.4f MHz, CB (not an amateur band: you are responsible for being allowed to transmit here) (Alt+Up / Alt+Down)" : "%.4f MHz (Alt+Up / Alt+Down)", ham::dialFor(b.band, h.mode));
             ImGui::SameLine(0, 3 * gUi);
         }
     }
@@ -404,7 +404,7 @@ void hamPanel(App& a) {
     if (!isKbd && o.region > 0 && !band.empty() && !ham::regionAllows(o.region, a.freqMhz * 1e6 + c.txHz, ham::hamModeBwHz(h.mode, h.sub))) {
         ImGui::SameLine(); ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), "outside the Region %d band plan", o.region);
     } else if (!isKbd && band.empty()) {
-        ImGui::SameLine(); ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), "%s", tr("not an amateur band: receive only"));
+        ImGui::SameLine(); ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), "%s", tr("not an amateur band: you are responsible for being allowed to transmit here"));
     }
 
     // ---- station ----
@@ -422,7 +422,8 @@ void hamPanel(App& a) {
     if (!stationOk) ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "%s", tr("Enter your callsign and a 4 or 6 character grid locator."));
 
     // licence confirmation, stored; asked before the first TX
-    if (ImGui::Checkbox(tr("I hold an amateur licence for this callsign and will follow its rules"), &h.licence)) { save(h); if (!h.licence) h.armed = false; }
+    if (ImGui::Checkbox(tr("I hold an amateur licence for this callsign and will follow its rules"), &h.licence)) save(h);
+    if (!h.licence) { ImGui::SameLine(); ImGui::TextColored(ImVec4(1, 0.7f, 0.3f, 1), "%s", tr("No licence set: you are responsible for being allowed to transmit.")); }
 
     auto rigWidgets = [&h] {   // rig and audio output, level (shared with the keyboard modes)
         const auto rigs = hamlibRigs();
@@ -453,12 +454,10 @@ void hamPanel(App& a) {
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Stops at once: the burst is cut, PTT released, the QSO and the beacon stopped, TX disarmed (Esc)"));
         ImGui::SameLine();
-        ImGui::BeginDisabled(!h.licence);
         ImGui::PushStyleColor(ImGuiCol_Button, h.armed ? ImVec4(0.75f, 0.1f, 0.1f, 1) : ImVec4(0.3f, 0.3f, 0.3f, 1));
         if (ImGui::Button(h.armed ? tr("ARMED: click to disarm") : tr("Arm TX"))) { h.armed = !h.armed; h.eng.userAction(now); }
         ImGui::PopStyleColor();
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Nothing is sent unless this is armed, the licence box is ticked and the frequency is inside an amateur band. Disarmed again when you halt or the watchdog fires."));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Nothing is sent unless this is armed. Without a licence, outside the amateur bands or outside your country's plan OnAir warns you and still sends: you are responsible. Disarmed again when you halt or the watchdog fires."));
         ImGui::SameLine();
         if (h.txState == 1) ImGui::TextColored(ImVec4(1, 0.35f, 0.3f, 1), "TX  %s", h.txMsg.c_str());
         else if (!h.status.empty()) ImGui::TextColored(ImVec4(1, 0.8f, 0.4f, 1), "%s", h.status.c_str());
@@ -532,6 +531,7 @@ void hamPanel(App& a) {
                 std::string why;
                 if (!ham::hamTxAllowed(g, why)) { h.lastTx = "Not sent (" + why + "): " + msg; h.slots[idx] = 'F'; }
                 else {
+                    if (!why.empty()) h.status = "Warning: " + why;   // sent anyway: the operator is responsible
                     h.txMsg = msg; h.txSlot = ss; h.txState = 1; h.txBeacon = isBeacon; h.txOverride = ovr;
                     const double hz = g.audioHz, lv = h.level; const int md = h.mode, sb = h.sub;
                     h.worker = std::thread([&h, g, md, msg, hz, lv, sb] {

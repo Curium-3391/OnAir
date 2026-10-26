@@ -222,7 +222,7 @@ int main() {
         const DeviceInfo d = hackrf();
         std::string why;
         SdrTxConfig c = cfgOk(); c.bandFilterConfirmed = false;
-        CHECK(sdrTxRefused(d, c, 14.074e6, 1500, 50, why) && why.find("filter") != std::string::npos, "no band filter confirmed: refused (%s)", why.c_str());
+        CHECK(!sdrTxRefused(d, c, 14.074e6, 1500, 50, why), "no band filter confirmed: a warning (the prepare text), not a refusal (%s)", why.c_str());
         CHECK(!sdrTxRefused(d, cfgOk(), 14.074e6, 1500, 50, why), "a HackRF with a filter: allowed (%s)", why.c_str());
         CHECK(sdrTxRefused(d, cfgOk(), 14.074e6, 2950, 50, why), "audio above 2900 Hz: refused");
         CHECK(sdrTxRefused(d, cfgOk(), 14.074e6, 200, 50, why), "audio below 300 Hz: refused");
@@ -270,7 +270,7 @@ int main() {
         io.ptt(false, err);
         CHECK(!io.keyed() && !io.ptt(true, err) && made == 1, "one prepare is one burst: keying again needs the gate again");
     }
-    {   // every combination of licence, Arm and band: only all three key the SDR
+    {   // every combination of licence, Arm and band: only Arm keys the SDR (the rest are warnings)
         int keyed = 0;
         for (int m = 0; m < 8; m++) {
             made = 0; sent.clear();
@@ -279,19 +279,21 @@ int main() {
             HamTxCheck g = gate(m & 4 ? 14.074e6 : 14.36e6);   // 14.36 MHz: above 20 m
             g.licenceConfirmed = m & 1; g.armed = m & 2;
             const bool ok = tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err);   // FT2: short
-            CHECK(ok == (m == 7) && (made > 0) == (m == 7) && sent.empty() == (m != 7), "licence %d arm %d in band %d: sent %d, radio opened %d",
+            const bool arm = (m & 2) != 0;
+            CHECK(ok == arm && (made > 0) == arm && sent.empty() == !arm, "licence %d arm %d in band %d: sent %d, radio opened %d",
                   m & 1, (m >> 1) & 1, (m >> 2) & 1, ok, made);
             keyed += made;
         }
-        CHECK(keyed == 1, "one radio opened in 8 tries");
+        CHECK(keyed == 4, "the radio opened in the 4 armed combinations of 8");
     }
     {   // the country plan: 7.25 MHz is outside Region 1's 40 m (Lithuania), inside it in the US
         SdrHamIo io(hackrf(), recording, cfgOk());
         HamSlotTx tx(io);
         HamTxCheck g = gate(7.25e6);
         made = 0;
-        CHECK(!tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err) && made == 0, "LT 7.25 MHz refused (%s)", err.c_str());
+        CHECK(tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err) && made == 1, "LT 7.25 MHz is outside the plan: warned, then sent (%s)", err.c_str());
         g.country = "US";
+        made = 0;
         CHECK(tx.send(g, 2, "CQ LY1ABC KO24", 1500, 0.5, err) && made == 1, "US 7.25 MHz sent (%s)", err.c_str());
     }
     {   // a full FT8 burst over the SDR path, decoded back from the IQ

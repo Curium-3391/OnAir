@@ -26,7 +26,12 @@ struct HamTxCheck {
     double dialHz = 0, audioHz = 0, bwHz = 50;
     std::string country;
 };
-bool hamTxAllowed(const HamTxCheck& c, std::string& why);    // why: the reason when false (empty when true)
+// The gate. OnAir does not decide whether a transmission is legal: that is the operator's responsibility. The only things that stop a burst here
+// are the explicit Arm (never saved, cleared by Halt and the watchdog) and numbers that cannot be keyed (a frequency that is not a number).
+// Everything else (no licence set, not an amateur band, outside the country's plan, a callsign or locator that does not look valid) is a WARNING:
+// on true, `why` holds the warnings joined by a space ("" when there are none) for the log and the screen; on false it holds the reason.
+bool hamTxAllowed(const HamTxCheck& c, std::string& why);
+std::vector<std::string> hamTxWarnings(const HamTxCheck& c);   // one plain sentence each: "27.265 MHz is not an amateur band. You are responsible for being allowed to transmit here."
 bool hamCallValid(const std::string& call);                  // plain callsign shape (prefix, digit, suffix), optional /P /M style suffix
 bool hamGridValid(const std::string& grid);                  // 4 or 6 character Maidenhead locator
 
@@ -36,7 +41,7 @@ struct QsoRecord {
     std::string submode;          // ADIF SUBMODE (mode "PSK", submode "PSK31"); "" none
     double freqHz = 0, startUtc = 0, endUtc = 0;
 };
-bool hamCbBand(double hz);                                    // 26.965-27.405 MHz: 11 m, the CB band (receive only: never an amateur band, the TX gate refuses it)
+bool hamCbBand(double hz);                                    // 26.965-27.405 MHz: 11 m, the CB band (never an amateur band: the gate warns, the operator decides)
 std::string rxBandNameFor(double hz);                         // bandNameFor, plus "11m" for CB: names a receive band only, never used by the TX gate
 std::string bandNameFor(double hz);                          // "20m" ADIF band name, "" outside amateur bands
 std::string adifRecord(const QsoRecord& q);                  // one record, ends with <EOR>

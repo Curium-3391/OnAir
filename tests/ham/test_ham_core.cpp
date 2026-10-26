@@ -1,5 +1,6 @@
 // Ham operation core: band table and TX gate, ADIF round trip and worked-before, slot timing, message parsing, the QSO state machine.
 #include "dect2/ham/ham.h"
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -25,18 +26,23 @@ int main() {
     CHECK(hamGridValid("KO24") && hamGridValid("ko24ab") && !hamGridValid("ZZ99") && !hamGridValid("KO2"));
     HamTxCheck g; g.call = "LY1ABC"; g.grid = "KO24"; g.dialHz = 14.074e6; g.audioHz = 1500;
     std::string why;
-    CHECK(!hamTxAllowed(g, why) && why.find("licence") != std::string::npos);
-    g.licenceConfirmed = true;
+    // owner rule 2026-10-26: only Arm stops a burst; everything else is a warning (the user decides)
     CHECK(!hamTxAllowed(g, why) && why.find("armed") != std::string::npos);
     g.armed = true;
-    CHECK(hamTxAllowed(g, why) && why.empty());
+    CHECK(hamTxAllowed(g, why) && why.find("No amateur licence is set") != std::string::npos && why.find("responsible") != std::string::npos);   // no licence: warned
+    g.licenceConfirmed = true;
+    CHECK(hamTxAllowed(g, why) && why.empty() && hamTxWarnings(g).empty());
     g.dialHz = 100e6;
-    CHECK(!hamTxAllowed(g, why) && why.find("outside") != std::string::npos);
-    g.dialHz = 27.265e6;   // 11 m (CB): even armed and licensed, never an amateur band
-    CHECK(!hamTxAllowed(g, why) && why.find("outside") != std::string::npos);
+    CHECK(hamTxAllowed(g, why) && why.find("is not an amateur band") != std::string::npos);
+    g.dialHz = 27.265e6;   // 11 m (CB): not an amateur band, warned, then it transmits
+    CHECK(hamTxAllowed(g, why) && why.find("27.265 MHz is not an amateur band (11 m is CB). You are responsible for being allowed to transmit here.") != std::string::npos);
     g.dialHz = 27.185e6; g.audioHz = 1000;
-    CHECK(!hamTxAllowed(g, why));
+    CHECK(hamTxAllowed(g, why) && hamTxWarnings(g).size() == 1);
     g.dialHz = 14.074e6; g.call = "X";
+    CHECK(hamTxAllowed(g, why) && why.find("callsign") != std::string::npos);
+    g.call = "LY1ABC"; g.dialHz = std::nan("");
+    CHECK(!hamTxAllowed(g, why) && why.find("not valid") != std::string::npos);   // not a number: cannot be keyed
+    g.dialHz = 14.074e6; g.armed = false;
     CHECK(!hamTxAllowed(g, why));
 
     // timing
