@@ -979,6 +979,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_rig_control tests/source/test_rig_control.cpp)
   target_link_libraries(test_rig_control PRIVATE dect2core)
   add_test(NAME rig_control COMMAND test_rig_control)
+  add_executable(test_device_pick tests/source/test_device_pick.cpp)   # --list-devices / --device / --antenna of onair-cli and the app (core/include/dect2/source/device_pick.h)
+  target_link_libraries(test_device_pick PRIVATE dect2core)
+  add_test(NAME device_pick COMMAND test_device_pick)
 
   # data feeds out (SBS, Beast, AIVDM, APRS-IS, KISS, ACARS / VDL2 JSON): the formats and a loopback socket test
   add_executable(test_feeds tests/net/test_feeds.cpp)

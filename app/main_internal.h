@@ -7,7 +7,8 @@
 // The developer and test flags (--autostart, --shot, --stress ...): what main() and its frame loop act on.
 struct DevOpts {
     bool autostart = false, hackrfStart = false, fileStart = false, stress = false;
-    std::string startDevice;   // exact source name: select an RSPduo input without relying on enumeration order
+    std::string startDevice;   // --device: an index (of --list-devices), a serial, or a part of the name (an exact name still works: select an RSPduo input without relying on enumeration order)
+    std::string startAntenna;  // --antenna: the antenna socket of a radio that has several
     int stressFrame = 0, stressStep = 0;
     const char* shotPath = nullptr;
     double shotAfter = 0;      // dev: take the --shot after this many seconds instead of after a number of frames

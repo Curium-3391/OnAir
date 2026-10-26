@@ -5,6 +5,7 @@
 #include <unistd.h>
 #endif
 #include "dect2/common/time_source.h"
+#include "dect2/source/device_pick.h"
 #include "app.h"
 #include "ui/contrast.h"
 #include "transcribe/transcribe_app.h"
@@ -183,11 +184,15 @@ static void devAutomation(App& app, DevOpts& o) {
         o.autostart = false;
         app.devIdx = 0;
         if (o.hackrfStart) for (int i = 0; i < (int)app.devices.size(); i++) if (app.devices[i].kind == (o.fileStart ? DeviceInfo::File : DeviceInfo::HackRF) || (!o.fileStart && app.devices[i].isRadio())) app.devIdx = i;
-        bool found = o.startDevice.empty();
-        if (!o.startDevice.empty()) {
-            for (int i = 0; i < (int)app.devices.size(); i++) if (app.devices[i].name == o.startDevice) { app.devIdx = i; found = true; break; }
-            if (!found) {
-                const std::string msg = "Requested source not found: " + o.startDevice + ". Receiver was not started.";
+        bool found = o.startDevice.empty() && o.startAntenna.empty();
+        if (!found) {   // --device (index of --list-devices, serial, name part, or the exact name) and --antenna, among the radios
+            std::vector<DeviceInfo> radios; std::vector<int> at;
+            for (int i = 0; i < (int)app.devices.size(); i++) if (app.devices[i].isRadio()) { radios.push_back(app.devices[i]); at.push_back(i); }
+            std::string perr;
+            const int k = dect2::pickDevice(radios, o.startDevice, o.startAntenna, perr);
+            if (k >= 0) { app.devIdx = at[(size_t)k]; found = true; }
+            else {
+                const std::string msg = "Requested source not found: " + perr + ". Receiver was not started.";
                 app.engine.log(msg); fprintf(stderr, "%s\n", msg.c_str());
             }
         }
