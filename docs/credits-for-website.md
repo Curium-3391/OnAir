@@ -68,7 +68,7 @@ The full notices and the open licence points are in [THIRD_PARTY.md](https://git
 | libusb | libusb contributors | LGPL-2.1-or-later | USB radios | linked or loaded |
 | libhackrf | Great Scott Gadgets, Michael Ossmann, Jared Boone | BSD-3-Clause | HackRF | linked |
 | Hamlib | The Hamlib group | LGPL-2.1-or-later | CAT control | linked |
-| OpenSSL | The OpenSSL Project authors | Apache-2.0 (3.x) | HTTPS for the headless server (core/src/net/tls_conn.cpp), only in builds made with DECT2_WITH_TLS | linked when built with TLS, not part of the default packages |
+| OpenSSL | The OpenSSL Project authors | Apache-2.0 (3.x) | HTTPS for the headless server and OnAir Web (core/src/net/tls_conn.cpp): serving https / wss, and the checked HTTPS call of the web.on-air.dev directory heartbeat | linked into the release packages (macOS and Linux as shared libraries, Windows statically); builds made without DECT2_WITH_TLS do not contain it |
 | SoapySDR | Josh Blum, Pothosware | BSL-1.0 | radio abstraction | linked or loaded |
 | SoapyRemote | Josh Blum, Pothosware | BSL-1.0 | SoapySDR over the network | loaded (client module shipped in Windows and macOS packages) |
 | Radio vendor libraries | librtlsdr, libairspy, libbladeRF, libLimeSuite, libiio, UHD, Fobos, librfnm and others | GPL, BSD, LGPL or MIT (each its own) | native radio drivers | loaded at run time from the user's install, not shipped |

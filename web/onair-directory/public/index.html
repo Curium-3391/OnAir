@@ -3,44 +3,176 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark light">
-  <meta name="description" content="Public OnAir Web servers: receivers you can listen to in a browser. Servers list themselves; nothing about listeners is collected.">
-  <title>OnAir Servers</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Public OnAir Web receivers you can listen to in a browser. Receivers list themselves; nothing about listeners is collected.">
+  <title>OnAir Receivers</title>
   <link rel="icon" href="data:,">
-  <link href="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="bar">
-    <a class="name" href="https://on-air.dev">OnAir</a><span class="sep">/</span><span class="cur">Servers</span>
-    <span class="count" id="count" aria-live="polite"></span>
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="brand" href="https://on-air.dev">OnAir</a>
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
+        <a role="tab" href="#receivers" data-t="receivers">Receivers</a>
+        <a role="tab" href="#listen" data-t="listen">Listen</a>
+        <a role="tab" href="#list" data-t="list">List your receiver</a>
+        <a role="tab" href="#run" data-t="run">Run your own</a>
+        <a role="tab" href="#faq" data-t="faq">FAQ</a>
+      </nav>
+    </div>
   </header>
-  <div class="filters">
-    <input id="q" type="search" placeholder="Search name, radio, description" aria-label="Search" maxlength="60" autocomplete="off">
-    <select id="band" aria-label="Band">
-      <option value="">All bands</option>
-      <option value="lf">LF</option><option value="mw">MW</option><option value="hf">HF</option><option value="80m">80 m</option><option value="40m">40 m</option><option value="20m">20 m</option>
-      <option value="vhf">VHF</option><option value="fm">FM broadcast</option><option value="air">Airband</option><option value="marine">Marine VHF</option><option value="2m">2 m</option>
-      <option value="dab">DAB</option><option value="uhf">UHF</option><option value="70cm">70 cm</option><option value="tv">TV</option><option value="l">L band</option>
-    </select>
-    <label class="chk"><input id="free" type="checkbox"> Free slots</label>
+
+  <main class="wrap">
+  <div id="p-receivers" class="page">
+    <p class="note">Anyone can list a receiver here. Entries are self-registered and not vetted: open them at your own risk, and use Report if something is wrong. The directory stores no listener data.</p>
+
+    <form class="tools" id="tools" role="search" onsubmit="return false">
+      <label class="srch"><span class="vh">Search receivers</span><input id="q" type="search" placeholder="Search name, radio, place, description" maxlength="60" autocomplete="off"></label>
+      <label class="sel"><span class="vh">Sort by</span>
+        <select id="sort">
+          <option value="users">Most listeners</option>
+          <option value="free">Most free slots</option>
+          <option value="name">Name</option>
+          <option value="seen">Last seen</option>
+          <option value="freq">Lowest frequency</option>
+          <option value="dist" disabled>Nearest</option>
+        </select></label>
+      <label class="sel"><span class="vh">Frequency scale</span>
+        <select id="scale">
+          <option value="log">Scale: 0.1 MHz to 6 GHz (log)</option>
+          <option value="hf">Scale: 0 to 30 MHz</option>
+          <option value="vu">Scale: 30 MHz to 1 GHz</option>
+        </select></label>
+      <button type="button" id="loc" class="btn" aria-pressed="false">Show distance</button>
+      <label class="chk"><input id="free" type="checkbox"> Free slots only</label>
+    </form>
+    <div class="chips" id="chips" role="group" aria-label="Band"></div>
+
+    <div class="status" id="status" role="status" aria-live="polite">Loading receivers...</div>
+
+    <table class="tbl" id="tbl" hidden>
+      <thead>
+        <tr><th scope="col" class="c-name">Receiver</th><th scope="col" class="c-cov"><span id="axis-title">Coverage</span><div class="axis" id="axis" aria-hidden="true"></div></th><th scope="col" class="c-num">Listeners</th><th scope="col" class="c-num" id="th-dist" hidden>Distance</th><th scope="col" class="c-num">Seen</th><th scope="col" class="c-act"><span class="vh">Actions</span></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <section id="empty" class="empty" hidden aria-labelledby="empty-h">
+      <h2 id="empty-h">No receivers listed</h2>
+      <p>Nobody is listed right now, or nothing matches your filters. A receiver appears here only when its owner turns the directory on in <code>onair-server</code>.</p>
+      <p>To list yours, add these to the server settings file, start <code>onair-server --web</code>, read the preview it prints, then add the confirmation code it gives:</p>
+<pre>web_directory=1
+web_directory_url=https://web.on-air.dev
+web_public_url=https://radio.example.org
+web_directory_loc=54.69,25.28     # optional, or a locator such as KO24pq
+web_directory_radio=HackRF Pro
+web_directory_desc=Wideband receiver on the roof
+web_directory_ack=&lt;code from the preview&gt;</pre>
+      <p>The address must be HTTPS, and listing needs OnAir 3.2 or newer. Only name, address, rough location, coverage and listener counts are sent, every 5 minutes. Full steps: <a href="https://github.com/adswill/OnAir/blob/main/docs/HOST-A-RECEIVER.md">guide for beginners</a>, <a href="https://github.com/adswill/OnAir/blob/main/docs/ONAIR-WEB.md">OnAir Web guide</a> and <a href="https://github.com/adswill/OnAir/blob/main/docs/ONAIR-DIRECTORY.md">directory notes</a>.</p>
+    </section>
   </div>
-  <main>
-    <section id="list" aria-label="Servers"></section>
-    <div id="map" role="application" aria-label="Map of servers"></div>
+
+  <div id="p-listen" class="page" hidden>
+    <h1>Listen to a receiver</h1>
+    <p class="lead">You need nothing but a browser. No account, no download.</p>
+    <ol class="steps">
+      <li><b>Open the <a href="#receivers">Receivers</a> tab.</b> Each row is a radio somebody shares. The bar shows which frequencies it covers; Listeners shows how many people are on it out of how many it allows (for example 2/6).</li>
+      <li><b>Pick one that covers what you want.</b> Use the band buttons (FM, Air, HF ...) or the search box. Rows with no free slot (3/3) are full: try another or come back later.</li>
+      <li><b>Click Listen.</b> The receiver opens in a new tab. It is the owner's own page, not ours.</li>
+      <li><b>Press the play or audio button there and choose a frequency.</b> Your browser needs a click before it will play sound.</li>
+      <li><b>If it asks for a password or invite,</b> the owner keeps it private. Ask them; nothing here can give you one.</li>
+    </ol>
+    <p>Something wrong with a receiver? Use Report next to it. Listings are written by their owners and nobody checks them first.</p>
+    <p>Full guide for listeners and owners: <a href="https://github.com/adswill/OnAir/blob/main/docs/ONAIR-WEB.md">OnAir Web guide</a> or the <a href="https://github.com/adswill/OnAir/wiki/OnAir-Web">wiki page</a>.</p>
+  </div>
+
+  <div id="p-list" class="page" hidden>
+    <h1>List your receiver here</h1>
+    <p class="lead">Listing is optional and off by default. Nobody has to approve it; your server signs each message so nobody else can edit your entry.</p>
+    <div class="callout"><b>Needs OnAir 3.2 or newer.</b> The 3.1 downloads have no HTTPS support built in, so they cannot send the listing message. 3.2 is coming; you do not need to build anything from source.</div>
+    <p>Before you start: your OnAir Web server must already be reachable over <b>HTTPS</b> (see <a href="#run">Run your own</a>). The same steps, written for complete beginners on Windows, Mac, Linux and Raspberry Pi, are in the <a href="https://github.com/adswill/OnAir/blob/main/docs/HOST-A-RECEIVER.md">beginner's guide</a>.</p>
+    <ol class="steps">
+      <li><b>Stop the server and open its settings file</b> (Windows <code>%APPDATA%\OnAir\server.conf</code>; Mac and Linux <code>~/.config/onair/server.conf</code>) and add:
+<pre>web_directory=1
+web_directory_url=https://web.on-air.dev
+web_public_url=https://your-address.example
+web_directory_radio=HackRF Pro
+web_directory_desc=Wideband receiver on the roof
+web_directory_loc=54.69,25.28</pre>
+        Replace <code>web_public_url</code> with the HTTPS address listeners open. The location is optional (leave the line out for none); a Maidenhead locator such as <code>KO24pq</code> works too. <code>web_directory_loc_decimals=1</code> keeps it to about 10 km, <code>2</code> to about 1 km.</li>
+      <li><b>Start the server.</b> Nothing is sent yet.</li>
+      <li><b>Read the preview it prints.</b> It shows the exact data that would be sent, where it goes, and a confirmation code.</li>
+      <li><b>Add the code to the settings file</b> as <code>web_directory_ack=&lt;code&gt;</code> and restart. If you later change the name, address, location or description, you get a new code and must look again.</li>
+      <li><b>Wait about a minute.</b> Your receiver appears on the <a href="#receivers">Receivers</a> tab and is refreshed every 5 minutes. If the server stops, the entry disappears after about 15 minutes.</li>
+      <li><b>To remove yourself:</b> run <code>onair-server --directory-remove</code>, or set <code>web_directory=0</code>.</li>
+    </ol>
+    <p>What is sent: name, description, address, rough location, radio name, frequency coverage, listener limit and the current <i>number</i> of listeners. Never sent: who listens, what they listen to, or your own IP address. Details: <a href="https://github.com/adswill/OnAir/blob/main/docs/ONAIR-DIRECTORY.md">directory notes</a>.</p>
+  </div>
+
+  <div id="p-run" class="page" hidden>
+    <h1>Run your own receiver</h1>
+    <p class="lead">One radio, many listeners: each listener gets their own virtual receiver inside what your radio captures. Receive only.</p>
+    <div class="callout">The OnAir download already contains the server (<code>onair-server</code>); nothing to build. There is a <a href="https://github.com/adswill/OnAir/blob/main/docs/HOST-A-RECEIVER.md">step-by-step guide for complete beginners</a> (Windows, Mac, Linux, Raspberry Pi). The short version is below. It has not yet been tried with real browsers over the internet or on a Raspberry Pi.</div>
+    <ol class="steps">
+      <li><b>Install OnAir</b> from the <a href="https://github.com/adswill/OnAir/releases/latest">releases page</a> (Windows installer, Mac disk image, Linux .deb or portable archive). Plug in your radio.</li>
+      <li><b>Start the server.</b> In a terminal (no radio yet? the built-in test signal is <code>--device test</code>):
+<pre># Windows
+"C:\Program Files\OnAir\onair-server.exe" --web --device test
+
+# Mac
+/Applications/OnAir.app/Contents/MacOS/onair-server --web --device test
+
+# Linux and Raspberry Pi
+onair-server --web --device test</pre></li>
+      <li><b>Open it</b> on the same computer: <code>http://127.0.0.1:8073</code>. By default it listens on this computer only.</li>
+      <li><b>Choose who may listen.</b> Stop the server, add to the settings file, then start it again:
+<pre>web_auth=password          # open, password or invite
+web_password=choose-eight-or-more
+web_max_users=6</pre>
+        Start with a password or invites: open access means anyone, and they share your upload bandwidth.</li>
+      <li><b>Put it on the internet</b> with HTTPS. The easiest way needs no router changes and no domain: <a href="https://tailscale.com/kb/1223/funnel">Tailscale Funnel</a> (<code>tailscale funnel --bg 8073</code>) gives a free <code>https://&lt;name&gt;.ts.net</code> address. Alternatives: Cloudflare Tunnel (needs a domain) or a router port forward with Caddy. Add <code>web_trust_proxy=1</code> and <code>web_origin=https://your-address</code> to the settings file. All three ways, step by step, are in the <a href="https://github.com/adswill/OnAir/blob/main/docs/HOST-A-RECEIVER.md">guide</a>.</li>
+      <li><b>Start it by itself</b> after a restart, and <b>list it here</b> (optional, needs OnAir 3.2 or newer): <a href="#list">List your receiver</a>, using your HTTPS address as <code>web_public_url</code>.</li>
+    </ol>
+    <p>All settings, limits, frequency restrictions and the admin API: <a href="https://github.com/adswill/OnAir/blob/main/docs/ONAIR-WEB.md">OnAir Web guide</a>, <a href="https://github.com/adswill/OnAir/wiki/Host-a-Receiver">wiki: Host a receiver</a>, <a href="https://github.com/adswill/OnAir/wiki/OnAir-Web">wiki: OnAir Web</a>.</p>
+  </div>
+
+  <div id="p-faq" class="page" hidden>
+    <h1>FAQ</h1>
+    <dl class="faq">
+      <dt>Can listeners transmit or control my radio?</dt>
+      <dd>No. OnAir Web is receive only. Listeners tune their own virtual receiver; they cannot change your radio's frequency, gain or mode, and the protocol refuses transmit requests.</dd>
+      <dt>What does this directory store about listeners?</dt>
+      <dd>Nothing. It never sees who listens: servers send only a count. This page uses no cookies and no analytics. If you share your location for distances, it stays in your browser.</dd>
+      <dt>What does it store about receivers?</dt>
+      <dd>What the owner chose to send (see <a href="#list">List your receiver</a>). The server's IP address is not stored.</dd>
+      <dt>Are the listed receivers checked?</dt>
+      <dd>No. Entries are self-registered. A green dot means the directory asked the address and an OnAir server answered; grey means not checked. Use Report if something is wrong.</dd>
+      <dt>Is it legal to share my receiver?</dt>
+      <dd>Rules differ by country. Receiving some services (for example private or encrypted traffic) can be restricted, and you are responsible for what your receiver offers. OnAir keeps voice and pager decoders off until the host accepts a legal notice, and you can limit frequencies. This is not legal advice.</dd>
+      <dt>Why is my receiver not showing?</dt>
+      <dd>Check that you added the confirmation code, that the public address starts with <code>https://</code> and opens from outside your network, and that the server's clock is right (within 5 minutes). Give it a few minutes.</dd>
+      <dt>Where do I ask for help?</dt>
+      <dd><a href="https://discord.gg/Kky9c6atm">OnAir Discord</a> or <a href="https://github.com/adswill/OnAir/issues">GitHub issues</a>.</dd>
+    </dl>
+  </div>
   </main>
-  <footer>Servers list themselves and send only their name, address, coarse location, coverage and user counts. <a href="https://github.com/adswill/OnAir">OnAir</a> &middot; map &copy; OpenStreetMap</footer>
-  <dialog id="rep">
+
+  <footer class="wrap foot">
+    <span>Data: <a href="/api/v1/servers">/api/v1/servers</a> (JSON, open to any site). Your location, if you share it, stays in this browser.</span>
+    <a href="https://github.com/adswill/OnAir">OnAir on GitHub</a>
+  </footer>
+
+  <dialog id="rep" aria-labelledby="rep-h">
     <form method="dialog" id="repform">
-      <h2>Report a server</h2>
-      <p id="repname"></p>
+      <h2 id="rep-h">Report a receiver</h2>
+      <p id="repname" class="dim"></p>
       <label>Reason <select id="repreason"><option value="abuse">Abuse</option><option value="illegal">Illegal content</option><option value="offline">Offline</option><option value="wrong-info">Wrong information</option><option value="other">Other</option></select></label>
       <label>Details <textarea id="reptext" maxlength="500" rows="3"></textarea></label>
-      <div class="row"><button value="cancel" type="button" id="repcancel">Cancel</button><button value="ok" type="submit">Send report</button></div>
+      <div class="row"><button value="cancel" type="button" id="repcancel" class="btn">Cancel</button><button value="ok" type="submit" class="btn primary">Send report</button></div>
       <p id="repmsg" role="status"></p>
     </form>
   </dialog>
-  <script src="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

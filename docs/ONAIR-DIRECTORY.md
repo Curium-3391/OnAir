@@ -67,7 +67,7 @@ Settings file keys (all off or empty by default):
 
 ```
 web_directory=1
-web_directory_url=https://directory.on-air.dev
+web_directory_url=https://web.on-air.dev
 web_public_url=https://radio.example.org
 web_directory_loc=54.69,25.28        # or a locator such as KO24pq; leave out for no location
 web_directory_loc_decimals=2         # 0 to 5
@@ -83,7 +83,7 @@ web_directory_key=                   # key file; default web_directory.key besid
 1. Set the keys above and start `onair-server --web`.
 2. Nothing is sent yet. The server prints the exact JSON body, where it goes and a confirmation code, and says `add web_directory_ack=<code>`.
 3. Read the preview. Put the code in the settings file as `web_directory_ack=...` and restart. Changing name, address, location, radio, contact, description, interval, the directory URL or the reach switch changes the code, so you must look again. Time, user count, capture coverage and version change by themselves and do not.
-4. HTTPS only: the directory URL and `web_public_url` must start with `https://`, the certificate and host name are checked. The build needs TLS (OpenSSL). On Windows set `SSL_CERT_FILE` if the system CA store is not found.
+4. HTTPS only: the directory URL and `web_public_url` must start with `https://`, the certificate and host name are checked. The build needs TLS (OpenSSL): the release packages from 3.2 on have it, and the certificate authorities come from the system (the Windows root store, `/etc/ssl/cert.pem` on macOS, the distribution bundle on Linux); `SSL_CERT_FILE` / `SSL_CERT_DIR` override that. Step by step for beginners: docs/HOST-A-RECEIVER.md.
 
 The key is made on first start: 32 random bytes in `web_directory.key` (mode 0600). Keep it; it proves the listing is yours. Losing it means a new id (the old listing expires by itself, or ask the admin to remove it). The Ed25519 code in the repo is not constant-time; it signs only these public messages, nothing a listener can influence.
 

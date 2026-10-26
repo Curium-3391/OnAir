@@ -49,8 +49,10 @@ The radio's centre frequency and rate are what the listeners can tune inside: se
 
 ## On the internet
 
+New to this? docs/HOST-A-RECEIVER.md walks through it for complete beginners (Tailscale Funnel, Cloudflare Tunnel, router + Caddy).
+
 1. **TLS.** Listeners' passwords and invites must not travel in clear text, and browsers only allow some audio features on HTTPS. Either:
-   * a certificate in OnAir itself (needs a build with `-DDECT2_WITH_TLS=ON`):
+   * a certificate in OnAir itself (the release packages from 3.2 on have TLS; your own build needs `-DDECT2_WITH_TLS=ON`):
      ```
      web_tls_cert=/etc/letsencrypt/live/radio.example.org/fullchain.pem
      web_tls_key=/etc/letsencrypt/live/radio.example.org/privkey.pem
