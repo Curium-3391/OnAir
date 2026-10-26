@@ -122,12 +122,10 @@ void hamKbdPanel(HamKbdCtx& c, int preset) {
     c.rigWidgets();
 
     // Arm / Halt: the same switch as the slot modes
-    ImGui::BeginDisabled(!c.licence);
     ImGui::PushStyleColor(ImGuiCol_Button, c.armed ? ImVec4(0.75f, 0.1f, 0.1f, 1) : ImVec4(0.3f, 0.3f, 0.3f, 1));
     if (ImGui::Button(c.armed ? tr("ARMED: click to disarm") : tr("Arm TX"))) c.armed = !c.armed;
     ImGui::PopStyleColor();
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Nothing is sent unless this is armed, the licence box is ticked and the frequency is inside an amateur band."));
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Nothing is sent unless this is armed. Without a licence or outside the amateur bands OnAir warns you and still sends: you are responsible."));
     ImGui::SameLine();
     if (ImGui::Button(tr("Halt TX"))) { c.armed = false; c.tx.abort(); c.status = "Halted"; }
     ImGui::SameLine(); ImGui::TextDisabled("%s: %.0f s / 10 min", tr("On air"), k.duty.used(now));
@@ -181,7 +179,7 @@ void hamKbdPanel(HamKbdCtx& c, int preset) {
     ImGui::TextDisabled("%zu / %zu", strlen(k.buf), ham::kKbdMaxChars);
     const bool running = c.txState == 1;
     ImGui::SameLine();
-    ImGui::BeginDisabled(running || !c.stationOk || !c.licence || !c.armed || k.buf[0] == 0);
+    ImGui::BeginDisabled(running || !c.stationOk || !c.armed || k.buf[0] == 0);
     if (ImGui::Button(tr("Send"))) {
         std::string text = k.buf;
         k.buf[0] = 0;
@@ -200,7 +198,7 @@ void hamKbdPanel(HamKbdCtx& c, int preset) {
         });
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Sends the buffer as one transmission. Needs the licence box, Arm, and a frequency inside an amateur band."));
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Sends the buffer as one transmission. Needs Arm; a missing licence or a frequency outside the amateur bands is a warning, not a lock."));
     ImGui::SameLine();
     if (ImGui::Button(tr("Clear"))) k.buf[0] = 0;
     ImGui::SameLine();

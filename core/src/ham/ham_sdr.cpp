@@ -44,8 +44,6 @@ bool sdrTxRefused(const DeviceInfo& d, const SdrTxConfig& c, double dialHz, doub
     why.clear();
     if (!d.canTransmit) why = txUnavailableReason(d).empty() ? "this radio cannot transmit" : txUnavailableReason(d);
     else if (d.kind == DeviceInfo::Hamlib) why = "a CAT rig transmits through its own audio input, not through the SDR path";
-    else if (!c.bandFilterConfirmed)
-        why = "an SDR's output carries strong harmonics: fit a low-pass or band filter for this band and confirm it in the SDR transmit settings";
     else if (!(c.powerLimitPct > 0 && c.powerLimitPct <= 100)) why = "the power limit must be between 1 and 100 %";
     else if (!(c.drive > 0 && c.drive <= 4)) why = "the drive must be between 0 and 4";
     else if (d.txGainMaxDb > d.txGainMinDb && (c.gainDb < d.txGainMinDb - 1e-9 || c.gainDb > d.txGainMaxDb + 1e-9)) {
@@ -253,16 +251,23 @@ bool SdrHamIo::prepare(const HamTxCheck& gate, std::string& err) {
     std::lock_guard<std::mutex> l(sinkMu_);
     prepared_ = false;
     if (keyed_) { err = "the SDR is still transmitting"; return false; }
-    if (!hamTxAllowed(gate, err)) return false;
+    std::string gw;
+    if (!hamTxAllowed(gate, gw)) { err = gw; return false; }
     if (sdrTxRefused(dev_, c, gate.dialHz, gate.audioHz, gate.bwHz, err)) return false;
     // the radio's centre is the suppressed carrier: its leak must stay inside the band too; on LSB the signal lies below it
     const double lo = c.lsb ? gate.dialHz - gate.audioHz - gate.bwHz : gate.dialHz;
     const double hi = c.lsb ? gate.dialHz : gate.dialHz + gate.audioHz + gate.bwHz;
-    if (!hamSignalInBand(lo, 0, hi - lo)) { err = "the radio's centre frequency or the lower sideband is outside the amateur band"; return false; }
-    if (!gate.country.empty() && !hamSignalInCountryBand(gate.country, lo, 0, hi - lo, err)) return false;
+    // not a refusal any more: a warning (kept in the audit log with the burst); the operator decides
+    std::string warn;
+    const bool bandWarned = gw.find("amateur band") != std::string::npos;   // the gate already said so
+    if (bandWarned) {}
+    else if (!hamSignalInBand(lo, 0, hi - lo)) warn = "The radio's centre frequency or the lower sideband is outside the amateur band. You are responsible for being allowed to transmit here.";
+    else if (!gate.country.empty() && gw.empty()) { std::string w2; if (!hamSignalInCountryBand(gate.country, lo, 0, hi - lo, w2)) warn = w2 + ". You are responsible for being allowed to transmit here."; }
+    if (!c.bandFilterConfirmed) warn += std::string(warn.empty() ? "" : " ") + "No band filter is confirmed: an SDR's output carries strong harmonics, fit a low-pass or band filter for this band.";
     gate_ = gate;
     prepared_ = true;
     err_.clear();
+    err = warn;   // true with text: warnings (HamSlotTx logs them)
     return true;
 }
 
@@ -277,7 +282,7 @@ bool SdrHamIo::ptt(bool on, std::string& err) {
     const SdrTxConfig c = config();
     std::lock_guard<std::mutex> l(sinkMu_);
     if (keyed_) return true;
-    if (!prepared_) { err = "the SDR transmits only through the ham transmitter's gate (licence, Arm, band plan)"; return false; }
+    if (!prepared_) { err = "the SDR transmits only through the ham transmitter (Arm), not directly"; return false; }
     std::string why;
     if (!hamTxAllowed(gate_, why)) { prepared_ = false; err = why; return false; }
     if (!make_) { err = "no radio"; return false; }

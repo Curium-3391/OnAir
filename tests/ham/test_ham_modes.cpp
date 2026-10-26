@@ -118,12 +118,13 @@ int main() {
             CHECK(got == "CQ LY1ABC KO24", "JT65 sub %d level %.2f heard \"%s\"", sub, level, got.c_str());
         }
 
-    // the gate uses the width of the mode: JT65C near the top of 20 m is refused, JT9 there is allowed
+    // the gate uses the width of the mode: JT65C near the top of 20 m goes out with a warning (it runs past the band edge), JT9 there is in band
     {
         Rec r; HamSlotTx t(r); std::string err;
         HamTxCheck g = gate(14.349e6);
-        CHECK(!t.send(g, 4, "CQ LY1ABC KO24", 500, 0.4, err, 2) && r.ptt1 == 0 && r.a.empty(), "JT65C over the band edge: %s", err.c_str());
-        CHECK(t.send(g, 5, "CQ LY1ABC KO24", 500, 0.4, err) && r.ptt1 == 1 && r.ptt0 == 1, "JT9 at the same place: %s", err.c_str());
+        { std::string w; HamTxCheck gw = g; gw.bwHz = hamModeBwHz(4, 2); gw.audioHz = 500; CHECK(hamTxAllowed(gw, w) && w.find("not an amateur band") != std::string::npos, "JT65C over the band edge: warned (%s)", w.c_str()); }
+        CHECK(t.send(g, 4, "CQ LY1ABC KO24", 500, 0.4, err, 2) && r.ptt1 == 1, "JT65C over the band edge: warned, sent: %s", err.c_str());
+        CHECK(t.send(g, 5, "CQ LY1ABC KO24", 500, 0.4, err) && r.ptt1 == 2 && r.ptt0 == 2, "JT9 at the same place: %s", err.c_str());
         HamTxCheck g2 = gate(); g2.armed = false;
         Rec r2; HamSlotTx t2(r2);
         CHECK(!t2.send(g2, 4, "CQ LY1ABC KO24", 1500, 0.4, err) && r2.ptt1 == 0 && r2.a.empty(), "disarmed: nothing keyed");

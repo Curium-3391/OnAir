@@ -189,13 +189,13 @@ int main() {
         HamTxCheck g = gate(); g.armed = false;
         CHECK(!kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 0 && r.a.empty(), "disarmed: nothing keyed (%s)", err.c_str());
         g = gate(); g.licenceConfirmed = false;
-        CHECK(!kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 0, "no licence: nothing keyed");
+        CHECK(kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 1, "no licence: a warning, sent (%s)", err.c_str());
         g = gate(100e6);
-        CHECK(!kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 0, "outside the amateur bands: nothing keyed");
+        CHECK(kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 2, "outside the amateur bands: a warning, sent (%s)", err.c_str());
         g = gate(14.3495e6);   // 20 m upper edge: a signal 1000 Hz up is outside, 100 Hz up is inside
-        CHECK(!kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 0, "over the band edge: nothing keyed");
+        CHECK(kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 3, "over the band edge: a warning, sent (%s)", err.c_str());
         g = gate();
-        CHECK(kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 1 && r.ptt0 == 1 && !r.a.empty(), "armed and inside: sent (%s)", err.c_str());
+        CHECK(kbdSend(tx, duty, g, psk, "CQ DE LY1ABC", 1000, 0.4, 20, 0, err) && r.ptt1 == 4 && r.ptt0 == 4 && !r.a.empty(), "armed and inside: sent (%s)", err.c_str());
         float pk = 0; for (float v : r.a) pk = std::max(pk, std::fabs(v));
         CHECK(std::fabs(pk - 0.4f) < 0.01f, "level: peak %.3f for 0.4", pk);
         CHECK(!kbdSend(tx, duty, g, psk, std::string(kKbdMaxChars + 1, 'E'), 1000, 0.4, 20, 0, err) && !err.empty(), "too many characters");

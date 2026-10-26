@@ -208,13 +208,13 @@ int main() {
         HamTxCheck g = gate(144.800e6); g.armed = false;
         CHECK(!aprsSend(tx, duty, g, fr, c, 0.5, 0, err) && r.ptt1 == 0, "disarmed: nothing keyed");
         g = gate(144.800e6); g.licenceConfirmed = false;
-        CHECK(!aprsSend(tx, duty, g, fr, c, 0.5, 0, err) && r.ptt1 == 0, "no licence: nothing keyed");
-        CHECK(!aprsSend(tx, duty, gate(156.8e6), fr, c, 0.5, 0, err) && r.ptt1 == 0, "marine channel 16: nothing keyed");
-        CHECK(!aprsSend(tx, duty, gate(143.995e6), fr, c, 0.5, 0, err) && r.ptt1 == 0, "FM channel over the 2 m lower edge: nothing keyed");
-        CHECK(aprsSend(tx, duty, gate(144.800e6), fr, c, 0.5, 0, err) && r.ptt1 == 1 && r.ptt0 == 1 && !r.a.empty(), "144.800 armed: sent (%s)", err.c_str());
+        CHECK(aprsSend(tx, duty, g, fr, c, 0.5, 0, err) && r.ptt1 == 1, "no licence: a warning, sent");
+        CHECK(aprsSend(tx, duty, gate(156.8e6), fr, c, 0.5, 0, err) && r.ptt1 == 2, "marine channel 16: a warning, sent (the operator decides)");
+        CHECK(aprsSend(tx, duty, gate(143.995e6), fr, c, 0.5, 0, err) && r.ptt1 == 3, "FM channel over the 2 m lower edge: a warning, sent");
+        CHECK(aprsSend(tx, duty, gate(144.800e6), fr, c, 0.5, 0, err) && r.ptt1 == 4 && r.ptt0 == 4 && !r.a.empty(), "144.800 armed: sent (%s)", err.c_str());
         PacketAudioCfg h; h.baud = PacketBaud::B300;
-        CHECK(aprsSend(tx, duty, gate(10.1476e6 - 1700), fr, h, 0.5, 10, err) && r.ptt1 == 2, "HF 300 baud on 30 m: sent (%s)", err.c_str());
-        CHECK(!aprsSend(tx, duty, gate(10.1495e6), fr, h, 0.5, 20, err), "HF 300 baud over the 30 m edge: refused");
+        CHECK(aprsSend(tx, duty, gate(10.1476e6 - 1700), fr, h, 0.5, 10, err) && r.ptt1 == 5, "HF 300 baud on 30 m: sent (%s)", err.c_str());
+        CHECK(aprsSend(tx, duty, gate(10.1495e6), fr, h, 0.5, 20, err), "HF 300 baud over the 30 m edge: a warning, sent");
         TxDuty full; full.add(0, 300);
         CHECK(!aprsSend(tx, full, gate(144.8e6), fr, c, 0.5, 300, err) && has(err, "duty"), "duty limit");
     }

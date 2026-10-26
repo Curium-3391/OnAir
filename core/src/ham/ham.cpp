@@ -119,17 +119,29 @@ bool hamGridValid(const std::string& g0) {
     if (g.size() == 6 && !(g[4] >= 'A' && g[4] <= 'X' && g[5] >= 'A' && g[5] <= 'X')) return false;
     return true;
 }
+std::vector<std::string> hamTxWarnings(const HamTxCheck& c) {
+    std::vector<std::string> w;
+    if (!c.licenceConfirmed) w.push_back("No amateur licence is set. You are responsible for being allowed to transmit.");
+    if (!hamCallValid(c.call)) w.push_back("The callsign is empty or does not look valid. You are responsible for identifying your transmissions correctly.");
+    if (!hamGridValid(c.grid)) w.push_back("The grid locator is empty or not valid.");
+    if (std::isfinite(c.dialHz) && std::isfinite(c.audioHz) && std::isfinite(c.bwHz) && c.dialHz > 0) {
+        char f[64];
+        snprintf(f, sizeof f, "%.3f MHz", c.dialHz / 1e6);
+        if (!hamSignalInBand(c.dialHz, c.audioHz, c.bwHz))
+            w.push_back(std::string(f) + " is not an amateur band" + (hamCbBand(c.dialHz + c.audioHz) ? " (11 m is CB)" : "") + ". You are responsible for being allowed to transmit here.");
+        else if (!c.country.empty()) {
+            std::string why;
+            if (!hamSignalInCountryBand(c.country, c.dialHz, c.audioHz, c.bwHz, why)) w.push_back(std::string(f) + ": " + why + ". You are responsible for being allowed to transmit here.");
+        }
+    }
+    return w;
+}
 bool hamTxAllowed(const HamTxCheck& c, std::string& why) {
     why.clear();
-    if (!c.licenceConfirmed) why = "confirm your amateur licence first";
-    else if (!c.armed) why = "TX is not armed";
-    else if (!hamCallValid(c.call)) why = "enter a valid callsign";
-    else if (!hamGridValid(c.grid)) why = "enter a valid grid locator";
-    else if (!std::isfinite(c.dialHz) || !std::isfinite(c.audioHz) || !std::isfinite(c.bwHz) || c.dialHz <= 0 || c.bwHz < 0)
-        why = "the frequency is not valid";
-    else if (!hamSignalInBand(c.dialHz, c.audioHz, c.bwHz)) why = "the frequency is outside the amateur bands";
-    else if (!c.country.empty()) hamSignalInCountryBand(c.country, c.dialHz, c.audioHz, c.bwHz, why);
-    return why.empty();
+    if (!c.armed) { why = "TX is not armed"; return false; }
+    if (!std::isfinite(c.dialHz) || !std::isfinite(c.audioHz) || !std::isfinite(c.bwHz) || c.dialHz <= 0 || c.bwHz < 0) { why = "the frequency is not valid"; return false; }
+    for (const auto& s : hamTxWarnings(c)) { if (!why.empty()) why += " "; why += s; }
+    return true;
 }
 
 // ---- ADIF ----

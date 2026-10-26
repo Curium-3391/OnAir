@@ -109,8 +109,8 @@ int main() {
         Rec r; HamSlotTx tx(r); TxDuty duty;
         HamTxCheck g = gate(7.078e6); g.armed = false;
         CHECK(!js8Send(tx, duty, g, hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 0, "disarmed: nothing keyed");
-        CHECK(!js8Send(tx, duty, gate(7.3e6 - 500), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 0, "over the 40 m top edge: nothing keyed");
-        CHECK(js8Send(tx, duty, gate(7.078e6), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 1 && r.ptt0 == 1, "40 m JS8 armed: sent (%s)", err.c_str());
+        CHECK(js8Send(tx, duty, gate(7.3e6 - 500), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 1, "over the 40 m top edge: a warning, sent");
+        CHECK(js8Send(tx, duty, gate(7.078e6), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 2 && r.ptt0 == 2, "40 m JS8 armed: sent (%s)", err.c_str());
         TxDuty full; full.add(0, 300);
         CHECK(!js8Send(tx, full, gate(7.078e6), hb[0], 0, 1000, 0.4, 300, err), "duty limit");
         Js8Sender s; s.queue(txt); js8::TxFrame f;

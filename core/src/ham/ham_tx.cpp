@@ -117,6 +117,8 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
     au.utc = t0; au.path = io_.kind(); au.mode = label; au.message = msg; au.call = gate.call;
     au.dialHz = gate.dialHz; au.audioHz = gate.audioHz; au.bwHz = gate.bwHz;
     auto refuse = [&](const std::string& why) { err = why; au.result = "refused"; au.reason = why; txAuditAdd(au); return false; };
+    std::string gateWarn;
+    hamTxAllowed(gate, gateWarn);   // the warnings of the gate (not a refusal): kept in the audit log with the burst
     const HamDutyLimit lim = hamDutyLimit(dutyMode);
     if (dur > lim.maxBurstSec + 0.5) {
         char b[120];
@@ -138,6 +140,7 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
     if (abort_) return refuse("halted");
     std::string why;
     if (!io_.prepare(gate, why)) return refuse(why.empty() ? "the radio refused the transmission" : why);
+    if (!why.empty()) gateWarn += (gateWarn.empty() ? "" : " ") + why;   // a radio can add a warning on success
     size_t played = 0;
     const bool ok = play(a, n, rate, err, played);
     const double onAir = (double)played / rate;
@@ -147,7 +150,7 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
     }
     au.seconds = onAir;
     au.result = ok ? "sent" : err == "halted" ? "halted" : "failed";
-    au.reason = ok ? std::string() : err;
+    au.reason = ok ? gateWarn : err;   // a sent burst carries the warnings it went out with
     txAuditAdd(au);
     return ok;
 }

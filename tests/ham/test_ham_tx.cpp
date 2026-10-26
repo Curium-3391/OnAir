@@ -25,7 +25,7 @@ int main() {
     { Fake f; HamSlotTx t(f); HamTxCheck g = gate(); g.armed = false;
       CHECK(!t.send(g, 0, "CQ LY1ABC KO24", 1500, 0.5, err) && f.ev.empty() && f.frames == 0); }
     { Fake f; HamSlotTx t(f); HamTxCheck g = gate(); g.dialHz = 100e6;
-      CHECK(!t.send(g, 0, "CQ LY1ABC KO24", 1500, 0.5, err) && f.ev.empty()); }
+      CHECK(t.send(g, 0, "CQ LY1ABC KO24", 1500, 0.5, err) && !f.ev.empty()); }   // 100 MHz: a warning, then it sends
     { Fake f; HamSlotTx t(f); t.send(gate(), 0, "this is not encodable at all, really", 1500, 0.5, err); int ok; balanced(f, ok); CHECK(ok); }
     for (int m = 0; m < 3; m++) {
         Fake f; HamSlotTx t(f);

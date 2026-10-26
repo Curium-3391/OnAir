@@ -339,7 +339,9 @@ bool CatRigIo::prepare(const ham::HamTxCheck& gate, std::string& err) {
         prepared_ = false;
         err_.clear();
     }
-    if (!ham::hamTxAllowed(gate, err)) return false;
+    std::string gw;
+    if (!ham::hamTxAllowed(gate, gw)) { err = gw; return false; }
+    err.clear();
     if (rig_.state() != RigKeeper::Up && !rig_.connect(err)) return false;
     const HamlibRig p = rig_.profile();
     if (!rig_.tuneForTx(gate.dialHz, p.dataMode.empty() ? "PKTUSB" : p.dataMode, err)) return false;
@@ -351,7 +353,7 @@ bool CatRigIo::prepare(const ham::HamTxCheck& gate, std::string& err) {
 bool CatRigIo::ptt(bool on, std::string& err) {
     if (on) {
         std::lock_guard<std::mutex> l(mu_);
-        if (!prepared_) { err = "the rig is keyed only through the ham transmitter's gate (licence, Arm, band plan)"; return false; }
+        if (!prepared_) { err = "the rig is keyed only through the ham transmitter (Arm), not directly"; return false; }
     } else {
         std::lock_guard<std::mutex> l(mu_);
         prepared_ = false;

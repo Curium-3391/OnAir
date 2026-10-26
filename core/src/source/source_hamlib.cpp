@@ -476,8 +476,8 @@ public:
         close();
         HamlibConn c;
         if (!parseHamlibSerial(dev_.serial, c.model, c.path, c.baud)) { err = "bad Hamlib rig id"; return false; }
-        // a transceiver keyed over CAT is an amateur transmitter: never outside the amateur bands (the ham view's gate adds licence and Arm)
-        if (!ham::hamBandAt(txRadioHz(t))) { err = "a CAT rig is keyed only inside the amateur bands"; return false; }
+        // outside the amateur bands: a warning, not a refusal (the operator decides; the rig itself refuses what it cannot transmit)
+        if (!ham::hamBandAt(txRadioHz(t))) fprintf(stderr, "warning: %.3f MHz is not an amateur band. You are responsible for being allowed to transmit here.\n", txRadioHz(t) / 1e6);
         if (!rig_.open(c, err)) return false;
         TuneSettings ts;
         ts.centerHz = t.centerHz;
@@ -506,7 +506,7 @@ public:
         TuneSettings ts;
         ts.centerHz = t.centerHz;
         ts.radio = t.radio;
-        if (!ham::hamBandAt(txRadioHz(t))) { err = "a CAT rig is keyed only inside the amateur bands"; close(); return false; }
+        if (!ham::hamBandAt(txRadioHz(t))) fprintf(stderr, "warning: %.3f MHz is not an amateur band. You are responsible for being allowed to transmit here.\n", txRadioHz(t) / 1e6);
         if (!rig_.setFreq(txRadioHz(t), err)) return false;
         std::string e2;
         rig_.setMode(hamModeOf(ts), 0, e2);
