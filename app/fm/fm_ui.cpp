@@ -12,6 +12,8 @@ static constexpr double kFmLow = 87.0, kFmHigh = 108.0;
 
 // the dial steps and rounds to 0.1 MHz; the broadcast band is the slider's span only, a frequency outside it (typed, or stepped to) is kept
 static double fmRound(double mhz) { return std::round(std::max(0.0, mhz) * 10.0) / 10.0; }
+// the fine tuning step: 0.1 MHz, or 0.2 MHz where the stations sit 200 kHz apart (the setup wizard sets "fmStepKhz" from the place; Americas)
+static double fmStepMhz() { return plat::prefs().getI("fmStepKhz", 100) >= 200 ? 0.2 : 0.1; }
 
 // Tune now (or at the next start, when the receiver is stopped).
 void fmTune(App& a, double mhz) {
@@ -39,11 +41,11 @@ static std::string fmStationLabel(const App::FmScan::Res& r) {
 // Step buttons and a list of the stations the scan found. Returns true when the frequency changed.
 bool fmFrequencyCombo(App& a) {
     bool changed = false;
-    if (freqStepArrow("##fmdn", ImGuiDir_Left)) { a.freqMhz = fmRound(a.freqMhz - 0.1); changed = true; }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tune down 0.1 MHz. Hold for a continuous change.");
+    if (freqStepArrow("##fmdn", ImGuiDir_Left)) { a.freqMhz = fmRound(a.freqMhz - fmStepMhz()); changed = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tune down one step (%.1f MHz). Hold for a continuous change.", fmStepMhz());
     ImGui::SameLine(0, 2 * gUi);
-    if (freqStepArrow("##fmup", ImGuiDir_Right)) { a.freqMhz = fmRound(a.freqMhz + 0.1); changed = true; }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tune up 0.1 MHz. Hold for a continuous change.");
+    if (freqStepArrow("##fmup", ImGuiDir_Right)) { a.freqMhz = fmRound(a.freqMhz + fmStepMhz()); changed = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tune up one step (%.1f MHz). Hold for a continuous change.", fmStepMhz());
     ImGui::SameLine(0, 8 * gUi);
     char lbl[64];
     int cur = -1;
@@ -584,7 +586,10 @@ void fmRadioTab(App& a) {
         ImGui::SetNextItemWidth(std::max(200.f, ImGui::GetContentRegionAvail().x - 330 * gUi));
         if (ImGui::SliderFloat("##fmdial", &f, (float)kFmLow, (float)kFmHigh, "%.1f MHz")) a.freqMhz = fmRound(f);
         if (ImGui::IsItemDeactivatedAfterEdit()) fmTune(a, a.freqMhz);
-        const struct { const char* l; double d; } steps[] = {{"-1", -1}, {"-0.1", -0.1}, {"+0.1", 0.1}, {"+1", 1}};
+        const double fs = fmStepMhz();
+        char dn[8], up[8];
+        snprintf(dn, sizeof dn, "-%.1f", fs); snprintf(up, sizeof up, "+%.1f", fs);
+        const struct { const char* l; double d; } steps[] = {{"-1", -1}, {dn, -fs}, {up, fs}, {"+1", 1}};
         for (auto& s : steps) { ImGui::SameLine(0, 6 * gUi); if (ImGui::Button(s.l)) fmTune(a, a.freqMhz + s.d); }
     }
     ImGui::Spacing();

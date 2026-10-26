@@ -650,7 +650,6 @@ Add a receiver: another radio with its own mode	Vevő hozzáadása: másik rádi
 Add receiver	Vevő hozzáadása
 Added to a level in dBFS to give dBm for this radio: feed a known signal into the antenna port and set the difference. Used when the spectrum shows dBm (Spectrum button on the plot).	A dBFS szinthez adódik, hogy ennek a rádiónak dBm értéket kapjon: adjon ismert jelet az antennacsatlakozóra, és állítsa be a különbséget. Akkor használja a program, ha a spektrum dBm-ben jelenik meg (az ábra Spektrum gombja).
 Aircraft	Repülők
-All set. OnAir will start here:	Minden kész. Az OnAir itt indul:
 Allow remote control (frequency and gain)	Távvezérlés engedélyezése (frekvencia és erősítés)
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Egy SDRplay RSP csatlakoztatva van, de az SDRplay Hardware API nincs telepítve. Telepítsd külön, még akkor is, ha az SDRconnect már működik a rádióval.
 Another program is using the HackRF	Egy másik program használja a HackRF-et
@@ -764,7 +763,6 @@ Open driver page	Illesztőprogram-oldal megnyitása
 Open firmware page	Firmware-oldal megnyitása
 Open the SDRplay API page	Az SDRplay API oldalának megnyitása
 Open the device list	Eszközlista megnyitása
-Optional: your position, as a Maidenhead locator (KO24pq) or coordinates (54.68, 25.28). It is kept on this computer and used for maps and satellite passes.	Nem kötelező: a helyzete Maidenhead-lokátorként (KO24pq) vagy koordinátákkal (54.68, 25.28). Ezen a számítógépen marad, és térképekhez, műholdátvonulásokhoz használjuk.
 Or choose another radio from the list.	Vagy válasszon másik rádiót a listából.
 Or install OnAir's blacklist file (the .deb package does it).	Vagy telepítse az OnAir tiltólista-fájlját (a .deb csomag megteszi).
 Or set the UHD_IMAGES_DIR variable to the folder with the images.	Vagy állítsa az UHD_IMAGES_DIR változót a képfájlokat tartalmazó mappára.
@@ -808,7 +806,6 @@ Seen	Látva
 Send spots to PSK Reporter (pskreporter.info)	Spotok küldése a PSK Reporternek (pskreporter.info)
 Services	Szolgáltatások
 Set the LO above 0 MHz.	Állítsa a LO-t 0 MHz fölé.
-Setup wizard	Beállítási varázsló
 Share my radio (rtl_tcp server)	A rádióm megosztása (rtl_tcp szerver)
 Share the radio's samples as an rtl_tcp server	A rádió mintáinak megosztása rtl_tcp szerverként
 Ships	Hajók
@@ -880,7 +877,6 @@ Wave buoys, HF	Hullámmérő bóják, HF
 Weather alerts, 162.55 MHz	Időjárási riasztások, 162,55 MHz
 Weather pictures, 1.7 GHz	Időjárási képek, 1,7 GHz
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Mit kell hozzáadni a dBFS szinthez, hogy ennek a rádiónak dBm értéket kapjunk (a kalibrációja: egy ismert jel az antennacsatlakozón megmutatja). A rádió beállításaiban is megtalálható.
-Which language do you want OnAir in?	Milyen nyelven szeretné használni az OnAir-t?
 Your callsign	Az Ön hívójele
 Your locator	Az Ön lokátora
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Nagyítás: egérgörgő (mindkét tengely), Ctrl+görgő (frekvencia), Shift+görgő (szint).\nCtrl+PageUp / PageDown: a nézet léptetése egy képernyőnyivel frekvenciában. Dupla kattintás: visszaállítás.

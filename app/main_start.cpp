@@ -10,6 +10,7 @@
 #include "ui/contrast.h"
 #include "ui/touch.h"
 #include "ui/tour_logic.h"
+#include "ui/setup_logic.h"
 #include "dect2/source/iq_file.h"
 #include "panels/gallery.h"
 #include "dect2/engine/crash_report.h"
@@ -47,11 +48,19 @@ void startApp(App& app, int argc, char** argv) {
         fprintf(stderr, "%s\n", guardNote.c_str());
         gCrashNote = gCrashNote.empty() ? guardNote : gCrashNote + "\n\n" + guardNote;
     }
-    const bool setupPending = argc == 1 && !plat::prefs().getB("setupDone", false);
+    // the setup wizard: only for a start with no settings of any earlier use (an update never shows it to an existing user), or one left unfinished
+    bool setupPending = false;
+    {
+        std::vector<std::string> keys;
+        for (const auto& it : plat::basePrefs().dumpAll()) keys.push_back(it.key);
+        setupPending = setup::wizardPending(argc == 1, plat::prefs().getB("setupDone", false), keys, failedStarts >= 2, plat::prefs().has("setupStep"));
+    }
     app.wizOpen = tour::autoStart(argc == 1, plat::prefs().getB(tour::prefKey(), false), setupPending);   // the tour runs on the very first start only
     if (setupPending) { app.wizOpen = false; setupWizardOpen(app); }   // the setup comes first; the tour follows it
     if (getenv("DECT2_WIZARD")) app.wizOpen = true;   // test hook: open the tour at start-up (DECT2_WIZSTEP picks the step)
-    if (getenv("DECT2_SETUP")) { app.wizOpen = false; setupWizardOpen(app); if (const char* ss = getenv("DECT2_SETUPSTEP")) app.setupStep = atoi(ss); }
+    if (getenv("DECT2_SETUP")) { app.wizOpen = false; setupWizardOpen(app); if (const char* ss = getenv("DECT2_SETUPSTEP")) app.setupStep = atoi(ss);
+        if (const char* sl = getenv("DECT2_SETUPLOC")) snprintf(app.setupLoc, sizeof app.setupLoc, "%s", sl);   // test hooks: a position and the ticked interests (bits)
+        if (const char* si = getenv("DECT2_SETUPINT")) app.setupInterests = (unsigned)atoi(si); }
     app.wizStepT = ImGui::GetTime();
     app.engine.player().setHardwareDecode(plat::prefs().getB("hwVideo", true));
     app.tune.synth.demoTv = true;   // the synthetic DVB-T / ATSC signal carries a test-card programme

@@ -202,6 +202,9 @@ struct App {
     unsigned setupGoals = 0;            // bit per learn::Goal (app/ui/learn_logic.h)
     int setupAntenna = 0;               // learn::Antenna
     char setupLoc[48] = "";             // a Maidenhead locator or coordinates
+    unsigned setupInterests = 0;        // bit per setup::Interest (app/ui/setup_logic.h): the interests ticked in the setup wizard
+    char setupQuery[48] = "";           // the city or country typed in the wizard's location step
+    char setupCountry[4] = "";          // the country chosen from the search ("" when the position decides)
     bool lessonsOpen = false, glossaryOpen = false, checkupOpen = false;   // Help > Setup and lessons (learn.cpp)
     double wizStepT = 0;
     float wizX = -1;
