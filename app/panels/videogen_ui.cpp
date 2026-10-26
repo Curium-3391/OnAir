@@ -47,6 +47,51 @@ const ParamGroup kGroups[] = {
     {N_("Transport stream"), {Param::TsContent, Param::MuxRate, Param::TotalRate, Param::Service}},
 };
 
+// The "(?)" text of each settings row, by its English label (docs/VIDEO-GENERATOR.md says the same at more length)
+struct RowHelp { const char* label; const char* help; };
+const RowHelp kRowHelp[] = {
+    {N_("Input"), N_("What is encoded. Camera: a webcam or an HDMI / SDI capture card, opened only when you press Start. Still picture: one image sent as a continuous stream (a test card, a slide). Video file: any file FFmpeg can read, played from the start and looped when the length is longer.")},
+    {N_("Camera"), N_("The cameras and capture cards found when this window opened. Press Refresh after plugging one in.")},
+    {N_("Picture"), N_("A PNG, JPEG, BMP or other picture. It is scaled to the resolution below with the picture fit you choose.")},
+    {N_("Video file"), N_("The length below follows the file when you choose it. Picture and sound are decoded in step, so a file is encoded faster than real time when the output is a .ts file.")},
+    {N_("Picture fit"), N_("When the source has another shape than the output (a 4:3 camera in a 16:9 picture). Stretch: fill the picture, shapes look wider or narrower. Letterbox: keep the whole source, with black bars. Crop: fill the picture and cut the edges.")},
+    {N_("Sound"), N_("What the audio tracks carry. The test tone (1 kHz at -20 dBFS) is handy to check a receiver's sound. The sound of the video file is only there with a video file as input. Silence still makes a valid audio track.")},
+    {N_("Microphone"), N_("The sound input to use. It is opened only when you press Start.")},
+    {N_("Send to"), N_("MPEG-TS file (.ts): a transport stream file; give it to the transmitter as its \"MPEG-TS / video file\", it is sent as it is. UDP or RTP stream: sent over the network in real time, to watch in VLC or feed another program. RTP adds a small header with a sequence number, so a player can see lost packets.")},
+    {N_("File"), N_("Where the .ts file is written. An existing file is replaced.")},
+    {N_("Address"), N_("The PC that receives the stream (unicast, e.g. 192.168.1.20) or a multicast group (239.0.0.0 to 239.255.255.255) that any PC on the network can join. Port 5000 unless you change it. 127.0.0.1 is this PC.")},
+    {N_("TTL"), N_("Multicast only: how many routers the stream may cross. 1 keeps it on this network.")},
+    {N_("Length"), N_("How long the .ts file is. One minute for a still picture unless you change it; the file's own length for a video. A stream has no length: it runs until you press Stop.")},
+    {N_("TS content"), N_("Which streams go into the transport stream. Audio uses part of the capacity. Multiple audio tracks carry the same sound on their own PIDs, to test receivers that offer a language choice.")},
+    {N_("Audio tracks"), N_("How many audio tracks, each at the audio bitrate below.")},
+    {N_("Video codec"), N_("H.264 is widely supported and the safe choice for DVB-T. H.265 needs about 30 % less bitrate, but only newer receivers (DVB-T2 sets) decode it: check your whole chain. MPEG-2 works everywhere but needs about twice the bitrate of H.264. Only the encoders that work on this computer are listed; the bundled FFmpeg has MPEG-2 only.")},
+    {N_("Rate control"), N_("CBR: a constant rate, predictable, what a broadcast link needs. Constrained VBR: the rate varies with the scene up to 1.5 times the bitrate, so the mux rate needs headroom for the peaks. VBR / CRF: a constant quality instead of a rate (x264 and x265 only), capped at twice the bitrate.")},
+    {N_("Video bitrate"), N_("More bitrate generally gives a better picture but uses more of the channel. Auto follows a rule of thumb for this codec, resolution, frame rate and frame types; the estimate on the right shows what the whole stream then needs. Untick Auto to set your own.")},
+    {N_("CRF"), N_("The quality level: lower is better and costs more bits. 18 is close to transparent, 23 is the x264 default, 28 is clearly softer.")},
+    {N_("Frame rate"), N_("Pictures per second. Lower rates need less data for motion but look less smooth. Some equipment takes only certain rates: 25 fps in 50 Hz countries, 30 fps in 60 Hz countries.")},
+    {N_("Resolution"), N_("The size of the encoded picture. Lower resolution needs less bitrate and less encoder time. Use a size your receiver supports: 720x576 is standard definition in Europe, 1280x720 and 1920x1080 are HD.")},
+    {N_("Frame types"), N_("I/P/B: the best compression (B-frames predict from both sides). I/P: no B-frames, a little lower delay. I-only: every picture stands alone; possible, but it needs much more bitrate for the same quality.")},
+    {N_("GOP"), N_("The time between two keyframes (I-frames). A receiver can start or recover only on a keyframe, so a short GOP helps after a dropout and when switching channel; a long GOP compresses better. 1 to 2 s is common for broadcast.")},
+    {N_("Profile"), N_("H.264 only. Baseline: simple decoders, no B-frames. Main: the broadcast default, every receiver decodes it. High: better compression, for newer receivers.")},
+    {N_("Pixel format"), N_("4:2:0 colour at 8 bits per sample, the common choice that every receiver decodes. Other formats would need the whole chain to support them.")},
+    {N_("Encoder preset"), N_("x264 / x265 only. Slower presets compress better (a better picture at the same bitrate) but need more CPU. For a live camera or stream, choose the slowest preset that still keeps up; a warning shows frames that come late.")},
+    {N_("Latency tuning"), N_("x264 / x265 only. zerolatency removes the encoder's look-ahead and B-frames, so a live picture arrives sooner, at some cost in compression.")},
+    {N_("Audio codec"), N_("Choose one your receiver decodes. MPEG-1 Layer II is accepted by nearly every DVB receiver; AAC sounds better at the same bitrate; AC-3 is common on HD channels. Only the encoders of this FFmpeg are listed.")},
+    {N_("Audio bitrate"), N_("Per track. 64 to 96 kbit/s is fine for speech in mono, 128 to 192 kbit/s for music in stereo (MPEG-1 Layer II needs the higher end).")},
+    {N_("Sample rate"), N_("48 kHz is the broadcast standard; use 32 or 44.1 kHz only if your receiver needs it.")},
+    {N_("Channels"), N_("Mono saves some bitrate; stereo needs more.")},
+    {N_("TS mux rate"), N_("The total rate of the transport stream: video, audio, tables and null packets that pad it to a constant rate. Keep it at or below the net bitrate of the DVB link, e.g. DVB-T 8 MHz, 64-QAM, code rate 2/3, guard interval 1/4 carries about 19.9 Mbit/s; QPSK 1/2 about 5 Mbit/s. Auto uses the estimate on the right plus a small margin.")},
+    {N_("Service ID"), N_("The programme number in the PAT and PMT, and the service ID in the SDT. Receivers use it to find the programme; 1 is fine unless you test something specific.")},
+    {N_("Service name"), N_("The channel name a receiver shows in its list (from the SDT).")},
+    {N_("Provider"), N_("The provider name in the SDT; some receivers show it with the channel.")},
+    {N_("PIDs"), N_("The packet IDs of the PMT, the video and the audio. Automatic gives one programme with the usual PIDs (PMT 0x1000, video 0x100, audio 0x101). Set them yourself to test a receiver's handling of specific PIDs.")},
+    {N_("PMT PID"), N_("Where the programme map table is sent (0x20 to 0x1FFE).")},
+    {N_("Video PID"), N_("The packet ID of the video stream.")},
+    {N_("Audio PID"), N_("The packet ID of the first audio track; further tracks follow it.")},
+};
+
+const char* const kToolHelp = N_("Encodes a camera, a still picture or a video file, with the overlay of the second tab, into an MPEG transport stream: a .ts file, or a UDP / RTP stream to watch in VLC. A .ts file can be given to the transmitter as its \"MPEG-TS / video file\". The estimate on the right of the first tab shows the bitrate the settings need, so you can fit the stream to your DVB link before encoding. Each setting has its own (?). The whole guide: docs/VIDEO-GENERATOR.md.");
+
 struct DropItem { int kind; int param; };   // the drag-and-drop payload "VGBLOCK"
 
 struct State {
@@ -161,10 +206,24 @@ bool inputText(const char* label, std::string& s, float width) {
     return true;
 }
 
-// a label in the left column of a settings row
-void rowLabel(const char* text, float col) {
+// A dimmed "(?)" after the last item; hovering it shows the text, wrapped (the same look as Propagation's helpMark)
+void helpMark(const char* text) {
+    ImGui::SameLine(0, 4 * gUi);
+    ImGui::TextDisabled("(?)");
+    if (!ImGui::IsItemHovered()) return;
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 380 * gUi);
+    ImGui::TextUnformatted(tr(text));
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+
+// a label in the left column of a settings row (English, translated here), with its "(?)" when kRowHelp has a text for it
+void rowLabel(const char* english, float col) {
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(text);
+    ImGui::TextUnformatted(tr(english));
+    for (const RowHelp& h : kRowHelp)
+        if (strcmp(h.label, english) == 0) { helpMark(h.help); break; }
     ImGui::SameLine(col);
 }
 
@@ -231,7 +290,7 @@ void saveSoon(State& s) {
 void sourceSection(State& s, float col, float w) {
     GenConfig& c = s.cfg;
     ImGui::SeparatorText(tr("Source"));
-    rowLabel(tr("Input"), col);
+    rowLabel(N_("Input"), col);
     int src = (int)c.source;
     if (combo("##vgsrc", src, kSourceNames, 3, w)) {
         c.source = (Source)src;
@@ -239,7 +298,7 @@ void sourceSection(State& s, float col, float w) {
         if (c.source != Source::VideoFile && c.audio == AudioSource::FromFile) c.audio = AudioSource::Tone;
     }
     if (c.source == Source::Camera) {
-        rowLabel(tr("Camera"), col);
+        rowLabel(N_("Camera"), col);
         std::string cur = tr("Default camera");
         for (const auto& d : s.cams) if (d.id == c.cameraId) cur = d.name;
         ImGui::SetNextItemWidth(w - 90 * gUi);
@@ -254,7 +313,7 @@ void sourceSection(State& s, float col, float w) {
         ImGui::EndDisabled();
         if (s.probed && s.cams.empty()) ImGui::TextDisabled("%s", tr("No camera found. Connect one and press Refresh."));
     } else {
-        rowLabel(c.source == Source::Picture ? tr("Picture") : tr("Video file"), col);
+        rowLabel(c.source == Source::Picture ? N_("Picture") : N_("Video file"), col);
         if (inputText("##vgpath", c.path, w - 90 * gUi) && c.source == Source::VideoFile) {
             const double d = mediaSeconds(c.path);
             if (d > 0) { c.seconds = d; s.lengthEdited = false; }
@@ -271,16 +330,16 @@ void sourceSection(State& s, float col, float w) {
             }
         }
     }
-    rowLabel(tr("Picture fit"), col);
+    rowLabel(N_("Picture fit"), col);
     int fit = (int)c.fit;
     if (combo("##vgfit", fit, kFitNames, 3, w)) c.fit = (Fit)fit;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("When the source has another shape than the output (a 4:3 camera in 16:9): stretch it, keep it whole with black bars, or fill the picture and cut the edges"));
-    rowLabel(tr("Sound"), col);
+    rowLabel(N_("Sound"), col);
     int au = (int)c.audio;
     std::vector<bool> en = {true, true, c.source == Source::VideoFile, true};
     if (combo("##vgaudio", au, kAudioNames, 4, w, &en, N_("Only with a video file as input"))) c.audio = (AudioSource)au;
     if (c.audio == AudioSource::Microphone) {
-        rowLabel(tr("Microphone"), col);
+        rowLabel(N_("Microphone"), col);
         std::string cur = tr("Default input");
         for (const auto& d : s.mics) if (d.id == c.micId) cur = d.name;
         ImGui::SetNextItemWidth(w);
@@ -295,11 +354,11 @@ void sourceSection(State& s, float col, float w) {
 void outputSection(State& s, float col, float w) {
     GenConfig& c = s.cfg;
     ImGui::SeparatorText(tr("Output"));
-    rowLabel(tr("Send to"), col);
+    rowLabel(N_("Send to"), col);
     int out = (int)c.output;
     if (combo("##vgout", out, kOutputNames, 3, w)) c.output = (Output)out;
     if (c.output == Output::File) {
-        rowLabel(tr("File"), col);
+        rowLabel(N_("File"), col);
         inputText("##vgts", c.tsPath, w - 90 * gUi);
         ImGui::SameLine();
         if (ImGui::Button(tr("Browse...##vgts"))) {
@@ -307,7 +366,7 @@ void outputSection(State& s, float col, float w) {
             if (!p.empty()) c.tsPath = p;
         }
     } else {
-        rowLabel(tr("Address"), col);
+        rowLabel(N_("Address"), col);
         inputText("##vghost", c.host, w * 0.6f);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The receiving PC (unicast) or a multicast group such as 239.1.1.1"));
         ImGui::SameLine();
@@ -316,12 +375,12 @@ void outputSection(State& s, float col, float w) {
         ImGui::SetNextItemWidth(std::max(60 * gUi, w * 0.4f - ImGui::CalcTextSize(tr("Port")).x - ImGui::GetStyle().ItemSpacing.x * 2));
         if (ImGui::InputInt("##vgport", &c.port, 0)) c.port = std::clamp(c.port, 1, 65535);
         if (isMulticast(c.host)) {
-            rowLabel(tr("TTL"), col);
+            rowLabel(N_("TTL"), col);
             ImGui::SetNextItemWidth(120 * gUi);
             if (ImGui::InputInt("##vgttl", &c.ttl)) c.ttl = std::clamp(c.ttl, 1, 255);
         }
     }
-    rowLabel(tr("Length"), col);
+    rowLabel(N_("Length"), col);
     const bool stream = c.output != Output::File;
     ImGui::BeginDisabled(stream);   // a stream goes on until it is stopped
     ImGui::SetNextItemWidth(150 * gUi);
@@ -342,15 +401,15 @@ void encodingSection(State& s, float col, float w) {
     const EncoderCaps caps = capsOf(e.videoEncoder);
 
     ImGui::SeparatorText(tr("Video"));
-    rowLabel(tr("TS content"), col);
+    rowLabel(N_("TS content"), col);
     int content = (int)e.content;
     if (combo("##vgcontent", content, kContentNames, 3, w)) e.content = (TsContent)content;
     if (e.content == TsContent::VideoMultiAudio) {
-        rowLabel(tr("Audio tracks"), col);
+        rowLabel(N_("Audio tracks"), col);
         ImGui::SetNextItemWidth(120 * gUi);
         ImGui::SliderInt("##vgtracks", &e.audioTracks, 2, 4);
     }
-    rowLabel(tr("Video codec"), col);
+    rowLabel(N_("Video codec"), col);
     std::string cur = e.videoEncoder;
     for (const EncoderInfo& i : venc) if (i.name == e.videoEncoder) cur = i.label;
     ImGui::SetNextItemWidth(w);
@@ -370,12 +429,12 @@ void encodingSection(State& s, float col, float w) {
         }
         ImGui::EndCombo();
     }
-    rowLabel(tr("Rate control"), col);
+    rowLabel(N_("Rate control"), col);
     int rc = (int)e.rc;
     std::vector<bool> rcOn = {true, true, caps.crf};
     if (combo("##vgrc", rc, kRcNames, 3, w, &rcOn, N_("CRF needs x264 or x265"))) e.rc = (RateControl)rc;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("CBR gives a predictable rate; VBR varies with the scene and needs headroom for the peaks"));
-    rowLabel(tr("Video bitrate"), col);
+    rowLabel(N_("Video bitrate"), col);
     const int sug = suggestVideoKbps(e);
     if (e.autoBitrate) e.videoKbps = sug;
     ImGui::BeginDisabled(e.autoBitrate);
@@ -388,12 +447,12 @@ void encodingSection(State& s, float col, float w) {
     ImGui::Checkbox(tr("Auto##vgvkbps"), &e.autoBitrate);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Follow the suggestion for this codec, resolution, frame rate and frame types (%d kbit/s)"), sug);
     if (e.rc == RateControl::Crf && caps.crf) {
-        rowLabel(tr("CRF"), col);
+        rowLabel(N_("CRF"), col);
         ImGui::SetNextItemWidth(w);
         ImGui::SliderInt("##vgcrf", &e.crf, 15, 40);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Lower is better quality and more bits. The rate is capped at twice the bitrate above."));
     }
-    rowLabel(tr("Frame rate"), col);
+    rowLabel(N_("Frame rate"), col);
     char fl[32];
     snprintf(fl, sizeof fl, e.fps == std::floor(e.fps) ? "%.0f fps" : "%.1f fps", e.fps);
     ImGui::SetNextItemWidth(w);
@@ -404,7 +463,7 @@ void encodingSection(State& s, float col, float w) {
         }
         ImGui::EndCombo();
     }
-    rowLabel(tr("Resolution"), col);
+    rowLabel(N_("Resolution"), col);
     char rl[32];
     snprintf(rl, sizeof rl, "%dx%d", e.width, e.height);
     ImGui::SetNextItemWidth(w);
@@ -415,12 +474,12 @@ void encodingSection(State& s, float col, float w) {
         }
         ImGui::EndCombo();
     }
-    rowLabel(tr("Frame types"), col);
+    rowLabel(N_("Frame types"), col);
     int ft = (int)e.frames;
     std::vector<bool> ftOn = {caps.bFrames, true, true};
     if (combo("##vgft", ft, kFrameNames, 3, w, &ftOn, N_("This encoder makes no B-frames"))) e.frames = (FrameTypes)ft;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("I-only is possible but needs much more bitrate for the same quality"));
-    rowLabel(tr("GOP"), col);
+    rowLabel(N_("GOP"), col);
     ImGui::BeginDisabled(e.frames == FrameTypes::IOnly);
     ImGui::SetNextItemWidth(w * 0.6f);
     float gop = (float)e.gopSeconds;
@@ -429,14 +488,14 @@ void encodingSection(State& s, float col, float w) {
     ImGui::SameLine();
     if (e.frames == FrameTypes::IOnly) ImGui::TextDisabled("%s", tr("all-intra"));
     else ImGui::TextDisabled(tr("%d frames"), std::max(1, (int)std::lround(e.gopSeconds * e.fps)));
-    rowLabel(tr("Profile"), col);
+    rowLabel(N_("Profile"), col);
     ImGui::BeginDisabled(!caps.profile);
     combo("##vgprofile", e.profile, kProfileNames, kNumProfiles, w);
     ImGui::EndDisabled();
     if (!caps.profile && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("H.264 profiles only"));
-    rowLabel(tr("Pixel format"), col);
+    rowLabel(N_("Pixel format"), col);
     ImGui::TextDisabled("%s", tr("yuv420p, 8-bit (the common choice every receiver takes)"));
-    rowLabel(tr("Encoder preset"), col);
+    rowLabel(N_("Encoder preset"), col);
     ImGui::BeginDisabled(!caps.preset);
     ImGui::SetNextItemWidth(w);
     if (ImGui::BeginCombo("##vgpreset", kPresets[std::clamp(e.preset, 0, kNumPresets - 1)])) {
@@ -446,7 +505,7 @@ void encodingSection(State& s, float col, float w) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", caps.preset ? tr("Slower presets compress better but need more time") : tr("x264 and x265 only"));
-    rowLabel(tr("Latency tuning"), col);
+    rowLabel(N_("Latency tuning"), col);
     ImGui::BeginDisabled(!caps.zeroLatency);
     ImGui::Checkbox(tr("zerolatency"), &e.zeroLatency);
     ImGui::EndDisabled();
@@ -456,7 +515,7 @@ void encodingSection(State& s, float col, float w) {
     const bool audio = e.content != TsContent::VideoOnly;
     ImGui::SeparatorText(tr("Audio"));
     ImGui::BeginDisabled(!audio);
-    rowLabel(tr("Audio codec"), col);
+    rowLabel(N_("Audio codec"), col);
     std::string acur = tr("none available");
     for (const EncoderInfo& i : aenc) if (i.name == e.audioEncoder) acur = i.label;
     ImGui::SetNextItemWidth(w);
@@ -464,7 +523,7 @@ void encodingSection(State& s, float col, float w) {
         for (const EncoderInfo& i : aenc) if (ImGui::Selectable(i.label.c_str(), i.name == e.audioEncoder)) e.audioEncoder = i.name;
         ImGui::EndCombo();
     }
-    rowLabel(tr("Audio bitrate"), col);
+    rowLabel(N_("Audio bitrate"), col);
     char al[32];
     snprintf(al, sizeof al, "%d kbit/s", e.audioKbps);
     ImGui::SetNextItemWidth(w);
@@ -472,14 +531,14 @@ void encodingSection(State& s, float col, float w) {
         for (int k : kAudioKbps) { snprintf(al, sizeof al, "%d kbit/s", k); if (ImGui::Selectable(al, e.audioKbps == k)) e.audioKbps = k; }
         ImGui::EndCombo();
     }
-    rowLabel(tr("Sample rate"), col);
+    rowLabel(N_("Sample rate"), col);
     snprintf(al, sizeof al, "%.1f kHz", e.sampleRate / 1000.0);
     ImGui::SetNextItemWidth(w);
     if (ImGui::BeginCombo("##vgarate", al)) {
         for (int r : kSampleRates) { snprintf(al, sizeof al, "%.1f kHz", r / 1000.0); if (ImGui::Selectable(al, e.sampleRate == r)) e.sampleRate = r; }
         ImGui::EndCombo();
     }
-    rowLabel(tr("Channels"), col);
+    rowLabel(N_("Channels"), col);
     int ch = e.channels - 1;
     const char* const chNames[] = {N_("Mono"), N_("Stereo")};
     if (combo("##vgach", ch, chNames, 2, w)) e.channels = ch + 1;
@@ -487,7 +546,7 @@ void encodingSection(State& s, float col, float w) {
 
     ImGui::SeparatorText(tr("Transport stream"));
     const Budget b = estimate(e);
-    rowLabel(tr("TS mux rate"), col);
+    rowLabel(N_("TS mux rate"), col);
     if (e.autoMux) e.muxKbps = b.suggestedMux;
     ImGui::BeginDisabled(e.autoMux);
     ImGui::SetNextItemWidth(130 * gUi);
@@ -498,14 +557,14 @@ void encodingSection(State& s, float col, float w) {
     ImGui::SameLine();
     ImGui::Checkbox(tr("Auto##vgmux"), &e.autoMux);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The total TS rate with signalling and null packets. Set it to what the DVB link carries, or let it follow the estimate."));
-    rowLabel(tr("Service ID"), col);
+    rowLabel(N_("Service ID"), col);
     ImGui::SetNextItemWidth(130 * gUi);
     if (ImGui::InputInt("##vgsid", &e.serviceId)) e.serviceId = std::clamp(e.serviceId, 1, 65535);
-    rowLabel(tr("Service name"), col);
+    rowLabel(N_("Service name"), col);
     inputText("##vgsname", e.serviceName, w);
-    rowLabel(tr("Provider"), col);
+    rowLabel(N_("Provider"), col);
     inputText("##vgsprov", e.provider, w);
-    rowLabel(tr("PIDs"), col);
+    rowLabel(N_("PIDs"), col);
     ImGui::Checkbox(tr("Automatic##vgpid"), &e.autoPids);
     if (!e.autoPids) {
         auto pid = [&](const char* label, const char* id, int& v, int hi) {
@@ -515,9 +574,9 @@ void encodingSection(State& s, float col, float w) {
             ImGui::SameLine();
             ImGui::TextDisabled("0x%04X", v);
         };
-        pid(tr("PMT PID"), "##vgpmt", e.pmtPid, 0x1FFE);
-        pid(tr("Video PID"), "##vgvpid", e.videoPid, 0x1FFE);
-        pid(tr("Audio PID"), "##vgapid", e.audioPid, 0x1FFA);
+        pid(N_("PMT PID"), "##vgpmt", e.pmtPid, 0x1FFE);
+        pid(N_("Video PID"), "##vgvpid", e.videoPid, 0x1FFE);
+        pid(N_("Audio PID"), "##vgapid", e.audioPid, 0x1FFA);
         if (audioTrackCount(e) > 1) ImGui::TextDisabled(tr("Audio track n uses the audio PID + n (up to 0x%04X)"), e.audioPid + audioTrackCount(e) - 1);
     }
 }
@@ -580,7 +639,7 @@ void sourcesTab(State& s) {
     const float right = std::min(340 * gUi, ImGui::GetContentRegionAvail().x * 0.4f);
     ImGui::BeginChild("##vgsettings", ImVec2(ImGui::GetContentRegionAvail().x - right - ImGui::GetStyle().ItemSpacing.x, 0));
     ImGui::BeginDisabled(running);
-    const float col = 150 * gUi, w = std::max(160 * gUi, std::min(360 * gUi, ImGui::GetContentRegionAvail().x - col - 8 * gUi));
+    const float col = 175 * gUi, w = std::max(160 * gUi, std::min(360 * gUi, ImGui::GetContentRegionAvail().x - col - 8 * gUi));
     sourceSection(s, col, w);
     outputSection(s, col, w);
     encodingSection(s, col, w);
@@ -627,6 +686,7 @@ void paletteItem(const char* label, BlockKind k, Param p, const char* tip, State
 
 void palette(State& s) {
     ImGui::TextDisabled("%s", tr("Drag onto the picture"));
+    helpMark(N_("Drag a block from this list onto the picture, or double-click it to put it in the middle. Drag a block to move it, and the blue corner to resize a logo or the rolling band. Magnetic: blocks snap to each other's edges and to the picture's edges and centre; hold Alt to place freely. Click a block to change its text, font size, colour and box on the right; Delete removes it. Parameter blocks show the current value from the first tab and follow it. What you see is drawn by the same code as the encoded picture; while encoding, the picture here is the encoder's own and your changes go out on the next frame. More in docs/VIDEO-GENERATOR.md."));
     ImGui::SeparatorText(tr("Blocks"));
     paletteItem(tr("SVG logo"), BlockKind::Logo, Param::VideoCodec, tr("A logo from an SVG file, scaled into its box"), s);
     paletteItem(tr("Free text"), BlockKind::Text, Param::VideoCodec, tr("Your own text, more lines allowed"), s);
@@ -889,9 +949,11 @@ void controlBar(State& s) {
             else s.msg = err;
         }
         ImGui::EndDisabled();
+        helpMark(kToolHelp);
         if (!s.probed) { ImGui::SameLine(); ImGui::TextDisabled("%s", tr("Looking for encoders and cameras...")); }
-    } else if (ImGui::Button(tr("Stop"))) {
-        s.gen.stop();
+    } else {
+        if (ImGui::Button(tr("Stop"))) s.gen.stop();
+        helpMark(kToolHelp);
     }
     ImGui::SameLine();
     if (running) {
