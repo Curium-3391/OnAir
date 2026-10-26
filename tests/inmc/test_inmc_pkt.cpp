@@ -82,7 +82,8 @@ int main() {
             InmcTelemetry t;
             fp.parseFrame(f1, 1700000000);
             fp.fill(t);
-            CHECK(t.messages.size() == 1 && !t.messages[0].complete && t.messages[0].packets == 2, "after the first frame: complete %d", t.messages.empty() ? -1 : t.messages[0].complete);
+            if (pass == 0) CHECK(t.messages.size() == 1 && !t.messages[0].complete && t.messages[0].packets == 2, "after the first frame: complete %d", t.messages.empty() ? -1 : t.messages[0].complete);
+            else CHECK(t.messages.size() == 1 && t.messages[0].complete && t.messages[0].text == text && t.messages[0].seen == 1, "a repeat keeps the complete text until it is whole again");
             put(f2, b, buildEgc(pk[3]));
             fp.parseFrame(f2, 1700000009);
             fp.fill(t);

@@ -2,6 +2,7 @@
 // Split from main.cpp.
 // The flags are listed where they are parsed (parseDevFlags); none of them is saved.
 #include "dect2/packs/datasets.h"
+#include "dect2/source/device_pick.h"
 #ifdef __linux__
 #include <unistd.h>
 #endif
@@ -101,6 +102,15 @@ void parseDevFlags(App& app, int argc, char** argv, DevOpts& o) {
 #endif
         }   // dev: no first-start question (public map), nothing covers the window; the same as DECT2_SKIP_FIRSTRUN=1
         if (std::string(argv[i]) == "--device" && i + 1 < argc) { o.startDevice = argv[++i]; o.autostart = true; }
+        if (std::string(argv[i]) == "--antenna" && i + 1 < argc) { o.startAntenna = argv[++i]; o.autostart = true; }
+        if (std::string(argv[i]) == "--list-devices") {   // the radios found: index, driver, name, serial, antenna (the same list onair-cli prints), then exit
+            std::string lerr;
+            const auto radios = dect2::listRadios(lerr);
+            fputs(dect2::deviceListText(radios).c_str(), stdout);
+            if (radios.empty()) fprintf(stderr, "no radio found %s\n", lerr.c_str());
+            fflush(stdout);
+            std::exit(0);
+        }
         if (std::string(argv[i]) == "--tx") txDevOpen(app, i + 1 < argc && argv[i + 1][0] != '-' ? argv[i + 1] : nullptr, false);   // dev: TX view, optionally on a signal id
         if (std::string(argv[i]) == "--txdry" && i + 1 < argc) txDevOpen(app, argv[++i], true);   // dev: TX view with the test (no RF) running on a signal id
         if (std::string(argv[i]) == "--stress") o.stress = true;   // dev: retune frequency and gain every second, like moving the controls

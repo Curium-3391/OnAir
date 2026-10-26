@@ -1,5 +1,7 @@
 // Headless receiver: prints sync / L1 telemetry once per second. Useful for bring-up and logs.
 //   dect2cli --hackrf [--freq MHz] [--lna dB] [--vga dB] [--amp] [--bw MHz] [--secs N]
+//   dect2cli --list-devices   (index, driver, name, serial and antenna of every radio found, then exit)
+//   dect2cli --device <index|serial|name part> [--antenna A|B|...] ...   (a radio other than the first: "--device 171007A210 --antenna A", "--device \"RSP2 antenna A\"", "--device 1"; --hackrf stays as it was)
 //   dect2cli --file path.cs8 --rate Msps [--format cs8|cu8|cf32] [--bw MHz] [--secs N]
 //   dect2cli ... --net-radio rtltcp,192.168.2.197,1234   (a radio on the network instead of the first one plugged in)
 //   dect2cli ... --record out.cs8|out.cf32|folder|auto --secs N   (any radio or --synthetic, not --file: saves the radio's raw samples at its own
@@ -26,6 +28,7 @@
 #include "dect2/engine/quality.h"
 #include "dect2/net/nettuner.h"
 #include "dect2/net/netradio.h"
+#include "dect2/source/device_pick.h"
 #include "dect2/common/platform.h"
 #include "dect2/common/timecompat.h"
 #include <algorithm>
@@ -65,6 +68,7 @@ int main(int argc, char** argv) {
     bool useFile = false, haveDev = false, synthetic = false, listen = false, atvFm = false;
     bool dpmrScan = false;
     double dvbcSr = 0; int dvbcQam = 0; bool dvbcAnnexC = false;
+    std::string devSel, devAntenna; bool listDevices = false;   // --device, --antenna, --list-devices
     std::string netRadio;   // --net-radio: a radio on the network, as the settings keep it ("rtltcp,host,port"); used instead of the first one found
     int orbcommMax = 2;
     double refLat = 0, refLon = 0; bool haveRef = false;
@@ -78,7 +82,10 @@ int main(int argc, char** argv) {
         std::string a = argv[i];
         auto next = [&]() { return i + 1 < argc ? argv[++i] : (char*)""; };
         if (a == "--version") { printf("dect2cli (OnAir)\nAIS frame layer: %s\n", dect2::ais::protoImplementation()); return 0; }   // always the Rust crate now
-        else if (a == "--hackrf") haveDev = true;
+        else if (a == "--hackrf") haveDev = true;   // the first radio found (a HackRF when one is plugged in): kept as it was
+        else if (a == "--list-devices") listDevices = true;
+        else if (a == "--device") devSel = next();
+        else if (a == "--antenna") devAntenna = next();
         else if (a == "--radio") { const std::string kv = next(); const auto eq = kv.find('='); if (eq != std::string::npos) tune.radio[kv.substr(0, eq)] = kv.substr(eq + 1); }   // a setting of the radio, e.g. --radio iqformat=cs8 (PlutoSDR with Tezuka), --radio ppm=-3
         else if (a == "--atv-fm") atvFm = true;
         else if (a == "--isdbt-bw") { const std::string v = next(); const int b = atoi(v.c_str()); isdbtBw = v == "auto" ? 0 : b == 7 || b == 8 ? b : 6; }   // with --standard isdbt: channel width 6, 7, 8 MHz (the Maldives) or auto
@@ -172,6 +179,13 @@ int main(int argc, char** argv) {
             want = netRadioDeviceName(nr[0]);
         }
         auto list = listRadios(err);
+        if (listDevices) { fputs(deviceListText(list).c_str(), stdout); if (list.empty()) fprintf(stderr, "no radio found %s\n", err.c_str()); return 0; }
+        if (!devSel.empty() || !devAntenna.empty()) {   // --device / --antenna: that radio instead of the first one
+            std::string perr;
+            const int k = pickDevice(list, devSel, devAntenna, perr);
+            if (k < 0) { fprintf(stderr, "--device: %s\n", perr.c_str()); return 1; }
+            list = {list[(size_t)k]};
+        }
         if (!want.empty()) {
             auto it = std::find_if(list.begin(), list.end(), [&](const DeviceInfo& d) { return d.name == want; });
             if (it == list.end()) { fprintf(stderr, "--net-radio: %s is not in the radio list %s\n", want.c_str(), err.c_str()); return 1; }

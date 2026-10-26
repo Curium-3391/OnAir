@@ -1,6 +1,7 @@
 // Ham operating helpers: contest exchange, serials, contest dupes and the dupe sheet, Cabrillo export; the sun and the grayline,
 // great-circle paths; band dial frequencies and region edges; the spots list; macros.
 #include "dect2/ham/ham_ops.h"
+#include "dect2/ham/ham.h"
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -43,6 +44,9 @@ int main() {
     // ---- the band bar ----
     CHECK(dialFor("20m", 0) == 14.074 && dialFor("20m", 1) == 14.080 && dialFor("40m", 3) == 7.0386 && dialFor("60m", 1) == 0 && dialFor("3cm", 0) == 0);
     for (const auto& b : bandDials()) CHECK(b.ft8 > 0);
+    CHECK(dialFor("11m", 0) == 27.265 && dialFor("11m", 1) == 0);   // 11 m (CB) has a receive dial only
+    CHECK(rxBandNameFor(27.185e6) == "11m" && bandNameFor(27.185e6).empty() && rxBandNameFor(14.2e6) == "20m" && rxBandNameFor(26.9e6).empty() && rxBandNameFor(27.5e6).empty());
+    CHECK(hamCbBand(26.965e6) && hamCbBand(27.405e6) && !hamCbBand(28.0e6));
     CHECK(regionAllows(1, 7.150e6, 2500) && !regionAllows(1, 7.250e6, 2500) && regionAllows(2, 7.250e6, 2500));
     CHECK(regionAllows(1, 70.2e6, 50) && !regionAllows(2, 70.2e6, 50) && !regionAllows(1, 147e6, 50) && regionAllows(2, 147e6, 50));
     CHECK(regionAllows(0, 1e9, 50));                         // no region chosen: no extra check

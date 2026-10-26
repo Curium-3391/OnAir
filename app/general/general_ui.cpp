@@ -8,6 +8,8 @@
 #include "dect2/general/general_gen.h"
 #include "dect2/general/general_rx.h"
 #include "dect2/general/general_tel.h"
+#include "dect2/ham/ham_voice.h"
+#include "dect2/geo/maidenhead.h"
 #include "state/freq_model.h"
 #include <algorithm>
 #include <cmath>
@@ -54,6 +56,7 @@ struct State {
     float preRoll = 1.5f;        // seconds of signal kept from before the squelch opens
     float txHang = 1.5f;         // the file stays open this long after the squelch shuts
     int txIq = -1;               // -1 follows the mode (on for USB / LSB), 0 off, 1 on
+    int hvRegion = 0;            // the ham voice plan: 0 picks the IARU region from the locator or the settings, 1 2 3 chosen (Advanced)
     float afHp = 0, afLp = 0, afNotch = 0;   // audio filters in Hz, 0 = off
     bool nrOn[dect2::GenDemodCount] = {};    // neural noise remover per demodulator (speech modes only), off by default
     float nrStr[dect2::GenDemodCount] = {80, 80, 80, 80, 80, 80};   // its strength in percent
@@ -107,10 +110,12 @@ void load() {
     S.amAuto = p.getB("genAmAuto", true); S.amNr = (int)std::clamp(p.getI("genAmNr", -1), -1L, 100L); S.amEnh = p.getB("genAmEnh", false);
     S.nb = p.getB("genNb", false); S.nbDb = (float)std::clamp(p.getD("genNbDb", 12), 6.0, 30.0);
     S.chanOff = p.getD("genOffset", 0);
+    S.hvRegion = (int)std::clamp(p.getI("ham.voiceRegion", 0), 0L, 3L);
 }
 void save() {
     auto& p = plat::prefs();
     p.setI("genDemod", S.demod);
+    p.setI("ham.voiceRegion", S.hvRegion);
     for (int d = 0; d < dect2::GenDemodCount; d++) {
         char k[24];
         snprintf(k, sizeof k, "genWidth%d", d); p.setD(k, S.width[d]);
@@ -207,6 +212,67 @@ bool amBroadcast(const App& a);
 void audioFiltersUi(App& a);
 void noiseRemoverUi(App& a);
 
+
+// ---- the ham voice band plan: one click tunes a segment and sets the demodulator and the filter (core/src/ham/ham_voice.cpp, docs/ham-voice.md) ----
+// The IARU region of the station: the one chosen in the Ham setup, else from the Ham locator, the receiver position or the setup location, else Region 1.
+int stationRegion(bool* known = nullptr) {
+    auto& p = plat::prefs();
+    int r = (int)p.getI("ham.region", 0);
+    if (r < 1 || r > 3) r = dect2::ham::hamIaruRegionForGrid(p.getS("ham.grid", ""));
+    if (r < 1 && receiverLocationSet()) r = dect2::ham::hamIaruRegionForPosition(p.getD("adsbLat", 0), p.getD("adsbLon", 0));
+    if (r < 1) {
+        const std::string loc = p.getS("setupLoc", "");
+        double la, lo;
+        if (!loc.empty()) r = dect2::fromMaidenhead(loc, la, lo) || dect2::parseCoordinates(loc, la, lo) ? dect2::ham::hamIaruRegionForPosition(la, lo) : 0;
+    }
+    if (known) *known = r >= 1;
+    return r >= 1 ? r : 1;
+}
+int voiceRegion() { return S.hvRegion ? S.hvRegion : stationRegion(); }
+int demodOf(dect2::ham::VoiceMode m) { return m == dect2::ham::VoiceMode::Nfm ? dect2::GenNfm : m == dect2::ham::VoiceMode::Usb ? dect2::GenUsb : dect2::GenLsb; }
+void hamVoiceTune(App& a, const dect2::ham::HamVoiceSeg& g) {
+    const int d = demodOf(g.mode);
+    setDemod(d);
+    S.width[d] = dect2::generalClampWidth(d, g.bwHz);
+    S.chanOff = 0;
+    tuneFreq(a, g.tuneHz / 1e6);
+    S.lastDial = a.freqMhz;
+    save();
+}
+void hamVoiceUi(App& a) {
+    static const char* const kReg[] = {"Auto (from my locator)", "IARU Region 1 (Europe, Africa, Middle East, northern Asia)", "IARU Region 2 (the Americas)", "IARU Region 3 (south and east Asia, Oceania)"};
+    const int reg = voiceRegion();
+    const auto segs = dect2::ham::hamVoiceSegments(reg);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", tr("Ham voice"));
+    flowNext(6 * gUi);
+    const double hz = listenHz(a);
+    for (size_t i = 0; i < segs.size(); i++) {
+        const auto& g = segs[i];
+        const bool on = hz >= g.loHz && hz <= g.hiHz && S.demod == demodOf(g.mode);
+        ImGui::PushID((int)i);
+        if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::SmallButton(g.button)) hamVoiceTune(a, g);
+        if (on) ImGui::PopStyleColor();
+        ImGui::PopID();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s %s: %.4f to %.4f MHz, %s\n%s %.4f MHz, %s, %.4g kHz", g.band, g.label, g.loHz / 1e6, g.hiHz / 1e6,
+            g.mode == dect2::ham::VoiceMode::Nfm ? "FM" : g.mode == dect2::ham::VoiceMode::Usb ? "upper sideband" : "lower sideband", tr("Click: tune"), g.tuneHz / 1e6,
+            dect2::generalDemodName(demodOf(g.mode)), g.bwHz / 1e3);
+        flowNext(3 * gUi);
+    }
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Amateur voice by the IARU band plan of your region: lower sideband below 10 MHz, upper sideband above (60 m upper), FM for the 10 m, 6 m, 2 m and 70 cm segments. A click tunes the segment's calling or middle frequency and sets the demodulator and filter. The segments are the IARU plans; your country's plan can be narrower. 30 m has no voice; 11 m is CB, not amateur. The region follows your locator (Ham setup, receiver position or setup location); choose it by hand under Advanced. See docs/ham-voice.md."));
+    flowNext(6 * gUi);
+    if (ImGui::TreeNodeEx(tr("Advanced##hvadv"), ImGuiTreeNodeFlags_NoTreePushOnOpen)) {
+        ImGui::SetNextItemWidth(380 * gUi);
+        int sel = S.hvRegion;
+        if (ImGui::Combo(tr("Region##hvreg"), &sel, kReg, 4)) { S.hvRegion = sel; save(); }
+        bool known = false; const int auto_ = stationRegion(&known);
+        ImGui::TextDisabled("%s", S.hvRegion == 0 ? (known ? (auto_ == 1 ? "Region 1 found from your locator" : auto_ == 2 ? "Region 2 found from your locator" : "Region 3 found from your locator") : "No locator set (Ham setup or the setup wizard): Region 1 until you choose") : "Chosen by hand");
+    }
+    flowEnd();
+}
+
 void controls(App& a) {
     load();
     // the listening frequency and the step
@@ -260,6 +326,7 @@ void controls(App& a) {
     }
     ImGui::SameLine(0, 8 * gUi);
     ImGui::Text("%.4g kHz", S.width[S.demod] / 1e3);
+    hamVoiceUi(a);
 
     // squelch, AGC, de-emphasis, pitch
     if (ImGui::Checkbox("Squelch", &S.sqOn)) save();

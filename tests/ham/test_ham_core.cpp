@@ -32,6 +32,10 @@ int main() {
     CHECK(hamTxAllowed(g, why) && why.empty());
     g.dialHz = 100e6;
     CHECK(!hamTxAllowed(g, why) && why.find("outside") != std::string::npos);
+    g.dialHz = 27.265e6;   // 11 m (CB): even armed and licensed, never an amateur band
+    CHECK(!hamTxAllowed(g, why) && why.find("outside") != std::string::npos);
+    g.dialHz = 27.185e6; g.audioHz = 1000;
+    CHECK(!hamTxAllowed(g, why));
     g.dialHz = 14.074e6; g.call = "X";
     CHECK(!hamTxAllowed(g, why));
 

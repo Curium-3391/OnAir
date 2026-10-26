@@ -199,7 +199,7 @@ void mapView(App& a, const dect2::HfdigFtxTelemetry& f, ImVec2 size) {
 // the usual dial frequencies (upper sideband) of each mode, as WSJT-X lists them; 60 m WSPR is the Region 1 one
 struct FtxBand { const char* name; double mhz; };
 const FtxBand kFt8Bands[] = {{"160m", 1.840}, {"80m", 3.573}, {"60m", 5.357}, {"40m", 7.074}, {"30m", 10.136}, {"20m", 14.074}, {"17m", 18.100},
-                             {"15m", 21.074}, {"12m", 24.915}, {"10m", 28.074}, {"6m", 50.313}, {"4m", 70.154}, {"2m", 144.174}};
+                             {"15m", 21.074}, {"12m", 24.915}, {"11m", 27.265}, {"10m", 28.074}, {"6m", 50.313}, {"4m", 70.154}, {"2m", 144.174}};
 const FtxBand kFt4Bands[] = {{"80m", 3.575}, {"40m", 7.0475}, {"30m", 10.140}, {"20m", 14.080}, {"17m", 18.104}, {"15m", 21.140},
                              {"12m", 24.919}, {"10m", 28.180}, {"6m", 50.318}, {"2m", 144.170}};
 const FtxBand kFt2Bands[] = {{"20m", 14.084}};
