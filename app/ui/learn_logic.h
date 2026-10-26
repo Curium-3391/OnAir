@@ -98,6 +98,7 @@ inline const char* radioBlurb(const std::string& board, const std::string& name)
         {"sdrplay", N_("SDRplay RSP: covers long wave to 2 GHz, very good on short wave. Needs the SDRplay API.")},
         {"rsp", N_("SDRplay RSP: covers long wave to 2 GHz, very good on short wave. Needs the SDRplay API.")},
         {"pluto", N_("PlutoSDR: receives and transmits, 70 MHz to 6 GHz (more after the usual tweak).")},
+        {"icr8600", N_("Icom IC-R8600: the I/Q OUT port of the receiver, 10 kHz to 3 GHz. Needs Icom's firmware file, see the ? in Radio settings. Receive only.")},
         {"rx888", N_("RX888: a direct-sampling receiver, excellent for long, medium and short wave. Needs USB 3.")},
         {"lime", N_("LimeSDR: a wideband transceiver, 10 MHz to 3.5 GHz.")},
         {"blade", N_("bladeRF: a wideband transceiver for advanced use.")},

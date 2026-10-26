@@ -6,6 +6,7 @@
 #include "dect2/source/converter.h"
 #include "dect2/selfcal/selfcal.h"
 #include "dect2/selfcal/ppmcal.h"
+#include "dect2/source/icom_r8600.h"
 #include <cmath>
 #include <map>
 
@@ -433,6 +434,59 @@ void calibrateFrequencyDraw(App& a) {
     if (calibrateDialog(a, d) && a.engine.running()) { a.tune.centerHz = settingsRetuneCentreHz(a); a.engine.retune(a.tune); }
 }
 
+// The Icom IC-R8600's I/Q port needs Icom's own FX2 firmware, which OnAir cannot ship: the user imports it once (like a voice codec).
+static void icomFirmwareUi(App& a) {
+    static bool have = false;
+    static double checkedAt = -10;
+    static std::string note;
+    static bool noteOk = false;
+    const double now = ImGui::GetTime();
+    if (now - checkedAt > 2.0) { have = dect2::icom::firmwareInstalled(); checkedAt = now; }
+    ImGui::Separator();
+    ImGui::TextUnformatted(tr("Icom IC-R8600 firmware"));
+    if (have) ImGui::TextColored(pal::okGreen(), "%s", tr("Firmware found."));
+    else ImGui::TextColored(pal::warnAmber(), "%s", tr("Needs Icom firmware, see ?"));
+    if (ImGui::Button(tr("Import Icom firmware..."))) {
+        const std::string f = plat::openFileDialog();
+        if (!f.empty()) {
+            std::string where, err;
+            noteOk = dect2::icom::importFirmwareFile(f, where, err);
+            note = noteOk ? std::string(tr("Firmware stored in ")) + where : err;
+            a.engine.log(noteOk ? "Icom firmware imported" : "Icom firmware not imported: " + err);
+            checkedAt = -10;
+            if (noteOk) a.devicesDirty = true;
+        }
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Choose IC-R8600_usb_iq.spt (or spt_seq.json). OnAir converts it, checks its SHA-256 and keeps a copy in your OnAir folder."));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("?##icomfw")) ImGui::OpenPopup("icomfwhelp");
+    if (ImGui::BeginPopup("icomfwhelp")) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30);
+        ImGui::TextUnformatted(tr("Icom IC-R8600 (I/Q)"));
+        ImGui::Separator();
+        ImGui::TextWrapped("%s", tr("The I/Q OUT USB port of the IC-R8600 has no program of its own: it needs Icom's firmware each time it is plugged in. "
+                                    "OnAir cannot include it (it is Icom's), so you bring the file once."));
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", tr("Where to get it"));
+        ImGui::TextWrapped("%s", tr("Install Icom's free \"USB I/Q Package for HDSDR\" on a Windows PC. It puts IC-R8600_usb_iq.spt in "
+                                    "C:\\Windows\\System32\\IC-R8600\\ . Copy that file to this computer and choose Import Icom firmware."));
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", tr("What OnAir does"));
+        ImGui::TextWrapped("%s", tr("It converts the file, checks it against the Icom package (SHA-256), keeps a copy in your OnAir folder and writes it into the "
+                                    "radio's USB RAM when you start (nothing is flashed to the radio). Connect the I/Q OUT USB port, not the control port. Receive only."));
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", tr("Windows, Linux"));
+        ImGui::TextWrapped("%s", tr("Windows: install the WinUSB driver (Zadig) for USB IDs 0C26:0022 and 0C26:0023, and close HDSDR. "
+                                    "Linux: OnAir's udev rules cover both. This driver has not been tried on a real radio yet: please report how it goes."));
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", tr("Credit"));
+        ImGui::TextWrapped("%s", tr("Driver written from the work of Topol (in collaboration with AI, MIT) and Pieter Ibelings (ic-r8600-usb-iq, MIT)."));
+        ImGui::PopTextWrapPos();
+        ImGui::EndPopup();
+    }
+    if (!note.empty()) ImGui::TextWrapped("%s", note.c_str());
+}
+
 void radioSettingsUi(App& a, bool vertical) {
     if (a.devIdx < 0 || a.devIdx >= (int)a.devices.size()) return;
     const DeviceInfo& d = a.devices[a.devIdx];
@@ -463,6 +517,7 @@ void radioSettingsUi(App& a, bool vertical) {
         saveRadioSettings(a);
         if (r.restart) restart = true; else retune = true;
     }
+    if (d.board == "icr8600") icomFirmwareUi(a);
     if (converterUi(a, vertical)) { saveRadioSettings(a); retune = true; }
     if (d.kind == DeviceInfo::HackRF || d.kind == DeviceInfo::Soapy || d.kind == DeviceInfo::Native) {   // #233: decimation in OnAir, for radios that are poor at low sample rates
         static const int kDec[] = {1, 2, 4, 8, 16};

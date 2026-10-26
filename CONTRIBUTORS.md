@@ -4,7 +4,7 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 
 In the program: Help, Credits, tab Contributors. To add someone, edit `tools/contributors.tsv` and run `python3 tools/gen_credits.py`.
 
-## People (82)
+## People (83)
 
 | Who | What | Kind | Where | Reference |
 |---|---|---|---|---|
@@ -111,6 +111,7 @@ In the program: Help, Credits, tab Contributors. To add someone, edit `tools/con
 | sugusllly | Ham It Down converter support | idea | Radios | Discord |
 | [Sunnnset5](https://github.com/Sunnnset5) | Audio source and UDP export; services crash | idea | Interface | [#102](https://github.com/adswill/OnAir/issues/102), [#166](https://github.com/adswill/OnAir/issues/166) |
 | [Tech500](https://github.com/Tech500) | Runtime assert error | bug report | Interface | [#53](https://github.com/adswill/OnAir/issues/53) |
+| Topol (Pawel Topolski), in collaboration with AI | Icom IC-R8600 I/Q: a working macOS SoapySDR module and FX2 loader (MIT), the base of the native OnAir driver | pull request | Radios | Discord |
 | [tortyl](https://github.com/tortyl) | E-czas radio time protocol request | idea | Time signals | [#155](https://github.com/adswill/OnAir/issues/155) |
 | [tortyl](https://github.com/tortyl) | SoapySDR over LAN probe output and testing | testing | Network radios | [#84](https://github.com/adswill/OnAir/issues/84) |
 | [trebor-56](https://github.com/trebor-56) | LimeSDR Mini request | idea | Radios | [#20](https://github.com/adswill/OnAir/issues/20), [#169](https://github.com/adswill/OnAir/issues/169) |
@@ -188,7 +189,7 @@ In the program: Help, Credits, tab Contributors. To add someone, edit `tools/con
 - **Languages**: andriux26, ffishman, PU2SWX
 - **Memory**: Ken W4KRR
 - **Network radios**: andriux26, Chercheur, DG9BFC, drelectro, F5OEO, ffishman, MUSTARDTIGERFPV, nmaster2042, rlabs-oss, tortyl
-- **Radios**: drelectro, ea4hwg, iu0azb, iu1mrd, mechanicalpotato, mrwish7, OM5NA, OnesAndZer0s, sugusllly, trebor-56
+- **Radios**: drelectro, ea4hwg, iu0azb, iu1mrd, mechanicalpotato, mrwish7, OM5NA, OnesAndZer0s, sugusllly, Topol (Pawel Topolski), in collaboration with AI, trebor-56
 - **Satellite passes**: andriux26
 - **Windows**: ffishman, gvanem, py2gn
 - **macOS**: FleXoft, modemuser

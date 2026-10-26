@@ -17,6 +17,9 @@ std::unique_ptr<IqSource> makeFobos(const DeviceInfo& d);
 // ---- rx888
 void listRx888(std::vector<DeviceInfo>& out);
 std::unique_ptr<IqSource> makeRx888(const DeviceInfo& d);
+// ---- icom (IC-R8600 I/Q, receive only)
+void listIcom(std::vector<DeviceInfo>& out);
+std::unique_ptr<IqSource> makeIcom(const DeviceInfo& d);
 #ifdef DECT2_HAVE_RFNM
 // ---- rfnm
 void listRfnm(std::vector<DeviceInfo>& out);
@@ -38,6 +41,7 @@ std::vector<DeviceInfo> listNativeDevices(std::string& err) {
         native::listAirspyHf(out);   // ---- airspyhf
         native::listFobos(out);      // ---- fobos
         native::listRx888(out);      // ---- rx888
+        native::listIcom(out);       // ---- icom
 #ifdef DECT2_HAVE_RFNM
         native::listRfnm(out);       // ---- rfnm
 #endif
@@ -83,6 +87,7 @@ std::unique_ptr<IqSource> makeNativeSource(const DeviceInfo& d) {
     if (d.board == "redpitaya") return native::makeRedPitaya(d);
     if (d.board == "fobos") return native::makeFobos(d);         // ---- fobos
     if (d.board == "rx888") return native::makeRx888(d);         // ---- rx888
+    if (d.board == "icr8600") return native::makeIcom(d);        // ---- icom
 #ifdef DECT2_HAVE_RFNM
     if (d.board == "rfnm") return native::makeRfnm(d);           // ---- rfnm
 #endif

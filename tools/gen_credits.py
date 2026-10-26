@@ -81,6 +81,34 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Copyright (c) 2017-2020 Oscar Steila ik1xpv (ExtIO_sddc); SDDC_Driver by renardspark. The full MIT text is in `third_party/sddc_fx3/LICENSE-SDDC_Driver.txt`.
 
+### Icom IC-R8600 I/Q driver (MIT)
+
+The driver is written again in C++ from two MIT-licensed works; no code is copied. Credit: **Topol in collaboration with AI** (Pawel "Topol" Topolski: the SoapySDR module and macOS loader, MIT, "Local experimental IC-R8600 receive-only SoapySDR module. MIT.") and Pieter Ibelings (ic-r8600-usb-iq, https://github.com/ibelinp/ic-r8600-usb-iq, GitHub shows no licence field but the repository's LICENSE file is the MIT text below). The MIT licence covers that code only; the radio's firmware is Icom's, is not shipped, and the user imports it from Icom's own package. Not affiliated with or endorsed by Icom.
+
+```
+MIT License
+
+Copyright (c) 2026 Pieter Ibelings
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### DRA decoder (MIT)
 
 Copyright (c) 2021 maliwen2015 (ffmpeg_cavs_dra). Not part of OnAir or its packages: the user fetches the source from that repository, which carries the MIT text. See the open points above.
