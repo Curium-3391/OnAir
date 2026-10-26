@@ -116,7 +116,40 @@ std::vector<ScanProfile> builtinProfiles() {
     add("Public safety VHF", "150-174", 12.5, 12.5, 10, "", "");
     add("Everything 30-1000 MHz (no FM broadcast)", "30-1000", 25, 0, 12, "87.5-108");
     add("FM broadcast", "87.5-108", 50, 100, 15);
+    add("VHF + UHF 30-1000 MHz (quick look)", "30-1000", 25, 0, 12, "87.5-108");
+    add("Airband + marine + public safety", "118-137, 156-162.025, 150-174", 12.5, 12.5, 10);
     return v;
+}
+
+FreqRange wholeSpan(const RadioProfile& r) {
+    FreqRange f;
+    double lo = 25, hi = 1700;                                  // RTL-SDR R820T and unknown radios
+    if (r.id == "hackrf") { lo = 1; hi = 6000; }
+    else if (r.id == "airspy") { lo = 24; hi = 1800; }
+    else if (r.id == "sdrplay") { lo = 1; hi = 2000; }
+    else if (r.id == "wide") { lo = 70; hi = 6000; }
+    else if (r.id == "pluto") { lo = 325; hi = 3800; }
+    f.loHz = lo * 1e6; f.hiHz = hi * 1e6;
+    return f;
+}
+
+AutoScan autoScan(const RadioProfile& r, double spanHz) {
+    AutoScan a;
+    a.stepKhz = spanHz <= 100e6 ? 12.5 : (spanHz <= 1e9 ? 25 : 50);
+    a.dwellMs = spanHz > 200e6 ? std::max(2.0, r.minDwellSec * 1e3) : 4.0;
+    a.thresholdDb = spanHz > 1e9 ? 12 : 10;
+    return a;
+}
+
+ScanProfile wholeSpanProfile(const RadioProfile& r) {
+    const FreqRange f = wholeSpan(r);
+    const AutoScan a = autoScan(r, f.hiHz - f.loHz);
+    ScanProfile p;
+    char b[64]; snprintf(b, sizeof b, "%g-%g", f.loHz / 1e6, f.hiHz / 1e6);
+    p.name = "Whole span"; p.bands = b;
+    p.stepKhz = a.stepKhz; p.dwellMs = a.dwellMs; p.thresholdDb = a.thresholdDb;
+    p.minDurSec = 0; p.hangSec = 3;
+    return p;
 }
 
 FastScanConfig toConfig(const ScanProfile& p) {

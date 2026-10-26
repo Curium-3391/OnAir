@@ -41,6 +41,7 @@ bool FastScanner::configure(const FastScanConfig& c, const RadioProfile& r, std:
     cal_.configure(plan_.binsPerHop);
     HitParams hp = c.hits;
     tracker_.configure(hp);
+    qual_.configure(c.qualify); qual_.clear(); sweep_ = 0;
     view_ = SpectrumView();
     view_.startHz = plan_.startHz; view_.binHz = plan_.binHz;
     view_.cur.assign(plan_.totalBins, -150.f); view_.avg = view_.cur; view_.maxhold = view_.cur; view_.floor = view_.cur;
@@ -70,6 +71,7 @@ void FastScanner::setFilters(std::vector<FreqRange> ex, std::vector<double> lk, 
 }
 void FastScanner::removeHit(uint64_t id) { std::lock_guard<std::mutex> g(m_); tracker_.remove(id); }
 
+std::vector<ChannelInfo> FastScanner::channels(bool reliableOnly) const { std::lock_guard<std::mutex> g(m_); return qual_.channels(tracker_.hits(), reliableOnly); }
 SpectrumView FastScanner::snapshot() const { std::lock_guard<std::mutex> g(m_); return view_; }
 ScanStats FastScanner::stats() const { std::lock_guard<std::mutex> g(m_); return st_; }
 
@@ -127,6 +129,7 @@ void FastScanner::processHop(int hop, const cf32* x, size_t n, double t, std::ve
     const std::vector<Candidate> cands = findCandidates(hopCal_.data(), &floor_.floors()[h.firstBin], nb, plan_.startHz + h.firstBin * plan_.binHz, plan_.binHz,
                                                         tracker_.detectDb(), std::min(tracker_.detectDb(), 4.f), 1, &plan_.mask[h.firstBin]);
     tracker_.observe(t, h.loHz - plan_.binHz * 0.5, h.hiHz + plan_.binHz * 0.5, cands, ev);
+    qual_.look(plan_, hop, sweep_, t, tracker_.hits());
     // the pseudo-spectrum
     const double dt = lastT_[hop] > 0 ? std::max(0.0, t - lastT_[hop]) : 0.0;
     lastT_[hop] = t;
@@ -247,6 +250,7 @@ bool FastScanner::run(sweep::SweepSource& src, const std::atomic<bool>* cancel, 
         if (parked) continue;   // the pass does not advance while recording
         if (++oi % plan_.order.size() == 0) {
             pass++;
+            beginSweep();
             const double sec = since(passStart);
             passStart = Clock::now();
             {

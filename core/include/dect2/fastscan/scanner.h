@@ -7,6 +7,7 @@
 #include "dect2/fastscan/floor.h"
 #include "dect2/fastscan/hits.h"
 #include "dect2/fastscan/plan.h"
+#include "dect2/fastscan/qualify.h"
 #include "dect2/fastscan/record.h"
 #include "dect2/sweep/sweep.h"
 #include <atomic>
@@ -26,6 +27,7 @@ struct FastScanConfig {
     double avgAlpha = 0.2;           // weight of a new look in the average trace
     double maxholdFallDbPerSec = 2;  // the max-hold trace falls at this rate (0: holds for ever)
     int threads = 0;                 // 0: the shared pool, 1: none (the result is the same)
+    QualifyParams qualify;           // channel confirmation / spur / image rules
 };
 
 struct SpectrumView {
@@ -81,6 +83,9 @@ public:
     void removeHit(uint64_t id);
     SpectrumView snapshot() const;           // copy of the pseudo-spectrum
     ScanStats stats() const;
+    // The channel list of fast scan v2: hits with sweeps seen, class, and the spur / image / DC flags. reliableOnly hides unconfirmed and false ones.
+    std::vector<ChannelInfo> channels(bool reliableOnly) const;
+    void beginSweep() { std::lock_guard<std::mutex> g(m_); sweep_++; }   // run() does this by itself; tests driving processHop() call it per pass
     bool saveFloor() const;                  // to config.floorFile
     void resetTraces();                      // clears average and max-hold (not the floor)
 
@@ -100,6 +105,8 @@ private:
     std::vector<double> lastT_;
     ScanStats st_;
     bool floorLoaded_ = false;
+    Qualifier qual_;
+    int sweep_ = 0;
     std::atomic<int> park_{-1};
 };
 

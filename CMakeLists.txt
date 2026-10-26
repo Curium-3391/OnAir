@@ -135,7 +135,7 @@ target_sources(dect2core PRIVATE core/src/dsp/synth_wide.cpp)
 target_sources(dect2core PRIVATE core/src/source/synth_group.cpp)
 target_sources(dect2core PRIVATE core/src/t2/t2ldpc.cpp)
 target_sources(dect2core PRIVATE core/src/tv/avsplus_dec.cpp)
-target_sources(dect2core PRIVATE core/src/sweep/survey.cpp core/src/fastscan/floor.cpp core/src/fastscan/hits.cpp core/src/fastscan/plan.cpp core/src/fastscan/record.cpp core/src/fastscan/scanner.cpp core/src/fastscan/profile.cpp)
+target_sources(dect2core PRIVATE core/src/sweep/survey.cpp core/src/fastscan/floor.cpp core/src/fastscan/hits.cpp core/src/fastscan/plan.cpp core/src/fastscan/record.cpp core/src/fastscan/scanner.cpp core/src/fastscan/profile.cpp core/src/fastscan/qualify.cpp)
 target_sources(dect2core PRIVATE core/src/source/usb_fd.cpp core/src/source/usb_fd_io.cpp core/src/source/audio_push.cpp)   # radios opened by the platform and handed over as USB descriptors (Android): rtl_fd_shim.h
 # the built-in band plans: data/bandplans/builtin.json compiled in as text (bandplan.cpp parses it); a changed file configures again
 file(READ ${ONAIR_ROOT}/data/bandplans/builtin.json _bp_txt)
