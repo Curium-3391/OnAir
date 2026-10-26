@@ -135,7 +135,7 @@ fn spdu_text() {
 #[test]
 fn logon_in_a_downlink_mpdu() {
     let mut lp = [0u8; 8];
-    let l = put_fcs(&[0x8F, 0x4B, 0x12, 0x34], &mut lp);
+    let l = put_fcs(&[0x8F, 0xD2, 0x48, 0x2C], &mut lp);
     let mut mp = vec![0x03 | (1 << 2), 1, 7, 0, 0, 0, (l - 1) as u8];
     let f = fcs(&mp);
     mp.extend_from_slice(&[f as u8, (f >> 8) as u8]);
@@ -146,6 +146,28 @@ fn logon_in_a_downlink_mpdu() {
     assert_eq!(out[0].icao, 0x4B1234);
     assert_eq!(text(&out[0].summary), "Logon request from 4B1234");
     assert_eq!(out[0].ac_id, 7);
+}
+
+
+#[test]
+fn logon_icao_address_uses_bit_reversed_octets() {
+    // Independently observed HFDL LPDU wire octets; reversing the *bits*
+    // (not the octet order) gives these ICAO 24-bit addresses.
+    for (wire, expected) in [
+        ([0x1E, 0x38, 0x6B], 0x781CD6),
+        ([0x1E, 0x08, 0xFC], 0x78103F),
+    ] {
+        let mut lp = [0u8; 8];
+        let l = put_fcs(&[0x8F, wire[0], wire[1], wire[2]], &mut lp);
+        let mut mp = vec![0x03 | (1 << 2), 1, 7, 0, 0, 0, (l - 1) as u8];
+        let f = fcs(&mp);
+        mp.extend_from_slice(&[f as u8, (f >> 8) as u8]);
+        mp.extend_from_slice(&lp[..l]);
+        let mut out = vec![Msg::default(); 4];
+        assert_eq!(parse_pdu(&mp, &mut out), Some(1));
+        assert_eq!(out[0].icao, expected);
+        assert!(text(&out[0].summary).contains(&format!("{expected:06X}")));
+    }
 }
 
 #[test]

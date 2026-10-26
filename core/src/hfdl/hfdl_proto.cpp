@@ -173,8 +173,27 @@ std::vector<uint8_t> hfdlLpdu(uint8_t type, const std::vector<uint8_t>& body) {
     o.push_back((uint8_t)f); o.push_back((uint8_t)(f >> 8));
     return o;
 }
-std::vector<uint8_t> hfdlLogonRequest(uint32_t icao) { return hfdlLpdu(0x8F, {(uint8_t)(icao >> 16), (uint8_t)(icao >> 8), (uint8_t)icao}); }
-std::vector<uint8_t> hfdlLogonConfirm(uint32_t icao, int acId) { return hfdlLpdu(0x9F, {(uint8_t)(icao >> 16), (uint8_t)(icao >> 8), (uint8_t)icao, (uint8_t)acId, 0, 0, 0}); }
+namespace {
+// On-air HFDL ICAO octets are bit-reversed relative to a normal hex address.
+// Match the receiver's LPDU decode; only the three ICAO octets use this order.
+uint8_t hfdlIcaoWireByte(uint8_t x) {
+    x = (uint8_t)((x >> 4) | (x << 4));
+    x = (uint8_t)(((x & 0xCCu) >> 2) | ((x & 0x33u) << 2));
+    return (uint8_t)(((x & 0xAAu) >> 1) | ((x & 0x55u) << 1));
+}
+std::vector<uint8_t> hfdlIcaoWireBytes(uint32_t icao) {
+    return {hfdlIcaoWireByte((uint8_t)(icao >> 16)),
+            hfdlIcaoWireByte((uint8_t)(icao >> 8)),
+            hfdlIcaoWireByte((uint8_t)icao)};
+}
+} // namespace
+
+std::vector<uint8_t> hfdlLogonRequest(uint32_t icao) { return hfdlLpdu(0x8F, hfdlIcaoWireBytes(icao)); }
+std::vector<uint8_t> hfdlLogonConfirm(uint32_t icao, int acId) {
+    auto body = hfdlIcaoWireBytes(icao);
+    body.insert(body.end(), {(uint8_t)acId, 0, 0, 0});
+    return hfdlLpdu(0x9F, body);
+}
 std::vector<uint8_t> hfdlUnnumbered(const std::vector<uint8_t>& h) { return hfdlLpdu(0x0D, h); }
 
 std::vector<uint8_t> hfdlPerfData(const std::string& flight, double lat, double lon, int utcSec, int gsId, int freqId) {
