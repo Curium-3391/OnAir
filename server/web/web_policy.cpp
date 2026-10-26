@@ -75,7 +75,7 @@ const std::set<std::string>& restrictedKnownKinds() {
     // 3.1 modes: blocked likewise
     "pactor", "pskd",
     // 3.2 modes: blocked likewise
-    "roshf", "ssdv",
+    "roshf", "ssdv", "ebicab", "esubghz",   // (esubghz was never classified: web_safety failed on integ-32)
     };
     return s;
 }
