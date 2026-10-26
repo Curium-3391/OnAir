@@ -422,6 +422,7 @@ private:
 void listRtl(std::vector<DeviceInfo>& out) {
     if (!rtl().ok) return;
     const uint32_t n = rtl().get_device_count();
+    const size_t first = out.size();
     for (uint32_t i = 0; i < n && i < 16; i++) {
         char vendor[256] = {0}, product[256] = {0}, serial[256] = {0};
         rtl().get_device_usb_strings(i, vendor, product, serial);
@@ -459,6 +460,14 @@ void listRtl(std::vector<DeviceInfo>& out) {
         d.hasBiasTee = rtl().set_bias_tee != nullptr;
         d.settings = rtlSettings(tuner, model);
         out.push_back(d);
+    }
+    // two dongles with the same product and serial would be one entry by name (the choice is saved and matched by name): number them (#328)
+    for (size_t a = first; a < out.size(); a++) {
+        bool dup = false;
+        for (size_t b = first; b < out.size(); b++) dup |= b != a && out[b].name == out[a].name;
+        if (!dup) continue;
+        const size_t at = out[a].name.rfind(" (native");
+        out[a].name.insert(at == std::string::npos ? out[a].name.size() : at, " #" + out[a].nativeArgs);
     }
 }
 

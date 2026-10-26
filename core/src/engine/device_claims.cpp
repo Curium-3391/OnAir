@@ -12,6 +12,8 @@ std::map<std::string, int> gHeld;
 std::string deviceClaimKey(const DeviceInfo& d) {
     if (!d.isRadio() && !d.isAudio()) return "";
     std::string id = !d.serial.empty() ? d.serial : !d.nativeArgs.empty() ? d.nativeArgs : !d.soapyArgs.empty() ? d.soapyArgs : d.name;
+    // RTL-SDR dongles are sold with one shared serial (00000001): the second one then looked "in use by RX 1" (#328); the listing position tells them apart
+    if (d.board == "rtlsdr" && !d.serial.empty() && !d.nativeArgs.empty()) id += "@" + d.nativeArgs;
     return std::to_string((int)d.kind) + "|" + d.board + "|" + id;
 }
 
