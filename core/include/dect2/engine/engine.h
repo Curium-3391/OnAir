@@ -293,7 +293,7 @@ public:
     void setSpectrumFastRows(double rowsPerSec) { fastRps_ = rowsPerSec; analyzer_.setFastRows(rowsPerSec, rate_.load()); }
     size_t takeFastRows(std::vector<float>& rows, size_t& bins, double& dt, uint64_t& dropped) { return analyzer_.takeFastRows(rows, bins, dt, dropped); }
     int spectrumFft() const { return specFft_.load(); }   // the choice (0: automatic)
-    void setSpectrumFft(int n) { specFft_ = n; if (n > 0) analyzer_.resize((size_t)n); else analyzer_.resize(SpectrumAnalyzer::autoSize(rate_.load())); }   // 0: automatic from the sample rate
+    void setSpectrumFft(int n) { specFft_ = n; analyzer_.setSampleRate(rate_.load()); if (n > 0) analyzer_.resize((size_t)n); else analyzer_.resize(SpectrumAnalyzer::autoSize(rate_.load())); }   // 0: automatic from the sample rate
 
     bool latestRx(RxTelemetry& out, uint64_t lastSeq);
 

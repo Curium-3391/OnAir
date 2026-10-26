@@ -49,6 +49,10 @@ public:
     // Moves the queued rows out: rows holds count * bins dB values (DC-centred like a frame); dt: seconds between rows (exact: the hop);
     // dropped: rows lost since the last call. Returns the number of rows (0: none, nothing changed in the outputs but dropped).
     size_t takeFastRows(std::vector<float>& rows, size_t& bins, double& dt, uint64_t& dropped);
+    // The sample rate of what feed() gets (0 = unknown). With it, a transform too long for two blocks in a frame period (2 n / fs > 1/30 s) is
+    // made from overlapping windows, one every fs / 30 samples, so the frame rate stays 30 a second (it was fs / 2n: 7 a second at 2.4 Msps
+    // with 131072 bins). Without it, blocks follow each other as before.
+    void setSampleRate(double sampleRateHz);
     void resize(size_t fftSize);        // power of two, 1024..kMaxFft: a new transform size (drops the accumulated data)
     void reset();                       // forget accumulated data (after retuning)
 

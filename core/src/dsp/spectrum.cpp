@@ -43,6 +43,13 @@ struct Worker {
     int log2n = 0;
     std::vector<float> window, re, im;
     std::vector<cf32> pending;         // a partial block carried across feed() calls
+    // Overlapped frames (large transforms): when two blocks do not fit in a frame period (2 n / fs > 1/30 s) the frame rate would fall to
+    // fs / 2n (7 a second at 2.4 Msps with 131072 bins). Instead each frame is one transform of the latest n samples, started every fs / 35
+    // samples (a little more often than the 30 a second the frames are taken), so the display keeps its 30 a second whatever the size.
+    bool overlap = false;
+    double fs = 0, hop = 0, nextAt = 0;
+    uint64_t pos = 0;
+    std::vector<cf32> ring;
     // fast rows
     uint64_t fastGen = 0;
     double rps = 0, stride = 0, nextEnd = 0, dt = 0;
@@ -51,13 +58,17 @@ struct Worker {
     uint64_t fpos = 0;
     std::vector<cf32> fring;
     std::vector<float> fwin, fre, fim, facc, frow;
-    void reload(size_t nn) {
+    void reload(size_t nn, double sampleRate) {
         if (n != nn || window.size() != nn) {   // (a reset with the same size keeps the window)
             n = nn; log2n = (int)std::lround(std::log2((double)n));
             window.resize(n); hannWindowNorm(window.data(), (int)n);
             re.assign(n, 0.f); im.assign(n, 0.f);
         }
         pending.clear();
+        fs = sampleRate;
+        overlap = fs > 0 && 2.0 * (double)n / fs > 1.0 / 30.0;
+        hop = fs / 35.0; pos = 0; nextAt = (double)n;   // (a little under the 33 ms tick: every tick finds a fresh block)
+        if (overlap) ring.assign(n, cf32(0.f, 0.f)); else { ring.clear(); ring.shrink_to_fit(); }
     }
 };
 
@@ -71,6 +82,7 @@ struct SpectrumAnalyzer::Impl {
     uint32_t hist[64] = {};
     uint64_t seq = 0;
     uint64_t gen = 1;           // bumped by resize() and reset()
+    double sampleRate = 0;      // setSampleRate(): 0 = unknown (blocks follow each other, no overlap)
     std::atomic<bool> transform{true};
     std::atomic<size_t> maxBlocks{SpectrumAnalyzer::kDefaultBlocks};   // blocks averaged into one frame (the rest of the samples only count for the stats)
     // fast rows: the request (setFastRows), the queue the rows wait in (takeFastRows)
@@ -120,6 +132,12 @@ size_t SpectrumAnalyzer::takeFastRows(std::vector<float>& rows, size_t& bins, do
     return s.fastBins ? rows.size() / s.fastBins : 0;
 }
 
+void SpectrumAnalyzer::setSampleRate(double fs) {
+    std::lock_guard<std::mutex> lk(p_->mu);
+    if (p_->sampleRate == fs) return;
+    p_->sampleRate = fs;
+    p_->gen++;   // the feeding thread sets up again (overlap or not)
+}
 
 // ---- the transforms --------------------------------------------------------------------------------------------------------------------
 
@@ -156,6 +174,7 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
     size_t maxBlocks, curN;
     uint64_t gen;
     bool doFft;
+    double fsNow = 0;
     uint64_t reqGen;
     double reqRps, reqFs;
     {
@@ -213,10 +232,11 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
         maxBlocks = s.maxBlocks.load(std::memory_order_relaxed);
         doFft = s.transform.load();
         gen = s.gen; curN = n_;
+        fsNow = s.sampleRate;
         reqGen = s.reqGen; reqRps = s.reqRps; reqFs = s.reqFs;
     }
     if (!doFft) { w.pending.clear(); return; }
-    if (w.gen != gen) { w.reload(curN); w.gen = gen; }
+    if (w.gen != gen) { w.reload(curN, fsNow); w.gen = gen; }
     // fast rows: their own transforms; the frames below are not touched
     if (w.fastGen != reqGen) {
         w.fastGen = reqGen; w.rps = reqRps;
@@ -274,6 +294,31 @@ void SpectrumAnalyzer::feed(const cf32* x, size_t n) {
         std::lock_guard<std::mutex> lk(s.mu);
         return w.gen != s.gen || s.blocks >= maxBlocks;
     };
+    if (w.overlap) {
+        // every fs / 35 samples one transform of the latest N samples
+        size_t used = 0;
+        while (used < n) {
+            const uint64_t endAt = (uint64_t)std::llround(w.nextAt);
+            size_t take = n - used;
+            if (endAt > w.pos) take = (size_t)std::min<uint64_t>(take, endAt - w.pos);
+            for (size_t k = 0; k < take;) {
+                const size_t at = (size_t)((w.pos + k) % N), run = std::min(take - k, N - at);
+                std::copy(x + used + k, x + used + k + run, w.ring.begin() + (long)at);
+                k += run;
+            }
+            w.pos += take; used += take;
+            if (w.pos >= endAt) {
+                if (w.pos >= N && !full()) {
+                    const size_t at = (size_t)(w.pos % N);
+                    windowFft(w.ring.data() + at, N - at, w.ring.data(), at, w.window.data(), w.re.data(), w.im.data(), w.log2n);
+                    add();
+                }
+                w.nextAt += w.hop;
+                if (w.nextAt < (double)w.pos) w.nextAt = (double)w.pos + w.hop;
+            }
+        }
+        return;
+    }
     // One block: window into split re/im, FFT, add the power. Whole blocks are read straight from the caller's samples; only a partial
     // block at the end is copied (and completed by the next call).
     auto block = [&](const cf32* b) {

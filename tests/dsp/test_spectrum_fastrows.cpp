@@ -115,6 +115,54 @@ int main() {
     }
 
 
+    // Overlapped frames: a transform too long for two blocks in a frame period still gives 30 frames a second
+    {
+        const double fs = 2.4e6;
+        const size_t N = 131072;
+        auto x = keyedTone(fs, 2.0, 100e3, 1.0, 0.0, 0.05f, 6);
+        auto run = [&](bool withRate, std::vector<SpectrumFrame>* keep) {
+            SpectrumAnalyzer an(N);
+            if (withRate) an.setSampleRate(fs);
+            int frames = 0;
+            const size_t piece = (size_t)(fs / 30);   // one frame period of signal
+            SpectrumFrame f;
+            for (size_t p = 0; p + piece <= x.size(); p += piece) {
+                an.feed(x.data() + p, piece);
+                if (an.takeFrame(f)) { frames++; if (keep) keep->push_back(f); }
+            }
+            return frames;
+        };
+        std::vector<SpectrumFrame> fr;
+        const int without = run(false, nullptr), with = run(true, &fr);
+        check(without >= 30 && without <= 40, "without the sample rate: a frame as often as a block completes (fs / N = 18 a second)");
+        check(with >= 56, "with the sample rate: a frame in nearly every one of the 60 periods");
+        // the tone at +100 kHz is where it should be, with the same level as in the plain frames
+        SpectrumFrame ref;
+        { SpectrumAnalyzer an(N); an.feed(x.data(), 2 * N); an.takeFrame(ref); }
+        const size_t tb = (size_t)std::llround(N / 2.0 + 100e3 / fs * N);
+        const SpectrumFrame& last = fr.back();
+        auto peakBin = [&](const SpectrumFrame& f) { size_t b = 0; for (size_t i = 0; i < f.dbfs.size(); i++) if (f.dbfs[i] > f.dbfs[b]) b = i; return b; };
+        check(peakBin(last) + 1 >= tb && peakBin(last) <= tb + 1, "the tone sits in its bin");
+        check(std::fabs(last.dbfs[peakBin(last)] - ref.dbfs[peakBin(ref)]) < 0.7, "the tone has the same level as in the plain frame");
+        auto med = [](std::vector<float> v) { std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end()); return v[v.size() / 2]; };
+        check(std::fabs(med(last.dbfs) - med(ref.dbfs)) < 1.0, "the noise floor is the same (one block against two)");
+        // the stats still cover every sample
+        check(last.stats.rmsDbfs < 0 && last.stats.rmsDbfs > -40, "the level statistics are there");
+    }
+
+    // a small transform is untouched by the sample rate: blocks follow each other, two to a frame
+    {
+        const double fs = 2.4e6;
+        auto x = keyedTone(fs, 0.2, 100e3, 1.0, 0.0, 0.05f, 7);
+        SpectrumAnalyzer a1(4096), a2(4096);
+        a2.setSampleRate(fs);
+        a1.feed(x.data(), x.size()); a2.feed(x.data(), x.size());
+        SpectrumFrame f1, f2;
+        check(a1.takeFrame(f1) && a2.takeFrame(f2), "frames");
+        bool same = f1.dbfs.size() == f2.dbfs.size();
+        for (size_t i = 0; same && i < f1.dbfs.size(); i++) same = f1.dbfs[i] == f2.dbfs[i];
+        check(same, "4096 bins at 2.4 Msps: bit for bit as before");
+    }
 
     // a changed sample rate or rate restarts the rows cleanly
     {
