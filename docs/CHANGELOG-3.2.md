@@ -8,6 +8,9 @@
 
 - **Dev A is the default look for new installs.** People who already use Classic keep it; they see a one-time notice that says Dev A exists and where to switch back. Small screens start in the touch interface (#139).
 - **Updates: "check yes, download no" for new installs.** OnAir looks for a new version by default and tells you; it downloads one only when you turn that on in Settings. Existing settings are not changed.
+- **Transmit is no longer blocked by OnAir.** The refusal lists, the licence and band checks and the remote-API refusal are gone; transmit warns instead. You are responsible for what you send. The one rule left: nothing is uploaded to the map server while you transmit or for 10 minutes after. In OnAir Web, transmit by listeners is a host setting ("web_allow_tx"), off by default. 11 m (CB) can transmit with a warning.
+- **A new first-run wizard** (4 screens, with the FM step after the region).
+- **Bandwidth controls** for VDL2, TETRA, TETRAPOL and the PSK analyser show the mode's standard bandwidth by default; tick Custom to change it. Anyone who had saved a width keeps it.
 - **One clock for all modes (#218):** the computer clock or the signal's own time, chosen once.
 
 ## Fixes
@@ -43,8 +46,18 @@
 - **Documentation:** FDM-DUO through its USB sound card (#251); analogue TV status (#73); RTL2832P DVB sticks (#180).
 - **First-run setup, version 2.** Four short screens, each skippable: the radio (found automatically, with a help link per radio, or the test signal), the location (city search, locator or coordinates; sets the country, ITU region, band plan, FM step, DAB band III, TV channels, the ADS-B position and the time zone), the interests (which modes are starred first, the starting mode and starter presets) and a summary with the tour on offer. It shows only when there are no earlier settings, so an update never shows it to existing users. Run it again from Help > Setup and lessons > Run setup again.
 
+- **Fast scan v2:** Whole span, two-sweep confirmation and spur / image flags; a HackRF firmware sweep with a retune fallback; a `dect2fastscan` test tool.
+- **New modes:** ROS (detection only, partial), SSDV pictures (uses the GPL-3 fsphil/ssdv code, credited in THIRD_PARTY.md) and Eurobalise / EBICab at 4.234 MHz.
+- **Icom IC-R8600:** a native driver with firmware import (based on work by Topol in collaboration with AI).
+- **Ham:** an 11 m RX button, a ham voice band plan, command line `--list-devices`, `--device` and `--antenna`, and Inmarsat-C EGC area, subject and save.
+- **Hosting (OnAir Web):** TLS (OpenSSL) in the macOS, Linux and Windows packages, the certificate store found automatically, `web/onair-web` included in every package, the origin fix behind a proxy, docs/HOST-A-RECEIVER.md.
+- **Decoder quality:** the DMR coarse-carrier search no longer follows a strong adjacent channel; P25 and NXDN capture frequencies beyond the channel filter; the AGC no longer ratchets down on repeated bursts.
+- **Windows fixes:** the AVX2 Viterbi stack alignment on MinGW (#324), UTF-8 wide paths for the DRM USAC codec search (#329); also RTL-SDRs that share a serial number (#328) and analog TV / FPV full screen (#326).
+- **Credit:** Icom IC-R8600 work by Topol, in collaboration with AI.
+
 ## Pull requests merged, with thanks
 
+- #327 HFDL: the bits of each ICAO octet are reversed, so aircraft addresses match dumphfdl (frank-1225).
 - #295 P25 trunking follows Phase 2 calls from the Phase 1 control channel, and the exact CIC decimator and 8 to 48 kHz upsampler for the voice receivers (Mike, drelectro).
 - #315 Chat mode for the Enhanced Sub-GHz Chat app on the Flipper Zero (A2ureIm4la).
 - #305, #306, #307 DMR: position history kept across a reset, a bounded and followable map card, NMEA positions in text messages (Vladimir, vlig-alt).
@@ -55,4 +68,6 @@
 
 - #254 could not be reproduced; it stays open.
 - `dvbt_real` (a real 7 MHz DVB-T recording) can still differ in the number of damaged packets on x86 CPUs, because the floating-point order differs from arm64; decoding is not broken.
-- KNOWN_TESTS_PLACEHOLDER
+- Decoder quality: P25 with a +40 dB adjacent channel went from 75 % to 67 % decoded, and DMR next to a +30 dB adjacent channel still does not decode.
+- **Needs a user test (not tried on real hardware or signals):** the HackRF firmware sweep, the IC-R8600 driver, ROS and EBICab, Tailscale / Cloudflare hosting of OnAir Web, and the Windows fixes #324 and #329.
+- Tests that fail in the project's CI on main as well as in 3.2 (not new): KNOWN_LIST

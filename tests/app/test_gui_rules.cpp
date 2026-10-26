@@ -127,7 +127,6 @@ struct AllowDup { const char* file; const char* id; };
 static const AllowDup kAllowDup[] = {
     {"app/gfx/plots.cpp", "Automatic"}, {"app/gfx/plots.cpp", "Manual"},                       // DVB, FM and ISDB-T bandwidth popups
     {"app/hfdig/hfdig_sstv_ui.cpp", "##sstvpic"}, {"app/hfdig/hfdig_sstv_ui.cpp", "##sstvside"},   // wide and narrow layouts
-    {"app/map/map_send.cpp", "Send data to map server"},                                         // disabled or live form
     {"app/marine/marine_ui.cpp", "##msv"},
     {"app/mesh/mesh_ui.cpp", "all presets"},                                                     // one protocol entry or all
     {"app/panels/tx_payload_ui.cpp", "Callsign"}, {"app/panels/tx_payload_ui.cpp", "Grid"}, {"app/panels/tx_payload_ui.cpp", "Text"},

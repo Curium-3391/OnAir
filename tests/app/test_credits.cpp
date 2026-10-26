@@ -33,7 +33,7 @@ int main() {
         if (modes.size() < 100) { std::printf("FAIL: read only %zu modes from mode_table.cpp\n", modes.size()); fails++; }
     }
     const std::set<std::string> kinds = {"pull request", "bug report", "idea", "testing", "samples", "translation", "optimisation", "fix"};
-    const std::regex refRe("(#[0-9]+|commit:[0-9a-f]{7,40}|discord)");
+    const std::regex refRe("(#[0-9]+|commit:[0-9a-f]{7,40}|discord|email)");
     std::set<std::string> rowsSeen;
     if (kContribCount < 50) { std::printf("FAIL: only %d contributions\n", kContribCount); fails++; }
     for (int i = 0; i < kContribCount; i++) {
