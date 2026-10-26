@@ -117,10 +117,6 @@ Copyright (c) 2021 maliwen2015 (ffmpeg_cavs_dra). Not part of OnAir or its packa
 
 Copyright 2026 David Reid. No attribution is required; it is given here anyway.
 
-### nanosvg (Zlib)
-
-Copyright (c) 2013-14 Mikko Mononen. The zlib licence text is `third_party/nanosvg/LICENSE.txt` (also `LICENSES/Zlib.txt`); `nanosvg.h` and `nanosvgrast.h` are unmodified.
-
 ### stb libraries (MIT or public domain)
 
 Sean Barrett and contributors; the notices are in the headers `third_party/imgui/imstb_*.h`.

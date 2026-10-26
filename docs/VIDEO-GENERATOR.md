@@ -1,7 +1,7 @@
 # Digital video generator
 
 Tools > Digital video generator turns a camera, a still picture or a video file into an MPEG transport stream, with an overlay of your
-own on the picture: an SVG logo, the encoding parameters, free text and a band of rolling text. The stream is written to a `.ts` file or
+own on the picture: a logo, the encoding parameters, free text and a band of rolling text. The stream is written to a `.ts` file or
 sent over the network as UDP or RTP. Every encoder setting can be chosen, and the window estimates the bitrate the settings need, so the
 stream can be fitted to a DVB link before anything is encoded.
 
@@ -10,7 +10,7 @@ The tool stands alone: it does not change the receiver, the transmitter or anyth
 
 - Engine: `core/include/dect2/tv/videogen.h`, `core/src/tv/videogen.cpp` (sources, encoders, muxer, output)
 - Settings and estimate: `core/include/dect2/tv/videogen_params.h`, `core/src/tv/videogen_params.cpp`
-- Overlay: `core/include/dect2/tv/videogen_overlay.h`, `core/src/tv/videogen_overlay.cpp` (text with stb_truetype, logo with nanosvg)
+- Overlay: `core/include/dect2/tv/videogen_overlay.h`, `core/src/tv/videogen_overlay.cpp` (text with stb_truetype, logo with OnAir's PNG decoder or FFmpeg, scaled with swscale)
 - Window: `app/panels/videogen_ui.cpp`
 - Test: `tests/tv/test_videogen.cpp`
 
@@ -152,7 +152,7 @@ always there and is used when the chosen encoder is missing.
 
 The **Overlay** tab places things on the picture before it is encoded.
 
-- **Blocks**: **SVG logo** (scaled into its box, keeping its shape), **Free text** (more lines allowed), **Rolling text** (a band with
+- **Blocks**: **Logo** (a PNG file, transparency kept, scaled into its box keeping its shape; other picture formats work when the FFmpeg in the build decodes them), **Free text** (more lines allowed), **Rolling text** (a band with
   text running through it), and every **parameter** of the first tab, grouped as there (Video, Audio, Transport stream). A parameter
   block shows its current value and follows it; its tooltip in the list says where it comes from.
 - **Place**: drag a block from the list onto the picture, or double-click it to put it in the middle. Drag a block to move it; drag
@@ -160,7 +160,7 @@ The **Overlay** tab places things on the picture before it is encoded.
 - **Magnetic**: a block snaps to the edges of the other blocks (side by side or aligned), to the edges of the picture and to its
   centre lines, when it comes within a few pixels; yellow lines show the snap. Hold **Alt** to place it freely, or untick Magnetic.
 - **Per block** (on the right): text or label, font size in pixels of the encoded picture, colour, a dark box behind the text,
-  position. For the logo, the SVG file and its size. For rolling text, the **direction** (left to right or right to left) and the
+  position. For the logo, the PNG file and its size. For rolling text, the **direction** (left to right or right to left) and the
   **speed** in characters per second (default 1, left to right).
 - The faint inner frame is the title-safe area (90 %): some TV sets cut the edges, so keep text inside it.
 

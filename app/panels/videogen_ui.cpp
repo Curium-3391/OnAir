@@ -688,7 +688,7 @@ void palette(State& s) {
     ImGui::TextDisabled("%s", tr("Drag onto the picture"));
     helpMark(N_("Drag a block from this list onto the picture, or double-click it to put it in the middle. Drag a block to move it, and the blue corner to resize a logo or the rolling band. Magnetic: blocks snap to each other's edges and to the picture's edges and centre; hold Alt to place freely. Click a block to change its text, font size, colour and box on the right; Delete removes it. Parameter blocks show the current value from the first tab and follow it. What you see is drawn by the same code as the encoded picture; while encoding, the picture here is the encoder's own and your changes go out on the next frame. More in docs/VIDEO-GENERATOR.md."));
     ImGui::SeparatorText(tr("Blocks"));
-    paletteItem(tr("SVG logo"), BlockKind::Logo, Param::VideoCodec, tr("A logo from an SVG file, scaled into its box"), s);
+    paletteItem(tr("Logo"), BlockKind::Logo, Param::VideoCodec, tr("A logo from a PNG file (transparency kept), scaled into its box"), s);
     paletteItem(tr("Free text"), BlockKind::Text, Param::VideoCodec, tr("Your own text, more lines allowed"), s);
     paletteItem(tr("Rolling text"), BlockKind::Rolling, Param::VideoCodec, tr("A band with text running through it; direction and speed per block"), s);
     for (const ParamGroup& g : kGroups) {
@@ -714,10 +714,10 @@ void properties(State& s) {
     if (s.sel < 0 || s.sel >= (int)bl.size()) { ImGui::TextDisabled("%s", tr("Click a block to change it")); return; }
     Block& b = bl[(size_t)s.sel];
     const float w = ImGui::GetContentRegionAvail().x;
-    const char* kinds[] = {N_("SVG logo"), N_("Parameter"), N_("Free text"), N_("Rolling text")};
+    const char* kinds[] = {N_("Logo"), N_("Parameter"), N_("Free text"), N_("Rolling text")};
     ImGui::SeparatorText(tr(kinds[(int)b.kind]));
     if (b.kind == BlockKind::Logo) {
-        ImGui::TextUnformatted(tr("SVG file"));
+        ImGui::TextUnformatted(tr("Picture file (PNG)"));
         inputText("##vglogo", b.text, w - 90 * gUi);
         ImGui::SameLine();
         if (ImGui::Button(tr("Browse...##vglogo"))) { const std::string f = plat::openFileDialog(); if (!f.empty()) b.text = f; }
@@ -898,7 +898,7 @@ void canvas(State& s) {
         const auto [a, z] = toScreen(rects[i]);
         const bool sel = (int)i == s.sel;
         dl->AddRect(a, z, sel ? IM_COL32(80, 200, 255, 255) : IM_COL32(255, 255, 255, 70), 0, 0, sel ? 2 * gUi : 1);
-        if (bl[i].kind == BlockKind::Logo && bl[i].text.empty()) dl->AddText(ImVec2(a.x + 4 * gUi, a.y + 4 * gUi), IM_COL32(255, 255, 255, 160), tr("SVG logo: choose a file"));
+        if (bl[i].kind == BlockKind::Logo && bl[i].text.empty()) dl->AddText(ImVec2(a.x + 4 * gUi, a.y + 4 * gUi), IM_COL32(255, 255, 255, 160), tr("Logo: choose a PNG file"));
         if (sel && resizable(bl[i])) dl->AddRectFilled(ImVec2(z.x - hs, z.y - hs), ImVec2(z.x, z.y), IM_COL32(80, 200, 255, 255));
     }
     if (s.sel >= 0 && s.sel < (int)rects.size() && (snappedX || snappedY)) {

@@ -1,4 +1,4 @@
-// Digital video generator: the overlay laid on the picture before it is encoded (an SVG logo, parameter blocks, free text, rolling
+// Digital video generator: the overlay laid on the picture before it is encoded (a logo, parameter blocks, free text, rolling
 // text), the magnetic snapping the editor uses, and the renderer. The same renderer draws the editor's preview and the encoded
 // picture, so what is placed is what is sent.
 #pragma once
@@ -15,7 +15,7 @@ enum class BlockKind { Logo, Param, Text, Rolling };
 struct Block {
     BlockKind kind = BlockKind::Text;
     Param param = Param::VideoCodec;   // Param: which parameter
-    std::string text;                  // Text / Rolling: the text; Param: the label in front of the value; Logo: the SVG file
+    std::string text;                  // Text / Rolling: the text; Param: the label in front of the value; Logo: the picture file (PNG; other formats when FFmpeg decodes them)
     float x = 0.05f, y = 0.05f;        // top-left corner as a fraction of the picture width / height (the layout survives a change of resolution)
     float w = 0.2f, h = 0.15f;         // Logo: its box; Rolling: the width of the band (h follows the font); text blocks size to their text
     float fontPx = 24;                 // text height in pixels of the encoded picture

@@ -184,6 +184,27 @@ static void testOverlay() {
     size_t bright = 0;
     for (uint8_t px : y) bright += px > 200;
     CHECK(bright > 100, "white text shows in the picture (%zu)", bright);
+    // a PNG logo with transparency: drawn inside its box, the corners stay clear
+    Block lg; lg.kind = BlockKind::Logo; lg.text = "assets/branding/OnAir-glyph-transparent-2048.png"; lg.x = 0.5f; lg.y = 0.5f; lg.w = 0.25f; lg.h = 0.25f;
+    Layout ll; ll.blocks = {lg};
+    std::vector<uint8_t> c;
+    r.render(ll, s, 0, 720, 576, c);
+    size_t in = 0, out = 0, partial = 0;
+    for (int py = 0; py < 576; py++)
+        for (int px = 0; px < 720; px++) {
+            const uint8_t al = c[((size_t)py * 720 + px) * 4 + 3];
+            const bool inside = px >= 360 && px < 540 && py >= 288 && py < 432;
+            (inside ? in : out) += al > 0;
+            partial += al > 0 && al < 255;
+        }
+    CHECK(in > 2000, "the PNG logo is drawn (%zu pixels)", in);
+    CHECK(out == 0, "the logo stays in its box (%zu pixels outside)", out);
+    CHECK(partial > 0 && c[((size_t)288 * 720 + 360) * 4 + 3] == 0, "transparency is kept");
+    lg.text = "no/such/logo.png"; ll.blocks = {lg};
+    r.render(ll, s, 0, 720, 576, c);
+    size_t any = 0;
+    for (size_t i = 3; i < c.size(); i += 4) any += c[i] > 0;
+    CHECK(any == 0, "a missing logo file draws nothing");
 }
 
 // PIDs and names from a transport stream file

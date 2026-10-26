@@ -1,6 +1,14 @@
 // Digital video generator: overlay layout, snapping and renderer (videogen_overlay.h). Text is drawn with stb_truetype (the copy that
-// comes with Dear ImGui, compiled here as static functions), the logo with nanosvg.
+// comes with Dear ImGui, compiled here as static functions). The logo is a picture file: PNG through OnAir's own decoder (every build,
+// transparency kept), other formats through FFmpeg when the build has a decoder for them; scaled with swscale.
 #include "dect2/tv/videogen_overlay.h"
+#include "dect2/common/png.h"
+#include "dect2/common/u8file.h"
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
+}
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -19,10 +27,6 @@
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "imstb_truetype.h"
-#define NANOSVG_IMPLEMENTATION
-#include "nanosvg.h"
-#define NANOSVGRAST_IMPLEMENTATION
-#include "nanosvgrast.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -95,6 +99,59 @@ void fillRect(std::vector<uint8_t>& rgba, int W, int H, Rect r, uint32_t abgr) {
         for (int x = x0; x < x1; x++) over(&rgba[((size_t)y * W + x) * 4], abgr, 255);
 }
 
+// A picture file through FFmpeg (JPEG, BMP, WebP, SVG with librsvg ... whatever this build decodes) as RGBA premultiplied by alpha
+bool decodeWithFFmpeg(const std::string& path, int& w, int& h, std::vector<uint8_t>& rgba) {
+    AVFormatContext* fc = nullptr;
+    if (avformat_open_input(&fc, path.c_str(), nullptr, nullptr) < 0) return false;
+    bool ok = false;
+    const AVCodec* c = nullptr;
+    AVCodecContext* dec = nullptr;
+    AVPacket* pk = av_packet_alloc();
+    AVFrame* fr = av_frame_alloc();
+    const int si = avformat_find_stream_info(fc, nullptr) >= 0 ? av_find_best_stream(fc, AVMEDIA_TYPE_VIDEO, -1, -1, &c, 0) : -1;
+    if (si >= 0 && c && (dec = avcodec_alloc_context3(c)) && avcodec_parameters_to_context(dec, fc->streams[si]->codecpar) >= 0 &&
+        avcodec_open2(dec, c, nullptr) >= 0) {
+        bool got = false;
+        while (!got && av_read_frame(fc, pk) >= 0) {
+            if (pk->stream_index == si && avcodec_send_packet(dec, pk) >= 0) got = avcodec_receive_frame(dec, fr) >= 0;
+            av_packet_unref(pk);
+        }
+        if (!got && avcodec_send_packet(dec, nullptr) >= 0) got = avcodec_receive_frame(dec, fr) >= 0;
+        if (got && fr->width > 0 && fr->height > 0 && fr->width <= 8192 && fr->height <= 8192) {
+            w = fr->width; h = fr->height;
+            rgba.assign((size_t)w * h * 4, 0);
+            SwsContext* sws = sws_getContext(w, h, (AVPixelFormat)fr->format, w, h, AV_PIX_FMT_RGBA, SWS_POINT, nullptr, nullptr, nullptr);
+            if (sws) {
+                uint8_t* d[1] = {rgba.data()};
+                const int ds[1] = {w * 4};
+                sws_scale(sws, fr->data, fr->linesize, 0, h, d, ds);
+                sws_freeContext(sws);
+                for (size_t i = 0; i < rgba.size(); i += 4)
+                    for (int k = 0; k < 3; k++) rgba[i + k] = (uint8_t)((rgba[i + k] * rgba[i + 3] + 127) / 255);
+                ok = true;
+            }
+        }
+    }
+    av_frame_free(&fr);
+    av_packet_free(&pk);
+    avcodec_free_context(&dec);
+    avformat_close_input(&fc);
+    return ok;
+}
+
+// The logo file as RGBA premultiplied by alpha: PNG with OnAir's own decoder first (it is in every build), then FFmpeg
+bool loadPicture(const std::string& path, int& w, int& h, std::vector<uint8_t>& rgba) {
+    std::vector<uint8_t> bytes;
+    if (FILE* f = u8fopen(path, "rb")) {
+        uint8_t b[65536];
+        size_t n;
+        while ((n = fread(b, 1, sizeof b, f)) > 0 && bytes.size() < (64u << 20)) bytes.insert(bytes.end(), b, b + n);
+        fclose(f);
+    }
+    if (bytes.size() > 8 && bytes[0] == 0x89 && bytes[1] == 'P' && decodePng(bytes.data(), bytes.size(), w, h, rgba) && w > 0 && h > 0) return true;
+    return !bytes.empty() && decodeWithFFmpeg(path, w, h, rgba);
+}
+
 } // namespace
 
 std::string saveLayout(const Layout& l) {
@@ -158,8 +215,12 @@ struct OverlayRenderer::Impl {
     bool ok = false;
     struct Glyph { int w = 0, h = 0, xoff = 0, yoff = 0; float adv = 0; std::vector<uint8_t> bits; };
     std::map<std::pair<uint32_t, int>, Glyph> glyphs;   // (code point, size in 1/4 px)
-    struct Logo { std::string path; int w = 0, h = 0; std::vector<uint8_t> rgba; bool bad = false; };
+    struct Logo { std::string path; int w = 0, h = 0; std::vector<uint8_t> rgba; bool bad = false; };   // scaled to its box, straight alpha
     std::vector<Logo> logos;
+    std::string srcPath;                  // the last logo file decoded, kept so a resize does not read it again
+    int srcW = 0, srcH = 0;
+    std::vector<uint8_t> src;             // premultiplied
+    bool srcOk = false;
 
     float scale(float px) const { return stbtt_ScaleForMappingEmToPixels(&font, px); }
     void metrics(float px, float& ascent, float& lineH) const {
@@ -217,20 +278,32 @@ struct OverlayRenderer::Impl {
     const Logo* logo(const std::string& path, int w, int h) {
         for (Logo& l : logos) if (l.path == path && l.w == w && l.h == h) return l.bad ? nullptr : &l;
         if (logos.size() > 8) logos.erase(logos.begin());
+        if (path != srcPath) { srcPath = path; srcOk = !path.empty() && loadPicture(path, srcW, srcH, src); }
         Logo l;
         l.path = path; l.w = w; l.h = h;
-        NSVGimage* img = path.empty() ? nullptr : nsvgParseFromFile(path.c_str(), "px", 96.0f);
-        if (!img || img->width <= 0 || img->height <= 0 || w <= 0 || h <= 0) l.bad = true;
-        else {
-            // fit inside the box, centred, keeping the logo's own proportions
-            const float s = std::min(w / img->width, h / img->height);
-            const float ox = (w - img->width * s) / 2, oy = (h - img->height * s) / 2;
+        l.bad = !srcOk || w <= 0 || h <= 0;
+        if (!l.bad) {
+            // fit inside the box, centred, keeping the logo's own proportions; scaled premultiplied (no dark fringe at the edges)
+            const double s = std::min((double)w / srcW, (double)h / srcH);
+            const int dw = std::max(1, (int)std::lround(srcW * s)), dh = std::max(1, (int)std::lround(srcH * s));
+            const int ox = (w - dw) / 2, oy = (h - dh) / 2;
             l.rgba.assign((size_t)w * h * 4, 0);
-            NSVGrasterizer* rast = nsvgCreateRasterizer();
-            if (rast) { nsvgRasterize(rast, img, ox, oy, s, l.rgba.data(), w, h, w * 4); nsvgDeleteRasterizer(rast); }
-            else l.bad = true;
+            SwsContext* sws = sws_getContext(srcW, srcH, AV_PIX_FMT_RGBA, dw, dh, AV_PIX_FMT_RGBA, SWS_AREA, nullptr, nullptr, nullptr);
+            if (!sws) l.bad = true;
+            else {
+                const uint8_t* in[1] = {src.data()};
+                const int is[1] = {srcW * 4};
+                uint8_t* out[1] = {l.rgba.data() + ((size_t)oy * w + ox) * 4};
+                const int os[1] = {w * 4};
+                sws_scale(sws, in, is, 0, srcH, out, os);
+                sws_freeContext(sws);
+                for (size_t i = 0; i < l.rgba.size(); i += 4) {
+                    const int al = l.rgba[i + 3];
+                    if (al == 0 || al == 255) continue;
+                    for (int k = 0; k < 3; k++) l.rgba[i + k] = (uint8_t)std::min(255, (l.rgba[i + k] * 255 + al / 2) / al);
+                }
+            }
         }
-        if (img) nsvgDelete(img);
         logos.push_back(std::move(l));
         return logos.back().bad ? nullptr : &logos.back();
     }
