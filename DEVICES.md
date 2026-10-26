@@ -205,6 +205,15 @@ that librfnm finds on USB and on the network is listed once, on USB. `onair.log`
 - not yet: channels that carry a real signal (the XMC_RFFE's HF input) are not listed, the Breakout's second channel comes with I and Q
   swapped, and there is no transmit
 
+# Icom IC-R8600 (I/Q OUT, receive only)
+
+**Experimental: no IC-R8600 was available when this was written; it needs a user test.** Full notes: [docs/ICOM-R8600.md](docs/ICOM-R8600.md).
+
+OnAir drives the receiver's [I/Q OUT] USB port itself (libusb, no SoapySDR module). 10 kHz to 3 GHz, six sample rates from 0.24 to 5.12 Msps.
+The port needs Icom's firmware (`IC-R8600_usb_iq.spt` from Icom's "USB I/Q Package for HDSDR"), which OnAir cannot ship: **Radio settings > Import Icom
+firmware...** once; until then the radio is listed as "needs Icom firmware, see ?". Windows needs WinUSB (Zadig) for `0c26:0022` and `0c26:0023`;
+Linux needs the udev rules. The firmware goes into the radio's USB RAM at every start, nothing is flashed.
+
 # RX888 MkII (Cypress FX3, USB 3)
 
 **Experimental: written from the open SDDC protocol ([SDDC_Driver](https://github.com/renardspark/SDDC_Driver), MIT) and tested only against a

@@ -108,6 +108,7 @@ inline constexpr ContribEntry kContribs[] = {
     {"sugusllly", "-", "idea", "Ham It Down converter support", "area:Radios", "discord"},
     {"Sunnnset5", "https://github.com/Sunnnset5", "idea", "Audio source and UDP export; services crash", "area:Interface", "#102, #166"},
     {"Tech500", "https://github.com/Tech500", "bug report", "Runtime assert error", "area:Interface", "#53"},
+    {"Topol (Pawel Topolski), in collaboration with AI", "-", "pull request", "Icom IC-R8600 I/Q: a working macOS SoapySDR module and FX2 loader (MIT), the base of the native OnAir driver", "area:Radios", "email"},
     {"tortyl", "https://github.com/tortyl", "idea", "E-czas radio time protocol request", "Time signals", "#155"},
     {"tortyl", "https://github.com/tortyl", "testing", "SoapySDR over LAN probe output and testing", "area:Network radios", "#84"},
     {"trebor-56", "https://github.com/trebor-56", "idea", "LimeSDR Mini request", "area:Radios", "#20, #169"},
