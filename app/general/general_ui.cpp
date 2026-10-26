@@ -17,6 +17,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include "dect2/general/swbc.h"
 #include <string>
 #include <vector>
 
@@ -300,15 +301,30 @@ void controls(App& a) {
         if (d) ImGui::SameLine();
         if (ImGui::RadioButton(dect2::generalDemodName(d), S.demod == d)) setDemod(d);
     }
-    if (amBroadcast(a)) {   // medium wave and the shortwave broadcast bands (kHz: centre of the band, or a common frequency)
-        static const struct { const char* name; double khz; } kPre[] = {
-            {"MW 531", 531}, {"MW 999", 999}, {"MW 1368", 1368}, {"MW 1566", 1566}, {"49 m", 6000}, {"41 m", 7300}, {"31 m", 9700}, {"25 m", 11800}, {"22 m", 13700}, {"19 m", 15400}, {"16 m", 17700}, {"13 m", 21600}, {"11 m", 25800}};
+    if (amBroadcast(a)) {   // medium wave and the shortwave broadcast bands (kHz: the band centre, or a common frequency)
+        static const struct { const char* name; double khz; } kPre[] = {{"MW 531", 531}, {"MW 999", 999}, {"MW 1368", 1368}, {"MW 1566", 1566}};
         ImGui::TextDisabled("presets");
         for (const auto& pr : kPre) {
             ImGui::SameLine(0, 4 * gUi);
             if (ImGui::SmallButton(pr.name)) { S.chanOff = 0; tuneFreq(a, pr.khz / 1e3); S.lastDial = a.freqMhz; save(); }
         }
-        ImGui::TextDisabled("MW steps are 9 kHz (Europe, Asia) or 10 kHz (Americas); set the step above. Needs a radio that reaches medium wave (HF / direct sampling).");
+        size_t nsw = 0;
+        const dect2::SwBand* sw = dect2::swBroadcastBands(nsw);
+        for (size_t i = 0; i < nsw; i++) {   // each band: centre, AM with the synchronous detector, 9 kHz filter, 5 kHz step
+            ImGui::SameLine(0, 4 * gUi);
+            ImGui::PushID((int)i);
+            if (ImGui::SmallButton(sw[i].name)) {
+                S.demod = dect2::GenAm; S.chanOff = 0;
+                S.width[dect2::GenAm] = dect2::kSwAmWidthHz;
+                S.step[dect2::GenAm] = 4;   // 5 kHz
+                if (!S.amAuto) S.amDet = 1;
+                tuneFreq(a, dect2::swBandCentreKhz(sw[i]) / 1e3); S.lastDial = a.freqMhz; save();
+            }
+            tip((std::string(sw[i].name) + ": " + std::to_string((int)sw[i].startKhz) + " - " + std::to_string((int)sw[i].endKhz) + " kHz" +
+                 (sw[i].tropical ? " (tropical band)" : "") + (*sw[i].note ? std::string(". ") + sw[i].note : std::string())).c_str());
+            ImGui::PopID();
+        }
+        ImGui::TextDisabled("MW steps are 9 kHz (Europe, Asia) or 10 kHz (Americas); the shortwave buttons use 5 kHz. Needs a radio that reaches medium wave and shortwave (HF / direct sampling).");
     }
     // filter width presets
     ImGui::SameLine(0, 16 * gUi);

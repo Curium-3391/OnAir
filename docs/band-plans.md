@@ -126,3 +126,7 @@ The header may use `_khz` or `_mhz` instead of `_hz` for `start`, `end`, `step`,
 Plan fields: `name` (required), `region`, `itu_region` (1, 2 or 3), `countries` (ISO codes), `source`, `note`, `verified` (JSON: `false` shows the "not fully verified" note; CSV: `# verified: no`).
 
 Limits, so a damaged file cannot hurt: 4 MB per file, 500 bands, 5000 explicit channels per band, 200000 channels per raster. A common mistake is a step in MHz where Hz is expected; the message says "check step_hz (in Hz)".
+
+## Shortwave broadcast bands
+
+The `sw-bc` template (used by the European, Region 2 and Australian plans) lists the ITU shortwave broadcasting bands in kHz: 120 m 2300-2495, 90 m 3200-3400, 75 m 3900-4000, 60 m 4750-5060, 49 m 5900-6200, 41 m 7200-7450, 31 m 9400-9900, 25 m 11600-12100, 22 m 13570-13870, 19 m 15100-15800, 16 m 17480-17900, 15 m 18900-19020, 13 m 21450-21850, 11 m 25670-26100. 120, 90 and 60 m are tropical bands (RR 5.113). In Region 1 the 75 m broadcast band is 3950-4000 kHz; 3900-3950 kHz is Region 3 and part of Africa, and Region 2 does not broadcast there. Region 2 broadcasts in 41 m only above 7300 kHz. The raster is 5 kHz (HFCC). In the General receiver's AM broadcast entry each band is a button: it tunes the band centre, selects AM with the synchronous detector (when the detector is not on auto), a 9 kHz filter and a 5 kHz step.
