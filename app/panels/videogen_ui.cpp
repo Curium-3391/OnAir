@@ -873,7 +873,7 @@ void canvas(State& s) {
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("VGBLOCK")) {
             DropItem d{};
-            if (pl->DataSize == (int)sizeof d) std::copy_n(static_cast<const unsigned char*>(pl->Data), sizeof d, reinterpret_cast<unsigned char*>(&d));
+            if (pl->Data && pl->DataSize == (int)sizeof d) std::copy_n(static_cast<const unsigned char*>(pl->Data), sizeof d, reinterpret_cast<unsigned char*>(&d));
             Block b = newBlock((BlockKind)d.kind, (Param)d.param);
             const Rect r0 = s.ovr.blockRect(b, e, W, H);
             Rect r{(m.x - p0.x) / sc - (b.kind == BlockKind::Rolling ? 0 : r0.w / 2), (m.y - p0.y) / sc - r0.h / 2, r0.w, r0.h};

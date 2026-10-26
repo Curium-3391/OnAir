@@ -18,6 +18,7 @@
 #include <set>
 #include <thread>
 extern "C" {
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 }
 #ifndef _WIN32
@@ -386,6 +387,37 @@ static Streams readStreams(const fs::path& p) {
     return r;
 }
 
+// the mean luma of the first decoded picture of a file (16 is black), -1 when there is none
+static double firstFrameLuma(const fs::path& p) {
+    double mean = -1;
+    AVFormatContext* fc = nullptr;
+    if (avformat_open_input(&fc, p.string().c_str(), nullptr, nullptr) < 0) return mean;
+    const AVCodec* c = nullptr;
+    const int si = avformat_find_stream_info(fc, nullptr) >= 0 ? av_find_best_stream(fc, AVMEDIA_TYPE_VIDEO, -1, -1, &c, 0) : -1;
+    AVCodecContext* dec = si >= 0 && c ? avcodec_alloc_context3(c) : nullptr;
+    AVPacket* pk = av_packet_alloc();
+    AVFrame* fr = av_frame_alloc();
+    if (dec && avcodec_parameters_to_context(dec, fc->streams[si]->codecpar) >= 0 && avcodec_open2(dec, c, nullptr) >= 0) {
+        bool got = false;
+        while (!got && av_read_frame(fc, pk) >= 0) {
+            if (pk->stream_index == si && avcodec_send_packet(dec, pk) >= 0) got = avcodec_receive_frame(dec, fr) >= 0;
+            av_packet_unref(pk);
+        }
+        if (!got && avcodec_send_packet(dec, nullptr) >= 0) got = avcodec_receive_frame(dec, fr) >= 0;
+        if (got) {
+            double sum = 0;
+            for (int y = 0; y < fr->height; y++)
+                for (int x = 0; x < fr->width; x++) sum += fr->data[0][(size_t)y * fr->linesize[0] + x];
+            mean = sum / ((double)fr->width * fr->height);
+        }
+    }
+    av_frame_free(&fr);
+    av_packet_free(&pk);
+    avcodec_free_context(&dec);
+    avformat_close_input(&fc);
+    return mean;
+}
+
 static bool encodeFile(GenConfig c, std::string& err) {
     VideoGenerator g;
     if (!g.start(c, err)) return false;
@@ -429,6 +461,12 @@ static void testVideoFile(const fs::path& dir, const fs::path& pic) {
     c.seconds = 0.5;
     CHECK(encodeFile(c, err), "encode the short file: %s", err.c_str());
     CHECK(readStreams(c.tsPath).videoFrames == 5, "0.5 s gives 5 pictures");
+    // one picture only: it is the clip's first frame, not black
+    c.tsPath = (dir / "one.ts").string();
+    c.seconds = 0.1;
+    CHECK(encodeFile(c, err), "encode one picture: %s", err.c_str());
+    const double luma = firstFrameLuma(c.tsPath);
+    CHECK(luma > 40, "the first picture is the clip's, not black (mean luma %.0f)", luma);
 
     // a clip without sound with "sound from the file": silence, not an error
     GenConfig mute = mk;

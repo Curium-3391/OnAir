@@ -322,8 +322,11 @@ void VideoGenerator::Impl::run(GenConfig c) {
     const int tracks = audioTrackCount(s);
     std::string aenc;
     if (tracks > 0) {
+        // the chosen encoder, else the first this FFmpeg has (st.audioEncoder tells the window which); none at all is an error, not a
+        // stream without the audio tracks the settings and the estimate count
         for (const EncoderInfo& e : audioEncoders()) if (e.name == s.audioEncoder) aenc = e.name;
         if (aenc.empty() && !audioEncoders().empty()) aenc = audioEncoders().front().name;
+        if (aenc.empty()) { fail("this FFmpeg has no audio encoder: choose \"Video only\""); return; }
     }
     { std::lock_guard<std::mutex> lk(mu); st.videoEncoder = venc; st.audioEncoder = aenc; }
 
@@ -538,7 +541,7 @@ void VideoGenerator::Impl::run(GenConfig c) {
                 // the newest file frame at or before t (frames are repeated or skipped to reach the output rate); the decoded frame
                 // after it waits in the reader (pending) until its time comes
                 if (!haveFileFrame && !fileEnded) {
-                    if (vfile.next()) { vfile.frameTime(); vfile.toYuv(src); haveFileFrame = true; }
+                    if (vfile.next()) { vfile.frameTime(); haveFileFrame = vfile.toYuv(src); }   // the first frame is shown from t = 0
                     else fileEnded = true;
                 }
                 while (!fileEnded) {
