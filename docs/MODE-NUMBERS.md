@@ -40,6 +40,8 @@ Several branches picked numbers on their own; the later ones were moved (integ-3
 | DME | 121 | 123 | 122 | 162 | (0.2.9) | poll slot was 110, shared with DGPS: moved in 3.0 |
 | PSK demodulator (BPSK / QPSK analyser) | 202 | 204 | 203 | 163 | issue-modes-030 | #282 |
 | PACTOR-I (monitor) | 203 | 205 | 204 | 164 | issue-modes-030 | #216 |
+| Flipper Zero Sub-GHz chat | 204 | 206 | 205 | 165 | (3.1) | row added with the 3.2 modes below |
+| ROS (HF detector) | 205 | 207 | 206 | 182 | feat32-modes2 | detection only, text needs a public spec |
 | Plugins | 999 | 1001 | - | - | | |
 | Mode Builder | 19999 | - | - | - | mode-builder-030 | |
 | custom modes (Mode Builder) | 20000+ | family + 2 | - | - | mode-builder-030 | kCustomFamilyBase, saved by number in modes/registered.txt |
@@ -47,6 +49,6 @@ Several branches picked numbers on their own; the later ones were moved (integ-3
 Protocol entries (a row with a subId, such as FT8 in HF digital or POCSAG in pagers) share their family on purpose; the test checks
 that each (family, subId) pair is unique instead.
 
-`kNumFamilies` = 204, `kPollSeqSlots` = 182.
+`kNumFamilies` = 206, `kPollSeqSlots` = 183.
 
 A new mode takes the next free family above the highest one in this table and the next free poll slot, and adds its row here.

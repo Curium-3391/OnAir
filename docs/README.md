@@ -64,6 +64,7 @@ The user guides and notes that live in the repository. The same text is on the [
 | [wmbus.md](wmbus.md) | Wireless M-Bus (EN 13757-4) | The mode **Wireless M-Bus (meters)** (IoT & sensors group) lists the utility meters (water, heat, gas, electricity, heat cost allocators) that send their |
 | [zwave.md](zwave.md) | Z-Wave (ITU-T G.9959) | A receive-only monitor for Z-Wave home automation networks on the sub-GHz bands. |
 | [esubghz.md](esubghz.md) | Flipper Zero Sub-GHz chat | Chat with Flipper Zero devices (Enhanced Sub-GHz Chat app), plain or AES-256-GCM encrypted, receive and send. |
+| [roshf.md](roshf.md) | ROS (HF) detector | Detects the ROS weak-signal HF mode and names its sub-mode; text decoding partial (needs a public spec). |
 
 ## Added in 3.0 (not in the table above yet)
 

@@ -110,6 +110,7 @@ sarsat	--mode sarsat	Overview|Beacons|Receiver|History
 argos	--mode argos	Overview|Argos|Receiver|History
 pactor	--mode pactor	Overview|PACTOR-I|Receiver|History
 esubghz	--mode esubghz	Overview|Flipper chat|Receiver|History
+roshf	--mode roshf	Overview|ROS|Receiver|History
 pskd	--mode pskd	Overview|PSK|Receiver|History
 sigfox	--mode sigfox	Overview|Sigfox|Receiver|History
 mt63	--mode mt63	Overview|MT63|Receiver|History

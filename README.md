@@ -341,6 +341,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 - **MT63** (500 / 1000 / 2000 Hz, short and long interleave found automatically, 64 carriers with Walsh-Hadamard coded characters; [details](docs/mt63.md)).
 - **ARDOP** (the Winlink HF modem, monitor only: frame types, connect requests, IDs and pings with call signs, ACK / NAK quality and the text of 4FSK data frames; PSK and QAM frames are listed by header; [details](docs/ardop.md)).
 - **PACTOR-I** (experimental monitor, receive only: both stations of an ARQ link, 100 / 200 baud found automatically, connect calls, control signals, ASCII and Huffman text, repeats, unproto / FEC, memory ARQ; PACTOR-II, -III and -IV are proprietary and not supported; [details](docs/pactor.md)).
+- **ROS (HF)** (detector, receive only: the ROS weak-signal mode is recognised by its tone grid and named ROS 4 / 8 / 16 baud, marked on a waterfall; the text is not decoded because ROS is not publicly specified; [details](docs/roshf.md)).
 - **Keyboard modes:** PSK31 / 63, RTTY, CW (every signal in a 14 kHz window), Olivia, Contestia, MFSK, THOR, DominoEX, Hellschreiber. Picture modes: **SSTV** and **HamDRM** (EasyPal).
 
 ### Amateur: voice and packet
