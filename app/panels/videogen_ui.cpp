@@ -1,0 +1,967 @@
+// Tools > Digital video generator: a camera, a still picture or a video file encoded into an MPEG transport stream, written to a .ts
+// file or sent over UDP / RTP (port 5000 unless changed). Two tabs: "Sources and encoding" (inputs, output, every encoder parameter and
+// the bitrate estimate, which follows each change) and "Overlay" (a logo, parameter blocks, free text and rolling text, placed on the
+// picture by drag and drop, magnetic). A standalone tool: it does not touch the receiver or the transmitter; a .ts file it writes can
+// be given to the transmitter as its "MPEG-TS / video file". The engine is core/src/tv/videogen*.cpp.
+#include "../app.h"
+#include "../platform/platform.h"
+#include "dect2/audio/audioin.h"
+#include "dect2/audio/videoin.h"
+#include "dect2/common/u8file.h"
+#include "dect2/tv/videogen.h"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <future>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace dect2::vgen;
+
+namespace {
+
+struct Res { int w, h; };
+const Res kRes[] = {{320, 240}, {352, 288}, {640, 360}, {704, 576}, {720, 576}, {1280, 720}, {1920, 1080}};
+const double kFps[] = {1, 2, 5, 10, 12.5, 15, 20, 25, 30};
+const int kAudioKbps[] = {64, 96, 128, 160, 192, 256};
+const int kSampleRates[] = {32000, 44100, 48000};
+const char* const kSourceNames[] = {N_("Camera"), N_("Still picture"), N_("Video file")};
+const char* const kAudioNames[] = {N_("Silence"), N_("Test tone (1 kHz)"), N_("Sound of the video file"), N_("Microphone")};
+const char* const kOutputNames[] = {N_("MPEG-TS file (.ts)"), N_("UDP stream"), N_("RTP stream")};
+const char* const kFitNames[] = {N_("Stretch"), N_("Letterbox"), N_("Crop")};
+const char* const kContentNames[] = {N_("Video only"), N_("Video + audio"), N_("Video + multiple audio tracks")};
+const char* const kRcNames[] = {N_("CBR"), N_("Constrained VBR"), N_("VBR / CRF")};
+const char* const kFrameNames[] = {N_("I/P/B"), N_("I/P"), N_("I-only")};
+const char* const kProfileNames[] = {N_("Baseline"), N_("Main"), N_("High")};
+const char* const kDirNames[] = {N_("Left to right"), N_("Right to left")};
+
+// the parameters an overlay block can show, grouped as on the first tab ("where they come from")
+struct ParamGroup { const char* name; std::vector<Param> params; };
+const ParamGroup kGroups[] = {
+    {N_("Video"), {Param::VideoCodec, Param::VideoBitrate, Param::Resolution, Param::FrameRate, Param::Gop, Param::FrameTypes, Param::Profile,
+                   Param::RateControl, Param::PixelFormat, Param::Preset, Param::Latency}},
+    {N_("Audio"), {Param::AudioCodec, Param::AudioBitrate, Param::SampleRate, Param::Channels}},
+    {N_("Transport stream"), {Param::TsContent, Param::MuxRate, Param::TotalRate, Param::Service}},
+};
+
+struct DropItem { int kind; int param; };   // the drag-and-drop payload "VGBLOCK"
+
+struct State {
+    bool init = false;
+    GenConfig cfg;
+    bool lengthEdited = false;
+    std::future<void> probe;   // encoders, cameras and microphones, looked up when the window first opens
+    bool probed = false;
+    std::vector<dect2::VideoInputDevice> cams, camsFound;
+    std::vector<dect2::AudioInputDevice> mics, micsFound;
+    VideoGenerator gen;
+    std::string msg;
+    std::string savedCfg, savedLayout, sentLayout;
+    double lastSave = 0;
+    // overlay editor
+    int sel = -1;
+    bool dragging = false, resizing = false, snap = true;
+    ImVec2 grab{0, 0};
+    OverlayRenderer ovr;
+    std::shared_ptr<const std::vector<uint8_t>> font;
+    gfx::Image* ovImg = nullptr;
+    int ovW = 0, ovH = 0;
+    std::string ovKey;
+    double ovAt = 0;
+    std::vector<uint8_t> ovRgba;
+    gfx::Image* prevImg = nullptr;
+    int prevW = 0, prevH = 0;
+    uint64_t prevSerial = 0;
+    std::vector<uint8_t> prevRgba;
+    double startedAt = 0;
+};
+
+State& S() {
+    static State s;
+    return s;
+}
+
+std::string cfgPath() { return plat::dataDir() + "/videogen.txt"; }
+std::string layoutPath() { return plat::dataDir() + "/videogen_overlay.txt"; }
+
+std::string readText(const std::string& p) {
+    std::string t;
+    if (FILE* f = dect2::u8fopen(p, "rb")) {
+        char b[4096];
+        size_t n;
+        while ((n = fread(b, 1, sizeof b, f)) > 0) t.append(b, n);
+        fclose(f);
+    }
+    return t;
+}
+
+void writeText(const std::string& p, const std::string& t) {
+    if (FILE* f = dect2::u8fopen(p, "wb")) { fwrite(t.data(), 1, t.size(), f); fclose(f); }
+}
+
+// the sources and output, below the encoder settings in the same file ("g." keys, which loadSettings skips)
+std::string saveCfg(const GenConfig& c) {
+    char b[64];
+    std::string o = saveSettings(c.enc);
+    o += "g.src=" + std::to_string((int)c.source) + "\n" + "g.cam=" + c.cameraId + "\n" + "g.path=" + c.path + "\n";
+    o += "g.audio=" + std::to_string((int)c.audio) + "\n" + "g.mic=" + c.micId + "\n" + "g.out=" + std::to_string((int)c.output) + "\n";
+    o += "g.ts=" + c.tsPath + "\n" + "g.host=" + c.host + "\n" + "g.port=" + std::to_string(c.port) + "\n" + "g.ttl=" + std::to_string(c.ttl) + "\n";
+    snprintf(b, sizeof b, "%.3f", c.seconds);
+    o += std::string("g.secs=") + b + "\n" + "g.fit=" + std::to_string((int)c.fit) + "\n";
+    return o;
+}
+
+void loadCfg(const std::string& text, GenConfig& c) {
+    loadSettings(text, c.enc);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos) nl = text.size();
+        const std::string line = text.substr(pos, nl - pos);
+        pos = nl + 1;
+        const size_t eq = line.find('=');
+        if (line.compare(0, 2, "g.") != 0 || eq == std::string::npos) continue;
+        const std::string k = line.substr(2, eq - 2), v = line.substr(eq + 1);
+        const int i = atoi(v.c_str());
+        if (k == "src") c.source = (Source)std::clamp(i, 0, 2);
+        else if (k == "cam") c.cameraId = v;
+        else if (k == "path") c.path = v;
+        else if (k == "audio") c.audio = (AudioSource)std::clamp(i, 0, 3);
+        else if (k == "mic") c.micId = v;
+        else if (k == "out") c.output = (Output)std::clamp(i, 0, 2);
+        else if (k == "ts" && !v.empty()) c.tsPath = v;
+        else if (k == "host" && !v.empty()) c.host = v;
+        else if (k == "port") c.port = std::clamp(i, 1, 65535);
+        else if (k == "ttl") c.ttl = std::clamp(i, 1, 255);
+        else if (k == "secs") c.seconds = std::clamp(atof(v.c_str()), 1.0, 86400.0);
+        else if (k == "fit") c.fit = (Fit)std::clamp(i, 0, 2);
+    }
+}
+
+// The interface's own TrueType font (Inter) for the overlay text: the biggest font the atlas was built from
+std::shared_ptr<const std::vector<uint8_t>> atlasFont() {
+    const ImFontAtlas* at = ImGui::GetIO().Fonts;
+    const ImFontConfig* best = nullptr;
+    for (const ImFontConfig& c : at->Sources)
+        if (c.FontData && c.FontDataSize > 1000 && (!best || c.FontDataSize > best->FontDataSize)) best = &c;
+    if (!best) return nullptr;
+    const uint8_t* d = (const uint8_t*)best->FontData;
+    return std::make_shared<std::vector<uint8_t>>(d, d + best->FontDataSize);
+}
+
+bool inputText(const char* label, std::string& s, float width) {
+    char buf[1024];
+    snprintf(buf, sizeof buf, "%s", s.c_str());
+    ImGui::SetNextItemWidth(width);
+    if (!ImGui::InputText(label, buf, sizeof buf)) return false;
+    s = buf;
+    return true;
+}
+
+// a label in the left column of a settings row
+void rowLabel(const char* text, float col) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine(col);
+}
+
+bool combo(const char* id, int& v, const char* const* names, int n, float width, const std::vector<bool>* enabled = nullptr, const char* offTip = nullptr) {
+    bool changed = false;
+    ImGui::SetNextItemWidth(width);
+    if (ImGui::BeginCombo(id, tr(names[std::clamp(v, 0, n - 1)]))) {
+        for (int i = 0; i < n; i++) {
+            const bool on = !enabled || (*enabled)[(size_t)i];
+            ImGui::BeginDisabled(!on);
+            if (ImGui::Selectable(tr(names[i]), v == i)) { v = i; changed = true; }
+            ImGui::EndDisabled();
+            if (!on && offTip && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr(offTip));
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+std::string kbpsText(double v) {
+    char b[48];
+    if (v >= 10000) snprintf(b, sizeof b, "%.2f Mbit/s", v / 1000.0);
+    else snprintf(b, sizeof b, "%.0f kbit/s", v);
+    return b;
+}
+
+void startProbe(State& s) {
+    s.probed = false;
+    s.probe = std::async(std::launch::async, [&s] {
+        videoEncoders();
+        audioEncoders();
+        s.camsFound = dect2::listVideoInputs();   // lists only: no camera is opened until Start
+        s.micsFound = dect2::listAudioInputs();
+    });
+}
+
+void loadOnce(State& s) {
+    if (s.init) return;
+    s.init = true;
+    s.cfg.tsPath = plat::dataDir() + "/onair_video.ts";
+    s.cfg.port = 5000;
+    const std::string c = readText(cfgPath());
+    if (!c.empty()) { loadCfg(c, s.cfg); s.lengthEdited = true; }
+    const std::string l = readText(layoutPath());
+    if (!l.empty()) s.cfg.overlay = loadLayout(l);
+    s.savedCfg = saveCfg(s.cfg);
+    s.savedLayout = saveLayout(s.cfg.overlay);
+    s.font = atlasFont();
+    s.ovr.setFont(s.font);
+    startProbe(s);
+}
+
+void saveSoon(State& s) {
+    const double now = ImGui::GetTime();
+    if (now - s.lastSave < 1.0) return;
+    s.lastSave = now;
+    const std::string c = saveCfg(s.cfg), l = saveLayout(s.cfg.overlay);
+    if (c != s.savedCfg) { writeText(cfgPath(), c); s.savedCfg = c; }
+    if (l != s.savedLayout) { writeText(layoutPath(), l); s.savedLayout = l; }
+}
+
+// ---- the first tab: sources, output, encoding ----
+
+void sourceSection(State& s, float col, float w) {
+    GenConfig& c = s.cfg;
+    ImGui::SeparatorText(tr("Source"));
+    rowLabel(tr("Input"), col);
+    int src = (int)c.source;
+    if (combo("##vgsrc", src, kSourceNames, 3, w)) {
+        c.source = (Source)src;
+        if (c.source == Source::Picture && !s.lengthEdited) c.seconds = 60;   // a picture: one minute unless changed
+        if (c.source != Source::VideoFile && c.audio == AudioSource::FromFile) c.audio = AudioSource::Tone;
+    }
+    if (c.source == Source::Camera) {
+        rowLabel(tr("Camera"), col);
+        std::string cur = tr("Default camera");
+        for (const auto& d : s.cams) if (d.id == c.cameraId) cur = d.name;
+        ImGui::SetNextItemWidth(w - 90 * gUi);
+        if (ImGui::BeginCombo("##vgcam", cur.c_str())) {
+            if (ImGui::Selectable(tr("Default camera"), c.cameraId.empty())) c.cameraId.clear();
+            for (const auto& d : s.cams) if (!d.id.empty() && ImGui::Selectable(d.name.c_str(), d.id == c.cameraId)) c.cameraId = d.id;
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!s.probed);
+        if (ImGui::Button(tr("Refresh##vgcam"))) startProbe(s);
+        ImGui::EndDisabled();
+        if (s.probed && s.cams.empty()) ImGui::TextDisabled("%s", tr("No camera found. Connect one and press Refresh."));
+    } else {
+        rowLabel(c.source == Source::Picture ? tr("Picture") : tr("Video file"), col);
+        if (inputText("##vgpath", c.path, w - 90 * gUi) && c.source == Source::VideoFile) {
+            const double d = mediaSeconds(c.path);
+            if (d > 0) { c.seconds = d; s.lengthEdited = false; }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Browse...##vgpath"))) {
+            const std::string p = plat::openFileDialog();
+            if (!p.empty()) {
+                c.path = p;
+                if (c.source == Source::VideoFile) {
+                    const double d = mediaSeconds(p);   // the length follows the video
+                    if (d > 0) { c.seconds = d; s.lengthEdited = false; }
+                }
+            }
+        }
+    }
+    rowLabel(tr("Picture fit"), col);
+    int fit = (int)c.fit;
+    if (combo("##vgfit", fit, kFitNames, 3, w)) c.fit = (Fit)fit;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("When the source has another shape than the output (a 4:3 camera in 16:9): stretch it, keep it whole with black bars, or fill the picture and cut the edges"));
+    rowLabel(tr("Sound"), col);
+    int au = (int)c.audio;
+    std::vector<bool> en = {true, true, c.source == Source::VideoFile, true};
+    if (combo("##vgaudio", au, kAudioNames, 4, w, &en, N_("Only with a video file as input"))) c.audio = (AudioSource)au;
+    if (c.audio == AudioSource::Microphone) {
+        rowLabel(tr("Microphone"), col);
+        std::string cur = tr("Default input");
+        for (const auto& d : s.mics) if (d.id == c.micId) cur = d.name;
+        ImGui::SetNextItemWidth(w);
+        if (ImGui::BeginCombo("##vgmic", cur.c_str())) {
+            if (ImGui::Selectable(tr("Default input"), c.micId.empty())) c.micId.clear();
+            for (const auto& d : s.mics) if (!d.id.empty() && ImGui::Selectable(d.name.c_str(), d.id == c.micId)) c.micId = d.id;
+            ImGui::EndCombo();
+        }
+    }
+}
+
+void outputSection(State& s, float col, float w) {
+    GenConfig& c = s.cfg;
+    ImGui::SeparatorText(tr("Output"));
+    rowLabel(tr("Send to"), col);
+    int out = (int)c.output;
+    if (combo("##vgout", out, kOutputNames, 3, w)) c.output = (Output)out;
+    if (c.output == Output::File) {
+        rowLabel(tr("File"), col);
+        inputText("##vgts", c.tsPath, w - 90 * gUi);
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Browse...##vgts"))) {
+            const std::string p = plat::saveFileDialog("onair_video.ts");
+            if (!p.empty()) c.tsPath = p;
+        }
+    } else {
+        rowLabel(tr("Address"), col);
+        inputText("##vghost", c.host, w * 0.6f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The receiving PC (unicast) or a multicast group such as 239.1.1.1"));
+        ImGui::SameLine();
+        ImGui::TextUnformatted(tr("Port"));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(std::max(60 * gUi, w * 0.4f - ImGui::CalcTextSize(tr("Port")).x - ImGui::GetStyle().ItemSpacing.x * 2));
+        if (ImGui::InputInt("##vgport", &c.port, 0)) c.port = std::clamp(c.port, 1, 65535);
+        if (isMulticast(c.host)) {
+            rowLabel(tr("TTL"), col);
+            ImGui::SetNextItemWidth(120 * gUi);
+            if (ImGui::InputInt("##vgttl", &c.ttl)) c.ttl = std::clamp(c.ttl, 1, 255);
+        }
+    }
+    rowLabel(tr("Length"), col);
+    const bool stream = c.output != Output::File;
+    ImGui::BeginDisabled(stream);   // a stream goes on until it is stopped
+    ImGui::SetNextItemWidth(150 * gUi);
+    if (ImGui::InputDouble("##vglen", &c.seconds, 10, 60, "%.1f s")) { c.seconds = std::clamp(c.seconds, 1.0, 86400.0); s.lengthEdited = true; }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (stream) ImGui::TextDisabled("%s", tr("continuous while streaming"));
+    else {
+        const int t = (int)std::lround(c.seconds);
+        ImGui::TextDisabled("%d:%02d", t / 60, t % 60);
+    }
+}
+
+void encodingSection(State& s, float col, float w) {
+    Settings& e = s.cfg.enc;
+    const auto& venc = videoEncoders();
+    const auto& aenc = audioEncoders();
+    const EncoderCaps caps = capsOf(e.videoEncoder);
+
+    ImGui::SeparatorText(tr("Video"));
+    rowLabel(tr("TS content"), col);
+    int content = (int)e.content;
+    if (combo("##vgcontent", content, kContentNames, 3, w)) e.content = (TsContent)content;
+    if (e.content == TsContent::VideoMultiAudio) {
+        rowLabel(tr("Audio tracks"), col);
+        ImGui::SetNextItemWidth(120 * gUi);
+        ImGui::SliderInt("##vgtracks", &e.audioTracks, 2, 4);
+    }
+    rowLabel(tr("Video codec"), col);
+    std::string cur = e.videoEncoder;
+    for (const EncoderInfo& i : venc) if (i.name == e.videoEncoder) cur = i.label;
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgvenc", cur.c_str())) {
+        for (const EncoderInfo& i : venc) {
+            if (ImGui::Selectable(i.label.c_str(), i.name == e.videoEncoder)) e.videoEncoder = i.name;
+            if (i.hardware && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Hardware encoder: preset, tuning and CRF do not apply"));
+        }
+        // the codecs this FFmpeg cannot make, shown so it is clear why they are missing
+        for (Codec cd : {Codec::H264, Codec::Hevc}) {
+            if (std::any_of(venc.begin(), venc.end(), [cd](const EncoderInfo& i) { return i.codec == cd; })) continue;
+            ImGui::BeginDisabled();
+            ImGui::Selectable((std::string(codecName(cd)) + " - " + tr("not in this FFmpeg")).c_str(), false);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", tr("The FFmpeg OnAir is built with has no encoder for this codec that works on this computer (the bundled LGPL build has MPEG-2 only; a system FFmpeg with libx264 / libx265 or a hardware encoder adds them)"));
+        }
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Rate control"), col);
+    int rc = (int)e.rc;
+    std::vector<bool> rcOn = {true, true, caps.crf};
+    if (combo("##vgrc", rc, kRcNames, 3, w, &rcOn, N_("CRF needs x264 or x265"))) e.rc = (RateControl)rc;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("CBR gives a predictable rate; VBR varies with the scene and needs headroom for the peaks"));
+    rowLabel(tr("Video bitrate"), col);
+    const int sug = suggestVideoKbps(e);
+    if (e.autoBitrate) e.videoKbps = sug;
+    ImGui::BeginDisabled(e.autoBitrate);
+    ImGui::SetNextItemWidth(130 * gUi);
+    if (ImGui::InputInt("##vgvkbps", &e.videoKbps, 50, 500)) e.videoKbps = std::clamp(e.videoKbps, 10, 100000);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextUnformatted(tr("kbit/s"));
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("Auto##vgvkbps"), &e.autoBitrate);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Follow the suggestion for this codec, resolution, frame rate and frame types (%d kbit/s)"), sug);
+    if (e.rc == RateControl::Crf && caps.crf) {
+        rowLabel(tr("CRF"), col);
+        ImGui::SetNextItemWidth(w);
+        ImGui::SliderInt("##vgcrf", &e.crf, 15, 40);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Lower is better quality and more bits. The rate is capped at twice the bitrate above."));
+    }
+    rowLabel(tr("Frame rate"), col);
+    char fl[32];
+    snprintf(fl, sizeof fl, e.fps == std::floor(e.fps) ? "%.0f fps" : "%.1f fps", e.fps);
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgfps", fl)) {
+        for (double f : kFps) {
+            snprintf(fl, sizeof fl, f == std::floor(f) ? "%.0f fps" : "%.1f fps", f);
+            if (ImGui::Selectable(fl, e.fps == f)) e.fps = f;
+        }
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Resolution"), col);
+    char rl[32];
+    snprintf(rl, sizeof rl, "%dx%d", e.width, e.height);
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgres", rl)) {
+        for (const Res& r : kRes) {
+            snprintf(rl, sizeof rl, "%dx%d", r.w, r.h);
+            if (ImGui::Selectable(rl, e.width == r.w && e.height == r.h)) { e.width = r.w; e.height = r.h; }
+        }
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Frame types"), col);
+    int ft = (int)e.frames;
+    std::vector<bool> ftOn = {caps.bFrames, true, true};
+    if (combo("##vgft", ft, kFrameNames, 3, w, &ftOn, N_("This encoder makes no B-frames"))) e.frames = (FrameTypes)ft;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("I-only is possible but needs much more bitrate for the same quality"));
+    rowLabel(tr("GOP"), col);
+    ImGui::BeginDisabled(e.frames == FrameTypes::IOnly);
+    ImGui::SetNextItemWidth(w * 0.6f);
+    float gop = (float)e.gopSeconds;
+    if (ImGui::SliderFloat("##vggop", &gop, 0.5f, 5.f, "%.1f s")) e.gopSeconds = std::round(gop * 10) / 10;
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (e.frames == FrameTypes::IOnly) ImGui::TextDisabled("%s", tr("all-intra"));
+    else ImGui::TextDisabled(tr("%d frames"), std::max(1, (int)std::lround(e.gopSeconds * e.fps)));
+    rowLabel(tr("Profile"), col);
+    ImGui::BeginDisabled(!caps.profile);
+    combo("##vgprofile", e.profile, kProfileNames, kNumProfiles, w);
+    ImGui::EndDisabled();
+    if (!caps.profile && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("H.264 profiles only"));
+    rowLabel(tr("Pixel format"), col);
+    ImGui::TextDisabled("%s", tr("yuv420p, 8-bit (the common choice every receiver takes)"));
+    rowLabel(tr("Encoder preset"), col);
+    ImGui::BeginDisabled(!caps.preset);
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgpreset", kPresets[std::clamp(e.preset, 0, kNumPresets - 1)])) {
+        for (int i = 0; i < kNumPresets; i++) if (ImGui::Selectable(kPresets[i], e.preset == i)) e.preset = i;
+        ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", caps.preset ? tr("Slower presets compress better but need more time") : tr("x264 and x265 only"));
+    rowLabel(tr("Latency tuning"), col);
+    ImGui::BeginDisabled(!caps.zeroLatency);
+    ImGui::Checkbox(tr("zerolatency"), &e.zeroLatency);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", caps.zeroLatency ? tr("Less encoder buffering for live use, at some cost in compression (no B-frames)") : tr("x264 and x265 only"));
+
+    const bool audio = e.content != TsContent::VideoOnly;
+    ImGui::SeparatorText(tr("Audio"));
+    ImGui::BeginDisabled(!audio);
+    rowLabel(tr("Audio codec"), col);
+    std::string acur = tr("none available");
+    for (const EncoderInfo& i : aenc) if (i.name == e.audioEncoder) acur = i.label;
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgaenc", acur.c_str())) {
+        for (const EncoderInfo& i : aenc) if (ImGui::Selectable(i.label.c_str(), i.name == e.audioEncoder)) e.audioEncoder = i.name;
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Audio bitrate"), col);
+    char al[32];
+    snprintf(al, sizeof al, "%d kbit/s", e.audioKbps);
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgakbps", al)) {
+        for (int k : kAudioKbps) { snprintf(al, sizeof al, "%d kbit/s", k); if (ImGui::Selectable(al, e.audioKbps == k)) e.audioKbps = k; }
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Sample rate"), col);
+    snprintf(al, sizeof al, "%.1f kHz", e.sampleRate / 1000.0);
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::BeginCombo("##vgarate", al)) {
+        for (int r : kSampleRates) { snprintf(al, sizeof al, "%.1f kHz", r / 1000.0); if (ImGui::Selectable(al, e.sampleRate == r)) e.sampleRate = r; }
+        ImGui::EndCombo();
+    }
+    rowLabel(tr("Channels"), col);
+    int ch = e.channels - 1;
+    const char* const chNames[] = {N_("Mono"), N_("Stereo")};
+    if (combo("##vgach", ch, chNames, 2, w)) e.channels = ch + 1;
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText(tr("Transport stream"));
+    const Budget b = estimate(e);
+    rowLabel(tr("TS mux rate"), col);
+    if (e.autoMux) e.muxKbps = b.suggestedMux;
+    ImGui::BeginDisabled(e.autoMux);
+    ImGui::SetNextItemWidth(130 * gUi);
+    if (ImGui::InputInt("##vgmux", &e.muxKbps, 50, 500)) e.muxKbps = std::clamp(e.muxKbps, 100, 200000);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextUnformatted(tr("kbit/s"));
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("Auto##vgmux"), &e.autoMux);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("The total TS rate with signalling and null packets. Set it to what the DVB link carries, or let it follow the estimate."));
+    rowLabel(tr("Service ID"), col);
+    ImGui::SetNextItemWidth(130 * gUi);
+    if (ImGui::InputInt("##vgsid", &e.serviceId)) e.serviceId = std::clamp(e.serviceId, 1, 65535);
+    rowLabel(tr("Service name"), col);
+    inputText("##vgsname", e.serviceName, w);
+    rowLabel(tr("Provider"), col);
+    inputText("##vgsprov", e.provider, w);
+    rowLabel(tr("PIDs"), col);
+    ImGui::Checkbox(tr("Automatic##vgpid"), &e.autoPids);
+    if (!e.autoPids) {
+        auto pid = [&](const char* label, const char* id, int& v, int hi) {
+            rowLabel(label, col);
+            ImGui::SetNextItemWidth(130 * gUi);
+            if (ImGui::InputInt(id, &v, 1, 16, ImGuiInputTextFlags_CharsHexadecimal)) v = std::clamp(v, 0x20, hi);
+            ImGui::SameLine();
+            ImGui::TextDisabled("0x%04X", v);
+        };
+        pid(tr("PMT PID"), "##vgpmt", e.pmtPid, 0x1FFE);
+        pid(tr("Video PID"), "##vgvpid", e.videoPid, 0x1FFE);
+        pid(tr("Audio PID"), "##vgapid", e.audioPid, 0x1FFA);
+        if (audioTrackCount(e) > 1) ImGui::TextDisabled(tr("Audio track n uses the audio PID + n (up to 0x%04X)"), e.audioPid + audioTrackCount(e) - 1);
+    }
+}
+
+// The estimate beside the settings: what each part takes of the mux rate, updated on every change
+void estimatePanel(const Settings& e) {
+    const Budget b = estimate(e);
+    ImGui::SeparatorText(tr("Estimated bitrate"));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", tr("Indicative: a rule of thumb per codec, not a measurement"));
+    ImGui::PopStyleColor();
+    if (ImGui::BeginTable("##vgest", 2, ImGuiTableFlags_SizingStretchProp)) {
+        auto row = [](const char* k, double v, bool strong = false) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(k);
+            ImGui::TableNextColumn();
+            const std::string t = kbpsText(v);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(t.c_str()).x);
+            if (strong) ImGui::TextUnformatted(t.c_str());
+            else ImGui::TextDisabled("%s", t.c_str());
+        };
+        row(tr("Video"), b.video, true);
+        if (b.videoPeak > b.video) row(tr("Video peak"), b.videoPeak);
+        row(tr("Audio"), b.audio, true);
+        row(tr("PES and TS headers, PCR"), b.pesTs);
+        row(tr("PAT, PMT, SDT"), b.psiSi);
+        row(tr("Total"), b.total, true);
+        row(tr("Suggested mux rate"), b.suggestedMux);
+        row(tr("Mux rate used"), b.mux, true);
+        ImGui::EndTable();
+    }
+    // the mux rate as a bar: video, audio, overhead, signalling, null packets
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+    const float bw = ImGui::GetContentRegionAvail().x, bh = 16 * gUi;
+    const double full = std::max<double>(b.mux, b.total);
+    const ImU32 cols[] = {ImGui::GetColorU32(ImGuiCol_PlotHistogram), ImGui::GetColorU32(ImGuiCol_PlotLines), ImGui::GetColorU32(ImGuiCol_ButtonActive),
+                          ImGui::GetColorU32(ImGuiCol_TextDisabled)};
+    const double parts[] = {b.video, b.audio, b.pesTs, b.psiSi};
+    float x = p0.x;
+    dl->AddRectFilled(p0, ImVec2(p0.x + bw, p0.y + bh), ImGui::GetColorU32(ImGuiCol_FrameBg));
+    for (int i = 0; i < 4; i++) {
+        const float pw = (float)(parts[i] / full) * bw;
+        dl->AddRectFilled(ImVec2(x, p0.y), ImVec2(x + pw, p0.y + bh), cols[i]);
+        x += pw;
+    }
+    if (b.mux < b.total) dl->AddRect(p0, ImVec2(p0.x + (float)(b.mux / full) * bw, p0.y + bh), IM_COL32(230, 60, 60, 255), 0, 0, 2 * gUi);
+    ImGui::Dummy(ImVec2(bw, bh));
+    ImGui::TextDisabled("%s", tr("video | audio | headers | signalling | null packets"));
+    ImGui::Spacing();
+    char line[160];
+    snprintf(line, sizeof line, tr("%d kbit/s of video at %dx%d, %.1f fps"), effectiveVideoKbps(e), e.width, e.height, e.fps);
+    ImGui::TextWrapped("%s", line);
+    for (const std::string& w : checkSettings(e, b)) ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.2f, 1), "%s", tr(w.c_str()));
+}
+
+void sourcesTab(State& s) {
+    const bool running = s.gen.running();
+    const float right = std::min(340 * gUi, ImGui::GetContentRegionAvail().x * 0.4f);
+    ImGui::BeginChild("##vgsettings", ImVec2(ImGui::GetContentRegionAvail().x - right - ImGui::GetStyle().ItemSpacing.x, 0));
+    ImGui::BeginDisabled(running);
+    const float col = 150 * gUi, w = std::max(160 * gUi, std::min(360 * gUi, ImGui::GetContentRegionAvail().x - col - 8 * gUi));
+    sourceSection(s, col, w);
+    outputSection(s, col, w);
+    encodingSection(s, col, w);
+    ImGui::EndDisabled();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##vgestimate", ImVec2(0, 0));
+    estimatePanel(s.cfg.enc);
+    ImGui::EndChild();
+}
+
+// ---- the second tab: overlay editor ----
+
+Block newBlock(BlockKind k, Param p) {
+    Block b;
+    b.kind = k;
+    b.param = p;
+    switch (k) {
+    case BlockKind::Logo: b.w = 0.18f; b.h = 0.15f; break;
+    case BlockKind::Param: b.text = tr(paramLabel(p)); b.fontPx = 22; break;
+    case BlockKind::Text: b.text = tr("Your text"); b.fontPx = 28; break;
+    case BlockKind::Rolling: b.text = tr("Rolling text: news, call sign, frequency..."); b.x = 0; b.w = 1; b.fontPx = 26; break;
+    }
+    return b;
+}
+
+void paletteItem(const char* label, BlockKind k, Param p, const char* tip, State& s) {
+    ImGui::Selectable(label, false);
+    if (ImGui::BeginDragDropSource()) {
+        const DropItem d{(int)k, (int)p};
+        ImGui::SetDragDropPayload("VGBLOCK", &d, sizeof d);
+        ImGui::TextUnformatted(label);
+        ImGui::EndDragDropSource();
+    }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {   // double click: place it in the middle
+        Block b = newBlock(k, p);
+        if (k != BlockKind::Rolling) { b.x = 0.4f; b.y = 0.45f; } else b.y = 0.88f;
+        if (k == BlockKind::Logo) { const std::string f = plat::openFileDialog(); b.text = f; }
+        s.cfg.overlay.blocks.push_back(b);
+        s.sel = (int)s.cfg.overlay.blocks.size() - 1;
+    }
+    if (tip && ImGui::IsItemHovered() && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) ImGui::SetTooltip("%s", tip);
+}
+
+void palette(State& s) {
+    ImGui::TextDisabled("%s", tr("Drag onto the picture"));
+    ImGui::SeparatorText(tr("Blocks"));
+    paletteItem(tr("SVG logo"), BlockKind::Logo, Param::VideoCodec, tr("A logo from an SVG file, scaled into its box"), s);
+    paletteItem(tr("Free text"), BlockKind::Text, Param::VideoCodec, tr("Your own text, more lines allowed"), s);
+    paletteItem(tr("Rolling text"), BlockKind::Rolling, Param::VideoCodec, tr("A band with text running through it; direction and speed per block"), s);
+    for (const ParamGroup& g : kGroups) {
+        ImGui::SeparatorText(tr(g.name));
+        for (Param p : g.params) {
+            char tip[200];
+            snprintf(tip, sizeof tip, tr("From \"Sources and encoding\" > %s: now %s"), tr(g.name), paramValue(p, s.cfg.enc).c_str());
+            ImGui::PushID((int)p);
+            paletteItem(tr(paramLabel(p)), BlockKind::Param, p, tip, s);
+            ImGui::PopID();
+        }
+    }
+}
+
+void properties(State& s) {
+    std::vector<Block>& bl = s.cfg.overlay.blocks;
+    ImGui::Checkbox(tr("Magnetic"), &s.snap);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Blocks snap to each other's edges and to the picture's edges and centre. Hold Alt while dragging to place freely."));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(bl.empty());
+    if (ImGui::Button(tr("Clear all"))) { bl.clear(); s.sel = -1; }
+    ImGui::EndDisabled();
+    if (s.sel < 0 || s.sel >= (int)bl.size()) { ImGui::TextDisabled("%s", tr("Click a block to change it")); return; }
+    Block& b = bl[(size_t)s.sel];
+    const float w = ImGui::GetContentRegionAvail().x;
+    const char* kinds[] = {N_("SVG logo"), N_("Parameter"), N_("Free text"), N_("Rolling text")};
+    ImGui::SeparatorText(tr(kinds[(int)b.kind]));
+    if (b.kind == BlockKind::Logo) {
+        ImGui::TextUnformatted(tr("SVG file"));
+        inputText("##vglogo", b.text, w - 90 * gUi);
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Browse...##vglogo"))) { const std::string f = plat::openFileDialog(); if (!f.empty()) b.text = f; }
+        ImGui::SetNextItemWidth(w);
+        float pw = b.w * 100, ph = b.h * 100;
+        if (ImGui::SliderFloat("##vglw", &pw, 2, 100, tr("width %.0f %%"))) b.w = pw / 100;
+        ImGui::SetNextItemWidth(w);
+        if (ImGui::SliderFloat("##vglh", &ph, 2, 100, tr("height %.0f %%"))) b.h = ph / 100;
+    } else {
+        if (b.kind == BlockKind::Param) {
+            ImGui::TextUnformatted(tr("Parameter"));
+            ImGui::SetNextItemWidth(w);
+            if (ImGui::BeginCombo("##vgparam", tr(paramLabel(b.param)))) {
+                for (int i = 0; i < (int)Param::Count; i++)
+                    if (ImGui::Selectable(tr(paramLabel((Param)i)), (int)b.param == i)) { b.param = (Param)i; b.text = tr(paramLabel(b.param)); }
+                ImGui::EndCombo();
+            }
+            ImGui::TextUnformatted(tr("Label"));
+            inputText("##vglabel", b.text, w);
+        } else {
+            ImGui::TextUnformatted(tr("Text"));
+            char buf[1024];
+            snprintf(buf, sizeof buf, "%s", b.text.c_str());
+            const float th = b.kind == BlockKind::Text ? 80 * gUi : ImGui::GetFrameHeight() * 2;
+            if (ImGui::InputTextMultiline("##vgtext", buf, sizeof buf, ImVec2(w, th))) {
+                b.text = buf;
+                if (b.kind == BlockKind::Rolling) b.text.erase(std::remove(b.text.begin(), b.text.end(), '\n'), b.text.end());
+            }
+        }
+        if (b.kind == BlockKind::Rolling) {
+            ImGui::TextUnformatted(tr("Direction"));
+            combo("##vgdir", b.direction, kDirNames, 2, w);
+            ImGui::TextUnformatted(tr("Speed"));
+            ImGui::SetNextItemWidth(w);
+            ImGui::SliderFloat("##vgcps", &b.charsPerSec, 0.2f, 20.f, tr("%.1f characters/s"), ImGuiSliderFlags_Logarithmic);
+            float bw = b.w * 100;
+            ImGui::SetNextItemWidth(w);
+            if (ImGui::SliderFloat("##vgbandw", &bw, 10, 100, tr("band width %.0f %%"))) b.w = bw / 100;
+        }
+        ImGui::TextUnformatted(tr("Font size"));
+        ImGui::SetNextItemWidth(w);
+        ImGui::SliderFloat("##vgfont", &b.fontPx, 8, 120, "%.0f px");
+        ImVec4 c = ImGui::ColorConvertU32ToFloat4(b.color);
+        if (ImGui::ColorEdit4(tr("Colour##vgcol"), &c.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) b.color = ImGui::ColorConvertFloat4ToU32(c);
+        ImGui::SameLine();
+        ImGui::Checkbox(tr("Dark box behind"), &b.background);
+    }
+    ImGui::TextUnformatted(tr("Position"));
+    float px = b.x * 100, py = b.y * 100;
+    ImGui::SetNextItemWidth(w * 0.5f - 4 * gUi);
+    if (ImGui::DragFloat("##vgx", &px, 0.2f, -50, 150, "x %.1f %%")) b.x = px / 100;
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(w * 0.5f - 4 * gUi);
+    if (ImGui::DragFloat("##vgy", &py, 0.2f, -50, 150, "y %.1f %%")) b.y = py / 100;
+    if (ImGui::Button(tr("Duplicate"))) {
+        Block d = b;
+        d.x += 0.03f; d.y += 0.03f;
+        bl.push_back(d);
+        s.sel = (int)bl.size() - 1;
+        return;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Delete"))) { bl.erase(bl.begin() + s.sel); s.sel = -1; }
+}
+
+void canvas(State& s) {
+    const Settings& e = s.cfg.enc;
+    const int W = e.width, H = e.height;
+    std::vector<Block>& bl = s.cfg.overlay.blocks;
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float sc = std::max(0.05f, std::min(avail.x / (float)W, (avail.y - ImGui::GetTextLineHeightWithSpacing()) / (float)H));
+    const ImVec2 size((float)W * sc, (float)H * sc);
+    const ImVec2 p0 = ImGui::GetCursorScreenPos(), p1(p0.x + size.x, p0.y + size.y);
+    ImGui::InvisibleButton("##vgcanvas", size);
+    const bool hovered = ImGui::IsItemHovered(), active = ImGui::IsItemActive(), activated = ImGui::IsItemActivated();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const bool running = s.gen.running();
+
+    // the picture: the encoder's own frame while it runs (overlay included), else a grey card with the overlay drawn by the same renderer
+    if (running) {
+        int pw = 0, ph = 0;
+        if (s.gen.preview(s.prevRgba, pw, ph, s.prevSerial)) {
+            if (!s.prevImg || pw != s.prevW || ph != s.prevH) { delete s.prevImg; s.prevImg = gGfx->createImage(pw, ph, 0xFF000000u); s.prevW = pw; s.prevH = ph; }
+            s.prevImg->update(0, 0, pw, ph, reinterpret_cast<const uint32_t*>(s.prevRgba.data()));
+        }
+        if (s.prevImg) dl->AddImage(s.prevImg->texture(), p0, p1);
+        else dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 20, 255));
+    } else {
+        dl->AddRectFilled(p0, p1, IM_COL32(58, 62, 70, 255));
+        // title-safe area (90 %) as a guide
+        dl->AddRect(ImVec2(p0.x + size.x * 0.05f, p0.y + size.y * 0.05f), ImVec2(p1.x - size.x * 0.05f, p1.y - size.y * 0.05f), IM_COL32(255, 255, 255, 40));
+        const bool rolling = std::any_of(bl.begin(), bl.end(), [](const Block& b) { return b.kind == BlockKind::Rolling; });
+        const std::string key = saveLayout(s.cfg.overlay) + saveSettings(e);
+        const double now = ImGui::GetTime();
+        if (key != s.ovKey || (rolling && now - s.ovAt > 1.0 / 15)) {
+            s.ovKey = key;
+            s.ovAt = now;
+            s.ovr.render(s.cfg.overlay, e, now, W, H, s.ovRgba);
+            if (!s.ovImg || s.ovW != W || s.ovH != H) { delete s.ovImg; s.ovImg = gGfx->createImage(W, H, 0); s.ovW = W; s.ovH = H; }
+            s.ovImg->update(0, 0, W, H, reinterpret_cast<const uint32_t*>(s.ovRgba.data()));
+        }
+        if (s.ovImg) dl->AddImage(s.ovImg->texture(), p0, p1);
+    }
+
+    std::vector<Rect> rects;
+    for (const Block& b : bl) rects.push_back(s.ovr.blockRect(b, e, W, H));
+    auto toScreen = [&](const Rect& r) { return std::make_pair(ImVec2(p0.x + r.x * sc, p0.y + r.y * sc), ImVec2(p0.x + (r.x + r.w) * sc, p0.y + (r.y + r.h) * sc)); };
+    const ImVec2 m = ImGui::GetIO().MousePos;
+    const float hs = 7 * gUi;   // resize handle
+    auto resizable = [](const Block& b) { return b.kind == BlockKind::Logo || b.kind == BlockKind::Rolling; };
+
+    // pick a block, or its resize handle
+    if (activated) {
+        s.sel = -1;
+        s.dragging = s.resizing = false;
+        for (int i = (int)bl.size() - 1; i >= 0; i--) {
+            const auto [a, z] = toScreen(rects[(size_t)i]);
+            const bool onHandle = resizable(bl[(size_t)i]) && m.x >= z.x - hs && m.x <= z.x + hs && m.y >= z.y - hs && m.y <= z.y + hs;
+            if (onHandle || (m.x >= a.x && m.x <= z.x && m.y >= a.y && m.y <= z.y)) {
+                s.sel = i;
+                s.resizing = onHandle;
+                s.dragging = !onHandle;
+                s.grab = ImVec2(m.x - a.x, m.y - a.y);
+                break;
+            }
+        }
+    }
+    bool snappedX = false, snappedY = false;
+    if (active && s.sel >= 0 && s.sel < (int)bl.size()) {
+        Block& b = bl[(size_t)s.sel];
+        if (s.dragging) {
+            Rect r = rects[(size_t)s.sel];
+            r.x = (m.x - s.grab.x - p0.x) / sc;
+            r.y = (m.y - s.grab.y - p0.y) / sc;
+            if (s.snap && !ImGui::GetIO().KeyAlt) {
+                std::vector<Rect> others;
+                for (size_t i = 0; i < rects.size(); i++) if ((int)i != s.sel) others.push_back(rects[i]);
+                const Rect sn = snapRect(r, others, (float)W, (float)H, 8 * gUi / sc);
+                snappedX = sn.x != r.x;
+                snappedY = sn.y != r.y;
+                r = sn;
+            }
+            b.x = r.x / (float)W;
+            b.y = r.y / (float)H;
+            rects[(size_t)s.sel] = s.ovr.blockRect(b, e, W, H);
+        } else if (s.resizing) {
+            const Rect r = rects[(size_t)s.sel];
+            b.w = std::clamp(((m.x - p0.x) / sc - r.x) / (float)W, 0.02f, 1.f);
+            if (b.kind == BlockKind::Logo) b.h = std::clamp(((m.y - p0.y) / sc - r.y) / (float)H, 0.02f, 1.f);
+            rects[(size_t)s.sel] = s.ovr.blockRect(b, e, W, H);
+        }
+    }
+    if (ImGui::IsItemDeactivated()) s.dragging = s.resizing = false;
+
+    // a block dropped from the palette lands where the mouse is
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("VGBLOCK")) {
+            DropItem d;
+            memcpy(&d, pl->Data, sizeof d);
+            Block b = newBlock((BlockKind)d.kind, (Param)d.param);
+            const Rect r0 = s.ovr.blockRect(b, e, W, H);
+            Rect r{(m.x - p0.x) / sc - (b.kind == BlockKind::Rolling ? 0 : r0.w / 2), (m.y - p0.y) / sc - r0.h / 2, r0.w, r0.h};
+            if (s.snap) r = snapRect(r, rects, (float)W, (float)H, 8 * gUi / sc);
+            b.x = r.x / (float)W;
+            b.y = r.y / (float)H;
+            if (b.kind == BlockKind::Logo) b.text = plat::openFileDialog();
+            bl.push_back(b);
+            rects.push_back(s.ovr.blockRect(b, e, W, H));
+            s.sel = (int)bl.size() - 1;
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (hovered && s.sel >= 0 && s.sel < (int)bl.size() && ImGui::IsKeyPressed(ImGuiKey_Delete)) { bl.erase(bl.begin() + s.sel); rects.erase(rects.begin() + s.sel); s.sel = -1; }
+
+    // outlines, the selection and its handle, the snap guides
+    dl->PushClipRect(p0, p1, true);
+    for (size_t i = 0; i < bl.size(); i++) {
+        const auto [a, z] = toScreen(rects[i]);
+        const bool sel = (int)i == s.sel;
+        dl->AddRect(a, z, sel ? IM_COL32(80, 200, 255, 255) : IM_COL32(255, 255, 255, 70), 0, 0, sel ? 2 * gUi : 1);
+        if (bl[i].kind == BlockKind::Logo && bl[i].text.empty()) dl->AddText(ImVec2(a.x + 4 * gUi, a.y + 4 * gUi), IM_COL32(255, 255, 255, 160), tr("SVG logo: choose a file"));
+        if (sel && resizable(bl[i])) dl->AddRectFilled(ImVec2(z.x - hs, z.y - hs), ImVec2(z.x, z.y), IM_COL32(80, 200, 255, 255));
+    }
+    if (s.sel >= 0 && s.sel < (int)rects.size() && (snappedX || snappedY)) {
+        const auto [a, z] = toScreen(rects[(size_t)s.sel]);
+        const ImU32 g = IM_COL32(255, 210, 60, 200);
+        if (snappedX) { dl->AddLine(ImVec2(a.x, p0.y), ImVec2(a.x, p1.y), g); dl->AddLine(ImVec2(z.x, p0.y), ImVec2(z.x, p1.y), g); }
+        if (snappedY) { dl->AddLine(ImVec2(p0.x, a.y), ImVec2(p1.x, a.y), g); dl->AddLine(ImVec2(p0.x, z.y), ImVec2(p1.x, z.y), g); }
+    }
+    dl->PopClipRect();
+    if (!s.ovr.hasFont()) ImGui::TextDisabled("%s", tr("No font for the overlay text was found: text blocks are not drawn."));
+    else ImGui::TextDisabled(tr("%dx%d. Drag to move, the corner to resize (logo, rolling text), Delete removes the selected block."), W, H);
+}
+
+void overlayTab(State& s) {
+    const float leftW = 210 * gUi, rightW = 270 * gUi;
+    ImGui::BeginChild("##vgpalette", ImVec2(leftW, 0), ImGuiChildFlags_Borders);
+    palette(s);
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##vgcanvaschild", ImVec2(ImGui::GetContentRegionAvail().x - rightW - ImGui::GetStyle().ItemSpacing.x, 0));
+    canvas(s);
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##vgprops", ImVec2(0, 0), ImGuiChildFlags_Borders);
+    properties(s);
+    ImGui::EndChild();
+    // live: the running encoder takes the edited overlay on its next frame
+    if (s.gen.running()) {
+        const std::string l = saveLayout(s.cfg.overlay);
+        if (l != s.sentLayout) { s.gen.setOverlay(s.cfg.overlay); s.sentLayout = l; }
+    }
+}
+
+// ---- above both tabs: start / stop, progress, the address to open ----
+
+void controlBar(State& s) {
+    const bool running = s.gen.running();
+    const GenStats st = s.gen.stats();
+    const GenConfig& c = s.cfg;
+    if (!running) {
+        ImGui::BeginDisabled(!s.probed);
+        if (ImGui::Button(c.output == Output::File ? tr("Start encoding") : tr("Start streaming"))) {
+            GenConfig run = c;
+            run.enc.videoEncoder = pickVideoEncoder(c.enc.videoEncoder, videoEncoders());
+            run.font = s.font;
+            std::string err;
+            if (s.gen.start(run, err)) { s.msg.clear(); s.sentLayout = saveLayout(c.overlay); s.startedAt = ImGui::GetTime(); s.prevSerial = 0; }
+            else s.msg = err;
+        }
+        ImGui::EndDisabled();
+        if (!s.probed) { ImGui::SameLine(); ImGui::TextDisabled("%s", tr("Looking for encoders and cameras...")); }
+    } else if (ImGui::Button(tr("Stop"))) {
+        s.gen.stop();
+    }
+    ImGui::SameLine();
+    if (running) {
+        char t[200];
+        if (c.output == Output::File) {
+            snprintf(t, sizeof t, tr("Encoding: %.1f of %.1f s, %.0f kbit/s"), st.seconds, c.seconds, st.kbps);
+            ImGui::SetNextItemWidth(200 * gUi);
+            ImGui::ProgressBar((float)st.progress, ImVec2(200 * gUi, 0));
+            ImGui::SameLine();
+        } else {
+            const int sec = (int)st.seconds;
+            snprintf(t, sizeof t, tr("Streaming: %d:%02d, %.0f kbit/s"), sec / 60, sec % 60, st.kbps);
+        }
+        ImGui::TextUnformatted(t);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s%s%s", st.videoEncoder.c_str(), st.audioEncoder.empty() ? "" : " + ", st.audioEncoder.c_str());
+        if (st.lateFrames > 0) { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.2f, 1), tr("%d frames late: the encoder is too slow for real time"), st.lateFrames); }
+    } else if (!st.error.empty()) {
+        ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.35f, 1), "%s", st.error.c_str());
+    } else if (!s.msg.empty()) {
+        ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.35f, 1), "%s", tr(s.msg.c_str()));
+    } else if (st.finished && c.output == Output::File && st.frames > 0) {
+        ImGui::TextDisabled(tr("Written: %s (%.1f s, %.1f MB). The transmitter takes it as its \"MPEG-TS / video file\"."), c.tsPath.c_str(), st.seconds, st.bytes / 1e6);
+    } else ImGui::NewLine();
+
+    // where to watch the stream: the address set here, with a copy button and the VLC hint
+    if (c.output != Output::File) {
+        const std::string url = streamUrl(c.output, c.host, c.port);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(running ? tr("Streaming to") : tr("Will stream to"));
+        ImGui::SameLine();
+        ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram), "%s", url.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Copy##vgurl"))) ImGui::SetClipboardText(url.c_str());
+        const std::string vlc = vlcOpenUrl(c.output, c.host, c.port);
+        char hint[240];
+        if (isMulticast(c.host)) snprintf(hint, sizeof hint, tr("In VLC on a receiving PC: Media > Open Network Stream > %s (multicast group)"), vlc.c_str());
+        else snprintf(hint, sizeof hint, tr("In VLC on the receiving PC (%s): Media > Open Network Stream > %s"), c.host.c_str(), vlc.c_str());
+        ImGui::TextDisabled("%s", hint);
+    }
+}
+
+} // namespace
+
+void videoGenWindow(App& a) {
+    State& s = S();
+    if (!a.videoGenOpen) {
+        if (s.init && s.gen.running()) s.gen.stop();   // closing the window stops the stream or the file (it is closed properly)
+        return;
+    }
+    loadOnce(s);
+    if (!s.probed && s.probe.valid() && s.probe.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        s.probe.get();
+        s.cams = s.camsFound;
+        s.mics = s.micsFound;
+        s.probed = true;
+        const std::string want = s.cfg.enc.videoEncoder;
+        s.cfg.enc.videoEncoder = pickVideoEncoder(want, videoEncoders());
+        const auto& ae = audioEncoders();
+        if (!ae.empty() && std::none_of(ae.begin(), ae.end(), [&](const EncoderInfo& i) { return i.name == s.cfg.enc.audioEncoder; })) s.cfg.enc.audioEncoder = ae.front().name;
+    }
+    firstWindowSize(1180 * gUi, 820 * gUi);
+    if (!ImGui::Begin(trw("Digital video generator"), &a.videoGenOpen)) { ImGui::End(); return; }
+    controlBar(s);
+    ImGui::Separator();
+    if (ImGui::BeginTabBar("##vgtabs")) {
+        if (ImGui::BeginTabItem(trw("Sources and encoding"))) { sourcesTab(s); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem(trw("Overlay"))) { overlayTab(s); ImGui::EndTabItem(); }
+        ImGui::EndTabBar();
+    }
+    ImGui::End();
+    saveSoon(s);
+}

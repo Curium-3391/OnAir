@@ -133,6 +133,12 @@ SPDX-FileCopyrightText = [
 SPDX-License-Identifier = "Unlicense AND MIT"
 
 [[annotations]]
+path = "third_party/nanosvg/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2013-14 Mikko Mononen"
+SPDX-License-Identifier = "Zlib"
+
+[[annotations]]
 path = "third_party/miniaudio/**"
 precedence = "closest"
 SPDX-FileCopyrightText = "Copyright 2026 David Reid"
