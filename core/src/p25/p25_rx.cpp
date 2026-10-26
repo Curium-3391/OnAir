@@ -20,6 +20,7 @@
 #include <mutex>
 #include <vector>
 #include "dect2/common/mathconst.h"
+#include "dect2/dsp/mean_afc.h"
 
 namespace dect2 {
 
@@ -102,7 +103,16 @@ struct P25Receiver::Impl {
     std::vector<float> fir;
     cf32 prevZ{0, 0};
 
+    MeanAfc afc;
+    double afcHz = 0;       // the oscillator's move to follow a carrier that is off (MeanAfc); tel.cfoHz still reports the whole error
+    void moveLo(double hz) {
+        if (std::fabs(afcHz + hz) > MeanAfc::kMaxTotalHz) return;
+        afcHz += hz;
+        loStep = std::polar(1.0, -2 * kPi * (offset + afcHz) / rate);
+    }
+
     void initFront() {
+        afc.reset(); afcHz = 0;
         D = std::max(1, (int)std::floor(rate / 100000.0));
         fd = rate > 0 ? rate / D : 0;
         inv = 1.0 / ((double)D * D * D);
@@ -155,7 +165,9 @@ struct P25Receiver::Impl {
                 rp += rstep;
                 const cf32 d = acc * std::conj(prevZ);
                 prevZ = acc;
-                push((float)(std::atan2(d.imag(), d.real()) * kFs / (2 * kPi)));
+                const float fq = (float)(std::atan2(d.imag(), d.real()) * kFs / (2 * kPi));
+                if (const double a = afc.push(fq, kFs)) moveLo(a);
+                push(fq);
                 step();
             }
         }
@@ -374,7 +386,7 @@ struct P25Receiver::Impl {
             tel.nac = f.nac;
             tel.inverted = g < 0;
             tel.deviationHz = (float)(3 * std::fabs(g));
-            tel.cfoHz = d;
+            tel.cfoHz = d + afcHz;
             snrAvg = snrAvg == 0 ? snr : 0.8 * snrAvg + 0.2 * snr;
             tel.snrDb = (float)snrAvg;
         }
