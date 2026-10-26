@@ -110,11 +110,23 @@ std::vector<CodecDir> dirsWithFile(const std::vector<CodecDir>& dirs, const std:
 void setExtraCodecDir(const std::string& dir) { std::lock_guard<std::mutex> lk(gMu); gExtra = dir; }
 std::string extraCodecDir() { std::lock_guard<std::mutex> lk(gMu); return gExtra; }
 
+#if defined(_WIN32)
+// Windows ANSI calls return the system code page (GBK, 1251, ...), not UTF-8; std::filesystem then threw "Cannot convert character sequence" on a
+// user name or install folder with non-ASCII letters (the DRM crash of #329). The wide calls, converted to UTF-8, are what the rest of the code expects.
+static std::string wideToUtf8(const wchar_t* w) {
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string s((size_t)n - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+#endif
+
 std::string programDir() {
     std::string exe;
 #if defined(_WIN32)
-    char path[MAX_PATH * 2] = {0};
-    if (GetModuleFileNameA(nullptr, path, (DWORD)sizeof path - 1)) exe = path;
+    wchar_t path[MAX_PATH * 2] = {0};
+    if (GetModuleFileNameW(nullptr, path, (DWORD)(sizeof path / sizeof *path) - 1)) exe = wideToUtf8(path);
 #elif defined(__APPLE__)
     char path[4096];
     uint32_t size = sizeof path;
@@ -131,7 +143,7 @@ std::string programDir() {
 std::string userCodecDir() {
     if (const char* o = getenv("DECT2_DATA_DIR"); o && *o) return joinPath(o, "codecs");
 #if defined(_WIN32)
-    if (const char* la = getenv("LOCALAPPDATA"); la && *la) return std::string(la) + "\\OnAir\\codecs";
+    if (const wchar_t* la = _wgetenv(L"LOCALAPPDATA"); la && *la) return wideToUtf8(la) + "\\OnAir\\codecs";
     return {};
 #else
     const char* home = getenv("HOME");
