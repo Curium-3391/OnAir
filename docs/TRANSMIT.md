@@ -1,6 +1,6 @@
 # Transmit
 
-**You are responsible.** OnAir limits nothing: not the frequency, not the power. What you type goes to the radio as typed (the radio's own range is shown as information only). Transmitting needs a licence or permission where you are, and a radio without an antenna, an attenuator or a dummy load can disturb others. Transmit is meant for test signals into a dummy load or a shielded setup, and for your own use. The first time you start, a one-time notice has to be accepted with "I understand".
+**You are responsible, for the law and for your hardware.** OnAir blocks nothing: not the mode, the frequency, the power, the length of a burst or the duty cycle (the first press of START TRANSMITTING is your decision). Overdriving the output, an amplifier left on, or a long duty cycle can damage the radio, and a transmission without a licence can be illegal where you are. Where something looks wrong, OnAir shows a warning and sends anyway. What you type goes to the radio as typed (the radio's own range is shown as information only). Transmitting needs a licence or permission where you are, and a radio without an antenna, an attenuator or a dummy load can disturb others. Transmit is meant for test signals into a dummy load or a shielded setup, and for your own use. The first time you start, a one-time notice has to be accepted with "I understand".
 
 ## How to transmit
 
@@ -161,9 +161,22 @@ This list is taken from the tables in `core/src/tx/tx.cpp` (`txModes()`).
 | ndb | NDB beacons | 31 | makeNdbSynth |
 | elektro | Elektro-L | 82 | makeElektroSynth |
 
+### The one rule: the map guard
+
+OnAir blocks no transmission, but what you transmit must never come back as "received" data on the shared OnAir map (someone could transmit a fake AIS ship or a fake aircraft and have it published as real). So:
+
+- **While the app is transmitting, and for 10 minutes after the last transmission ends, nothing is uploaded to the OnAir map server** (AIS, ADS-B, APRS, ham contacts, ACARS text, direction finding, GPS-jamming cells: every decoder that feeds the map). Decoding and showing data on your own screen go on as usual; only the upload is held, and a small note says "Map sharing paused while transmitting". It resumes by itself, nothing has to be switched on again.
+- **Nothing whose identity matches something this app transmitted in the last 24 hours is uploaded** (callsign, MMSI, ICAO address, ship or aircraft name, or a word of the transmitted text), also after the 10 minutes.
+
+This covers every way of transmitting: the Transmit window, the ham transmitter, a CAT rig, the remote API. It does not apply to a test (no RF) or a transmission into an IQ file. Code: `core/include/dect2/net/map_guard.h`, test `map_guard`.
+
+### Transmitting through the remote API
+
+`GET /api/v1/tx` (state), `POST /api/v1/tx/start` and `POST /api/v1/tx/stop` (see REMOTE-API.md); rigctl `T 1` / `T 0` / `t`. The explicit command is your decision; the answer carries a `warnings` list.
+
 ### Modes without a generator
 
-Nothing is refused: OnAir blocks no mode, frequency or power. A mode can only be missing when it has no signal generator (for example the signal workbench, engine code 75); the panel then says "this mode has no transmit generator". Limits of the radio (no transmit path, a sample rate too low for the mode) are reported as they come.
+Nothing is refused: OnAir blocks no mode, frequency or power. A mode can only be missing when it has no signal generator (for example the signal workbench, engine code 75); the panel then says "this mode has no transmit generator". Limits of the radio (no transmit path, a sample rate too low for the mode) are reported as they come. The SDR ham chain no longer refuses a TX gain outside the radio's range, audio outside 300 to 2900 Hz, the HackRF amplifier, a burst of any length, any duty cycle, or an output that stalls: each is a warning (in the audit log, with the burst). Only Halt or STOP ends a transmission, besides a radio that reports an error.
 
 ### Hellschreiber text in other scripts (#225)
 

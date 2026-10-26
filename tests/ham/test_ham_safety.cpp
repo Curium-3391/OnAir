@@ -1,5 +1,5 @@
 // The safety layer of the ham transmitter: the country band plans, the gate on every path (licence x Arm x band: only all three key anything),
-// the duty-cycle limits per mode, the burst length, the hard stop on an output error, the TX audit log and the slot wait. Fake radios only.
+// the duty-cycle and burst figures (warnings only), no stall stop, the hard stop on an output error, the TX audit log and the slot wait. Fake radios only.
 #include "dect2/ham/ham.h"
 #include "dect2/ham/ham_safety.h"
 #include <chrono>
@@ -97,31 +97,34 @@ int main() {
         Fake f; f.failWrite = true; HamSlotTx tx(f); std::string err;
         CHECK(!tx.send(gate(), 0, "CQ LY1ABC KO24", 1500, 0.5, err) && err == "sound card unplugged" && f.ptt1 == 1 && f.ptt0 == 1, "output error: stopped, PTT released (%s)", err.c_str());
     }
-    {
+    {   // no stall stop (3.2): an output that takes no audio keeps the burst going until the operator halts it
         Fake f; f.stall = true; HamSlotTx tx(f); std::string err;
         const auto t0 = std::chrono::steady_clock::now();
-        CHECK(!tx.send(gate(), 2, "CQ LY1ABC KO24", 1500, 0.5, err) && err.find("stalled") != std::string::npos && f.ptt0 == 1, "stalled output: stopped (%s)", err.c_str());
+        std::thread halt([&] { std::this_thread::sleep_for(std::chrono::milliseconds(3600)); tx.abort(); });
+        const bool ok = tx.send(gate(), 2, "CQ LY1ABC KO24", 1500, 0.5, err);
+        halt.join();
         const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-        CHECK(s > 2.5 && s < 5, "the stall was noticed after %.1f s", s);
+        CHECK(!ok && err.find("stalled") == std::string::npos && s > 3.5 && f.ptt0 >= 1, "a stalled output is not stopped by OnAir: only Halt ended it after %.1f s (%s)", s, err.c_str());
     }
-    // ---- burst length and duty cycle ----
+    // ---- no burst-length and no duty-cycle limit (3.2): the figures are only warnings in the audit log ----
     {
         Fake f; HamSlotTx tx(f); std::string err;
-        CHECK(!tx.sendAudio(gate(), std::vector<float>(48000 * 201, 0.3f), 100, 0.5, err) && err.find("limit") != std::string::npos && f.ptt1 == 0, "a 201 s burst is refused: %s", err.c_str());
+        txAuditClear();
+        CHECK(tx.sendAudio(gate(), std::vector<float>(48000 * 201, 0.3f), 100, 0.5, err) && f.ptt1 == 1, "a 201 s burst is sent (%s)", err.c_str());
+        const auto log = txAuditRecent(5);
+        CHECK(!log.empty() && log.back().result == "sent" && log.back().reason.find("long burst") != std::string::npos, "and the audit log carries the warning");
     }
-    {   // FT8 every slot (a runaway sequencer) is stopped; every other slot is not
+    {   // FT8 every slot (a runaway sequencer) goes out; the audit log warns about the duty cycle
         Fake f; HamSlotTx tx(f); FakeClock c; tx.setClock(std::ref(c)); std::string err;
-        int sent = 0, refused = 0;
-        for (int s = 0; s < 40; s++) { c.t += 15; if (tx.send(gate(), 0, "CQ LY1ABC KO24", 1500, 0.5, err)) sent++; else { refused++; CHECK(err.find("duty") != std::string::npos, "refused for duty: %s", err.c_str()); } }
-        CHECK(refused > 0 && sent < 40, "every slot: %d sent, %d refused", sent, refused);
-        CHECK(tx.onAirSec(0) <= 0.6 * 600 + 1e-6, "on air %.0f s of 600", tx.onAirSec(0));
-        Fake f2; HamSlotTx t2(f2); FakeClock c2; t2.setClock(std::ref(c2)); int s2 = 0;
-        for (int s = 0; s < 80; s++) { c2.t += 30; if (t2.send(gate(), 0, "CQ LY1ABC KO24", 1500, 0.5, err)) s2++; }
-        CHECK(s2 == 80, "every other slot for 40 minutes: all %d sent (%s)", s2, err.c_str());
-        Fake f3; HamSlotTx t3(f3); FakeClock c3; t3.setClock(std::ref(c3)); int s3 = 0;
-        for (int s = 0; s < 20; s++) { c3.t += 240; if (t3.send(gate(14.0956e6), 3, "LY1ABC KO24 10", 1500, 0.5, err)) s3++; }
-        CHECK(s3 == 20, "WSPR one slot in two: all %d sent (%s)", s3, err.c_str());
-        CHECK(hamDutyLimit(-1).maxFraction == 0.5 && hamDutyLimit(0).maxBurstSec == 15 && hamDutyLimit(3).windowSec == 1200, "limits per mode");
+        int sent = 0;
+        bool warned = false;
+        txAuditClear();
+        for (int s = 0; s < 40; s++) { c.t += 15; if (tx.send(gate(), 0, "CQ LY1ABC KO24", 1500, 0.5, err)) sent++; }
+        for (const auto& e : txAuditRecent(100)) warned |= e.reason.find("Duty cycle") != std::string::npos;
+        CHECK(sent == 40, "every slot: all %d sent (%s)", sent, err.c_str());
+        CHECK(warned, "the duty-cycle warning is in the audit log");
+        CHECK(tx.onAirSec(0) > 0.6 * 600, "on air %.0f s of 600 (accounted, not limited)", tx.onAirSec(0));
+        CHECK(hamDutyLimit(-1).maxFraction == 0.5 && hamDutyLimit(0).maxBurstSec == 15 && hamDutyLimit(3).windowSec == 1200, "the usual figures per mode (for the warnings)");
     }
     // ---- the audit log ----
     {

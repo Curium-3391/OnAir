@@ -217,8 +217,6 @@ bool aprsSend(HamSlotTx& tx, TxDuty& duty, const HamTxCheck& gateIn, const std::
     std::vector<float> a = packetAudio(frames, cfg);
     if (a.empty()) { err = "nothing to send"; return false; }
     const double dur = (double)a.size() / cfg.rate;
-    if (dur > kKbdMaxBurstSec) { err = "the transmission would be too long: send fewer frames at a time"; return false; }
-    if (!duty.allow(nowSec, dur)) { err = "duty cycle limit: wait before sending more"; return false; }
     HamTxCheck g = gateIn;
     const double bw = packetBwHz(cfg.baud);
     if (cfg.baud == PacketBaud::B300) g.audioHz = cfg.centreHz - bw / 2;   // USB: the tones above the dial

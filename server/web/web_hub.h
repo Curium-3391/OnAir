@@ -70,6 +70,10 @@ public:
     ~WebHub();
     void setLimits(const HubLimits& l);
     HubLimits limits() const;
+    // web_allow_tx: whether listeners may send transmit messages. The host plugs its transmitter in with setTxHandler (type, raw JSON, session id) -> reply text
+    // (empty: nothing to say). Without a handler an allowed transmit message answers "this host has no transmitter for web listeners".
+    bool allowTx() { std::lock_guard<std::mutex> g(polMu_); return policy_.allowTx(); }
+    void setTxHandler(std::function<std::string(int, const std::string&, const std::string&)> h) { txHandler_ = std::move(h); }
     WebPolicy& policy() { return policy_; }   // guard with policyMutex() when changing it while running
     std::mutex& policyMutex() { return polMu_; }
     WebRanges& ranges() { return ranges_; }   // guard with policyMutex() when changing it while running; call rangesChanged() afterwards
@@ -116,6 +120,7 @@ private:
     HubLimits lim_;
     std::atomic<size_t> qCap_{384 * 1024};   // lim_.queueBytes, read without the lock
     WebPolicy policy_;
+    std::function<std::string(int, const std::string&, const std::string&)> txHandler_;
     WebRanges ranges_;                       // under polMu_
     std::atomic<unsigned> rangeGen_{1};      // bumped by rangesChanged(); sessions refresh their cached view when it differs
     std::mutex polMu_;

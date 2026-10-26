@@ -112,7 +112,7 @@ int main() {
         CHECK(js8Send(tx, duty, gate(7.3e6 - 500), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 1, "over the 40 m top edge: a warning, sent");
         CHECK(js8Send(tx, duty, gate(7.078e6), hb[0], 0, 1000, 0.4, 0, err) && r.ptt1 == 2 && r.ptt0 == 2, "40 m JS8 armed: sent (%s)", err.c_str());
         TxDuty full; full.add(0, 300);
-        CHECK(!js8Send(tx, full, gate(7.078e6), hb[0], 0, 1000, 0.4, 300, err), "duty limit");
+        CHECK(js8Send(tx, full, gate(7.078e6), hb[0], 0, 1000, 0.4, 300, err), "a full duty counter does not refuse (3.2)");
         Js8Sender s; s.queue(txt); js8::TxFrame f;
         size_t n = 0; while (s.frameForSlot(0, f)) n++;
         CHECK(n == txt.size() && s.pending() == 0, "sender gives every frame once");

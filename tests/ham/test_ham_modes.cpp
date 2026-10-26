@@ -143,7 +143,7 @@ int main() {
         b.cfg.everyNth = 1;
         int duty = 0;
         for (int k = 0; k < 10; k++) { if (!b.messageForSlot(ftxtest::kT0 + 120.0 * k).empty()) duty++; }
-        CHECK(duty == 5, "N = 1 is limited to every second slot: %d", duty);
+        CHECK(duty == 10, "N = 1 is every slot (the operator's choice, 3.2): %d", duty);
         b.cfg.everyNth = 2;
         for (int i = 0; i < 3; i++) b.txSent();
         CHECK(b.messageForSlot(ftxtest::kT0).empty() && !b.active() && b.stopReason() == "maxtx", "stops after maxTx");

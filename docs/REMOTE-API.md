@@ -11,8 +11,9 @@ Settings: View > Data feeds > Remote control API. It is off until you turn it on
 - No CORS headers are ever sent; a request with a foreign `Origin` or a non-loopback `Host` on a loopback connection is refused (403).
 - Rate limit 20 requests/s per address (burst 40), then `429` with `Retry-After`. Header block at most 8 KB, body at most 4 KB, path at most 512 bytes,
   16 connections (8 WebSockets), 5 s to send a request. POST needs `Content-Type: application/json` and a flat JSON object.
-- The API has no way to transmit, arm a transmitter, read or write voice keys or credentials, or change security settings. A path naming such a thing
-  (tx, ptt, key, credential, password, secret, token, security, settings, config, ...) is refused with 403 whatever the program offers.
+- The API can transmit (3.2): `GET /api/v1/tx` (state), `POST /api/v1/tx/start` (body: `mode`, `mhz` or `hz`, `gain_db`, `amp`, `loop`, `seconds`, `test`, `callsign`, `grid`, `dest`, `name`, `text`, `device`, `carrier`) and `POST /api/v1/tx/stop`; rigctl `T 1` starts the transmission set up in the Transmit window, `T 0` stops it, `t` reads it. The explicit command is your decision: the answer carries a `warnings` list (licence, band, gain, amplifier, hardware). You are responsible for the law and for your hardware; overdriving or a long duty cycle can damage the radio. The one-time transmit notice must have been accepted in the app. The map guard applies: nothing is uploaded to the map server while transmitting and for 10 minutes after.
+- The API has no way to read or write voice keys or credentials, or change security settings. A path naming such a thing
+  (key, credential, password, secret, token, security, settings, config, ...) is refused with 403 whatever the program offers.
 - Errors are `{"error":"..."}` with the HTTP status. `501`: this program does not offer that endpoint.
 
 ## Endpoints

@@ -343,7 +343,7 @@ struct WebServer::Impl {
                 tokens -= 1;
                 ClientMsg m;
                 std::string code, why;
-                if (!parseClientMsg(f.payload, m, code, why)) {
+                if (!parseClientMsg(f.payload, m, code, why, hub.allowTx())) {
                     sendText(errMsg(code, why));
                     if (!id && code != err::Forbidden) { closeWith(4000, "bad message"); closing = true; }
                     continue;

@@ -193,7 +193,6 @@ struct TxTune {
 // The hertz value a transmit sink writes at its set-frequency call. PPM correction, where a radio has it, is applied to this result.
 inline double txRadioHz(const TxTune& t) { return t.centerHz + t.offsetHz; }
 
-#ifndef ONAIR_WEB_SESSION   // the transmit path does not exist for OnAir Web code (server/web): see dect2/tx/tx.h
 // A radio that transmits. open() starts the radio's transmit path (a driver that refuses a frequency or a rate says why in err, in plain
 // words); write() hands it complex float samples (full scale = +-1.0; beyond that is clipped) and returns when the radio has taken them, so a
 // real radio paces the caller; close() stops the transmitter: no sample goes out after it returns. Used from one thread at a time.
@@ -214,7 +213,6 @@ std::unique_ptr<TxSink> makeTxSink(const DeviceInfo& d);
 std::unique_ptr<TxSink> makeUsbHackrfTxSink(const std::string& serial);   // hackrf_usb.cpp
 void hackrfTxPack(const cf32* x, size_t n, int8_t* out);                  // the HackRF's DAC format: float (1.0 = full scale) to signed 8-bit I/Q pairs
 std::unique_ptr<TxSink> makeNativeTxSink(const DeviceInfo& d);           // source_native.cpp (PlutoSDR)
-#endif
 
 // Radios the user hid from the list (by display name; saved in the settings). Synthetic/file entries are never hidden.
 void setHiddenRadios(const std::vector<std::string>& names);

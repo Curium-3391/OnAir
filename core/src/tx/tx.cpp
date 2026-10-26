@@ -12,6 +12,7 @@
 #include "dect2/dvbt/dvbt.h"
 #include "dect2/dvbt/dvbt_gen.h"
 #include "dect2/dsp/exact_resampler.h"
+#include "dect2/net/map_guard.h"
 #include "dect2/dsp/dsp_compat.h"
 #include "dect2/dsp/fftutil.h"
 #include "dect2/isdbt/isdbt.h"
@@ -968,7 +969,10 @@ void TxSession::fail(const std::string& why) {
 
 // closes the radio once (the sender thread does it when a pass ends, stop() does it otherwise)
 void TxSession::closeSink() {
-    if (sink_ && !sinkClosed_.exchange(true)) sink_->close();
+    if (sink_ && !sinkClosed_.exchange(true)) {
+        sink_->close();
+        if (rfOn_.exchange(false)) dect2::mapguard::txEnd();   // the map guard holds uploads for 10 minutes from now
+    }
 }
 
 bool TxSession::start(std::unique_ptr<TxSink> sink, const TxRequest& r, const TxRateLimits& lim, std::string& err) {
@@ -1062,6 +1066,11 @@ bool TxSession::start(std::unique_ptr<TxSink> sink, const TxRequest& r, const Tx
     maxQ_ = std::max<size_t>(8, (size_t)(rate_ * 0.25 / kBlock));
     running_ = true;
     started_ = true;
+    if (!dry_ && sink_->name() != "IQ file") {   // a real transmission: the map guard holds the uploads and remembers what was sent (net/map_guard.h)
+        rfOn_ = true;
+        dect2::mapguard::txBegin();
+        for (const auto& id : dect2::mapguard::identitiesOf(req_.callsign, req_.dest, req_.name, req_.address, req_.text)) dect2::mapguard::noteSent(id);
+    }
     char b[400];
     snprintf(b, sizeof b, "%s %s on %s, %.3f Msps, gain %.1f dB%s, %s", dry_ ? "TEST (no RF)" : "TRANSMITTING", mode->name, mhzText(r.tune.centerHz).c_str(), rate_ / 1e6, r.tune.gainDb, r.tune.ampOn ? " + amplifier" : "",
              r.loop ? "until stopped" : (std::to_string(r.onceSeconds).substr(0, std::to_string(r.onceSeconds).find('.') + 2) + " s, one pass").c_str());

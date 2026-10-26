@@ -1,6 +1,6 @@
 // The pure rules of the remote API (token, rate limit, sizes, routes and the refusal list, message lines, rigctl) and the parts built on them:
 // the HTTP server with token on loopback, rate limit and the new endpoints, the rigctl TCP server, the UDP output. Plus a guard: the sources of
-// the API must not mention the key store or anything that transmits.
+// the API must not mention the key store (transmit is allowed since 3.2: the operator decides).
 #include "../../core/src/net/tcp_client.h"
 #include "dect2/net/api_policy.h"
 #include "dect2/net/api_servers.h"
@@ -81,11 +81,14 @@ static void testRoutes() {
     for (const char* b : bad) CHECK(parseRoute("GET", b).status == 400, "malformed path refused: %.30s", b);
     CHECK(parseRoute("GET", std::string("/api/v1/") + std::string(600, 'a')).status == 400, "long path");
     CHECK(parseRoute("GET", std::string("/api/v1/status\0x", 16)).status == 400, "NUL byte");
-    // the refusal list: nothing that transmits, arms, or touches keys / credentials / security
-    const char* refused[] = {"/api/v1/tx", "/api/v1/tx/start", "/api/v1/transmit", "/api/v1/ptt", "/api/v1/arm", "/api/v1/voice/keys", "/api/v1/key", "/api/v1/keys/import",
+    // the refusal list: nothing that touches keys / credentials / security (transmit is NOT on it any more)
+    const char* refused[] = {"/api/v1/voice/keys", "/api/v1/key", "/api/v1/keys/import",
                              "/api/v1/credentials", "/api/v1/password", "/api/v1/secret", "/api/v1/token", "/api/v1/security", "/api/v1/settings", "/api/v1/config", "/api/v1/decrypt",
-                             "/api/v1/x/tx", "/api/v1/x/voice-key", "/api/v1/x/TX_arm", "/api/v1/rotator/encrypt", "/api/v1/login", "/api/v1/admin"};
+                             "/api/v1/x/voice-key", "/api/v1/rotator/encrypt", "/api/v1/login", "/api/v1/admin"};
     for (const char* r : refused) CHECK(parseRoute("POST", r).status == 403 && parseRoute("GET", r).status == 403, "refused: %s", r);
+    for (const char* t : {"/api/v1/tx", "/api/v1/tx/start", "/api/v1/tx/stop", "/api/v1/transmit", "/api/v1/ptt", "/api/v1/x/tx"}) CHECK(parseRoute("POST", t).status != 403 && parseRoute("GET", t).status != 403, "transmit paths are not refused: %s", t);
+    CHECK(parseRoute("GET", "/api/v1/tx").status == 200 && parseRoute("GET", "/api/v1/tx").ep == Ep::TxStatus, "GET /api/v1/tx is the transmit status");
+    CHECK(parseRoute("POST", "/api/v1/tx/start").status == 200 && parseRoute("POST", "/api/v1/tx/start").ep == Ep::TxStart && parseRoute("POST", "/api/v1/tx/stop").ep == Ep::TxStop, "tx start and stop are routes");
     for (const std::string& line : endpointList()) CHECK(!pathRefused(line.substr(line.find(' ') + 1)), "an existing endpoint is not refused: %s", line.c_str());
     CHECK(!pathRefused("/api/v1/mute") && !pathRefused("/api/v1/memories") && !pathRefused("/api/v1/samplerate") && !pathRefused("/api/v1/x/stations"), "ordinary names pass");
     CHECK(endpointList().size() >= 28, "endpoint list");
@@ -138,6 +141,22 @@ struct FakeRadio : RigctlRadio {
     bool getStrengthDb(double& db) override { db = -42; return true; }
 };
 
+struct TxRadio : FakeRadio {   // a radio that can transmit: T 1 / T 0 / t reach it
+    bool on = false;
+    bool getPtt(bool& o) override { o = on; return true; }
+    bool setPtt(bool o) override { on = o; return true; }
+};
+
+static void testRigctlPtt() {
+    TxRadio r;
+    bool q = false;
+    auto h = [&](const std::string& l) { return rigctlHandle(l, r, q); };
+    CHECK(h("t") == "0\n", "t: not transmitting");
+    CHECK(h("T 1") == "RPRT 0\n" && r.on && h("t") == "1\n", "T 1 keys the transmitter the host has set up");
+    CHECK(h("T 0") == "RPRT 0\n" && !r.on && h("t") == "0\n", "T 0 stops it");
+    CHECK(h("T ON") == "RPRT 0\n" && r.on && h("T OFF") == "RPRT 0\n" && !r.on, "T ON / OFF");
+}
+
 static void testRigctl() {
     FakeRadio r;
     bool q = false;
@@ -149,8 +168,8 @@ static void testRigctl() {
     CHECK(h("M USB 2400") == "RPRT 0\n" && r.mode == "USB" && r.pb == 2400, "M");
     CHECK(h("M usb 0") == "RPRT 0\n" && r.mode == "USB", "lower-case mode");
     CHECK(h("M BOGUS 1") == "RPRT -1\n" && h("M USB") == "RPRT -1\n" && h("M USB x") == "RPRT -1\n", "bad M");
-    CHECK(h("t") == "0\n", "t is always receive");
-    CHECK(h("T 1") == "RPRT -11\n" && h("T ON") == "RPRT -11\n" && h("T 0") == "RPRT 0\n" && h("T") == "RPRT -1\n", "T never keys the transmitter");
+    CHECK(h("t") == "0\n", "t is receive while the radio says it is not transmitting");
+    CHECK(h("T 1") == "RPRT -11\n" && h("T ON") == "RPRT -11\n" && h("T 0") == "RPRT 0\n" && h("T") == "RPRT -1\n" && h("T x") == "RPRT -1\n", "T 1 on a radio that cannot key: RPRT -11 (the fake radio has no transmitter)");
     CHECK(h("s") == "0\nVFOA\n" && h("S 0 VFOA") == "RPRT 0\n" && h("S 1 VFOB") == "RPRT -11\n", "split is off only");
     CHECK(h("l STRENGTH") == "-42\n" && h("l SWR") == "RPRT -11\n", "l");
     CHECK(h("F") == "RPRT -1\n" && h("F abc") == "RPRT -1\n" && h("F -5") == "RPRT -1\n" && h("F 0") == "RPRT -1\n" && h("F nan") == "RPRT -1\n" && h("F inf") == "RPRT -1\n" && h("F 1e99") == "RPRT -1\n", "bad F");
@@ -266,7 +285,7 @@ static void testServer() {
     CHECK(!has(r, "Access-Control"), "no CORS headers");
     CHECK(statusOf(httpReq(port, "OPTIONS /api/v1/status HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://evil.example\r\n" + tok + "\r\n")) == 403 || statusOf(httpReq(port, "OPTIONS /api/v1/status HTTP/1.1\r\nHost: 127.0.0.1\r\n" + tok + "\r\n")) == 405, "preflight is not granted");
     // routes and refusal list through the server
-    CHECK(statusOf(httpReq(port, getReq(port, "/api/v1/tx", tok))) == 403, "tx refused");
+    CHECK(statusOf(httpReq(port, getReq(port, "/api/v1/tx", tok))) == 501, "tx: a host without a transmitter answers 501, not 403");
     CHECK(statusOf(httpReq(port, postReq(port, "/api/v1/voice/keys", "{}", tok))) == 403, "keys refused");
     CHECK(statusOf(httpReq(port, getReq(port, "/api/v1/../etc/passwd", tok))) == 400, "dot-dot");
     CHECK(statusOf(httpReq(port, getReq(port, "/api/v2/status", tok))) == 404, "v2");
@@ -430,7 +449,7 @@ static void testGuard(const char* argv0) {
     root = at == 0 || at == std::string::npos ? std::string(".") : root.substr(0, at - 1);
     const char* files[] = {"/core/src/net/remote_api.cpp", "/core/include/dect2/net/remote_api.h", "/core/src/net/api_policy.cpp", "/core/include/dect2/net/api_policy.h", "/core/src/net/api_servers.cpp",
                            "/core/include/dect2/net/api_servers.h", "/app/platform/remote_api_app.cpp"};
-    const char* words[] = {"keystore", "key_store", "key store", "KeyStore", "voice_key", "VoiceKey", "voicekey", "importKey", "userKeys", "setPtt", "armTx", "txArm", "TxArm"};
+    const char* words[] = {"keystore", "key_store", "key store", "KeyStore", "voice_key", "VoiceKey", "voicekey", "importKey", "userKeys"};
     for (const char* f : files) {
         std::ifstream in(root + f);
         if (!in) { printf("note: %s not readable here, guard skipped\n", f); continue; }
@@ -445,6 +464,7 @@ int main(int argc, char** argv) {
     (void)argc;
     testToken();
     testRate();
+    testRigctlPtt();
     testSizes();
     testRoutes();
     testLines();

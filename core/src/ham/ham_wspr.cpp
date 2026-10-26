@@ -22,7 +22,7 @@ std::string WsprBeacon::message() const {
 
 std::string WsprBeacon::messageForSlot(double slotUtc) {
     if (!on_) return "";
-    const int n = std::max(2, cfg.everyNth);               // the duty cycle limit: one slot in two at the most
+    const int n = std::max(1, cfg.everyNth);               // the operator's choice: 1 = every slot (a long duty cycle can overheat the radio)
     if (sent_ >= std::max(1, cfg.maxTx)) { on_ = false; stopped_ = "maxtx"; return ""; }
     const long idx = slotIndex(slotUtc, slotPeriod(3));
     const long off = ((cfg.offset % n) + n) % n;

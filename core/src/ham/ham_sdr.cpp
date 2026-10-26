@@ -39,22 +39,32 @@ inline bool isBoard(const DeviceInfo& d, const char* what) {
 }
 }  // namespace
 
-// ---- refusals and warnings ----
-bool sdrTxRefused(const DeviceInfo& d, const SdrTxConfig& c, double dialHz, double audioHz, double bwHz, std::string& why) {
+// ---- what cannot be done, and warnings ----
+// Only what is physically impossible is refused here: a radio that cannot transmit, a CAT rig (it has its own audio path). Everything else (the TX
+// gain range, the audio window, the HackRF amplifier, the radio's tuning range, the power limit) is the operator's decision: see sdrTxLimitWarnings.
+bool sdrTxRefused(const DeviceInfo& d, const SdrTxConfig&, double, double, double, std::string& why) {
     why.clear();
     if (!d.canTransmit) why = txUnavailableReason(d).empty() ? "this radio cannot transmit" : txUnavailableReason(d);
     else if (d.kind == DeviceInfo::Hamlib) why = "a CAT rig transmits through its own audio input, not through the SDR path";
-    else if (!(c.powerLimitPct > 0 && c.powerLimitPct <= 100)) why = "the power limit must be between 1 and 100 %";
-    else if (!(c.drive > 0 && c.drive <= 4)) why = "the drive must be between 0 and 4";
-    else if (d.txGainMaxDb > d.txGainMinDb && (c.gainDb < d.txGainMinDb - 1e-9 || c.gainDb > d.txGainMaxDb + 1e-9)) {
-        char b[160];
-        snprintf(b, sizeof b, "the TX gain %.1f dB is outside the radio's %.0f to %.0f dB", c.gainDb, d.txGainMinDb, d.txGainMaxDb);
-        why = b;
-    } else if (!(audioHz >= kSdrAudioLoHz && audioHz + std::max(0.0, bwHz) <= kSdrAudioHiHz))
-        why = "the SDR transmitter passes 300 to 2900 Hz audio: move the TX audio frequency inside that";
-    else if (!txRangeInfo(d, dialHz).empty()) why = txRangeInfo(d, dialHz).substr(0, txRangeInfo(d, dialHz).find(';')) + ": not sent";
-    else if (c.ampOn && !isBoard(d, "hackrf")) why = "only a HackRF has the +14 dB amplifier switch";
     return !why.empty();
+}
+
+// Warnings (never a refusal) for settings outside what the radio or the chain is made for. The operator is responsible for the law and the hardware.
+std::string sdrTxLimitWarnings(const DeviceInfo& d, const SdrTxConfig& c, double dialHz, double audioHz, double bwHz) {
+    std::string w;
+    auto add = [&](const std::string& s) { w += (w.empty() ? "" : " ") + s; };
+    if (!(c.powerLimitPct > 0 && c.powerLimitPct <= 100)) add("The power limit is outside 1 to 100 %.");
+    if (!(c.drive > 0 && c.drive <= 4)) add("The drive is outside 0 to 4: the signal will be distorted or silent.");
+    if (d.txGainMaxDb > d.txGainMinDb && (c.gainDb < d.txGainMinDb - 1e-9 || c.gainDb > d.txGainMaxDb + 1e-9)) {
+        char b[160];
+        snprintf(b, sizeof b, "The TX gain %.1f dB is outside the radio's %.0f to %.0f dB: overdriving can damage the radio.", c.gainDb, d.txGainMinDb, d.txGainMaxDb);
+        add(b);
+    }
+    if (!(audioHz >= kSdrAudioLoHz && audioHz + std::max(0.0, bwHz) <= kSdrAudioHiHz)) add("The TX audio is outside 300 to 2900 Hz, which the SDR chain filters: part of the signal will be cut.");
+    if (!txRangeInfo(d, dialHz).empty()) add(txRangeInfo(d, dialHz).substr(0, txRangeInfo(d, dialHz).find(';')) + ": the radio may not be able to send it.");
+    if (c.ampOn && !isBoard(d, "hackrf")) add("Only a HackRF has the +14 dB amplifier switch.");
+    if (c.ampOn) add("The amplifier is on: overdriving or a long duty cycle can damage the radio.");
+    return w;
 }
 
 std::vector<std::string> sdrTxWarnings(const DeviceInfo& d, const SdrTxConfig& c, double dialHz) {
@@ -254,6 +264,7 @@ bool SdrHamIo::prepare(const HamTxCheck& gate, std::string& err) {
     std::string gw;
     if (!hamTxAllowed(gate, gw)) { err = gw; return false; }
     if (sdrTxRefused(dev_, c, gate.dialHz, gate.audioHz, gate.bwHz, err)) return false;
+    const std::string limitWarn = sdrTxLimitWarnings(dev_, c, gate.dialHz, gate.audioHz, gate.bwHz);
     // the radio's centre is the suppressed carrier: its leak must stay inside the band too; on LSB the signal lies below it
     const double lo = c.lsb ? gate.dialHz - gate.audioHz - gate.bwHz : gate.dialHz;
     const double hi = c.lsb ? gate.dialHz : gate.dialHz + gate.audioHz + gate.bwHz;
@@ -263,6 +274,7 @@ bool SdrHamIo::prepare(const HamTxCheck& gate, std::string& err) {
     if (bandWarned) {}
     else if (!hamSignalInBand(lo, 0, hi - lo)) warn = "The radio's centre frequency or the lower sideband is outside the amateur band. You are responsible for being allowed to transmit here.";
     else if (!gate.country.empty() && gw.empty()) { std::string w2; if (!hamSignalInCountryBand(gate.country, lo, 0, hi - lo, w2)) warn = w2 + ". You are responsible for being allowed to transmit here."; }
+    if (!limitWarn.empty()) warn += std::string(warn.empty() ? "" : " ") + limitWarn;
     if (!c.bandFilterConfirmed) warn += std::string(warn.empty() ? "" : " ") + "No band filter is confirmed: an SDR's output carries strong harmonics, fit a low-pass or band filter for this band.";
     gate_ = gate;
     prepared_ = true;

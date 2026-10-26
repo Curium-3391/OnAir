@@ -27,7 +27,9 @@ enum class AgcMode { Off, Slow, Fast };
 
 // One validated client message. Only the fields of its type are meaningful; `has` bits tell which optional ones were given.
 struct ClientMsg {
-    enum Type { Hello, Tune, Rx, Audio, Spectrum, Subscribe, Unsubscribe, Ping, Bye } type = Ping;
+    enum Type { Hello, Tune, Rx, Audio, Spectrum, Subscribe, Unsubscribe, Ping, Bye, Tx } type = Ping;
+    // Tx: only parsed when the host allows web transmit (web_allow_tx=1); the raw message goes to the host's transmit handler
+    std::string txType, txRaw;
     // hello
     int proto = 0;
     std::string password, invite, name;
@@ -68,13 +70,15 @@ constexpr const char* Busy = "busy";
 constexpr const char* Auth = "auth";
 }
 
-// The message types a web session may never use (transmit / arm / keys / decryption / recording on the host): answered with err::Forbidden.
+// The message types a web session may not use unless the host allows them (transmit / arm: web_allow_tx=1; keys / decryption / recording never): answered with err::Forbidden.
 bool isForbiddenType(const std::string& type);
 // The message types a session can send at all, for the documentation test.
 const std::vector<std::string>& clientTypes();
 
 // Parses and validates. False: code (one of err::*) and text say why; the message must not be acted on.
-bool parseClientMsg(const std::string& text, ClientMsg& m, std::string& code, std::string& why);
+// allowTx: the host set web_allow_tx=1, so the transmit message types (tx, transmit, ptt, arm, tx_arm, carrier) parse as ClientMsg::Tx instead of "forbidden".
+bool parseClientMsg(const std::string& text, ClientMsg& m, std::string& code, std::string& why, bool allowTx = false);
+bool isTxType(const std::string& type);
 
 // ---------------------------------------------------------------- WebSocket framing
 // The first client frame of `in`. kind 0: need more bytes; 1: protocol error, close with `closeCode` (1002 unmasked / reserved bits / bad

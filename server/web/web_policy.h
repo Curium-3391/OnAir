@@ -1,9 +1,9 @@
 // OnAir Web: what the host lets web listeners use, and who may connect.
 //
 // SAFETY AND LEGAL DEFAULTS (hard rules; tests/server/test_web_safety.cpp checks them):
-//  * a web session can never transmit, arm a transmitter, import keys, decrypt, or write to the host's disk: the protocol has no such
-//    message (web_proto.cpp answers them with "forbidden"), and the web code is compiled with ONAIR_WEB_SESSION, which makes the transmit
-//    headers (dect2/tx/*.h) a compile error, so no transmit function can even be linked into it;
+//  * a web session cannot transmit, arm a transmitter, import keys, decrypt, or write to the host's disk: the protocol answers such messages
+//    with "forbidden". Transmit alone is a host decision: web_allow_tx=1 (default 0) lets the listeners' transmit messages reach the host's
+//    transmit handler; the host owner is responsible for the law and for the hardware. Keys, decryption and recording stay forbidden;
 //  * the web-safe modes are an ALLOW-LIST (analog audio, spectrum, ADS-B, AIS, APRS, ACARS / VDL2, FT8 / FT4 / WSPR, SSTV, weather fax, satellite
 //    images). Everything else is OFF for web listeners, including digital voice (DMR, P25, NXDN, TETRA, dPMR, D-STAR, Yaesu System Fusion),
 //    pagers (POCSAG, FLEX), mesh, LoRa, FreeDV, key-related modes and every mode that is added later;
@@ -48,6 +48,9 @@ public:
     bool setDecoder(const std::string& kind, bool on, const std::string& ack, std::string& err);
     bool setDemod(Demod d, bool on);
     bool legalAccepted() const { return legalAck_ == kLegalNoticeVersion; }
+    // web_allow_tx: listeners may transmit through the host's radio. OFF by default; the host owner takes the legal responsibility.
+    bool allowTx() const { return allowTx_; }
+    void setAllowTx(bool on) { allowTx_ = on; }
     std::string json() const;   // {"demods":[...],"decoders":{"adsb":true,...},"legal_ack":bool,"legal_version":"..."}
 
 private:
@@ -55,6 +58,7 @@ private:
     std::set<std::string> dataOff_;       // data decoders the host turned off
     std::set<std::string> restrictedOn_;  // voice / pager decoders the host turned on (only honoured with the legal notice accepted)
     std::string legalAck_;
+    bool allowTx_ = false;
 };
 
 // ---------------------------------------------------------------- access

@@ -3,9 +3,6 @@
 // a raw .cf32 file, and a two-channel 16-bit WAV (I left, Q right). paced = true writes at the signal's own speed (a microphone as the source);
 // paced = false writes as fast as the generator makes it (a WAV file as the source).
 #pragma once
-#ifdef ONAIR_WEB_SESSION
-#error "OnAir Web code (server/web) must never reach the transmit path: web listeners can never transmit (docs/ONAIR-WEB.md)"
-#endif
 #include "dect2/source/source.h"
 #include <atomic>
 #include <chrono>

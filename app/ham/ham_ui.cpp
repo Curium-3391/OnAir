@@ -603,9 +603,9 @@ void hamPanel(App& a) {
                 ImGui::EndCombo();
             }
             ImGui::SameLine(); ImGui::SetNextItemWidth(130 * gUi);
-            int nth = std::max(2, h.beacon.cfg.everyNth);
-            if (ImGui::SliderInt(tr("1 slot in"), &nth, 2, 20)) h.beacon.cfg.everyNth = nth;
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Duty cycle: one 2 minute slot in N. Never more than every second slot."));
+            int nth = std::max(1, h.beacon.cfg.everyNth);
+            if (ImGui::SliderInt(tr("1 slot in"), &nth, 1, 20)) h.beacon.cfg.everyNth = nth;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Duty cycle: one 2 minute slot in N. 1 sends in every slot: a long duty cycle can damage the radio."));
             h.beacon.cfg.audioHz = 1500;
             ImGui::SameLine();
             ImGui::BeginDisabled(!canCq);

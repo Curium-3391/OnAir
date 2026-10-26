@@ -73,6 +73,10 @@ public:
     virtual bool setAutoGain(bool /*on*/, std::string& err) { err = "not supported"; return false; }
     virtual bool recordStart(const std::string& /*kind: "iq" or "audio"*/, std::string& err) { err = "not supported"; return false; }
     virtual bool recordStop(std::string& err) { err = "not supported"; return false; }
+    // Transmit (3.2): the operator's explicit command is the decision; the answer carries "warnings" (band, licence, gain, ...). OnAir blocks no mode, band or power.
+    virtual std::string txStatusJson() { return std::string(); }                                                                  // empty: this program has no transmitter
+    virtual bool txStart(const std::map<std::string, JsonVal>& /*body*/, std::string& /*json*/, std::string& err) { err = "not supported"; return false; }
+    virtual bool txStop(std::string& /*json*/, std::string& err) { err = "not supported"; return false; }
     // Decoded messages (one JSON line each, see apipol::eventLine). cursor UINT64_MAX: from now. Fills `out` with the lines since the cursor and moves it. false: no message stream.
     virtual bool eventsSince(uint64_t& /*cursor*/, size_t /*maxN*/, std::vector<std::string>& /*out*/, bool& /*gap*/) { return false; }
     // GET / POST under /api/v1/x/ (the program's own extras). Returns the HTTP status (0: not handled, the server answers 404) and the JSON body in `json`.

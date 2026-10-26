@@ -131,6 +131,7 @@ void WebPolicy::load(const onair_server::ConfigFile& c) {
     for (const auto& n : splitList(c.get("web_decoders_off"))) if (decoderClass(n) == DecoderClass::Data) dataOff_.insert(n);
     for (const auto& n : splitList(c.get("web_decoders_on"))) if (decoderClass(n) != DecoderClass::Data) restrictedOn_.insert(n);
     legalAck_ = c.get("web_legal_ack");
+    { const std::string t = c.get("web_allow_tx"); allowTx_ = t == "1" || t == "true" || t == "on"; }
 }
 
 void WebPolicy::save(onair_server::ConfigFile& c) const {
@@ -140,6 +141,7 @@ void WebPolicy::save(onair_server::ConfigFile& c) const {
     c.set("web_decoders_off", joinSet(dataOff_));
     c.set("web_decoders_on", joinSet(restrictedOn_));
     c.set("web_legal_ack", legalAck_);
+    c.set("web_allow_tx", allowTx_ ? "1" : "0");
 }
 
 bool WebPolicy::decoderAllowed(const std::string& kind) const {
@@ -174,7 +176,7 @@ std::string WebPolicy::json() const {
     o << "],\"decoders\":{";
     first = true;
     for (const auto& d : decoderCatalogue()) { o << (first ? "" : ",") << '"' << d.kind << "\":{\"on\":" << (decoderAllowed(d.kind) ? "true" : "false") << ",\"class\":\"" << className(d.cls) << "\"}"; first = false; }
-    o << "},\"legal_ack\":" << (legalAccepted() ? "true" : "false") << ",\"legal_version\":\"" << kLegalNoticeVersion << "\"}";
+    o << "},\"allow_tx\":" << (allowTx_ ? "true" : "false") << ",\"legal_ack\":" << (legalAccepted() ? "true" : "false") << ",\"legal_version\":\"" << kLegalNoticeVersion << "\"}";
     return o.str();
 }
 

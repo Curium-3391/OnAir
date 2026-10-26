@@ -102,14 +102,15 @@ const Row kRows[] = {
     {"/api/v1/autogain", Ep::AutoGain, true},    {"/api/v1/bandwidth", Ep::Bandwidth, true}, {"/api/v1/squelch", Ep::Squelch, true},
     {"/api/v1/volume", Ep::Volume, true},        {"/api/v1/mute", Ep::Mute, true},          {"/api/v1/recording/start", Ep::RecordStart, true},
     {"/api/v1/recording/stop", Ep::RecordStop, true}, {"/api/v1/rotator/goto", Ep::RotatorGoto, true}, {"/api/v1/rotator/stop", Ep::RotatorStop, true},
+    {"/api/v1/tx", Ep::TxStatus, false}, {"/api/v1/tx/start", Ep::TxStart, true}, {"/api/v1/tx/stop", Ep::TxStop, true},
     {"/api/v1/rotator/park", Ep::RotatorPark, true},
 };
 }
 
 bool pathRefused(const std::string& path) {
-    static const char* exact[] = {"tx", "transmit", "transmitter", "transmission", "ptt", "key", "keys", "credential", "credentials", "secret", "secrets",
-                                  "password", "passwords", "passwd", "token", "tokens", "security", "arm", "armed", "encrypt", "decrypt", "cipher", "auth", "login", "admin", "config", "settings"};
-    static const char* contains[] = {"transmit", "credential", "password", "secret", "decrypt", "encrypt", "security", "key"};
+    static const char* exact[] = {"key", "keys", "credential", "credentials", "secret", "secrets",
+                                  "password", "passwords", "passwd", "token", "tokens", "security", "encrypt", "decrypt", "cipher", "auth", "login", "admin", "config", "settings"};
+    static const char* contains[] = {"credential", "password", "secret", "decrypt", "encrypt", "security", "key"};
     size_t i = 0;
     while (i <= path.size()) {
         size_t e = path.find('/', i);
@@ -345,11 +346,19 @@ std::string rigctlHandle(const std::string& lineIn, RigctlRadio& radio, bool& qu
             if (!modeKnown(m)) return rprt(-1);
             return radio.setMode(m, (int)pb) ? rprt(0) : rprt(-11);
         }
-        case 't': return w.size() == 1 ? std::string("0\n") : rprt(-1);                       // PTT: always receiving
-        case 'T': {
+        case 't': {   // PTT: the radio says whether the app is transmitting
+            if (w.size() != 1) return rprt(-1);
+            bool on = false;
+            radio.getPtt(on);
+            return on ? std::string("1\n") : std::string("0\n");
+        }
+        case 'T': {   // PTT on starts the transmission the Transmit window is set up for; off stops it. A radio that cannot: RPRT -11
             if (w.size() != 2) return rprt(-1);
-            if (w[1] == "0") return rprt(0);
-            return rprt(-11);   // never transmits
+            std::string a = w[1];
+            for (auto& c : a) c = (char)std::toupper((unsigned char)c);
+            if (a == "0" || a == "OFF") { radio.setPtt(false); return rprt(0); }
+            if (a == "1" || a == "ON" || a == "2" || a == "3") return radio.setPtt(true) ? rprt(0) : rprt(-11);
+            return rprt(-1);
         }
         case 's': return w.size() == 1 ? std::string("0\nVFOA\n") : rprt(-1);                  // split off
         case 'S': {

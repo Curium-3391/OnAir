@@ -4,6 +4,8 @@
   TOKEN=... python3 onair_client.py status
   TOKEN=... python3 onair_client.py tune 162.55
   TOKEN=... python3 onair_client.py events        # prints decoded messages as they arrive
+  TOKEN=... python3 onair_client.py tx MODE MHZ [GAIN_DB]   # start transmitting (YOUR decision; the answer lists the warnings)
+  TOKEN=... python3 onair_client.py txstop
   python3 onair_client.py udp 5005                # listens for the UDP JSON lines
 """
 import json, os, socket, sys, time, urllib.request
@@ -49,6 +51,13 @@ if __name__ == "__main__":
         print(call("/start", {}))
     elif cmd == "stop":
         print(call("/stop", {}))
+    elif cmd == "tx":   # the answer carries "warnings": you are responsible for the law and for your hardware
+        body = {"mode": sys.argv[2], "mhz": float(sys.argv[3])}
+        if len(sys.argv) > 4:
+            body["gain_db"] = float(sys.argv[4])
+        print(call("/tx/start", body))
+    elif cmd == "txstop":
+        print(call("/tx/stop", {}))
     elif cmd == "events":
         events()
     elif cmd == "udp":

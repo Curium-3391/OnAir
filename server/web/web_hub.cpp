@@ -569,6 +569,13 @@ void WebHub::handle(int id, const ClientMsg& m) {
         return;
     }
     case ClientMsg::Bye: kick(id, "bye"); return;
+    case ClientMsg::Tx: {
+        if (!allowTx()) { fail(err::Forbidden, "not available to web listeners"); return; }
+        if (!txHandler_) { fail(err::Forbidden, "this host has no transmitter for web listeners"); return; }
+        const std::string reply = txHandler_(id, m.txType, m.txRaw);
+        if (!reply.empty()) enqueue(s, OutMsg{reply, false, 0});
+        return;
+    }
     case ClientMsg::Subscribe: subscribe(sp, m); return;
     case ClientMsg::Unsubscribe: {
         std::string key = m.decoder;

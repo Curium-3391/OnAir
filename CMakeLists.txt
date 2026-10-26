@@ -196,7 +196,7 @@ target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/results/rx
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp core/src/packs/datasets.cpp core/src/packs/datasets_inventory.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
 # User-supplied voice decryption keys: the key store, standard cipher primitives, per-call decryption and encrypted-at-rest persistence (docs/KEYS.md). Never an auto-decrypter.
 target_sources(dect2core PRIVATE core/src/voicekeys/voice_crypto.cpp core/src/voicekeys/voice_keys.cpp core/src/voicekeys/voice_decrypt.cpp core/src/voicekeys/key_persist.cpp)
-target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/api_policy.cpp core/src/net/api_servers.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
+target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/api_policy.cpp core/src/net/map_guard.cpp core/src/net/api_servers.cpp core/src/net/satnogs.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/net/remote_api.cpp core/src/net/api_policy.cpp core/src/net/api_servers.cpp core/src/results/rx_json.cpp core/src/source/gain_opt.cpp core/src/mesh/mesh_report.cpp core/src/source/rotator.cpp)   # remote-control API server, telemetry JSON, gain optimiser, mesh report text, antenna rotator
 target_sources(dect2core PRIVATE core/src/packs/packs.cpp)   # offline data packs: catalog, download with resume, checksums, disk guard, delete
 target_sources(dect2core PRIVATE third_party/ssdv/ssdv.c third_party/ssdv/rs8.c)   # SSDV packet decoder / encoder (fsphil/ssdv, GPL-3.0-or-later; rs8.c Phil Karn LGPL), see THIRD_PARTY.md
@@ -313,12 +313,11 @@ target_link_libraries(kris_samples PRIVATE dect2core)
 target_link_libraries(onair-plugin-host PRIVATE dect2_plugin)
 # onair-server: OnAir with no window (a Raspberry Pi, a Linux box, a Windows PC without a screen), controlled from a browser; docs/headless-server.md
 # OnAir Web: many listeners, each with an own receiver inside the host's capture (server/web, docs/ONAIR-WEB.md). Every web source is built with
-# ONAIR_WEB_SESSION, which makes the transmit headers (dect2/tx/*.h, TxSink in source.h) a compile error there: web listeners can never transmit.
+# the host setting web_allow_tx=0 (the default; 1 lets listeners transmit through the host's radio, see docs/ONAIR-WEB.md).
 set(ONAIR_WEB_SOURCES server/web/web_json.cpp server/web/web_proto.cpp server/web/web_dsp.cpp server/web/web_policy.cpp server/web/web_ranges.cpp server/web/web_hub.cpp
     server/web/web_server.cpp server/web/web_config.cpp server/web/web_directory_proto.cpp server/web/web_directory.cpp)
-list(APPEND ONAIR_WEB_SOURCES server/web/web_decoders.cpp)   # the receivers as web decoders (also built with ONAIR_WEB_SESSION)
+list(APPEND ONAIR_WEB_SOURCES server/web/web_decoders.cpp)   # the receivers as web decoders
 add_library(onair_web STATIC ${ONAIR_WEB_SOURCES})
-set_source_files_properties(${ONAIR_WEB_SOURCES} PROPERTIES COMPILE_DEFINITIONS ONAIR_WEB_SESSION=1)
 target_include_directories(onair_web PUBLIC server)
 target_link_libraries(onair_web PUBLIC dect2core)
 add_executable(onair-server server/main.cpp server/server_config.cpp server/server_host.cpp)
@@ -1525,6 +1524,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_api_policy tests/net/test_api_policy.cpp)
   target_link_libraries(test_api_policy PRIVATE dect2core)
   add_test(NAME api_policy COMMAND test_api_policy)
+  add_executable(test_map_guard tests/net/test_map_guard.cpp)
+  target_link_libraries(test_map_guard PRIVATE dect2core)
+  add_test(NAME map_guard COMMAND test_map_guard)
   add_executable(test_swarm tests/net/test_swarm.cpp)
   target_link_libraries(test_swarm PRIVATE dect2core)
   add_test(NAME swarm COMMAND test_swarm)
@@ -1535,7 +1537,7 @@ if(DECT2_BUILD_TESTS)
   target_link_libraries(test_server_host PRIVATE onair_web dect2core)
   target_compile_definitions(test_server_host PRIVATE ONAIR_SERVER_VERSION="${PROJECT_VERSION}")
   add_test(NAME server_host COMMAND test_server_host)
-  foreach(t web_proto web_dsp web_hub web_server web_safety web_ranges web_directory)
+  foreach(t web_proto web_dsp web_hub web_server web_safety web_tx_guard web_ranges web_directory)
 
     add_executable(test_${t} tests/server/test_${t}.cpp server/server_config.cpp)
     target_link_libraries(test_${t} PRIVATE onair_web)
@@ -1548,13 +1550,6 @@ if(DECT2_BUILD_TESTS)
   find_program(ONAIR_NODE node)   # the browser client's pure code (web/onair-web/*.js)
   if(ONAIR_NODE)
     add_test(NAME web_client COMMAND ${ONAIR_NODE} ${CMAKE_SOURCE_DIR}/tests/web/run.js)
-  endif()
-  if(NOT MSVC)   # the transmit path must be a compile error in web code: this compile has to FAIL
-    add_test(NAME web_tx_guard COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fsyntax-only -DONAIR_WEB_SESSION=1 -I${CMAKE_SOURCE_DIR}/core/include
-             ${CMAKE_SOURCE_DIR}/tests/server/web_tx_guard.cpp)
-    set_tests_properties(web_tx_guard PROPERTIES WILL_FAIL TRUE)
-    add_test(NAME web_tx_guard_control COMMAND ${CMAKE_CXX_COMPILER} -std=c++17 -fsyntax-only -I${CMAKE_SOURCE_DIR}/core/include
-             ${CMAKE_SOURCE_DIR}/tests/server/web_tx_guard.cpp)   # the same file compiles outside web code, so the failure above is the guard
   endif()
 
   add_executable(test_synth_wide tests/dsp/test_synth_wide.cpp)

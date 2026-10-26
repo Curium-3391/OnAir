@@ -199,7 +199,7 @@ int main() {
         float pk = 0; for (float v : r.a) pk = std::max(pk, std::fabs(v));
         CHECK(std::fabs(pk - 0.4f) < 0.01f, "level: peak %.3f for 0.4", pk);
         CHECK(!kbdSend(tx, duty, g, psk, std::string(kKbdMaxChars + 1, 'E'), 1000, 0.4, 20, 0, err) && !err.empty(), "too many characters");
-        CHECK(!kbdSend(tx, duty, g, *kbdPresetById("olivia-8-250"), std::string(500, 'E'), 1500, 0.4, 20, 0, err) && has(err, "send less"), "too long in time: %s", err.c_str());
+        CHECK(kbdSend(tx, duty, g, *kbdPresetById("olivia-8-250"), std::string(500, 'E'), 1500, 0.4, 20, 0, err), "a long transmission has no time limit: %s", err.c_str());
         CHECK(!kbdSend(tx, duty, g, psk, "", 1000, 0.4, 20, 0, err), "empty text");
     }
     {   // the duty cycle: 50 % of 10 minutes, with a recording clock
@@ -209,7 +209,7 @@ int main() {
         CHECK(std::fabs(d.used(1500) - 300) < 1e-6 && !d.allow(1500, 10), "300 s of 600 used: %.0f", d.used(1500));
         CHECK(d.allow(2000, 100), "an old burst has aged out");
         Rec r; HamSlotTx tx(r); TxDuty full; full.add(0, 300);
-        CHECK(!kbdSend(tx, full, gate(), psk, "CQ DE LY1ABC", 1000, 0.4, 20, 300, err) && has(err, "duty") && r.ptt1 == 0, "duty limit refuses: %s", err.c_str());
+        CHECK(kbdSend(tx, full, gate(), psk, "CQ DE LY1ABC", 1000, 0.4, 20, 300, err) && r.ptt1 == 1, "a full duty counter does not refuse (3.2): %s", err.c_str());
     }
 
     // ---- macros, call pick, log ----

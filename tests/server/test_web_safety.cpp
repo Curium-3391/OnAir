@@ -1,8 +1,8 @@
 // OnAir Web safety rules, checked three ways:
-//  1. compile time: the web classes have no transmit / arm / key / record member (detection idiom), and the transmit headers refuse to be
-//     included in code built with ONAIR_WEB_SESSION (the web sources are; CMakeLists.txt is checked for it below);
-//  2. the protocol: every transmit / key / decrypt / record message type is refused with "forbidden", before and after hello;
-//  3. a scan of server/web: no transmit header or symbol, no engine (it has the recorder), no voice key store, no file writing, and the
+//  1. compile time: the web classes have no transmit / arm / key / record member (detection idiom);
+//  2. the protocol: every transmit / key / decrypt / record message type is refused with "forbidden" by default (transmit: unless the host sets
+//     web_allow_tx=1, see test_web_tx_guard.cpp), before and after hello;
+//  3. a scan of server/web: no engine (it has the recorder), no voice key store, no file writing, and the
 //     restricted decoder classes are off in a fresh policy.
 #include "../../server/web/web_config.h"
 #include "../../server/web/web_hub.h"
@@ -72,7 +72,7 @@ static void testSourceScan() {
     const fs::path root = fs::path(ONAIR_SOURCE_DIR);
     const fs::path dir = root / "server" / "web";
     int files = 0;
-    const char* banned[] = {"dect2/tx/", "TxSink", "makeTxSink", "TxTune", "voicekey", "VoiceKey", "voice_keys", "dect2/engine/engine.h", "startRecording",
+    const char* banned[] = {"voicekey", "VoiceKey", "voice_keys", "dect2/engine/engine.h", "startRecording",
                             "std::ofstream", "ofstream(", "fopen(", "fwrite(", "std::filesystem::rename", "fs::rename", "fs::remove", "std::remove(\"", "system(", "popen("};
     std::error_code ec;
     for (const auto& e : fs::directory_iterator(dir, ec)) {
@@ -99,15 +99,6 @@ static void testSourceScan() {
         }
     }
     CHECK(files >= 12, "found the web sources (%d files in %s)", files, dir.string().c_str());
-    // the transmit headers refuse the web build
-    for (const char* h : {"core/include/dect2/tx/tx.h", "core/include/dect2/tx/tx_iqfile.h"}) {
-        const std::string s = readFile(root / h);
-        CHECK(s.find("#ifdef ONAIR_WEB_SESSION\n#error") != std::string::npos, "%s has the web guard", h);
-    }
-    CHECK(readFile(root / "core/include/dect2/source/source.h").find("#ifndef ONAIR_WEB_SESSION") != std::string::npos, "source.h hides TxSink from web code");
-    // the build compiles every web source with the guard
-    const std::string cm = readFile(root / "CMakeLists.txt");
-    CHECK(cm.find("ONAIR_WEB_SOURCES") != std::string::npos && cm.find("COMPILE_DEFINITIONS ONAIR_WEB_SESSION") != std::string::npos, "CMakeLists.txt builds server/web with ONAIR_WEB_SESSION");
 }
 
 static void testDefaults() {

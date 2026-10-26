@@ -29,8 +29,9 @@ struct SdrTxConfig {
     double sinkLatencySec = 0.02;      // the radio's own buffering (added to latencySec())
 };
 
-// Hard refusals (why non-empty) for this radio, configuration and signal; warnings are the things the operator should know (no PA, band
+// Hard refusals (why non-empty): only a radio that cannot transmit at all. Warnings are the things the operator should know (no PA, band
 // filter, full or half duplex for watching one's own signal, gain at the top).
+std::string sdrTxLimitWarnings(const DeviceInfo& d, const SdrTxConfig& c, double dialHz, double audioHz, double bwHz);   // warnings only, "" = none
 bool sdrTxRefused(const DeviceInfo& d, const SdrTxConfig& c, double dialHz, double audioHz, double bwHz, std::string& why);
 std::vector<std::string> sdrTxWarnings(const DeviceInfo& d, const SdrTxConfig& c, double dialHz);
 double sdrTxRate(const DeviceInfo& d, const SdrTxConfig& c);   // the rate asked of the radio

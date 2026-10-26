@@ -16,6 +16,8 @@
 #include "dect2/flarm/flarm_proto.h"
 #include "dect2/gnss/gnss_tel.h"
 #include "dect2/ham/ham_mapfeed.h"
+#include "dect2/net/map_guard.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -116,9 +118,9 @@ const char* phaseName(int ph) {
     default: return "off";
     }
 }
-bool gTxHold = false;                // a transmission is in progress, or just ended: do not post, and do not let the user turn sending back on
-bool gTxPausedSend = false;          // the connection was on when transmit started (restored only if the radio never keyed)
-int64_t gToastTxUntil = 0;
+// The map guard (core/include/dect2/net/map_guard.h): while this app transmits and for 10 minutes after, nothing is uploaded; decoding and showing go on.
+// Whatever it transmitted in the last 24 hours (callsign, MMSI, ICAO ...) is never uploaded. The switch stays as the user set it.
+bool gShowHoldNote = false;          // the hold is in force and sharing is on: the note is shown
 
 int64_t nowMs() {
     using namespace std::chrono;
@@ -924,8 +926,8 @@ void retryPopup() {
 }
 
 void txOffToast() {
-    if (gToastTxUntil == 0 || nowMs() >= gToastTxUntil) return;
-    mapToast(tr("The connection to the map server has been turned off. It cannot be turned back on while you are transmitting."));
+    if (!gShowHoldNote) return;
+    mapToast(tr("Map sharing paused while transmitting"));
 }
 
 // The first thing a new user sees: a question whether to take part in the public map, because few people find Server > Send data on their own.
@@ -938,7 +940,7 @@ void startupQuestion(App& a) {
     if (getenv("DECT2_SKIP_FIRSTRUN")) { asked = true; return; }   // dev / screenshots (--no-first-run): nothing covers the UI
     App& s = rootApp(a);
     if (s.mapDeclined && s.mapDeclinedVersion != ONAIR_VERSION) { s.mapDeclined = false; s.mapDeclinedVersion.clear(); savePrefs(s); }   // an update: ask again
-    if (!mapShouldAsk(s.mapConsent, s.mapDeclined, s.mapDeclinedVersion, ONAIR_VERSION, gTxHold || txActive())) { asked = true; return; }
+    if (!mapShouldAsk(s.mapConsent, s.mapDeclined, s.mapDeclinedVersion, ONAIR_VERSION, dect2::mapguard::holdingNow())) { asked = true; return; }
     if (ImGui::GetFrameCount() < 90) return;   // after the first frames: the window is up and the layout is settled
     asked = true;
     gAskConsent = true;
@@ -956,15 +958,6 @@ void mapPopups(App& a) {
 
 void sendToggle(App& a, bool menu) {
     App& s = rootApp(a);
-    if (gTxHold || txActive()) {
-        ImGui::BeginDisabled(true);
-        if (menu) ImGui::MenuItem(tr("Send data to map server"), nullptr, false);
-        else { bool v = false; ImGui::Checkbox(tr("Send data to map server"), &v); }
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("%s", tr("Turned off while transmitting, so a signal from this radio is not sent to the map."));
-        return;
-    }
     const bool on = s.mapSend;
     bool hit = false;
     if (menu) hit = ImGui::MenuItem(tr("Send data to map server"), nullptr, on);
@@ -1062,6 +1055,7 @@ void mapHamRemember(const std::string& call, const std::string& grid) {
 
 void mapHamHeard(const char* mode, double rfHz, const std::string& from, const std::string& fromGrid, const std::string& to, double tUtc) {
     if (!dect2::ham::mapfeed::allowed(gHamSw) || !mode || from.empty() || to.empty()) return;   // off: not even remembered
+    if (dect2::mapguard::idBlockedNow(from) || dect2::mapguard::idBlockedNow(to)) return;       // this app transmitted that callsign: never uploaded
     mapHamRemember(from, fromGrid);
     std::string f = from, t = to;
     for (char& ch : f) ch = (char)std::toupper((unsigned char)ch);
@@ -1079,15 +1073,11 @@ void mapSendTick(App& a) {
     App& s = rootApp(a);
     mapPopups(a);
     gHamSw = {s.mapSend, s.mapConsent, s.mapHam, s.mapHamConsent};
-    if (txActive() || gTxHold) {
-        if (s.mapSend) mapPauseForTransmit(s);
-        if (txActive()) return;
-        gTxHold = false;
-        gTxPausedSend = false;
-        gToastTxUntil = 0;
-        forgetHeard();
+    if (dect2::mapguard::holdingNow()) {   // transmitting, or less than 10 minutes since: no upload, no connection attempt; local decoding goes on
+        gShowHoldNote = s.mapSend && s.mapConsent;
         return;
     }
+    gShowHoldNote = false;
     if (!s.mapSend || !s.mapConsent) {
         if (gPhase.load(std::memory_order_relaxed) != kOff && !s.mapSend) gPhase = kOff;
         return;
@@ -1123,6 +1113,7 @@ void mapSendTick(App& a) {
         gHamFeed.flush(gHamSw, sink, (double)std::time(nullptr));
     }
     if (s.mapVoice) attachVoice(tracks);
+    tracks.erase(std::remove_if(tracks.begin(), tracks.end(), [](const Track& t) { return dect2::mapguard::idBlockedNow(t.id) || dect2::mapguard::idBlockedNow(t.label); }), tracks.end());   // never what this app transmitted in the last 24 hours
     const bool ping = gPingNow || needHb || (tracks.empty() && (ph == kConnecting || ph == kRetry));
     if (!gPingNow && !needHb && !tracks.empty()) {
         static int64_t lastSend = 0;
@@ -1133,31 +1124,10 @@ void mapSendTick(App& a) {
     startPost(originOf(s) + "/ingest", buildJson(s.mapStationId, tracks, s.mapName), (int)tracks.size());
 }
 
-bool mapPauseForTransmit(App& a) {
-    App& s = rootApp(a);
-    gTxHold = true;
-    if (!s.mapSend || !s.mapConsent) return false;
-    gTxPausedSend = true;
-    stopSend(s);
-    gToastTxUntil = nowMs() + 8000;
-    mapLog("send paused for transmit");
-    return true;
-}
-
-void mapTransmitAbort(App& a) {
-    const bool restore = gTxPausedSend;
-    gTxHold = false;
-    gTxPausedSend = false;
-    gToastTxUntil = 0;
-    if (restore && rootApp(a).mapConsent) beginSend(rootApp(a));
-}
-
-void mapTransmitEnded() {
-    gTxHold = false;
-    gTxPausedSend = false;
-    gToastTxUntil = 0;
-    forgetHeard();
-}
+// The transmitters tell the map guard themselves (core/src/tx/tx.cpp, ham_tx.cpp): these stay for the callers and change nothing.
+bool mapPauseForTransmit(App&) { return false; }
+void mapTransmitAbort(App&) {}
+void mapTransmitEnded() {}
 
 void mapSendShutdown() {
     roomsShutdown();

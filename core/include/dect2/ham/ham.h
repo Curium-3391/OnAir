@@ -140,7 +140,7 @@ private:
 struct WsprBeaconConfig {
     std::string myCall, myGrid;
     int dbm = 10;                 // 0 3 7 10 13 .. 60 (the values WSPR can carry)
-    int everyNth = 5;             // one 2 minute slot in N, N >= 2 (duty cycle 1/N, never above 50 %); default 20 %
+    int everyNth = 5;             // one 2 minute slot in N, N >= 1 (duty cycle 1/N; 1 = every slot is a long duty cycle: it can overheat the radio); default 20 %
     int offset = 0;               // which of the N (a station of two beacons uses different ones)
     double audioHz = 1500;        // inside the 200 Hz WSPR window, 1400 .. 1600
     int maxTx = 30;               // transmissions without any operator action, then the beacon stops

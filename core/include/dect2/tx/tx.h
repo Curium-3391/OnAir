@@ -28,9 +28,6 @@
 //
 // No frequency and no power limit is applied here: see TxTune in source.h.
 #pragma once
-#ifdef ONAIR_WEB_SESSION
-#error "OnAir Web code (server/web) must never reach the transmit path: web listeners can never transmit (docs/ONAIR-WEB.md)"
-#endif
 #include "dect2/engine/mode_synth.h"
 #include "dect2/source/source.h"
 #include "dect2/audio/audioin.h"
@@ -258,6 +255,7 @@ private:
     std::atomic<float> peak_{0}, rms_{0}, audioPeak_{0};
     std::atomic<bool> senderDone_{false}, sinkClosed_{false};
     bool dry_ = false;
+    std::atomic<bool> rfOn_{false};   // this session told the map guard (net/map_guard.h) that it is on air
     std::mutex ctl_;                       // start / stop / retune are serialised
     std::mutex rtMu_;                      // the pending retune
     std::condition_variable rtCv_;

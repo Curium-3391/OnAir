@@ -242,6 +242,12 @@ struct RemoteApiServer::Impl {
             getOnly([] { return Rotator::get().apiStatusJson(); });
             return;
         }
+        if (pr.ep == apipol::Ep::TxStatus) {
+            std::string j;
+            { std::lock_guard<std::mutex> lk(hostMu); j = host.txStatusJson(); }
+            if (j.empty()) sendErr(s, 501, "no transmitter in this program"); else send(s, 200, j);
+            return;
+        }
         if (pr.ep == apipol::Ep::Memories || pr.ep == apipol::Ep::Scheduler || pr.ep == apipol::Ep::Audio || pr.ep == apipol::Ep::Recording) {
             std::string j;
             { std::lock_guard<std::mutex> lk(hostMu); j = pr.ep == apipol::Ep::Memories ? host.memoriesJson() : pr.ep == apipol::Ep::Scheduler ? host.schedulerJson() : pr.ep == apipol::Ep::Audio ? host.audioJson() : host.recordingJson(); }
@@ -278,7 +284,7 @@ struct RemoteApiServer::Impl {
         }
         const bool known = p == "/api/v1/start" || p == "/api/v1/stop" || p == "/api/v1/mode" || p == "/api/v1/frequency" || p == "/api/v1/samplerate" || p == "/api/v1/gain"
                          || p == "/api/v1/autogain" || p == "/api/v1/bandwidth" || p == "/api/v1/squelch" || p == "/api/v1/volume" || p == "/api/v1/mute"
-                         || p == "/api/v1/recording/start" || p == "/api/v1/recording/stop"
+                         || p == "/api/v1/recording/start" || p == "/api/v1/recording/stop" || p == "/api/v1/tx/start" || p == "/api/v1/tx/stop"
                          || p == "/api/v1/rotator/goto" || p == "/api/v1/rotator/stop" || p == "/api/v1/rotator/park";
         if (!known) { sendErr(s, 404, "no such endpoint"); return; }
         if (!isPost) { sendErr(s, 405, "use POST", "Allow: POST\r\n"); return; }
@@ -347,6 +353,10 @@ struct RemoteApiServer::Impl {
             if (host.recordStart(kind, err)) okJson(); else fail(err);
         } else if (p == "/api/v1/recording/stop") {
             if (host.recordStop(err)) okJson(); else fail(err);
+        } else if (p == "/api/v1/tx/start" || p == "/api/v1/tx/stop") {
+            std::string out;
+            const bool ok = p == "/api/v1/tx/start" ? host.txStart(j, out, err) : host.txStop(out, err);
+            if (ok) send(s, 200, out.empty() ? std::string("{\"ok\":true}") : out); else fail(err);
         } else {   // gain
             if (!num("db", v) || v < -100 || v > 200) { fail("db must be a number"); return; }
             if (host.setGainDb(v, err)) okJson(); else fail(err);

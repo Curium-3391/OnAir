@@ -1,7 +1,7 @@
 // The pure rules of the remote-control API: token check, rate limit, request size limits, the route table (with the refusal list), the
 // decoded-message line format (WebSocket, polling and UDP), the ring that holds the recent messages and the rigctl (Hamlib rigctld subset) line
 // parser. No sockets here: remote_api.cpp, rigctl_server.cpp and api_udp.cpp use these, tests/net/test_api_policy.cpp tests them.
-// The API never transmits, arms a transmitter, reads or writes voice keys or credentials, or changes security settings: parseRoute() refuses
+// The API can transmit (3.2: the operator decides, the response carries the warnings), but never reads or writes voice keys or credentials, or changes security settings: parseRoute() refuses
 // such a path whatever the host program offers, and the route table below is the whole list of what exists.
 #pragma once
 #include "dect2/automation/event.h"
@@ -48,7 +48,7 @@ Size checkSizes(size_t headerBytes, const std::string& contentLengthHeader, size
 enum class Ep {
     None, Page, Index, Status, Devices, Modes, Telemetry, Spectrum, Rotator, Ws, Events, Memories, Scheduler, Audio, Recording,
     Start, Stop, Mode, Frequency, SampleRate, Gain, AutoGain, Bandwidth, Squelch, Volume, Mute, RecordStart, RecordStop,
-    RotatorGoto, RotatorStop, RotatorPark, Extra
+    RotatorGoto, RotatorStop, RotatorPark, TxStatus, TxStart, TxStop, Extra
 };
 struct Route {
     Ep ep = Ep::None;
@@ -59,7 +59,7 @@ struct Route {
 };
 // path without the query string. Normalisation is NOT done: a path with "..", "//", "%", a control character or a backslash is malformed (400).
 Route parseRoute(const std::string& method, const std::string& path);
-// words that make a path refused: transmit, ptt, key material, credentials, security settings (checked on every path segment)
+// words that make a path refused: key material, credentials, security settings (checked on every path segment); transmit is NOT among them
 bool pathRefused(const std::string& path);
 std::vector<std::string> endpointList();   // "GET /api/v1/status", ... (for GET /api/v1 and docs/REMOTE-API.md)
 
@@ -92,8 +92,10 @@ public:
     virtual bool getMode(std::string& mode, int& passbandHz) = 0;     // "AM", "FM", "WFM", "USB", "LSB", "CW" ...
     virtual bool setMode(const std::string& mode, int passbandHz) = 0;
     virtual bool getStrengthDb(double& db) { (void)db; return false; }
+    virtual bool getPtt(bool& on) { on = false; return false; }   // true: the app is transmitting
+    virtual bool setPtt(bool on) { (void)on; return false; }      // on: start the transmission set up in the app; off: stop it
 };
-// One line in, the reply out (already with its newlines). quit is set by q / Q. Never transmits: T 1 is refused (RPRT -11), T 0 and t answer "0".
+// One line in, the reply out (already with its newlines). quit is set by q / Q. T 1 starts the transmission the host has set up (RPRT -11 when it cannot), T 0 stops it, t answers 1 or 0.
 // Anything unknown: "RPRT -4"; a bad argument: "RPRT -1"; a line over 256 bytes: "RPRT -8".
 std::string rigctlHandle(const std::string& line, RigctlRadio& radio, bool& quit);
 // The per-connection state. required: the commands that change the radio (F M S T) need a prior "\auth <token>" on this connection (the reply

@@ -3,7 +3,7 @@
 // the same kind on the same kHz share one instance. Results are `event` messages with a versioned schema (docs/ONAIR-WEB-PROTOCOL.md,
 // "Decoder events"). Receive only: nothing here transmits, reads keys or writes a file; pictures live in memory and go to the subscribers
 // as PNG strips. Digital voice and pager decoders are NOT registered here (policy: off unless the host accepted the legal notice).
-// Built with ONAIR_WEB_SESSION like the rest of server/web.
+// Receive-only decoders (transmit is the separate host setting web_allow_tx).
 #pragma once
 #include "web_hub.h"
 #include <cstdint>

@@ -216,7 +216,7 @@ int main() {
         CHECK(aprsSend(tx, duty, gate(10.1476e6 - 1700), fr, h, 0.5, 10, err) && r.ptt1 == 5, "HF 300 baud on 30 m: sent (%s)", err.c_str());
         CHECK(aprsSend(tx, duty, gate(10.1495e6), fr, h, 0.5, 20, err), "HF 300 baud over the 30 m edge: a warning, sent");
         TxDuty full; full.add(0, 300);
-        CHECK(!aprsSend(tx, full, gate(144.8e6), fr, c, 0.5, 300, err) && has(err, "duty"), "duty limit");
+        CHECK(aprsSend(tx, full, gate(144.8e6), fr, c, 0.5, 300, err), "a full duty counter does not refuse (3.2)");
     }
     return testSummary("ham_aprs");
 }

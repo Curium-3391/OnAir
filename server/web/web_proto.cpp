@@ -13,6 +13,11 @@ bool demodFromName(const std::string& s, Demod& d) {
     return false;
 }
 
+bool isTxType(const std::string& t) {
+    static const std::set<std::string> f = {"tx", "transmit", "ptt", "arm", "tx_arm", "carrier"};
+    return f.count(t) > 0;
+}
+
 bool isForbiddenType(const std::string& t) {
     static const std::set<std::string> f = {"tx", "transmit", "ptt", "arm", "tx_arm", "carrier", "key", "keys", "import_key", "key_import",
                                             "voicekeys", "decrypt", "record", "recording", "save", "upload", "exec", "shell", "config", "admin"};
@@ -84,7 +89,7 @@ std::string cleanName(const std::string& in) {
 }
 } // namespace
 
-bool parseClientMsg(const std::string& text, ClientMsg& m, std::string& code, std::string& why) {
+bool parseClientMsg(const std::string& text, ClientMsg& m, std::string& code, std::string& why, bool allowTx) {
     m = ClientMsg();
     if (text.size() > kMaxClientMsg) { code = err::BadMessage; why = "message too long"; return false; }
     Json j;
@@ -94,6 +99,12 @@ bool parseClientMsg(const std::string& text, ClientMsg& m, std::string& code, st
     V v{j, code, why, {}};
     std::string type; bool has = false;
     if (!v.str("type", 24, type, has, true)) return false;
+    if (allowTx && isTxType(type)) {   // the host set web_allow_tx=1: the message is handed on as it came (the host's handler reads it)
+        m.type = ClientMsg::Tx;
+        m.txType = type;
+        m.txRaw = text;
+        return true;
+    }
     if (isForbiddenType(type)) { code = err::Forbidden; why = "not available to web listeners"; return false; }
     double d = 0; bool hd = false;
     if (type == "hello") {

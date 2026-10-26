@@ -85,7 +85,6 @@ bool Js8Sender::frameForSlot(double, js8::TxFrame& out) {
 bool js8Send(HamSlotTx& tx, TxDuty& duty, const HamTxCheck& gateIn, const js8::TxFrame& f, int submode, double hz, double level, double now, std::string& err) {
     std::vector<float> a = js8FrameAudio(f, submode, hz);
     const double dur = (double)a.size() / kKbdRate;
-    if (!duty.allow(now, dur)) { err = "duty cycle limit: wait before sending more"; return false; }
     HamTxCheck g = gateIn;
     const double bw = js8BwHz(submode);
     g.audioHz = hz;

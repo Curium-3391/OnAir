@@ -1,6 +1,9 @@
 // The remote-control API inside the app (core/src/net/remote_api.cpp is the server): the host that carries the commands out on the main thread, the
 // published telemetry, the preferences and the settings panel (in View > Data feeds). Off by default; RX 1 only.
 #include "../app.h"
+#include "../panels/tx_state.h"
+#include "dect2/ham/ham.h"
+#include "dect2/net/map_guard.h"
 #include "../ui/typography.h"
 #include "../state/listen_freq.h"
 #include "dect2/automation/engine.h"
@@ -34,6 +37,23 @@ const char* kindName(DeviceInfo::Kind k) {
     case DeviceInfo::Hamlib: return "hamlib";
     }
     return "unknown";
+}
+
+// The warnings that go with a transmit command through the API (the command is the operator's decision; nothing is refused)
+std::string txApiWarnings(const DeviceInfo* d, double hz, double gainDb, bool amp, bool dry) {
+    std::vector<std::string> w;
+    if (!dry) {
+        w.push_back("You are responsible for the law where you are and for your hardware; overdriving or a long duty cycle can damage the radio.");
+        if (!dect2::ham::hamSignalInBand(hz, 0, 0)) w.push_back("The frequency is outside the amateur bands: you need a licence or permission for it.");
+        if (d && d->txGainMaxDb > d->txGainMinDb && gainDb >= d->txGainMaxDb - 3) w.push_back("The TX gain is at the top of the range: the signal will splatter.");
+        if (d && (gainDb < d->txGainMinDb - 1e-9 || (d->txGainMaxDb > d->txGainMinDb && gainDb > d->txGainMaxDb + 1e-9))) w.push_back("The TX gain is outside the radio's range.");
+        if (amp) w.push_back("The amplifier is on: overdriving can damage the radio.");
+        w.push_back("Connect an antenna, an attenuator or a dummy load, and a band filter for the band.");
+        w.push_back("While you transmit, and for 10 minutes after, nothing is uploaded to the OnAir map server.");
+    }
+    std::string o = "[";
+    for (size_t i = 0; i < w.size(); i++) o += (i ? "," : "") + std::string("\"") + jsonEscape(w[i]) + "\"";
+    return o + "]";
 }
 
 struct Host : RemoteApiHost {
@@ -183,6 +203,69 @@ struct Host : RemoteApiHost {
             if (a.engine.general().recording()) generalApiRecord(a, false, ignored);
             return true;
         }, err);
+    }
+    // ---- transmit: the Transmit window's state, started and stopped by command; the answer carries the warnings
+    std::string txStatusJson() override {
+        return query([](App& a) {
+            txui::TxUi& s = txui::ui();
+            const bool on = s.session.running();
+            const double left = dect2::mapguard::holdLeftSec(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count());
+            char b[120];
+            snprintf(b, sizeof b, ",\"frequencyHz\":%.0f,\"gainDb\":%.1f,\"mapHoldSeconds\":%.0f", s.freqMhz * 1e6, (double)s.gainDb, left > 1e8 ? -1.0 : left);
+            (void)a;
+            return std::string("{\"transmitting\":") + (on ? "true" : "false") + ",\"mode\":\"" + jsonEscape(s.modeId) + "\",\"radio\":\"" + jsonEscape(s.radioName) + "\",\"error\":\"" +
+                   jsonEscape(s.error) + "\"" + b + ",\"mapSharingPaused\":" + (left > 0 ? "true" : "false") + "}";
+        });
+    }
+    bool txStart(const std::map<std::string, JsonVal>& body, std::string& json, std::string& err) override {
+        std::string warnings = "[]";
+        const bool ok = run([&](App& a, std::string& e) {
+            txui::TxUi& s = txui::ui();
+            auto str = [&](const char* k, std::string& out) { auto it = body.find(k); if (it == body.end() || it->second.kind != JsonVal::Str) return false; out = it->second.str; return true; };
+            auto num = [&](const char* k, double& out) { auto it = body.find(k); if (it == body.end() || it->second.kind != JsonVal::Num) return false; out = it->second.num; return true; };
+            auto flag = [&](const char* k, bool& out) { auto it = body.find(k); if (it == body.end() || it->second.kind != JsonVal::Bool) return false; out = it->second.b; return true; };
+            if (s.session.running()) { e = "already transmitting: stop it first"; return false; }
+            txui::ensureTxMode(a, s);
+            std::string id;
+            if (str("mode", id)) {
+                const dect2::TxModeSpec* m = dect2::txModeById(id);
+                if (!m) { e = "no such transmit mode: " + id; return false; }
+                txui::chooseMode(a, s, *m);
+            }
+            const dect2::TxModeSpec* mode = dect2::txModeById(s.modeId);
+            if (!mode) { e = "choose a mode: give \"mode\" (a transmit mode id)"; return false; }
+            double v = 0; bool f = false; std::string t;
+            if (num("frequency_hz", v) || num("hz", v)) s.freqMhz = v / 1e6; else if (num("mhz", v)) s.freqMhz = v;
+            if (num("gain_db", v)) { s.gainDb = (float)v; s.gainSet = true; }
+            if (flag("amp", f)) s.ampOn = f;
+            if (flag("loop", f)) s.loop = f;
+            if (num("seconds", v) && v >= 0.1) { s.onceSeconds = (int)v; s.loop = false; }
+            if (flag("test", f)) s.dryRun = f;
+            auto setc = [&](const char* k, char* dst, size_t n) { if (str(k, t)) snprintf(dst, n, "%s", t.c_str()); };
+            setc("callsign", s.callsign, sizeof s.callsign); setc("grid", s.grid, sizeof s.grid); setc("dest", s.dest, sizeof s.dest);
+            setc("name", s.name, sizeof s.name); setc("text", s.text, sizeof s.text);
+            if (num("device", v) && v >= 0 && (size_t)v < a.devices.size()) s.radioKey = deviceClaimKey(a.devices[(size_t)v]);
+            int conflict = 0;
+            const DeviceInfo* radio = txui::bindRadio(a, s, conflict);
+            if (!txui::noRadio(s)) {
+                if (!radio) { e = "no radio that can transmit"; return false; }
+                if (conflict) { e = "a receiver holds that radio: stop the receiver first, or use a radio that can do both"; return false; }
+            }
+            bool carrier = false; flag("carrier", carrier);
+            if (!txui::startTx(a, s, radio, mode, carrier)) {
+                e = s.askNotice ? "open the Transmit window and read the one-time notice first (it is shown once)" : s.error.empty() ? "the transmission did not start" : s.error;
+                return false;
+            }
+            warnings = txApiWarnings(radio, s.freqMhz * 1e6, s.gainDb, s.ampOn, s.dryRun || s.destKind == 1);
+            return true;
+        }, err);
+        if (ok) json = "{\"ok\":true,\"transmitting\":true,\"warnings\":" + warnings + "}";
+        return ok;
+    }
+    bool txStop(std::string& json, std::string& err) override {
+        const bool ok = run([](App& a, std::string&) { txui::stopTx(a, txui::ui(), "stopped through the remote API"); return true; }, err);
+        if (ok) json = "{\"ok\":true,\"transmitting\":false}";
+        return ok;
     }
     bool eventsSince(uint64_t& cursor, size_t maxN, std::vector<std::string>& out, bool& gap) override { ring.since(cursor, maxN, out, &gap); return true; }
 
@@ -336,6 +419,12 @@ struct RigAdapter : apipol::RigctlRadio {
             pb = 0;
             return true;
         }, e);
+    }
+    bool getPtt(bool& on) override { std::string e; return host.run([&](App&, std::string&) { on = txui::ui().session.running(); return true; }, e); }
+    bool setPtt(bool on) override {
+        std::string json, e;
+        if (on) { const std::map<std::string, JsonVal> none; return host.txStart(none, json, e); }
+        return host.txStop(json, e);
     }
     bool setMode(const std::string& m, int) override {
         const int d = demodOf(m);

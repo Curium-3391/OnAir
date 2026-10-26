@@ -64,6 +64,7 @@ void hamSetupWizard(App& a, char* call, size_t callN, char* grid, size_t gridN, 
     }
     case 1: {
         ImGui::TextWrapped("%s", tr("OnAir transmits only after you press Arm. It warns you when no licence is set or the signal lies outside an amateur band or your country's plan, and then leaves the decision to you: you are responsible for being allowed to transmit. Your own licence class and band plan are yours to follow."));
+        ImGui::TextWrapped("%s", tr("You are also responsible for your hardware: overdriving the output or a long duty cycle can damage the radio. While you transmit, and for 10 minutes after, nothing is uploaded to the OnAir map server."));
         ImGui::SetNextItemWidth(220 * gUi);
         if (ImGui::BeginCombo(tr("Licence class"), lic[0] ? lic : tr("choose or type"))) {
             for (const char* c : {"Full (CEPT / HAREC)", "Extra", "General", "Intermediate", "Technician", "Foundation / Novice", "Other"})

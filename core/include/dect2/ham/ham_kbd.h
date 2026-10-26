@@ -33,7 +33,7 @@ const std::vector<KbdPreset>& kbdPresets();
 const KbdPreset* kbdPresetById(const std::string& id);
 double kbdBwHz(const KbdPreset& p);                    // occupied bandwidth for the TX gate
 
-constexpr double kKbdMaxBurstSec = 180;                // one transmission never longer than this
+constexpr double kKbdMaxBurstSec = 3600;               // only the renderer's memory bound (an hour of audio), not a transmit limit
 constexpr size_t kKbdMaxChars = 600;                   // nor longer than this many characters
 constexpr int kKbdRate = 48000;
 

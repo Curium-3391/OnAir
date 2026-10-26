@@ -2,6 +2,7 @@
 // one waterfall line a second (512 bins, one byte each), and decoded ACARS text only when the room was started with that box ticked.
 // Audio is not sent: the repo has no Opus encoder. The host token goes in the JSON body, never in a URL. The room page shows the viewers.
 #include "dect2/common/thread_name.h"
+#include "dect2/net/map_guard.h"
 #include "rooms.h"
 #include "rooms_net.h"
 #include "../app.h"
@@ -163,6 +164,7 @@ void worker() {
             lines.swap(gLines); texts.swap(gTexts);
         }
         if (lines.size() > 4) lines.erase(lines.begin(), lines.end() - 4);   // the server takes 4 lines per push
+        if (dect2::mapguard::holdingNow()) texts.clear();   // decoded text is not uploaded while transmitting and for 10 minutes after (net/map_guard.h)
         if (texts.size() > 20) texts.erase(texts.begin(), texts.end() - 20);
         char f[48]; std::snprintf(f, sizeof f, "%.6f", freq);
         std::string b = "{\"tok\":\"" + tok + "\",\"mode\":\"" + esc(mode) + "\",\"freq\":" + f + ",\"wf\":[";

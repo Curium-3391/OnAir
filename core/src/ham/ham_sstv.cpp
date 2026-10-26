@@ -203,8 +203,6 @@ bool sstvSend(HamSlotTx& tx, TxDuty& duty, const HamTxCheck& gateIn, const SstvP
     std::vector<float> a = sstvRender(pic, c, err);
     if (a.empty()) return false;
     const double dur = (double)a.size() / kKbdRate;
-    if (dur > 300) { err = "the picture would take more than 5 minutes"; return false; }
-    if (!duty.allow(now, dur)) { err = "duty cycle limit: wait before sending another picture"; return false; }
     HamTxCheck g = gateIn;
     g.audioHz = 1100 - 50;
     g.bwHz = kSstvBwHz;

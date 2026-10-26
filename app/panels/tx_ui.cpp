@@ -354,6 +354,10 @@ void txNoticePopup(TxUi& s) {
         ImGui::TextUnformatted(tr("Transmitting needs a licence or permission where you are. You are responsible for what you emit and for not interfering with others "
                                   "(including services that people rely on for safety). Connect an antenna, an attenuator or a dummy load to the radio before you start. "
                                   "OnAir does not limit the frequency or the power: the radio's own limits are the only ones."));
+        ImGui::Spacing();
+        ImGui::TextUnformatted(tr("You are also responsible for your hardware: overdriving the output, an amplifier left on or a long duty cycle can damage the radio."));
+        ImGui::Spacing();
+        ImGui::TextUnformatted(tr("One rule: while you transmit, and for 10 minutes after, nothing is uploaded to the OnAir map server, and nothing you transmitted in the last 24 hours (callsign, MMSI, ICAO address) is uploaded. Decoding on your screen goes on."));
         ImGui::PopTextWrapPos();
         ImGui::Spacing();
         if (ImGui::Button(tr("I understand"), ImVec2(-1, 0))) { plat::basePrefs().setB("txNoticeAccepted", true); plat::basePrefs().flush(); ImGui::CloseCurrentPopup(); }

@@ -1,8 +1,10 @@
-// HamSlotTx: one ham burst through a radio. Order on every path: gate (hamTxAllowed), burst length, duty-cycle limit, the radio's prepare() (it
-// tunes to the frequency that was checked), audio start, PTT on, audio, drain, PTT off. Any error stops the burst and releases PTT; every attempt,
-// refused or sent, goes to the TX audit log (ham_safety.h).
+// HamSlotTx: one ham burst through a radio. Order on every path: gate (hamTxAllowed: Arm and a number; the rest are warnings), the radio's prepare()
+// (it tunes to the frequency), audio start, PTT on, audio, drain, PTT off. No burst length or duty-cycle limit and no output-stall stop: the operator
+// decides (long bursts and duty cycles are only a warning in the audit log). A radio error stops the burst and releases PTT; every attempt goes to
+// the TX audit log (ham_safety.h).
 #include "dect2/ham/ham.h"
 #include "dect2/ham/ham_safety.h"
+#include "dect2/net/map_guard.h"
 #include "dect2/hfdig/hfdig_ftx.h"
 #include <algorithm>
 #include <chrono>
@@ -13,9 +15,6 @@
 namespace dect2::ham {
 
 namespace {
-using Steady = std::chrono::steady_clock;
-double sinceSec(Steady::time_point t) { return std::chrono::duration<double>(Steady::now() - t).count(); }
-constexpr double kStallSec = 3.0;   // no audio taken for this long: the output is gone, the burst stops
 }  // namespace
 
 bool HamSlotTx::busy() const { return busy_; }
@@ -119,11 +118,11 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
     auto refuse = [&](const std::string& why) { err = why; au.result = "refused"; au.reason = why; txAuditAdd(au); return false; };
     std::string gateWarn;
     hamTxAllowed(gate, gateWarn);   // the warnings of the gate (not a refusal): kept in the audit log with the burst
-    const HamDutyLimit lim = hamDutyLimit(dutyMode);
+    const HamDutyLimit lim = hamDutyLimit(dutyMode);   // the typical figures: only used for warnings now
     if (dur > lim.maxBurstSec + 0.5) {
-        char b[120];
-        snprintf(b, sizeof b, "the burst is %.0f s long, the limit for this mode is %.0f s", dur, lim.maxBurstSec);
-        return refuse(b);
+        char b[200];
+        snprintf(b, sizeof b, "The burst is %.0f s long, more than the usual %.0f s for this mode: a long burst can overheat or damage the radio.", dur, lim.maxBurstSec);
+        gateWarn += (gateWarn.empty() ? "" : " ") + std::string(b);
     }
     {
         std::lock_guard<std::mutex> l(dutyMu_);
@@ -131,10 +130,10 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
         log.erase(std::remove_if(log.begin(), log.end(), [&](const std::pair<double, double>& b) { return b.first + b.second < t0 - 3600; }), log.end());
         const double used = hamDutyUsed(log, t0, lim.windowSec);
         if (used + dur > lim.maxFraction * lim.windowSec) {
-            char b[160];
-            snprintf(b, sizeof b, "duty cycle limit: %.0f s on air in the last %.0f minutes (at most %.0f %%), wait before sending more", used,
+            char b[240];
+            snprintf(b, sizeof b, "Duty cycle: %.0f s on air in the last %.0f minutes, above the usual %.0f %%: a long duty cycle can overheat or damage the radio.", used,
                      lim.windowSec / 60, lim.maxFraction * 100);
-            return refuse(b);
+            gateWarn += (gateWarn.empty() ? "" : " ") + std::string(b);
         }
     }
     if (abort_) return refuse("halted");
@@ -142,7 +141,10 @@ bool HamSlotTx::run(const HamTxCheck& gate, int dutyMode, const std::string& lab
     if (!io_.prepare(gate, why)) return refuse(why.empty() ? "the radio refused the transmission" : why);
     if (!why.empty()) gateWarn += (gateWarn.empty() ? "" : " ") + why;   // a radio can add a warning on success
     size_t played = 0;
+    mapguard::txBegin();   // on air: the map guard holds uploads and remembers who was heard from us (net/map_guard.h)
+    for (const auto& id : mapguard::identitiesOf(gate.call, std::string(), std::string(), 0, msg)) mapguard::noteSent(id);
     const bool ok = play(a, n, rate, err, played);
+    mapguard::txEnd();
     const double onAir = (double)played / rate;
     {
         std::lock_guard<std::mutex> l(dutyMu_);
@@ -162,19 +164,14 @@ bool HamSlotTx::play(const std::vector<float>& a, size_t n, int rate, std::strin
     if (!pttSet(true, err)) { io_.endAudio(); return false; }
     size_t pos = 0;
     bool ok = true;
-    auto lastProgress = Steady::now();
     while (pos < n && !abort_) {
         const int w = io_.write(a.data() + pos, (int)std::min<size_t>(n - pos, 4800));
         if (w < 0) { ok = false; err = io_.lastError(); if (err.empty()) err = "the audio output failed"; break; }
-        if (w > 0) { pos += (size_t)w; lastProgress = Steady::now(); continue; }
-        if (sinceSec(lastProgress) > kStallSec) { ok = false; err = "the audio output stalled"; break; }
+        if (w > 0) { pos += (size_t)w; continue; }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     if (ok && !abort_) {
-        const auto drain0 = Steady::now();
-        const double limit = (double)std::max(0, io_.pending()) / rate + kStallSec;
         while (!abort_ && io_.pending() > 0) {
-            if (sinceSec(drain0) > limit) { ok = false; err = "the audio output did not finish playing"; break; }
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }

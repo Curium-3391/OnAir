@@ -377,7 +377,6 @@ std::vector<float> kbdRender(const KbdPreset& p, const std::string& text, double
     if (pk <= 0) { err = "nothing in the text can be sent in this mode"; return {}; }
     for (auto& v : a) v /= pk;
     finish(a);
-    if (kbdSeconds(a) > kKbdMaxBurstSec) { err = "the transmission would take " + std::to_string((int)kbdSeconds(a)) + " s: send less text at a time (" + std::to_string((int)kKbdMaxBurstSec) + " s at most)"; return {}; }
     return a;
 }
 
@@ -401,12 +400,6 @@ bool kbdSend(HamSlotTx& tx, TxDuty& duty, const HamTxCheck& gateIn, const KbdPre
     std::vector<float> a = kbdRender(p, text, centreHz, cwWpm, err);
     if (a.empty()) return false;
     const double dur = kbdSeconds(a);
-    if (!duty.allow(nowSec, dur)) {
-        char b[160];
-        snprintf(b, sizeof b, "duty cycle limit: %.0f s on air in the last 10 minutes, wait before sending more", duty.used(nowSec));
-        err = b;
-        return false;
-    }
     HamTxCheck g = gateIn;
     const double bw = kbdBwHz(p);
     g.audioHz = std::max(0.0, centreHz - bw / 2);   // the gate takes the lowest frequency of the signal
