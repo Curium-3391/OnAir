@@ -17,6 +17,7 @@
 #include <cstring>
 #include <ctime>
 #include <mutex>
+#include "dect2/dsp/mean_afc.h"
 #include <vector>
 #include "dect2/common/mathconst.h"
 
@@ -82,7 +83,16 @@ struct NxdnReceiver::Impl {
     std::vector<float> fir, firN;   // wide channel filter (NXDN96) and a narrow one for NXDN48 (less noise into the discriminator)
     cf32 prevZ{0, 0}, prevZn{0, 0};
 
+    MeanAfc afc;
+    double afcHz = 0;       // the oscillator's move to follow a carrier that is off (MeanAfc); tel.cfoHz still reports the whole error
+    void moveLo(double hz) {
+        if (std::fabs(afcHz + hz) > MeanAfc::kMaxTotalHz) return;
+        afcHz += hz;
+        loStep = std::polar(1.0, -2 * kPi * (offset + afcHz) / rate);
+    }
+
     void initFront() {
+        afc.reset(); afcHz = 0;
         D = std::max(1, (int)std::floor(rate / 100000.0));
         fd = rate > 0 ? rate / D : 0;
         inv = 1.0 / ((double)D * D * D);
@@ -142,6 +152,7 @@ struct NxdnReceiver::Impl {
                 const cf32 dn = accN * std::conj(prevZn);
                 prevZn = accN;
                 const float fn = (float)(std::atan2(dn.imag(), dn.real()) * kFs / (2 * kPi));
+                if (const double a = afc.push(f, kFs)) moveLo(a);
                 ch[0].push(fn); ch[1].push(f);
                 for (int k = 0; k < 2; k++) chainStep(k);
             }
@@ -401,7 +412,7 @@ struct NxdnReceiver::Impl {
             tel.baud = c.baud;
             tel.inverted = c.g < 0;
             tel.deviationHz = (float)(3 * std::fabs(c.g));
-            tel.cfoHz = c.d;
+            tel.cfoHz = c.d + afcHz;
             snrAvg = snrAvg == 0 ? snr : 0.8 * snrAvg + 0.2 * snr;
             tel.snrDb = (float)snrAvg;
         }
