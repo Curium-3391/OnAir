@@ -500,9 +500,26 @@ V8A void run8x2Avx2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std:
 }
 bool haveAvx2() { static const bool v = __builtin_cpu_supports("avx2"); return v; }
 }   // namespace
+#if defined(_WIN32)
+// MinGW-w64 keeps the x64 stack 16-byte aligned, but GCC spills ymm registers to the stack with vmovdqa as if it were 32-byte aligned (GCC bug 54412;
+// force_align_arg_pointer and -mstackrealign do not help on Windows). On a worker thread that faulted: access violation at 0xffffffffffffffff, the DVB-T
+// crash of #324. So the AVX2 decoder is entered through this trampoline, which puts rsp on a 32-byte boundary first (the call then enters with rsp = 24 mod 32,
+// the assumption GCC makes). The .seh directives keep the exception unwinding (std::bad_alloc from the vectors) working through it.
+extern "C" void dect2_vit_call32(void (*fn)(void*), void* ctx);
+__asm__(".text\n.globl dect2_vit_call32\n.def dect2_vit_call32; .scl 2; .type 32; .endef\n.seh_proc dect2_vit_call32\ndect2_vit_call32:\n"
+        "pushq %rbp\n.seh_pushreg %rbp\nmovq %rsp, %rbp\n.seh_setframe %rbp, 0\n.seh_endprologue\n"
+        "subq $64, %rsp\nandq $-32, %rsp\nmovq %rcx, %rax\nmovq %rdx, %rcx\ncall *%rax\n"
+        "movq %rbp, %rsp\npopq %rbp\nret\n.seh_endproc\n");
+struct V8Call { const int8_t *a, *b; size_t na, nb; std::vector<uint8_t> *bitsA, *bitsB; long *metricA, *metricB; };
+static void v8trampoline(void* p) { V8Call& c = *(V8Call*)p; run8x2Avx2(c.a, c.na, c.b, c.nb, *c.bitsA, *c.bitsB, c.metricA, c.metricB); }
+#endif
 bool viterbi8x2Available() { return haveAvx2(); }
 void viterbiRange8x2(const int8_t* a, size_t na, const int8_t* b, size_t nb, std::vector<uint8_t>& bitsA, std::vector<uint8_t>& bitsB, long* metricA, long* metricB) {
+#if defined(_WIN32)
+    if (haveAvx2()) { V8Call c{a, b, na, nb, &bitsA, &bitsB, metricA, metricB}; dect2_vit_call32(v8trampoline, &c); return; }
+#else
     if (haveAvx2()) { run8x2Avx2(a, na, b, nb, bitsA, bitsB, metricA, metricB); return; }
+#endif
     viterbiRange(a, na, bitsA, metricA);
     if (b) viterbiRange(b, nb, bitsB, metricB);
 }
