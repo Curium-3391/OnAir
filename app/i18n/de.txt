@@ -664,7 +664,6 @@ Add a receiver: another radio with its own mode	Empfänger hinzufügen: ein weit
 Add receiver	Empfänger hinzufügen
 Added to a level in dBFS to give dBm for this radio: feed a known signal into the antenna port and set the difference. Used when the spectrum shows dBm (Spectrum button on the plot).	Wird zu einem Pegel in dBFS addiert, um dBm für dieses Radio zu erhalten: Speise ein bekanntes Signal in den Antennenanschluss ein und stelle die Differenz ein. Gilt, wenn das Spektrum dBm zeigt (Schaltfläche Spektrum am Diagramm).
 Aircraft	Flugzeuge
-All set. OnAir will start here:	Alles bereit. OnAir startet hier:
 Allow remote control (frequency and gain)	Fernsteuerung erlauben (Frequenz und Verstärkung)
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	Ein SDRplay RSP ist angeschlossen, aber die SDRplay Hardware API ist nicht installiert. Installiere sie separat, auch wenn SDRconnect bereits mit dem Radio funktioniert.
 Another program is using the HackRF	Ein anderes Programm verwendet den HackRF
@@ -778,7 +777,6 @@ Open driver page	Treiberseite öffnen
 Open firmware page	Firmware-Seite öffnen
 Open the SDRplay API page	SDRplay-API-Seite öffnen
 Open the device list	Geräteliste öffnen
-Optional: your position, as a Maidenhead locator (KO24pq) or coordinates (54.68, 25.28). It is kept on this computer and used for maps and satellite passes.	Optional: deine Position als Maidenhead-Locator (KO24pq) oder Koordinaten (54.68, 25.28). Sie bleibt auf diesem Computer und wird für Karten und Satellitenüberflüge verwendet.
 Or choose another radio from the list.	Oder wähle ein anderes Radio aus der Liste.
 Or install OnAir's blacklist file (the .deb package does it).	Oder installiere die Blacklist-Datei von OnAir (das .deb-Paket macht das).
 Or set the UHD_IMAGES_DIR variable to the folder with the images.	Oder setze die Variable UHD_IMAGES_DIR auf den Ordner mit den Images.
@@ -822,7 +820,6 @@ Seen	Gesehen
 Send spots to PSK Reporter (pskreporter.info)	Spots an PSK Reporter senden (pskreporter.info)
 Services	Dienste
 Set the LO above 0 MHz.	Setze den LO über 0 MHz.
-Setup wizard	Einrichtungsassistent
 Share my radio (rtl_tcp server)	Mein Radio freigeben (rtl_tcp-Server)
 Share the radio's samples as an rtl_tcp server	Die Samples des Radios als rtl_tcp-Server freigeben
 Ships	Schiffe
@@ -894,7 +891,6 @@ Wave buoys, HF	Wellenbojen, KW
 Weather alerts, 162.55 MHz	Wetterwarnungen, 162,55 MHz
 Weather pictures, 1.7 GHz	Wetterbilder, 1,7 GHz
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	Was zu einem Pegel in dBFS addiert wird, um dBm für dieses Radio zu erhalten (seine Kalibrierung: ein bekanntes Signal am Antennenanschluss zeigt sie). Auch in den Radioeinstellungen.
-Which language do you want OnAir in?	In welcher Sprache möchtest du OnAir nutzen?
 Your callsign	Dein Rufzeichen
 Your locator	Dein Locator
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	Zoom: Mausrad (beide Achsen), Strg+Rad (Frequenz), Umschalt+Rad (Pegel).\nStrg+Bild auf / ab: Ansicht um eine Bildschirmbreite in der Frequenz verschieben. Doppelklick: zurücksetzen.

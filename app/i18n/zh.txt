@@ -664,7 +664,6 @@ Add a receiver: another radio with its own mode	添加接收器：另一台使�
 Add receiver	添加接收器
 Added to a level in dBFS to give dBm for this radio: feed a known signal into the antenna port and set the difference. Used when the spectrum shows dBm (Spectrum button on the plot).	加到 dBFS 电平上，得到这台电台的 dBm：向天线口输入已知信号并设置差值。频谱以 dBm 显示时使用（图上的“频谱”按钮）。
 Aircraft	飞机
-All set. OnAir will start here:	设置完成。OnAir 将从这里开始：
 Allow remote control (frequency and gain)	允许远程控制（频率和增益）
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	已连接 SDRplay RSP，但未安装 SDRplay Hardware API。即使 SDRconnect 已能使用该电台，也请单独安装它。
 Another program is using the HackRF	另一个程序正在使用 HackRF
@@ -778,7 +777,6 @@ Open driver page	打开驱动页面
 Open firmware page	打开固件页面
 Open the SDRplay API page	打开 SDRplay API 页面
 Open the device list	打开设备列表
-Optional: your position, as a Maidenhead locator (KO24pq) or coordinates (54.68, 25.28). It is kept on this computer and used for maps and satellite passes.	可选：您的位置，梅登黑德网格定位符（KO24pq）或坐标（54.68, 25.28）。它仅保存在这台电脑上，用于地图和卫星过境。
 Or choose another radio from the list.	或从列表中选择另一台电台。
 Or install OnAir's blacklist file (the .deb package does it).	或安装 OnAir 的黑名单文件（.deb 包会自动安装）。
 Or set the UHD_IMAGES_DIR variable to the folder with the images.	或将变量 UHD_IMAGES_DIR 设置为存放镜像的文件夹。
@@ -822,7 +820,6 @@ Seen	最后出现
 Send spots to PSK Reporter (pskreporter.info)	向 PSK Reporter 发送接收报告 (pskreporter.info)
 Services	服务
 Set the LO above 0 MHz.	请将 LO 设置为大于 0 MHz。
-Setup wizard	设置向导
 Share my radio (rtl_tcp server)	共享我的电台（rtl_tcp 服务器）
 Share the radio's samples as an rtl_tcp server	将电台的采样作为 rtl_tcp 服务器共享
 Ships	船舶
@@ -894,7 +891,6 @@ Wave buoys, HF	波浪浮标，短波
 Weather alerts, 162.55 MHz	天气警报，162.55 MHz
 Weather pictures, 1.7 GHz	气象图像，1.7 GHz
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	要加到 dBFS 电平上才能得到这台电台 dBm 的数值（即其校准值：向天线口输入已知信号即可得出）。也可在电台设置中修改。
-Which language do you want OnAir in?	您希望使用哪种语言的 OnAir？
 Your callsign	您的呼号
 Your locator	您的网格定位符
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	缩放：鼠标滚轮（两个轴）、Ctrl+滚轮（频率）、Shift+滚轮（电平）。\nCtrl+PageUp / PageDown：按一屏频率步进视图。双击：重置。

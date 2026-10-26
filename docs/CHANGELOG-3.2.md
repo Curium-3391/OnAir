@@ -41,6 +41,7 @@
 - **TV (#318):** picture shape box: stretch 4:3 to 16:9, zoom, fill.
 - **LimeSDR (#169):** a hint in the radio list when a Mini is plugged in but LimeSuite is missing.
 - **Documentation:** FDM-DUO through its USB sound card (#251); analogue TV status (#73); RTL2832P DVB sticks (#180).
+- **First-run setup, version 2.** Four short screens, each skippable: the radio (found automatically, with a help link per radio, or the test signal), the location (city search, locator or coordinates; sets the country, ITU region, band plan, FM step, DAB band III, TV channels, the ADS-B position and the time zone), the interests (which modes are starred first, the starting mode and starter presets) and a summary with the tour on offer. It shows only when there are no earlier settings, so an update never shows it to existing users. Run it again from Help > Setup and lessons > Run setup again.
 
 ## Pull requests merged, with thanks
 

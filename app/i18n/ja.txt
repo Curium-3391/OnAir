@@ -657,7 +657,6 @@ Add a receiver: another radio with its own mode	受信機を追加: 独自のモ
 Add receiver	受信機を追加
 Added to a level in dBFS to give dBm for this radio: feed a known signal into the antenna port and set the difference. Used when the spectrum shows dBm (Spectrum button on the plot).	この無線機の dBm を得るために dBFS のレベルに加算する値です。既知の信号をアンテナ端子に入力して差を設定してください。スペクトラムを dBm 表示にしたときに使います (プロット上のスペクトラムボタン)。
 Aircraft	航空機
-All set. OnAir will start here:	準備完了です。OnAir は次から始まります:
 Allow remote control (frequency and gain)	リモート制御を許可 (周波数とゲイン)
 An SDRplay RSP is plugged in, but the SDRplay Hardware API is not installed. Install it separately even if SDRconnect already works with the radio.	SDRplay RSP が接続されていますが、SDRplay Hardware API がインストールされていません。SDRconnect がすでにこのラジオで動作していても、別途インストールしてください。
 Another program is using the HackRF	別のプログラムが HackRF を使用しています
@@ -771,7 +770,6 @@ Open driver page	ドライバーのページを開く
 Open firmware page	ファームウェアのページを開く
 Open the SDRplay API page	SDRplay API のページを開く
 Open the device list	デバイス一覧を開く
-Optional: your position, as a Maidenhead locator (KO24pq) or coordinates (54.68, 25.28). It is kept on this computer and used for maps and satellite passes.	任意: あなたの位置を Maidenhead ロケーター (KO24pq) または座標 (54.68, 25.28) で入力します。このコンピューターにのみ保存され、地図や衛星パスに使われます。
 Or choose another radio from the list.	または、一覧から別の無線機を選んでください。
 Or install OnAir's blacklist file (the .deb package does it).	または、OnAir のブラックリストファイルをインストールしてください (.deb パッケージなら自動で行われます)。
 Or set the UHD_IMAGES_DIR variable to the folder with the images.	または、環境変数 UHD_IMAGES_DIR をイメージのあるフォルダーに設定してください。
@@ -815,7 +813,6 @@ Seen	確認日時
 Send spots to PSK Reporter (pskreporter.info)	スポットを PSK Reporter (pskreporter.info) に送信
 Services	サービス
 Set the LO above 0 MHz.	LO を 0 MHz より大きく設定してください。
-Setup wizard	セットアップウィザード
 Share my radio (rtl_tcp server)	自分の無線機を共有 (rtl_tcp サーバー)
 Share the radio's samples as an rtl_tcp server	無線機のサンプルを rtl_tcp サーバーとして共有します
 Ships	船舶
@@ -885,7 +882,6 @@ Wave buoys, HF	波浪ブイ、HF
 Weather alerts, 162.55 MHz	気象警報、162.55 MHz
 Weather pictures, 1.7 GHz	気象画像、1.7 GHz
 What to add to a level in dBFS to get dBm for this radio (its calibration: a known signal into the antenna port shows it). Also in the radio's settings.	この無線機の dBm を得るために dBFS のレベルに加算する値です (校正値で、既知の信号をアンテナ端子に入力すると求められます)。無線機の設定にもあります。
-Which language do you want OnAir in?	OnAir の言語を選んでください。
 Your callsign	あなたのコールサイン
 Your locator	あなたのロケーター
 Zoom: mouse wheel (both axes), Ctrl+wheel (frequency), Shift+wheel (level).\nCtrl+PageUp / PageDown: step the view by one screen in frequency. Double click: reset.	ズーム: マウスホイール (両軸)、Ctrl+ホイール (周波数)、Shift+ホイール (レベル)。\nCtrl+PageUp / PageDown: 表示を周波数方向に 1 画面分ずらします。ダブルクリック: リセット。

@@ -744,7 +744,7 @@ float menuBar(App& a) {
             if (ImGui::MenuItem(tr("Credits"))) { a.creditsOpen = true; a.creditsTab = 0; }
             ImGui::Separator();
             if (ImGui::BeginMenu(tr("Setup and lessons"))) {
-                if (ImGui::MenuItem(tr("Setup wizard"))) setupWizardOpen(a);
+                if (ImGui::MenuItem(tr("Run setup again"))) setupWizardOpen(a);
                 if (ImGui::MenuItem(tr("Lessons"))) a.lessonsOpen = true;
                 if (ImGui::MenuItem(tr("Continue the lessons"))) lessonsStart(a);
                 if (ImGui::MenuItem(tr("Concepts (glossary)"))) a.glossaryOpen = true;
