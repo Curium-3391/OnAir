@@ -215,6 +215,24 @@ static void testOverlay() {
     size_t any = 0;
     for (size_t i = 3; i < c.size(); i += 4) any += c[i] > 0;
     CHECK(any == 0, "a missing logo file draws nothing");
+    // files that are not a picture: an SVG (no SVG decoder is required), a cut-off PNG, random bytes. Nothing drawn, no crash.
+    const fs::path bad = fs::temp_directory_path() / "onair_videogen_badlogo";
+    fs::create_directories(bad);
+    { std::ofstream f(bad / "logo.svg"); f << "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><rect width='10' height='10'/></svg>"; }
+    { const std::vector<uint8_t> png = readAll("assets/branding/OnAir-glyph-transparent-2048.png");
+      std::ofstream f(bad / "cut.png", std::ios::binary); f.write((const char*)png.data(), (std::streamsize)std::min<size_t>(png.size(), 300)); }
+    { std::ofstream f(bad / "noise.png", std::ios::binary); for (int i = 0; i < 4096; i++) f.put((char)(i * 131 + 7)); }
+    for (const char* name : {"cut.png", "noise.png"}) {
+        lg.text = (bad / name).string(); ll.blocks = {lg};
+        r.render(ll, s, 0, 720, 576, c);
+        any = 0;
+        for (size_t i = 3; i < c.size(); i += 4) any += c[i] > 0;
+        CHECK(any == 0, "a damaged logo file (%s) draws nothing", name);
+    }
+    lg.text = (bad / "logo.svg").string(); ll.blocks = {lg};
+    r.render(ll, s, 0, 720, 576, c);   // drawn only when this FFmpeg has an SVG decoder (librsvg); must not crash either way
+    std::error_code ec;
+    fs::remove_all(bad, ec);
 }
 
 // PIDs and names from a transport stream file
@@ -340,6 +358,235 @@ static void testH264(const fs::path& dir, const fs::path& pic) {
     CHECK(ti.sync && h264 && aac, "PMT: H.264 (0x1B) and AAC (0x0F) with %s", enc.c_str());
 }
 
+
+// packets per PID and the last time stamp of each stream (seconds), read back with libavformat
+struct Streams { int videoFrames = 0, audioPackets = 0; double videoEnd = 0, audioEnd = 0; };
+
+static Streams readStreams(const fs::path& p) {
+    Streams r;
+    AVFormatContext* fc = nullptr;
+    if (avformat_open_input(&fc, p.string().c_str(), nullptr, nullptr) < 0) return r;
+    avformat_find_stream_info(fc, nullptr);
+    AVPacket* pk = av_packet_alloc();
+    double v0 = -1, a0 = -1;
+    while (av_read_frame(fc, pk) >= 0) {
+        const AVStream* st = fc->streams[pk->stream_index];
+        const double t = pk->pts == AV_NOPTS_VALUE ? -1 : (double)pk->pts * av_q2d(st->time_base);
+        if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            r.videoFrames++;
+            if (t >= 0) { if (v0 < 0) v0 = t; r.videoEnd = std::max(r.videoEnd, t - v0); }
+        } else if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            r.audioPackets++;
+            if (t >= 0) { if (a0 < 0) a0 = t; r.audioEnd = std::max(r.audioEnd, t - a0); }
+        }
+        av_packet_unref(pk);
+    }
+    av_packet_free(&pk);
+    avformat_close_input(&fc);
+    return r;
+}
+
+static bool encodeFile(GenConfig c, std::string& err) {
+    VideoGenerator g;
+    if (!g.start(c, err)) return false;
+    if (!g.wait(120)) { err = "not finished in time"; return false; }
+    err = g.stats().error;
+    return err.empty() && g.stats().finished;
+}
+
+// A video file as the source: its length, looping when the output is longer, its sound kept in step, and a file without sound
+static void testVideoFile(const fs::path& dir, const fs::path& pic) {
+    // a 1 s clip with a tone, made by the generator itself (MPEG-2 + MP2: in every FFmpeg build)
+    GenConfig mk = pictureConfig(pic);
+    mk.output = Output::File;
+    mk.tsPath = (dir / "clip.ts").string();
+    mk.seconds = 1;
+    mk.enc.videoEncoder = "mpeg2video";
+    std::string err;
+    CHECK(encodeFile(mk, err), "make the clip: %s", err.c_str());
+    const double len = mediaSeconds(mk.tsPath);
+    CHECK(len > 0.7 && len < 1.5, "the clip's length is about 1 s (%.2f)", len);
+    CHECK(mediaSeconds((dir / "missing.ts").string()) == 0, "no length for a missing file");
+
+    // 3.5 s from the 1 s clip: it loops, the sound from the file runs as long as the picture
+    GenConfig c = pictureConfig(pic);
+    c.source = Source::VideoFile;
+    c.path = mk.tsPath;
+    c.audio = AudioSource::FromFile;
+    c.output = Output::File;
+    c.tsPath = (dir / "looped.ts").string();
+    c.seconds = 3.5;
+    c.enc.videoEncoder = "mpeg2video";
+    CHECK(encodeFile(c, err), "encode the looped file: %s", err.c_str());
+    const Streams ls = readStreams(c.tsPath);
+    CHECK(ls.videoFrames == 35, "35 pictures at 10 fps over the loops (%d)", ls.videoFrames);
+    CHECK(ls.videoEnd > 3.0 && ls.audioEnd > 3.0, "picture and sound both run to the end (video %.2f s, audio %.2f s)", ls.videoEnd, ls.audioEnd);
+    CHECK(std::fabs(ls.videoEnd - ls.audioEnd) < 0.3, "sound in step with the picture (%.2f s apart)", std::fabs(ls.videoEnd - ls.audioEnd));
+    CHECK(ls.audioPackets >= 3 * 1000 / 24, "sound all the way (%d MP2 frames)", ls.audioPackets);
+
+    // shorter than the clip: stops at the set length
+    c.tsPath = (dir / "short.ts").string();
+    c.seconds = 0.5;
+    CHECK(encodeFile(c, err), "encode the short file: %s", err.c_str());
+    CHECK(readStreams(c.tsPath).videoFrames == 5, "0.5 s gives 5 pictures");
+
+    // a clip without sound with "sound from the file": silence, not an error
+    GenConfig mute = mk;
+    mute.tsPath = (dir / "mute.ts").string();
+    mute.enc.content = TsContent::VideoOnly;
+    CHECK(encodeFile(mute, err), "make the silent clip: %s", err.c_str());
+    c.path = mute.tsPath;
+    c.tsPath = (dir / "from_mute.ts").string();
+    c.seconds = 1.5;
+    CHECK(encodeFile(c, err), "a file without sound encodes: %s", err.c_str());
+    const Streams ms = readStreams(c.tsPath);
+    CHECK(ms.videoFrames == 15 && ms.audioPackets > 0, "picture and a silent sound track (%d, %d)", ms.videoFrames, ms.audioPackets);
+}
+
+// What goes wrong: refused at start, or reported in the stats when the run cannot go on; never a hang or a crash
+static void testFailures(const fs::path& dir, const fs::path& pic) {
+    VideoGenerator g;
+    std::string err;
+    GenConfig c = pictureConfig(pic);
+    c.output = Output::File;
+    c.tsPath.clear();
+    CHECK(!g.start(c, err) && !err.empty(), "no .ts file: refused");
+    c.tsPath = (dir / "x.ts").string();
+    c.path.clear();
+    CHECK(!g.start(c, err) && !err.empty(), "no picture: refused");
+    c.path = pic.string();
+    c.output = Output::Udp; c.port = 0;
+    CHECK(!g.start(c, err), "port 0: refused");
+    c.output = Output::File;
+    c.enc.width = 8;
+    CHECK(!g.start(c, err), "a picture of 8 pixels: refused");
+
+    auto failsInRun = [&](GenConfig cc, const char* what) {
+        VideoGenerator gg;
+        std::string e;
+        if (!gg.start(cc, e)) { CHECK(!e.empty(), "%s: refused without a reason", what); return; }
+        CHECK(gg.wait(20), "%s: the run ends", what);
+        CHECK(!gg.stats().error.empty(), "%s: an error is reported", what);
+        CHECK(!gg.running(), "%s: not running afterwards", what);
+    };
+    GenConfig m = pictureConfig(pic);
+    m.output = Output::File;
+    m.tsPath = (dir / "y.ts").string();
+    m.seconds = 1;
+    m.path = (dir / "no_such_picture.png").string();
+    failsInRun(m, "a missing picture");
+    { std::ofstream f(dir / "garbage.mp4", std::ios::binary); for (int i = 0; i < 20000; i++) f.put((char)(i * 7919)); }
+    m.source = Source::VideoFile;
+    m.path = (dir / "garbage.mp4").string();
+    failsInRun(m, "a file that is not a video");
+    m.source = Source::Picture;
+    m.path = pic.string();
+    m.tsPath = (dir / "no_such_folder" / "y.ts").string();
+    failsInRun(m, "a .ts file that cannot be written");
+#ifdef __linux__
+    GenConfig cam = pictureConfig(pic);
+    cam.source = Source::Camera;
+    cam.cameraId = "/dev/onair_no_such_camera";
+    cam.output = Output::File;
+    cam.tsPath = (dir / "cam.ts").string();
+    failsInRun(cam, "a camera that is not there");
+#endif
+
+    // an encoder this FFmpeg does not have (what a failed probe leaves): the run falls back to MPEG-2 and still works
+    CHECK(pickVideoEncoder("no_such_encoder", videoEncoders()) == "mpeg2video", "an unknown encoder falls back to MPEG-2");
+    CHECK(pickVideoEncoder("libx264", {}) == "mpeg2video", "no encoder found at all: MPEG-2");
+    GenConfig f = pictureConfig(pic);
+    f.output = Output::File;
+    f.tsPath = (dir / "fallback.ts").string();
+    f.seconds = 1;
+    f.enc.videoEncoder = "no_such_encoder";
+    f.enc.audioEncoder = "no_such_audio";
+    VideoGenerator fg;
+    CHECK(fg.start(f, err) && fg.wait(60), "start with unknown encoders: %s", err.c_str());
+    const GenStats fs1 = fg.stats();
+    CHECK(fs1.error.empty() && fs1.videoEncoder == "mpeg2video" && !fs1.audioEncoder.empty(), "fell back to %s + %s (%s)", fs1.videoEncoder.c_str(), fs1.audioEncoder.c_str(), fs1.error.c_str());
+    CHECK(parseTs(readAll(f.tsPath)).sync, "the fallback file is a valid TS");
+}
+
+// Closing the window during an encode (stop, or the generator destroyed) and changing the overlay while it runs
+static void testStopAndOverlayChanges(const fs::path& dir, const fs::path& pic) {
+    GenConfig c = pictureConfig(pic);
+    c.output = Output::File;
+    c.tsPath = (dir / "stopped.ts").string();
+    c.seconds = 600;   // far longer than the test: it is stopped half way
+    c.enc.videoEncoder = "mpeg2video";
+    c.overlay.blocks.clear();
+    std::string err;
+    {
+        VideoGenerator g;
+        CHECK(g.start(c, err), "start the long file: %s", err.c_str());
+        std::string again;
+        CHECK(!g.start(c, again) && !again.empty(), "a second start while running is refused");
+
+        // the overlay is changed many times from this thread while the encoder thread draws it
+        std::vector<uint8_t> rgba, before;
+        int w = 0, h = 0;
+        uint64_t serial = 0;
+        const auto until = [](double s) { return std::chrono::steady_clock::now() + std::chrono::milliseconds((int)(s * 1000)); };
+        for (auto end = until(5); before.empty() && std::chrono::steady_clock::now() < end;) {
+            if (g.preview(rgba, w, h, serial)) before = rgba;
+            else std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        CHECK(!before.empty() && w > 0 && h > 0, "a preview picture comes");
+        Layout logo;
+        Block lg; lg.kind = BlockKind::Logo; lg.text = "assets/branding/OnAir-glyph-transparent-2048.png"; lg.x = 0; lg.y = 0; lg.w = 1; lg.h = 1;
+        logo.blocks = {lg};
+        Layout text;
+        Block t; t.kind = BlockKind::Text; t.text = "changed"; t.fontPx = 60;
+        Block rl; rl.kind = BlockKind::Rolling; rl.text = "rolling"; rl.y = 0.8f; rl.w = 1;
+        text.blocks = {t, rl};
+        for (int i = 0; i < 300; i++) g.setOverlay(i % 3 == 0 ? Layout() : i % 3 == 1 ? text : logo);
+        g.setOverlay(logo);
+        bool changed = false;
+        for (auto end = until(5); !changed && std::chrono::steady_clock::now() < end;) {
+            if (g.preview(rgba, w, h, serial) && rgba.size() == before.size()) {
+                size_t diff = 0;
+                for (size_t i = 0; i < rgba.size(); i += 4) diff += std::abs(rgba[i] - before[i]) > 40;
+                changed = diff > rgba.size() / 4 / 20;   // the logo covers a good part of the picture
+            } else std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        CHECK(changed, "the new overlay shows in the encoded picture");
+        CHECK(g.running(), "still running after the overlay changes");
+
+        const auto t0 = std::chrono::steady_clock::now();
+        g.stop();
+        const double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(took < 5, "stop returns quickly (%.1f s)", took);
+        const GenStats st = g.stats();
+        CHECK(!g.running() && st.error.empty() && st.frames > 0 && st.frames < 6000, "stopped half way without error (%llu frames, %s)", (unsigned long long)st.frames, st.error.c_str());
+        const TsInfo ti = parseTs(readAll(c.tsPath));
+        CHECK(ti.sync && ti.packets > 0, "the stopped file is whole TS packets (%zu)", ti.packets);
+        CHECK(readStreams(c.tsPath).videoFrames > 0, "the stopped file can be read back");
+    }
+    {
+        // the window closed without Stop: the generator is destroyed while it runs
+        c.tsPath = (dir / "destroyed.ts").string();
+        const auto t0 = std::chrono::steady_clock::now();
+        {
+            VideoGenerator g;
+            CHECK(g.start(c, err), "start: %s", err.c_str());
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        const double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(took < 6, "destroying a running generator stops it (%.1f s)", took);
+        CHECK(parseTs(readAll(c.tsPath)).sync, "the file of a destroyed run is whole TS packets");
+    }
+    {
+        // the same generator started again after a stop
+        VideoGenerator g;
+        GenConfig s = c;
+        s.tsPath = (dir / "again1.ts").string(); s.seconds = 0.5;
+        CHECK(g.start(s, err) && g.wait(60), "first run: %s", err.c_str());
+        s.tsPath = (dir / "again2.ts").string();
+        CHECK(g.start(s, err) && g.wait(60) && g.stats().error.empty() && g.stats().frames == 5, "second run on the same generator");
+    }
+}
+
 #ifndef _WIN32
 static void testStream(const fs::path& pic, bool rtp) {
     int rx = socket(AF_INET, SOCK_DGRAM, 0);
@@ -393,6 +640,9 @@ int main() {
     testOverlay();
     testTsFile(dir, pic);
     testH264(dir, pic);
+    testVideoFile(dir, pic);
+    testFailures(dir, pic);
+    testStopAndOverlayChanges(dir, pic);
 #ifndef _WIN32
     testStream(pic, false);
     testStream(pic, true);
