@@ -307,6 +307,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 
 - **Cell towers** (LTE MIB / SIB1 - SIB5; towers on a map with an [OpenCelliD](#tools-and-notes) key), **5G NR cells** (SS/PBCH, PCI, RSRP, MIB; SIB1 is not decoded yet), **NB-IoT cells**, **GSM-R** (921 - 925 MHz) and **LBJ** (Chinese railway train warnings at 821.2375 MHz: train number, speed, kilometre post, direction; see [docs/lbj.md](docs/lbj.md)). Public broadcast information only.
 - **KLW** end-of-train data (default 866.2375 MHz) and **TDCS** train dispatch data (default 457.550 MHz): 1200 bit/s FFSK with BCH and CRC checks, locomotive and tail IDs, pressure / commands or train number, speed, mileage and consist fields. LBJ also decodes the fixed-position extension, WGS-84 coordinates and time broadcasts. [Details and test coverage](docs/railway.md).
+- **EBICab / Eurobalise** (needs a user test, receive only: the Eurobalise balise up-link around 4.234 MHz decoded to its telegrams per UNISIG SUBSET-036; EBICab 700 / 900 telegram formats are not public and are only listed as bursts; [details](docs/ebicab.md)).
 
 ### Pagers
 
@@ -327,6 +328,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 
 - **Radiosondes** (400 - 406 MHz and LMS6-1680; tracks and landing prediction), **NOAA Weather Radio SAME** (EAS alert decoder).
 - **Horus balloons** (Project Horus amateur high-altitude balloons on 70 cm, usually 434 MHz: Horus Binary v1 / v2 100 baud 4FSK with Golay FEC and Horus RTTY at 50 / 100 / 300 baud; every payload in the captured span on a map with its track, altitude chart, last packet, SNR, user-editable payload ID and custom field tables; works from IQ or a sound card in USB; [details](docs/HORUS.md)).
+- **SSDV pictures** (balloon and satellite pictures: 256-byte SSDV packets from FSK at 1200 - 19200 baud or RTTY-framed bytes, Reed-Solomon corrected, the JPEG built up as packets arrive and saved; code by fsphil/ssdv, GPL-3.0-or-later; [details](docs/ssdv.md)).
 - **Time signals** (DCF77, MSF, WWVB, JJY, WWV / WWVH, BPM, BPC and more; the computer clock can be synced), **e-Czas** (Poland's official time on 225 kHz long wave, from a long-wave capable radio or an upconverter; [how to receive it](docs/eczas.md)) and **Ionospheric sounders** (ionograms from chirp sounders).
 - **Radio astronomy** (21 cm hydrogen line and OH lines).
 - **GOES / Meteosat DCS** (river gauges, weather stations, tide gauges and buoys reporting on the 401.7 - 402.1 MHz uplink: every carrier in the capture followed, 100 / 300 / 1200 bps with NRZ or Manchester coding, the BCH-checked platform address, the channel and the ASCII or pseudo-binary sensor data, CSV logging; [details](docs/goes-dcs.md)).
@@ -341,6 +343,7 @@ No radio? Open an IQ recording through the *IQ recording file* source (cs8, cu8,
 - **MT63** (500 / 1000 / 2000 Hz, short and long interleave found automatically, 64 carriers with Walsh-Hadamard coded characters; [details](docs/mt63.md)).
 - **ARDOP** (the Winlink HF modem, monitor only: frame types, connect requests, IDs and pings with call signs, ACK / NAK quality and the text of 4FSK data frames; PSK and QAM frames are listed by header; [details](docs/ardop.md)).
 - **PACTOR-I** (experimental monitor, receive only: both stations of an ARQ link, 100 / 200 baud found automatically, connect calls, control signals, ASCII and Huffman text, repeats, unproto / FEC, memory ARQ; PACTOR-II, -III and -IV are proprietary and not supported; [details](docs/pactor.md)).
+- **ROS (HF)** (detector, receive only: the ROS weak-signal mode is recognised by its tone grid and named ROS 4 / 8 / 16 baud, marked on a waterfall; the text is not decoded because ROS is not publicly specified; [details](docs/roshf.md)).
 - **Keyboard modes:** PSK31 / 63, RTTY, CW (every signal in a 14 kHz window), Olivia, Contestia, MFSK, THOR, DominoEX, Hellschreiber. Picture modes: **SSTV** and **HamDRM** (EasyPal).
 
 ### Amateur: voice and packet

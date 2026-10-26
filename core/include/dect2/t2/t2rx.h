@@ -100,6 +100,9 @@
 #include "dect2/lorasat/lorasat_tel.h"
 #include "dect2/pactor/pactor_tel.h"
 #include "dect2/esubghz/esubghz_tel.h"
+#include "dect2/roshf/roshf_tel.h"
+#include "dect2/ssdv/ssdv_tel.h"
+#include "dect2/ebicab/ebicab_tel.h"
 #include "dect2/pskdsp/pskdsp_tel.h"
 #include "dect2/wisun/wisun_tel.h"
 #include "dect2/zwave/zwave_tel.h"
@@ -221,6 +224,9 @@ struct RxTelemetry {
     LorawanTelemetry lorawan; // valid when standard == 201 (LoRaWAN all channels, family 200, engine standard 202)
     LoraSatTelemetry lorasat; // valid when standard == 202 (LoRa satellites, family 201, engine standard 203)
     PactorTelemetry pactor;   // valid when standard == 204 (PACTOR-I monitor, family 203, engine standard 205)
+    RoshfTelemetry roshf;     // valid when standard == 206 (ROS (HF) detector, family 205, engine standard 207)
+    SsdvTelemetry ssdv;       // valid when standard == 207 (SSDV pictures, family 206, engine standard 208)
+    EbicabTelemetry ebicab;   // valid when standard == 208 (EBICab / Eurobalise, family 207, engine standard 209)
     EsubghzTelemetry esubghz; // valid when standard == 205 (Flipper Zero Sub-GHz chat, family 204, engine standard 206)
     PskdTelemetry pskd;       // valid when standard == 203 (PSK demodulator, family 202, engine standard 204)
     ZwaveTelemetry zwave;     // valid when standard == 99 (Z-Wave)

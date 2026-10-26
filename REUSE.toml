@@ -493,3 +493,31 @@ path = [
 precedence = "closest"
 SPDX-FileCopyrightText = "Copyright (c) the original Gradle authors"
 SPDX-License-Identifier = "Apache-2.0"
+
+# ssdv (Philip Heron, GPL-3.0-or-later; rs8.c is Phil Karn's Reed-Solomon library, LGPL) and the stb single-file headers (public domain / MIT).
+[[annotations]]
+path = [
+  "third_party/ssdv/ssdv.c",
+  "third_party/ssdv/ssdv.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2011-2016 Philip Heron <phil@sanslogic.co.uk>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+[[annotations]]
+path = [
+  "third_party/ssdv/rs8.c",
+  "third_party/ssdv/rs8.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright 2003-2004 Phil Karn, KA9Q; tweaked by Philip Heron"
+SPDX-License-Identifier = "LicenseRef-Karn-LGPL"
+
+[[annotations]]
+path = [
+  "third_party/stb/stb_image.h",
+  "third_party/stb/stb_image_write.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Copyright (c) 2017 Sean Barrett"
+SPDX-License-Identifier = "MIT"
