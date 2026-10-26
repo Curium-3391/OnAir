@@ -338,7 +338,17 @@ fn read_hfnpdu(h: &[u8], base: usize, m: &mut Msg) {
 fn read_lpdu(p: &[u8], base: usize, m: &mut Msg) {
     let len = p.len() - 2;
     let t = p[0];
-    let icao = |at: usize| if len >= at + 3 { (p[at] as u32) << 16 | (p[at + 1] as u32) << 8 | p[at + 2] as u32 } else { 0 };
+    // The three ICAO-address octets in logon/logoff LPDUs are sent MSB-first.
+    // Reverse the bits within each octet; preserve the octet order.
+    let icao = |at: usize| {
+        if len >= at + 3 {
+            ((p[at].reverse_bits() as u32) << 16)
+                | ((p[at + 1].reverse_bits() as u32) << 8)
+                | p[at + 2].reverse_bits() as u32
+        } else {
+            0
+        }
+    };
     match t {
         0x0D | 0x1D => {
             m.kind.set(if t == 0x0D { b"Unnumbered data" as &[u8] } else { b"Unnumbered acked data" });
