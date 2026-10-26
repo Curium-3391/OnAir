@@ -263,7 +263,7 @@ void hamVoiceUi(App& a) {
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Amateur voice by the IARU band plan of your region: lower sideband below 10 MHz, upper sideband above (60 m upper), FM for the 10 m, 6 m, 2 m and 70 cm segments. A click tunes the segment's calling or middle frequency and sets the demodulator and filter. The segments are the IARU plans; your country's plan can be narrower. 30 m has no voice; 11 m is CB, not amateur. The region follows your locator (Ham setup, receiver position or setup location); choose it by hand under Advanced. See docs/ham-voice.md."));
     flowNext(6 * gUi);
-    if (ImGui::TreeNodeEx(tr("Advanced##hvadv"), ImGuiTreeNodeFlags_NoTreePushOnOpen)) {
+    if (ImGui::TreeNodeEx(trw("Advanced##hvadv"), ImGuiTreeNodeFlags_NoTreePushOnOpen)) {
         ImGui::SetNextItemWidth(380 * gUi);
         int sel = S.hvRegion;
         if (ImGui::Combo(tr("Region##hvreg"), &sel, kReg, 4)) { S.hvRegion = sel; save(); }

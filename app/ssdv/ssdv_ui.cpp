@@ -155,7 +155,7 @@ void tick(App& a) {
 
 void tuner(App&, bool&) {
     load();
-    if (ImGui::CollapsingHeader(tr("Advanced##ssdv"))) {
+    if (ImGui::CollapsingHeader(trw("Advanced##ssdv"))) {
         ImGui::TextDisabled("%s", tr("Speed"));
         ImGui::SameLine();
         char cur[24];

@@ -375,7 +375,7 @@ void controls(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Wide spans (over 150 MHz) get wider bins and a short dwell that suit the radio; narrow bands keep the values under Advanced."));
     ImGui::SameLine(); ch |= ImGui::Checkbox(tr("confirmed channels only"), &S.reliableOnly);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Hides signals seen in one sweep only, steady spurs and images of strong signals. Untick to see every raw hit."));
-    const bool adv = ImGui::TreeNode(tr("Advanced (step, dwell, threshold, floor, recording)"));
+    const bool adv = ImGui::TreeNode(trw("Advanced (step, dwell, threshold, floor, recording)"));
     if (adv) {
     ImGui::BeginDisabled(run);
     ch |= ImGui::Checkbox(tr("HackRF firmware sweep"), &S.fwSweep);
