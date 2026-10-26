@@ -245,10 +245,14 @@ bool AutoGainController::tickAuto(const AgInput& in, AgCommand& out) {
         const double cut = c > 0.2 ? (acq ? 40 : 30) : c > 5e-2 ? (acq ? 28 : 20) : c > 1e-2 ? 14 : c > 2e-3 ? 10 : 6;
         // one burst takes several cuts: they are one overload episode (a new one after 3 s without clipping)
         const bool episode = ovTimes_.empty() || now - ovTimes_.back() > 3;
+        // a burst that returns while the gain is still climbing back (well under the gain that clipped before) says nothing new about the gain
+        // that is safe: the ceiling and the gain to recover to stay where the first episode put them (3.2: a transmitter that keys up every few
+        // seconds used to push the ceiling down by 4 dB per burst until the weak signal was lost). Only a clip at the recovered gain lowers them.
+        const bool returning = episode && !ovTimes_.empty() && cur_.totalDb < preOvDb_ - 4;
         if (episode) { ovTimes_.push_back(now); met_.overloads++; } else ovTimes_.back() = now;
         while (!ovTimes_.empty() && ovTimes_.front() < now - 60) ovTimes_.erase(ovTimes_.begin());
         // a soft ceiling under the gain that clipped: 20 s, 90 s when it keeps happening (three episodes in a minute)
-        if (episode) { ceil_ = cur_.totalDb - 3; preOvDb_ = cur_.totalDb; }
+        if (episode && !returning) { ceil_ = cur_.totalDb - 3; preOvDb_ = cur_.totalDb; }
         ceilUntil_ = now + (ovTimes_.size() >= 3 ? 90 : 20) / sp;
         linearUntil_ = now + 30;
         probe_ = 0; guard_ = false;
@@ -320,13 +324,19 @@ bool AutoGainController::tickAuto(const AgInput& in, AgCommand& out) {
     phase_ = Phase::Tracking;
     if (canUp && cur_.totalDb < ceiling - 0.01 && !wasted) {
         double want = 0;
-        if (e > win) want = std::min(e - win * 0.5, recovering ? std::max(12.0, tgt_.maxStepDb) : tgt_.maxStepDb);
+        if (e > win) want = std::min(e - win * 0.5, recovering ? std::max({12.0, tgt_.maxStepDb, preOvDb_ - 3.0 - cur_.totalDb}) : tgt_.maxStepDb);   // recovering: straight back to just under the gain that clipped
         else if (needMargin && e > 1.0) want = std::min({3.0, e - 0.5, tgt_.marginGoalDb - fl_.adcMarginDb});
         // hysteresis: right after coming down, only a clearly larger error turns it around
-        if (want > 0 && dir_ < 0 && now - dirAt_ < 8 / sp && e < 1.5 * win) want = 0;
+        if (want > 0 && dir_ < 0 && now - dirAt_ < 8 / sp && e < 1.5 * win && !recovering) want = 0;   // (not while climbing back after a burst)
         if (want > 0.5) {
             const double to = std::min(nextStep(cur_.totalDb, want, pol), ceiling);
-            const double snapTo = planStages(radio_, to, pol, set_.stageMask, cur_.db, cur_.ampOn).totalDb;
+            double snapTo = planStages(radio_, to, pol, set_.stageMask, cur_.db, cur_.ampOn).totalDb;
+            // the next step lies over the ceiling: the highest gain the radio reaches under it (3.2: a coarse stage table used to stop the
+            // climb short of the ceiling for good)
+            if (snapTo > ceiling + 0.01) {
+                snapTo = cur_.totalDb;
+                for (double g : totalSteps(radio_, pol, set_.stageMask, cur_.ampOn)) if (g <= ceiling + 0.01 && g > snapTo + 0.01) snapTo = g;
+            }
             if (snapTo > cur_.totalDb + 0.01 && snapTo <= ceiling + 0.01) {
                 double v = 0;
                 const Metric gm = resolvedMetric(q_);
