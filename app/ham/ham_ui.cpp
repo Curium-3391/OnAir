@@ -304,7 +304,7 @@ void hamPanel(App& a) {
     h.beacon.cfg.myCall = h.call; h.beacon.cfg.myGrid = h.grid;
     o.myCall = h.call; o.myGrid = h.grid;
     const bool isBeacon = h.mode == 3, isKbd = h.kbdIdx >= 0;
-    const std::string band = ham::bandNameFor(a.freqMhz * 1e6), modeName = ham::hamModeName(h.mode);
+    const std::string band = ham::bandNameFor(a.freqMhz * 1e6), modeName = ham::hamModeName(h.mode), rxBand = ham::rxBandNameFor(a.freqMhz * 1e6);   // rxBand: also names 11 m (CB), receive only
     if (o.workedDirty) { o.worked.build(o.log.qsos()); o.workedDirty = false; }
     const bool stationOk = ham::hamCallValid(h.call) && ham::hamGridValid(h.grid);
     const bool canCq = stationOk && h.licence;
@@ -352,7 +352,7 @@ void hamPanel(App& a) {
             if (focus && io.KeyAlt && !isKbd && (ImGui::IsKeyPressed(ImGuiKey_UpArrow) || ImGui::IsKeyPressed(ImGuiKey_DownArrow))) {
                 const auto& bd = ham::bandDials();
                 int cur = -1;
-                for (int i = 0; i < (int)bd.size(); i++) if (band == bd[(size_t)i].band) cur = i;
+                for (int i = 0; i < (int)bd.size(); i++) if (rxBand == bd[(size_t)i].band) cur = i;
                 const int step = ImGui::IsKeyPressed(ImGuiKey_UpArrow) ? 1 : -1;
                 for (int i = cur + step; i >= 0 && i < (int)bd.size(); i += step) if (ham::dialFor(bd[(size_t)i].band, h.mode) > 0) { setBand(bd[(size_t)i].band); break; }
             }
@@ -392,11 +392,11 @@ void hamPanel(App& a) {
     if (!isKbd) {
         for (const auto& b : ham::bandDials()) {
             if (ham::dialFor(b.band, h.mode) <= 0) continue;
-            const bool on = band == b.band;
+            const bool on = rxBand == b.band;
             if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
             if (ImGui::SmallButton(b.band)) setBand(b.band);
             if (on) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%.4f MHz (Alt+Up / Alt+Down)", ham::dialFor(b.band, h.mode));
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(std::string(b.band) == "11m" ? "%.4f MHz, CB (not an amateur band: receive only; the transmit gate refuses it) (Alt+Up / Alt+Down)" : "%.4f MHz (Alt+Up / Alt+Down)", ham::dialFor(b.band, h.mode));
             ImGui::SameLine(0, 3 * gUi);
         }
     }
