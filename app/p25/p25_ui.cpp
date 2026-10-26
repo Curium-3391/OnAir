@@ -281,7 +281,7 @@ void trunkTick(App& a) {
     if (!T.loaded) { T.loaded = true; if (std::filesystem::exists(std::filesystem::u8path(tgFile()))) tgLoad(tgFile(), false); }
     // Following without whole-span decoding: the whole-span bank runs for the granted Phase 1 channels only (a decoder per call, none for the rest)
     const bool wantFollow = T.on && live(a) && !a.wideDecode;
-    if (wantFollow != a.wideFollow) { a.wideFollow = wantFollow; a.engine.setWideFollow(wantFollow, {}); T.wideList.clear(); }
+    if (wantFollow != a.wideFollow) { a.wideFollow = wantFollow; if (!wantFollow) a.engine.setWideFollow(false, {}); T.wideList.clear(); }
     if (!T.on && T.p2Hop) { a.engine.setStandard(engineStd(a)); T.p2Hop = false; T.p2Call = 0; }   // following turned off on a Phase 2 channel
     if (!T.on || (!live(a) && !T.p2Hop)) return;   // on a Phase 2 voice channel the Phase 2 receiver is the first mode
     using namespace dect2::trunk;
@@ -301,9 +301,12 @@ void trunkTick(App& a) {
         const dect2::P25p2Telemetry& p = T.p2Second ? a.second.rx.p25p2 : a.rx.p25p2;
         if (p.seq != T.p2Seq && p.followTag == T.p2Call && (T.p2Second || a.rx.standard == kP25p2Std - 1)) {   // reports of this call only
             T.p2Seq = p.seq;
-            // the Phase 2 screens (running as the second mode) push their own slot choice and seed: this call's win
+            // the Phase 2 screens (running as the second mode) push their own slot choice and seed: this call's win. They push their sound too,
+            // muted (a second mode is muted unless its own sound is on, SecondScope), which silenced the first followed call after a start: the
+            // follower's call plays at the program's volume and mute (this runs outside that scope)
             dect2::P25p2Receiver& r = a.engine.p25p2();
             r.setListenSlot(T.p2Slot + 1);
+            r.setVolume(a.volume); r.setMuted(a.muted);
             if (p.wacn != T.p2Seed[0] || p.sysId != T.p2Seed[1] || p.colorCode != T.p2Seed[2]) r.setSystem(T.p2Seed[0], T.p2Seed[1], T.p2Seed[2]);
             const dect2::P25p2Call& c = p.now[T.p2Slot];
             if (c.active && c.cryptoKnown && c.encrypted) T.ctl.onEncrypted(T.p2Call, now);   // the ESS says encrypted, whatever the grant said
@@ -383,8 +386,11 @@ void trunkTick(App& a) {
         default: break;
         }
     }
-    if (a.wideFollow) {   // the bank decodes what is followed now
-        std::vector<double> v = T.ctl.follower.sliceFreqs(false);
+    if (a.wideFollow) {   // the bank decodes the control channel and the Phase 1 calls followed now: it takes the whole input, nothing else decodes them
+        std::vector<double> v{a.freqMhz * 1e6};   // the control channel the receiver is tuned to
+        const double cc = T.ctl.follower.currentControlHz();
+        if (cc > 0 && std::fabs(cc - v[0]) > 1) v.push_back(cc);   // the one the site announces, when that is another
+        for (double f : T.ctl.follower.sliceFreqs(false)) v.push_back(f);
         if (v != T.wideList) { T.wideList = v; a.engine.setWideFollow(true, v); }
     }
     if (wideActive(a)) {   // the sound follows the call that should be heard

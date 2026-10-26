@@ -3,7 +3,7 @@
 //       the Phase 1 control channel: site, identifiers and every voice grant (Phase 2 grants with their carrier and slot)
 //   p25p2tool p2 <file> <rate Hz> [--wacn X] [--sys X] [--nac X] [--slot 1|2] [--wav out.wav]
 //       a Phase 2 voice channel: burst, ISCH, DUID and ESS counters, the calls, and the sound of one slot (WACN / system / NAC in hex)
-//   p25p2tool engine <file.sigmf-meta> <control MHz> <Phase 2 MHz> <slot 1|2> <WACN> <system> <NAC> [hop]
+//   p25p2tool engine <file.sigmf-meta> <control MHz> <Phase 2 MHz> <slot 1|2> <WACN> <system> <NAC> [hop | follow | follow-empty]
 //       the engine on the recording: the control channel, then after 2 s the Phase 2 channel as the second mode (or, with hop, the first after a retune)
 #include "dect2/engine/engine.h"
 #include "dect2/p25/p25_proto.h"
@@ -136,7 +136,7 @@ int runP2(const std::vector<cf32>& x, double rate, int wacn, int sys, int nac, i
 
 // The engine with the recording as its radio, the way the trunking follower drives it: the Phase 1 control channel, then the Phase 2 channel as the
 // second mode (inside the capture) or as the first mode after a retune (the radio hopped)
-int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, int sys, int nac, bool hop) {
+int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, int sys, int nac, bool hop, int follow) {
     IqFileInfo info;
     std::string err;
     if (!probeIqFile(meta, info, err)) { fprintf(stderr, "%s\n", err.c_str()); return 1; }
@@ -149,8 +149,14 @@ int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, 
     tune.centerHz = ccMhz * 1e6; tune.sampleRate = info.sampleRate; tune.bandwidthMhz = 0.0125;
     Engine e;
     e.p25().setSilent(true);
-    e.p25p2().setSilent(true);
+    const bool sound = getenv("P25P2TOOL_SOUND") != nullptr;   // the voice monitor and the sound device as the app has them (muted)
+    e.p25p2().setSilent(!sound);
+    if (sound) { e.p25p2().setMuted(true); e.setSecondarySound(true); }
     e.setStandard(52);
+    if (follow) {   // the whole-span bank in follow-only mode, as the follower runs it: 1 with the control channel in its list, 2 with an empty list
+        e.setWideFollow(true, follow == 1 ? std::vector<double>{ccMhz * 1e6} : std::vector<double>{});
+        e.setWideVoice(true);
+    }
     if (!e.start(dev, tune, file)) { size_t n; for (auto& l : e.logSnapshot(n)) fprintf(stderr, "%s\n", l.c_str()); return 1; }
     const auto t0 = std::chrono::steady_clock::now();
     auto el = [&]() { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(); };
@@ -179,6 +185,10 @@ int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, 
     printf("Phase 2: syncs %llu, ISCH exact %llu, ESS ok %llu bad %llu, voice frames %llu decoded %llu, seed %05X/%03X/%03X\n", (unsigned long long)t.syncs,
            (unsigned long long)t.ischExact, (unsigned long long)t.essOk, (unsigned long long)t.essBad, (unsigned long long)t.voiceFrames, (unsigned long long)t.voiceDecoded,
            t.wacn, t.sysId, t.colorCode);
+    if (sound)
+        for (const auto& c : voice::monitor("p25").history())
+            printf("monitor: slot %d %s, %llu frames, %llu played, %s\n", c.info.slot, voice::targetText(c.info).c_str(), (unsigned long long)c.frames,
+                   (unsigned long long)c.played, voice::verdictText(c.verdict));
     e.stop();
     return t.essOk > 0 ? 0 : 1;
 }
@@ -188,7 +198,8 @@ int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, 
 int main(int argc, char** argv) {
     if (argc >= 9 && !strcmp(argv[1], "engine"))
         return runEngine(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]), (int)strtol(argv[6], nullptr, 16), (int)strtol(argv[7], nullptr, 16),
-                         (int)strtol(argv[8], nullptr, 16), argc > 9 && !strcmp(argv[9], "hop"));
+                         (int)strtol(argv[8], nullptr, 16), argc > 9 && !strcmp(argv[9], "hop"),
+                         argc > 9 && !strcmp(argv[9], "follow") ? 1 : argc > 9 && !strcmp(argv[9], "follow-empty") ? 2 : 0);
     if (argc < 4) { fprintf(stderr, "usage: p25p2tool cc|p2 <file> <rate Hz> [options]\n"); return 2; }
     std::vector<cf32> x;
     if (!readCf32(argv[2], x)) { fprintf(stderr, "cannot read %s\n", argv[2]); return 1; }
