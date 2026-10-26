@@ -194,7 +194,7 @@ web_origin=https://YOUR-ADDRESS-FROM-THE-STEPS-BELOW
 
 `web_trust_proxy=1` tells OnAir that the helper (the tunnel or Caddy) is on this same computer, so it can tell your listeners apart (otherwise they all look like one visitor and only 2 can listen). `web_origin` is the public address of your page; you write it in after you have it (steps below say when). OnAir 3.2 and newer do not need the `web_origin` line, 3.1 does; it does no harm in 3.2.
 
-**Check you did: what we verified.** We started the server with `web_trust_proxy=1`, then sent it requests that look exactly like the ones a proxy sends (an `https` origin plus an `X-Forwarded-For` header) from the same computer. In 3.2 they are accepted. In 3.1 the browser connection was refused with `{"error":"this page's origin is not allowed"}` unless `web_origin` was set. This is the reason for the extra line.
+**What we verified.** We started the server with `web_trust_proxy=1`, then sent it requests that look exactly like the ones a proxy sends (an `https` origin plus an `X-Forwarded-For` header) from the same computer. In 3.2 they are accepted. In 3.1 the browser connection was refused with `{"error":"this page's origin is not allowed"}` unless `web_origin` was set. This is the reason for the extra line.
 
 Leave `web=1` and do **not** add `web_lan=1`. With the default, OnAir Web listens only on this computer (`127.0.0.1`), and only the helper can reach it. This is the safest setup.
 
