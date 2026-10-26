@@ -196,10 +196,12 @@ int runEngine(const char* meta, double ccMhz, double p2Mhz, int slot, int wacn, 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc >= 9 && !strcmp(argv[1], "engine"))
+    if (argc >= 9 && !strcmp(argv[1], "engine")) {
+        const std::string how = argc > 9 ? argv[9] : "";   // hop | follow | follow-empty | nothing
+        const int follow = how == "follow" ? 1 : how == "follow-empty" ? 2 : 0;
         return runEngine(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]), (int)strtol(argv[6], nullptr, 16), (int)strtol(argv[7], nullptr, 16),
-                         (int)strtol(argv[8], nullptr, 16), argc > 9 && !strcmp(argv[9], "hop"),
-                         argc > 9 && !strcmp(argv[9], "follow") ? 1 : argc > 9 && !strcmp(argv[9], "follow-empty") ? 2 : 0);
+                         (int)strtol(argv[8], nullptr, 16), how == "hop", follow);
+    }
     if (argc < 4) { fprintf(stderr, "usage: p25p2tool cc|p2 <file> <rate Hz> [options]\n"); return 2; }
     std::vector<cf32> x;
     if (!readCf32(argv[2], x)) { fprintf(stderr, "cannot read %s\n", argv[2]); return 1; }
