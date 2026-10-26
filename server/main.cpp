@@ -166,10 +166,10 @@ int main(int argc, char** argv) {
     std::unique_ptr<onair_web::WebServer> web;
     std::unique_ptr<onair_web::DirectoryHeartbeat> directory;   // OnAir Web directory (off unless web_directory=1 and confirmed)
     if (webCfg.on && webCfg.server.webRoot.empty()) {
-        // the browser UI's files: beside the program (web/onair-web), or where a package puts them (../share/onair/web/onair-web)
+        // the browser UI's files: beside the program (web/onair-web), or where a package puts them (../share/onair/web/onair-web; macOS app: ../Resources/web/onair-web)
         std::error_code ec;
         const std::filesystem::path exe = std::filesystem::absolute(argv[0], ec).parent_path();
-        for (const auto& p : {exe / "web" / "onair-web", exe / ".." / "share" / "onair" / "web" / "onair-web", exe / ".." / "web" / "onair-web"})
+        for (const auto& p : {exe / "web" / "onair-web", exe / ".." / "share" / "onair" / "web" / "onair-web", exe / ".." / "web" / "onair-web", exe / ".." / "Resources" / "web" / "onair-web"})
             if (std::filesystem::is_regular_file(p / "index.html", ec)) { webCfg.server.webRoot = p.string(); break; }
     }
     if (webCfg.on) {

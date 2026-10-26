@@ -1,8 +1,23 @@
 // See tls_conn.h. OpenSSL is a system library (Apache-2.0 from 3.0), linked only when DECT2_TLS is set; no OpenSSL code is copied.
 #include "tls_conn.h"
 #ifdef DECT2_TLS
+#ifdef _WIN32
+#include <windows.h>
+#include <wincrypt.h>
+// wincrypt.h defines names that OpenSSL uses for its own types
+#undef X509_NAME
+#undef X509_EXTENSIONS
+#undef X509_CERT_PAIR
+#undef PKCS7_ISSUER_AND_SERIAL
+#undef PKCS7_SIGNER_INFO
+#undef OCSP_REQUEST
+#undef OCSP_RESPONSE
+#endif
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <cstdlib>
+#include <sys/stat.h>
 
 namespace dect2::tls {
 struct Ctx { SSL_CTX* c = nullptr; };
@@ -33,12 +48,42 @@ Conn* accept(Ctx* c, sock_t s, std::string& err) {
     if (SSL_accept(ssl) != 1) { err = sslErr(); SSL_free(ssl); return nullptr; }
     return new Conn{ssl};
 }
+// Where the certificate authorities (the "trusted roots") come from, so that the HTTPS check works out of the box on every system:
+//  - SSL_CERT_FILE / SSL_CERT_DIR when the user set them (OpenSSL's own default paths),
+//  - Windows: the system "Root" certificate store (the one Edge and Chrome use), read through crypt32,
+//  - macOS: /etc/ssl/cert.pem, which macOS itself keeps up to date (a Homebrew or bundled OpenSSL has no store of its own),
+//  - Linux: the bundle of the distribution (Debian/Ubuntu, Fedora/RHEL, openSUSE, Alpine, Arch). A bundled libssl looks only in one default place.
+static int loadSystemRoots(SSL_CTX* c) {
+    int n = 0;
+    X509_STORE* st = SSL_CTX_get_cert_store(c);
+#ifdef _WIN32
+    if (HCERTSTORE h = CertOpenSystemStoreA(0, "ROOT")) {
+        for (PCCERT_CONTEXT cc = CertEnumCertificatesInStore(h, nullptr); cc; cc = CertEnumCertificatesInStore(h, cc)) {
+            const unsigned char* p = cc->pbCertEncoded;
+            if (X509* x = d2i_X509(nullptr, &p, (long)cc->cbCertEncoded)) { if (X509_STORE_add_cert(st, x) == 1) ++n; X509_free(x); }
+        }
+        CertCloseStore(h, 0);
+    }
+#else
+    static const char* const files[] = {"/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+                                        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", "/etc/ssl/ca-bundle.pem", "/etc/ssl/certs/ca-bundle.crt",
+                                        "/opt/homebrew/etc/ca-certificates/cert.pem", "/usr/local/etc/ca-certificates/cert.pem"};
+    for (const char* f : files) {
+        struct stat sb;
+        if (stat(f, &sb) == 0 && S_ISREG(sb.st_mode) && X509_STORE_load_file(st, f) == 1) { ++n; break; }
+    }
+#endif
+    return n;
+}
 Ctx* makeClientCtx(std::string& err) {
     SSL_CTX* c = SSL_CTX_new(TLS_client_method());
     if (!c) { err = "TLS: " + sslErr(); return nullptr; }
     SSL_CTX_set_min_proto_version(c, TLS1_2_VERSION);
     SSL_CTX_set_verify(c, SSL_VERIFY_PEER, nullptr);
-    if (SSL_CTX_set_default_verify_paths(c) != 1) { err = "TLS: no system CA certificates found (set SSL_CERT_FILE)"; SSL_CTX_free(c); return nullptr; }
+    int roots = 0;
+    if (std::getenv("SSL_CERT_FILE") || std::getenv("SSL_CERT_DIR")) { if (SSL_CTX_set_default_verify_paths(c) == 1) ++roots; }   // the user chose the store
+    if (!roots) { roots = loadSystemRoots(c); if (!roots && SSL_CTX_set_default_verify_paths(c) == 1) ++roots; }
+    if (!roots) { err = "TLS: no trusted certificate authorities found on this computer (set SSL_CERT_FILE to a CA bundle .pem file)"; SSL_CTX_free(c); return nullptr; }
     return new Ctx{c};
 }
 Conn* connect(Ctx* c, sock_t s, const std::string& host, std::string& err) {

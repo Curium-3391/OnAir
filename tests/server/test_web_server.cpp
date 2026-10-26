@@ -161,6 +161,22 @@ int main() {
     CHECK(status(r) == 200 && r.find("\"auth\":\"password\"") != std::string::npos && r.find("\"max_users\":2") != std::string::npos, "info: %s", r.c_str());
     CHECK(status(get(port, "/web/v1/nothing")) == 404, "unknown api");
 
+    // Behind a reverse proxy on this computer (web_trust_proxy=1): the proxy ends TLS, sends the page's https origin and an X-Forwarded-For.
+    // The page's own https origin must be let in then (it was refused when X-Forwarded-For was present), and still refused without trust_proxy.
+    {
+        auto wsStatus = [&](int p) {
+            return status(http(p, "GET /web/v1/ws HTTP/1.1\r\nHost: pi.example.ts.net\r\nOrigin: https://pi.example.ts.net\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                  "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nX-Forwarded-For: 203.0.113.9\r\n\r\n"));
+        };
+        WebServer px(hub);
+        WebServerConfig pc = c;
+        pc.trustProxy = true;
+        CHECK(px.start(pc), "proxy server start: %s", px.status().lastError.c_str());
+        CHECK(wsStatus(px.status().port) != 403, "trust_proxy: the page's https origin is let in with X-Forwarded-For (%d)", wsStatus(px.status().port));
+        px.stop();
+        CHECK(wsStatus(port) == 403, "no trust_proxy: the https origin is refused");
+    }
+
     // WebSocket handshake rules
     {
         Ws w;

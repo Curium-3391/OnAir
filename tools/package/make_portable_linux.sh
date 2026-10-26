@@ -49,6 +49,7 @@ done
 # udev rules and the kernel-driver blacklist for the radios, with the script that installs them (the .deb installs them itself)
 mkdir -p "$D/udev"
 cp $SRC/packaging/linux/60-onair-sdr.rules $SRC/packaging/linux/onair-rtlsdr-blacklist.conf $SRC/packaging/linux/onair-sdrplay-blacklist.conf "$D/udev/"
+mkdir -p "$D/web"; cp -R $SRC/web/onair-web "$D/web/"   # the OnAir Web browser page (onair-server looks in ../web/onair-web)
 cp $SRC/packaging/linux/onair-server.service "$D/"   # optional systemd unit, see its header (the paths there are /usr/local/bin)
 cp $SRC/packaging/linux/install-udev-rules.sh "$D/"; chmod 755 "$D/install-udev-rules.sh"
 cat > "$D/README.txt" <<'TXT'

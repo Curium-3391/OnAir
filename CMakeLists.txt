@@ -513,7 +513,7 @@ else()
   if(WIN32)
     # MinGW-w64 (MSYS2): Winsock for the network outputs, iphlpapi to list the computer's addresses
     target_compile_definitions(dect2core PUBLIC _USE_MATH_DEFINES WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
-    target_link_libraries(dect2core PUBLIC ws2_32 iphlpapi shell32)
+    target_link_libraries(dect2core PUBLIC ws2_32 iphlpapi shell32 crypt32)
     target_link_libraries(dect2core PUBLIC dbghelp)   # minidump for the crash report
     if(DECT2_WIN_AVX2 AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64|x64" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       # Windows, opt-in: the whole receiver built for AVX2 (the program checks for it at start and says so if missing); off by default, see dect2/dsp/simd.h
@@ -2242,6 +2242,7 @@ if(DECT2_BUILD_APP AND NOT APPLE)
   endif()
   install(PROGRAMS $<TARGET_FILE:onair-server> DESTINATION ${CMAKE_INSTALL_BINDIR})
   install(FILES packaging/linux/onair-server.service DESTINATION lib/systemd/system)
+  install(DIRECTORY web/onair-web DESTINATION share/onair/web)   # the OnAir Web browser page: onair-server looks in ../share/onair/web/onair-web
   if(DECT2_BUILD_PLUGIN_EXAMPLES)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/plugins/ DESTINATION ${CMAKE_INSTALL_LIBDIR}/onair/plugins USE_SOURCE_PERMISSIONS)
   endif()

@@ -13,13 +13,14 @@ export MACOSX_DEPLOYMENT_TARGET
 # The workflow caches $FFMPEG_PREFIX; built here when it is missing.
 FFMPEG_PREFIX=${FFMPEG_PREFIX:-$PWD/$BUILD/ffmpeg}
 [ -f "$FFMPEG_PREFIX/lib/libavcodec.a" ] || tools/package/build_ffmpeg_static.sh "$FFMPEG_PREFIX"
-cmake -S . -B $BUILD -DDECT2_FFMPEG_PREFIX="$FFMPEG_PREFIX" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_TESTS=OFF -DDECT2_BUILD_APP=ON -DDECT2_HAVE_HAMLIB=ON -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" -DONAIR_VERSION="$VERSION"
+cmake -S . -B $BUILD -DDECT2_FFMPEG_PREFIX="$FFMPEG_PREFIX" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_TESTS=OFF -DDECT2_BUILD_APP=ON -DDECT2_HAVE_HAMLIB=ON -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" -DONAIR_VERSION="$VERSION" -DDECT2_WITH_TLS=ON -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"   # TLS: HTTPS for onair-server and the web.on-air.dev heartbeat; libssl/libcrypto are bundled by bundle_macos.py
 cmake --build $BUILD -j"$(sysctl -n hw.ncpu)" --target dect2 onair-server
 APP=$BUILD/OnAir.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp $BUILD/dect2 "$APP/Contents/MacOS/OnAir"
 cp $BUILD/onair-server "$APP/Contents/MacOS/onair-server"   # the headless server for OnAir Web (docs/headless-server.md); bundle_macos.py gives it the same libraries
+mkdir -p "$APP/Contents/Resources/web"; cp -R web/onair-web "$APP/Contents/Resources/web/"   # the OnAir Web browser page (onair-server looks in ../Resources/web/onair-web)
 cp packaging/icons/OnAir.icns "$APP/Contents/Resources/OnAir.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
