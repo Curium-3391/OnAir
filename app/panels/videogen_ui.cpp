@@ -445,7 +445,7 @@ void encodingSection(State& s, float col, float w) {
     ImGui::TextUnformatted(tr("kbit/s"));
     ImGui::SameLine();
     ImGui::Checkbox(tr("Auto##vgvkbps"), &e.autoBitrate);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Follow the suggestion for this codec, resolution, frame rate and frame types (%d kbit/s)"), sug);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%d kbit/s)", tr("Follow the suggestion for this codec, resolution, frame rate and frame types"), sug);
     if (e.rc == RateControl::Crf && caps.crf) {
         rowLabel(N_("CRF"), col);
         ImGui::SetNextItemWidth(w);
@@ -454,11 +454,11 @@ void encodingSection(State& s, float col, float w) {
     }
     rowLabel(N_("Frame rate"), col);
     char fl[32];
-    snprintf(fl, sizeof fl, e.fps == std::floor(e.fps) ? "%.0f fps" : "%.1f fps", e.fps);
+    snprintf(fl, sizeof fl, "%.*f fps", e.fps == std::floor(e.fps) ? 0 : 1, e.fps);
     ImGui::SetNextItemWidth(w);
     if (ImGui::BeginCombo("##vgfps", fl)) {
         for (double f : kFps) {
-            snprintf(fl, sizeof fl, f == std::floor(f) ? "%.0f fps" : "%.1f fps", f);
+            snprintf(fl, sizeof fl, "%.*f fps", f == std::floor(f) ? 0 : 1, f);
             if (ImGui::Selectable(fl, e.fps == f)) e.fps = f;
         }
         ImGui::EndCombo();
@@ -487,7 +487,7 @@ void encodingSection(State& s, float col, float w) {
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (e.frames == FrameTypes::IOnly) ImGui::TextDisabled("%s", tr("all-intra"));
-    else ImGui::TextDisabled(tr("%d frames"), std::max(1, (int)std::lround(e.gopSeconds * e.fps)));
+    else ImGui::TextDisabled("%d %s", std::max(1, (int)std::lround(e.gopSeconds * e.fps)), tr("frames"));
     rowLabel(N_("Profile"), col);
     ImGui::BeginDisabled(!caps.profile);
     combo("##vgprofile", e.profile, kProfileNames, kNumProfiles, w);
@@ -577,7 +577,7 @@ void encodingSection(State& s, float col, float w) {
         pid(N_("PMT PID"), "##vgpmt", e.pmtPid, 0x1FFE);
         pid(N_("Video PID"), "##vgvpid", e.videoPid, 0x1FFE);
         pid(N_("Audio PID"), "##vgapid", e.audioPid, 0x1FFA);
-        if (audioTrackCount(e) > 1) ImGui::TextDisabled(tr("Audio track n uses the audio PID + n (up to 0x%04X)"), e.audioPid + audioTrackCount(e) - 1);
+        if (audioTrackCount(e) > 1) ImGui::TextDisabled("%s (0x%04X)", tr("Audio track n uses the audio PID + n, up to"), e.audioPid + audioTrackCount(e) - 1);
     }
 }
 
@@ -628,9 +628,7 @@ void estimatePanel(const Settings& e) {
     ImGui::Dummy(ImVec2(bw, bh));
     ImGui::TextDisabled("%s", tr("video | audio | headers | signalling | null packets"));
     ImGui::Spacing();
-    char line[160];
-    snprintf(line, sizeof line, tr("%d kbit/s of video at %dx%d, %.1f fps"), effectiveVideoKbps(e), e.width, e.height, e.fps);
-    ImGui::TextWrapped("%s", line);
+    ImGui::TextWrapped("%s: %d kbit/s, %dx%d, %.1f fps", tr("Video"), effectiveVideoKbps(e), e.width, e.height, e.fps);
     for (const std::string& w : checkSettings(e, b)) ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.2f, 1), "%s", tr(w.c_str()));
 }
 
@@ -694,10 +692,9 @@ void palette(State& s) {
     for (const ParamGroup& g : kGroups) {
         ImGui::SeparatorText(tr(g.name));
         for (Param p : g.params) {
-            char tip[200];
-            snprintf(tip, sizeof tip, tr("From \"Sources and encoding\" > %s: now %s"), tr(g.name), paramValue(p, s.cfg.enc).c_str());
+            const std::string tip = std::string(tr("From the tab \"Sources and encoding\"")) + " > " + tr(g.name) + ". " + tr("Now:") + " " + paramValue(p, s.cfg.enc);
             ImGui::PushID((int)p);
-            paletteItem(tr(paramLabel(p)), BlockKind::Param, p, tip, s);
+            paletteItem(tr(paramLabel(p)), BlockKind::Param, p, tip.c_str(), s);
             ImGui::PopID();
         }
     }
@@ -875,8 +872,8 @@ void canvas(State& s) {
     // a block dropped from the palette lands where the mouse is
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("VGBLOCK")) {
-            DropItem d;
-            memcpy(&d, pl->Data, sizeof d);
+            DropItem d{};
+            if (pl->DataSize == (int)sizeof d) std::copy_n(static_cast<const unsigned char*>(pl->Data), sizeof d, reinterpret_cast<unsigned char*>(&d));
             Block b = newBlock((BlockKind)d.kind, (Param)d.param);
             const Rect r0 = s.ovr.blockRect(b, e, W, H);
             Rect r{(m.x - p0.x) / sc - (b.kind == BlockKind::Rolling ? 0 : r0.w / 2), (m.y - p0.y) / sc - r0.h / 2, r0.w, r0.h};
@@ -909,7 +906,7 @@ void canvas(State& s) {
     }
     dl->PopClipRect();
     if (!s.ovr.hasFont()) ImGui::TextDisabled("%s", tr("No font for the overlay text was found: text blocks are not drawn."));
-    else ImGui::TextDisabled(tr("%dx%d. Drag to move, the corner to resize (logo, rolling text), Delete removes the selected block."), W, H);
+    else ImGui::TextDisabled("%dx%d. %s", W, H, tr("Drag to move, the corner to resize (logo, rolling text), Delete removes the selected block."));
 }
 
 void overlayTab(State& s) {
@@ -959,13 +956,13 @@ void controlBar(State& s) {
     if (running) {
         char t[200];
         if (c.output == Output::File) {
-            snprintf(t, sizeof t, tr("Encoding: %.1f of %.1f s, %.0f kbit/s"), st.seconds, c.seconds, st.kbps);
+            snprintf(t, sizeof t, "%s: %.1f / %.1f s, %.0f kbit/s", tr("Encoding"), st.seconds, c.seconds, st.kbps);
             ImGui::SetNextItemWidth(200 * gUi);
             ImGui::ProgressBar((float)st.progress, ImVec2(200 * gUi, 0));
             ImGui::SameLine();
         } else {
             const int sec = (int)st.seconds;
-            snprintf(t, sizeof t, tr("Streaming: %d:%02d, %.0f kbit/s"), sec / 60, sec % 60, st.kbps);
+            snprintf(t, sizeof t, "%s: %d:%02d, %.0f kbit/s", tr("Streaming"), sec / 60, sec % 60, st.kbps);
         }
         ImGui::TextUnformatted(t);
         ImGui::SameLine();
@@ -976,7 +973,7 @@ void controlBar(State& s) {
     } else if (!s.msg.empty()) {
         ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.35f, 1), "%s", tr(s.msg.c_str()));
     } else if (st.finished && c.output == Output::File && st.frames > 0) {
-        ImGui::TextDisabled(tr("Written: %s (%.1f s, %.1f MB). The transmitter takes it as its \"MPEG-TS / video file\"."), c.tsPath.c_str(), st.seconds, st.bytes / 1e6);
+        ImGui::TextDisabled("%s: %s (%.1f s, %.1f MB). %s", tr("Written"), c.tsPath.c_str(), st.seconds, st.bytes / 1e6, tr("The transmitter takes it as its \"MPEG-TS / video file\"."));
     } else ImGui::NewLine();
 
     // where to watch the stream: the address set here, with a copy button and the VLC hint
@@ -989,10 +986,8 @@ void controlBar(State& s) {
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Copy##vgurl"))) ImGui::SetClipboardText(url.c_str());
         const std::string vlc = vlcOpenUrl(c.output, c.host, c.port);
-        char hint[240];
-        if (isMulticast(c.host)) snprintf(hint, sizeof hint, tr("In VLC on a receiving PC: Media > Open Network Stream > %s (multicast group)"), vlc.c_str());
-        else snprintf(hint, sizeof hint, tr("In VLC on the receiving PC (%s): Media > Open Network Stream > %s"), c.host.c_str(), vlc.c_str());
-        ImGui::TextDisabled("%s", hint);
+        const std::string where = isMulticast(c.host) ? std::string(tr("In VLC on a receiving PC (multicast group)")) : std::string(tr("In VLC on the receiving PC")) + " (" + c.host + ")";
+        ImGui::TextDisabled("%s: %s > %s", where.c_str(), tr("Media > Open Network Stream"), vlc.c_str());
     }
 }
 

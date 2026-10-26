@@ -10,6 +10,7 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <string_view>
 
 namespace dect2::vgen {
 
@@ -74,7 +75,7 @@ bool audioOpens(const AVCodec* c) {
     return ok;
 }
 
-bool starts(const std::string& s, const char* p) { return s.compare(0, strlen(p), p) == 0; }
+bool starts(std::string_view s, std::string_view p) { return s.starts_with(p); }
 
 std::string kbps(double v) {
     char b[48];

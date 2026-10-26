@@ -10,6 +10,7 @@
 #include "dect2/tv/videogen.h"
 #include <chrono>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -30,7 +31,16 @@ using namespace dect2::vgen;
 namespace fs = std::filesystem;
 
 static int failures = 0;
-#define CHECK(c, ...) do { if (!(c)) { failures++; std::printf("FAIL: " __VA_ARGS__); std::printf("\n"); } } while (0)
+static void fail(const char* fmt, ...) {   // one printf with a constant format, as Codacy wants
+    char b[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    std::printf("FAIL: %s\n", b);
+    failures++;
+}
+#define CHECK(c, ...) do { if (!(c)) fail(__VA_ARGS__); } while (0)
 
 static std::vector<uint8_t> readAll(const fs::path& p) {
     std::ifstream f(p, std::ios::binary);
@@ -357,8 +367,9 @@ static void testStream(const fs::path& pic, bool rtp) {
         const ssize_t n = recv(rx, buf, sizeof buf, 0);
         if (n <= 0) continue;
         got++;
-        const int hdr = rtp ? 12 : 0;
-        if (n == hdr + 7 * 188 && buf[hdr] == 0x47 && buf[hdr + 188] == 0x47 && (!rtp || (buf[0] == 0x80 && (buf[1] & 0x7F) == 33))) good++;
+        const size_t hdr = rtp ? 12 : 0, len = (size_t)n;
+        if (len != hdr + 7 * 188) continue;
+        if (buf[hdr] == 0x47 && buf[hdr + 188] == 0x47 && (!rtp || (buf[0] == 0x80 && (buf[1] & 0x7F) == 33))) good++;
     }
     CHECK(g.running(), "streaming keeps going until stopped");
     g.stop();
