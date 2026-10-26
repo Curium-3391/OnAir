@@ -1,6 +1,7 @@
 // Fast scanner: dynamic floor, hop calibration, candidates and hit tracker on synthetic spectra (a tilted floor with drifting carriers and
 // bursts), the hop planner and radio ceilings, the filterbank and the channel recorders (one and 100 channels), the scan loop with a simulated
 // radio, and the measured DSP speed per radio profile.
+#include "dect2/fastscan/fwsweep.h"
 #include "dect2/fastscan/profile.h"
 #include "dect2/fastscan/scanner.h"
 #include <algorithm>
@@ -619,8 +620,9 @@ static void testScanSpeed() {
         const double model = sc.plan().mhzPerSec;
         printf("  %-7s %2.0f MHz in %zu hops: measured %.0f MHz/s (planned %.0f, model ceiling %.0f); %.2f s for 4 passes\n", k.id, k.spanMhz, sc.plan().hops.size(), st.mhzPerSec,
                model, ceilingMhzPerSec(r, c.plan.dwellSec), sec);
-        // timing sanity only: sleeps overshoot on a loaded machine (83 % of the plan when idle); it must never beat the plan
-        CHECK(st.mhzPerSec > 0.15 * model && st.mhzPerSec < 1.4 * model);
+        // timing sanity only: sleeps overshoot a lot on loaded CI runners (83 % of the plan when idle, well under 15 % on a busy Windows/macOS box);
+        // it must never beat the plan and must still make progress
+        CHECK(st.mhzPerSec > 0.02 * model && st.mhzPerSec < 1.4 * model);
     }
 }
 
@@ -650,6 +652,181 @@ static void benchProfiles() {
                std::min(dspMhz, ceilingMhzPerSec(r, c.plan.dwellSec)));
         CHECK(dspMhz > 10);
     }
+}
+
+
+// ---------------------------------------------------------------- v2: confirmation, spurs, images, classes, whole span
+struct Sig { double hz, amp, dev, modHz; long on0, onPeriod, onLen; bool mirror; };   // on: (k % onPeriod) in [on0, on0+onLen); onPeriod 0: always
+struct MultiSim : sweep::SweepSource {
+    double rate, center = 0;
+    std::atomic<long> caps{0};
+    std::mt19937 g{11};
+    std::normal_distribution<float> nd{0.f, 1.f};
+    std::vector<Sig> sigs;
+    MultiSim(double r) : rate(r) {}
+    bool retune(double c, std::string&) override { center = c; return true; }
+    void discard(double) override {}
+    double sampleRate() const override { return rate; }
+    size_t capture(cf32* out, size_t n) override {
+        const long k = caps++;
+        for (size_t i = 0; i < n; i++) out[i] = cf32(nd(g), nd(g)) * 0.001f + cf32(0.003f, 0);
+        for (const Sig& s : sigs) {
+            if (s.onPeriod > 0 && (k % s.onPeriod < s.on0 || k % s.onPeriod >= s.on0 + s.onLen)) continue;
+            auto add = [&](double f, double amp) {
+                const double off = f - center;
+                if (std::fabs(off) > rate * 0.4) return;
+                for (size_t i = 0; i < n; i++) {
+                    const double t = (double)(i + k * n) / rate;
+                    const double a = 2 * M_PI * (off * t) + (s.modHz > 0 ? s.dev / s.modHz * (-std::cos(2 * M_PI * s.modHz * t)) : 0.0);
+                    out[i] += cf32((float)std::cos(a), (float)std::sin(a)) * (float)amp;
+                }
+            };
+            add(s.hz, s.amp);
+            if (s.mirror) add(2 * center - s.hz, s.amp * 0.05);   // the radio's image: 26 dB down, mirrored about the tuned centre
+        }
+        return n;
+    }
+};
+
+static void testQualifyPure() {
+    CHECK(isImageOf(101.2e6, 10.f, 100.8e6, 40.f, 101.0e6, 20e3, 18.f));          // mirrored, 30 dB weaker
+    CHECK(!isImageOf(101.2e6, 30.f, 100.8e6, 40.f, 101.0e6, 20e3, 18.f));         // only 10 dB weaker: a real signal
+    CHECK(!isImageOf(101.3e6, 10.f, 100.8e6, 40.f, 101.0e6, 20e3, 18.f));         // not at the mirror position
+    CHECK(!isImageOf(101.0e6, 10.f, 101.0e6, 40.f, 101.0e6, 20e3, 18.f));         // on the centre: DC, not an image
+    CHECK(classify(145.5e6, 1000, 1) == SigClass::Carrier);
+    CHECK(classify(145.5e6, 12000, 1) == SigClass::Voice);
+    CHECK(classify(145.5e6, 25000, 0.3) == SigClass::Voice);
+    CHECK(classify(145.5e6, 25000, 1) == SigClass::Narrowband);
+    CHECK(classify(145.5e6, 80000, 1) == SigClass::Digital);
+    CHECK(classify(98e6, 180000, 1) == SigClass::Broadcast);
+    CHECK(classify(450e6, 180000, 1) == SigClass::Wideband);
+    CHECK(classify(600e6, 6e6, 1) == SigClass::Digital);
+    CHECK(classHint(125e6, 8000, 1) == "AM" && classHint(145e6, 8000, 1) == "NFM");
+    for (const char* id : {"rtlsdr", "airspy", "hackrf", "sdrplay", "wide", "pluto", "generic"}) {
+        const RadioProfile& r = radioProfile(id);
+        const FreqRange w = wholeSpan(r);
+        CHECK(w.hiHz > w.loHz);
+        const ScanProfile p = wholeSpanProfile(r);
+        FastScanConfig c = toConfig(p);
+        FastPlan pl = planFast(c.plan, r);
+        CHECK(!pl.hops.empty() && nearTo(pl.coveredHz, w.hiHz - w.loHz, 2 * pl.binHz * (double)pl.hops.size()));
+        printf("  whole span %-8s %6.0f-%-6.0f MHz: %5zu hops, bin %.1f kHz, dwell %.1f ms -> model pass %.1f s (%.0f MHz/s), retune-limited ceiling %.0f MHz/s\n", id, w.loHz / 1e6,
+               w.hiHz / 1e6, pl.hops.size(), pl.binHz / 1e3, pl.dwellSec * 1e3, pl.passSec, pl.mhzPerSec, ceilingMhzPerSec(r, pl.dwellSec));
+    }
+    CHECK(autoScan(radioProfile("rtlsdr"), 50e6).stepKhz == 12.5 && autoScan(radioProfile("hackrf"), 6e9).stepKhz == 50);
+}
+
+static void testQualifyScan() {
+    const RadioProfile& rtl = radioProfile("rtlsdr");
+    FastScanConfig c;
+    c.plan.bands = {{100e6, 108e6}};
+    c.plan.binHz = 10000;
+    c.plan.dwellSec = 0.004;
+    c.hits.onDb = 12; c.hits.offDb = 8; c.hits.hangSec = 0.05; c.hits.mergeHz = 25e3;
+    FastScanner sc;
+    std::string err;
+    CHECK(sc.configure(c, rtl, err));
+    const FastPlan& pl = sc.plan();
+    const long H = (long)pl.hops.size();
+    CHECK(H >= 4);
+    auto at = [&](int hop, double off) { return pl.hops[hop].centerHz + off; };
+    MultiSim src(pl.rateHz);
+    // keyed voice: on for 6 sweeps, off for 6; the image of it is 26 dB down. A steady carrier (spur). A wide steady FM. A one-look flash.
+    src.sigs.push_back({at(1, 300e3), 0.2, 3000, 1000, 0, H * 12, H * 6, true});
+    src.sigs.push_back({at(2, -250e3), 0.05, 0, 0, 0, 0, 0, false});
+    src.sigs.push_back({at(3, 200e3), 0.05, 40000, 7300, 0, 0, 0, false});
+    src.sigs.push_back({at(0, 150e3), 0.1, 3000, 1000, H * 20 + 0, H * 100, 1, false});
+    RunHooks hk;
+    hk.maxPasses = 36;
+    hk.clock = [&] { return src.caps.load() * 0.05; };
+    CHECK(sc.run(src, nullptr, hk, err));
+    const auto all = sc.channels(false), good = sc.channels(true);
+    const double voice = at(1, 300e3), carrier = at(2, -250e3), fm = at(3, 200e3), flash = at(0, 150e3);
+    auto find = [&](const std::vector<ChannelInfo>& v, double hz, double tol = 15e3) -> const ChannelInfo* {
+        for (const ChannelInfo& x : v) if (nearTo(x.hit.freqHz, hz, tol)) return &x;
+        return nullptr;
+    };
+    const ChannelInfo* v = find(good, voice);
+    CHECK(v && v->confirmed && v->sweeps >= 3 && v->presence > 0.2f && v->presence < 0.9f);
+    const ChannelInfo* w = find(good, fm, 40e3);
+    CHECK(w && w->confirmed);
+    const ChannelInfo* sp = find(all, carrier);
+    CHECK(sp && sp->spur && !find(good, carrier));                             // steady narrow signal: flagged and hidden
+    const ChannelInfo* im = find(all, 2 * pl.hops[1].centerHz - voice, 15e3);
+    CHECK(im && im->image && !find(good, 2 * pl.hops[1].centerHz - voice, 15e3));   // the mirror of the voice signal
+    const ChannelInfo* fl = find(all, flash);
+    CHECK(!fl || (!fl->confirmed && !find(good, flash)));                      // seen in one sweep only: not reliable
+    printf("  qualify: %zu raw hits -> %zu reliable (voice %s, spur %s, image %s, flash %s)\n", all.size(), good.size(), v ? "yes" : "no", sp && sp->spur ? "flagged" : "NO",
+           im && im->image ? "flagged" : "NO", !fl ? "not seen" : (fl->confirmed ? "CONFIRMED" : "unconfirmed"));
+}
+
+
+// ---------------------------------------------------------------- HackRF firmware sweep: packets, plan, block-fed scan loop
+struct SimBlocks : BlockSource {
+    double rate;
+    const FastPlan* plan = nullptr;
+    long k = 0;
+    std::mt19937 g{5};
+    std::normal_distribution<float> nd{0.f, 1.f};
+    double toneHz = 0;
+    SimBlocks(double r) : rate(r) {}
+    double sampleRate() const override { return rate; }
+    bool next(double& c, std::vector<cf32>& out, const std::atomic<bool>*, std::string&) override {
+        const int hop = (int)(k % (long)plan->hops.size());
+        c = plan->hops[hop].centerHz + 1000.0;      // the firmware's centre is never exactly the plan's
+        out.resize(8176);
+        for (auto& s : out) s = cf32(nd(g), nd(g)) * 0.001f + cf32(0.003f, 0);
+        const double off = toneHz - c;
+        if (std::fabs(off) < rate * 0.4)
+            for (size_t i = 0; i < out.size(); i++) { const double a = 2 * M_PI * off * (double)(i + k * out.size()) / rate; out[i] += cf32((float)std::cos(a), (float)std::sin(a)) * 0.05f; }
+        k++;
+        return true;
+    }
+};
+
+static void testFirmwareSweep() {
+    // packets: two valid blocks (one with the marker missing in between)
+    std::vector<uint8_t> buf(3 * kSweepBlockBytes, 0);
+    const uint64_t f0 = 2400000000ull;
+    for (int blk : {0, 2}) {
+        uint8_t* b = &buf[(size_t)blk * kSweepBlockBytes];
+        b[0] = 0x7F; b[1] = 0x7F;
+        const uint64_t f = f0 + (uint64_t)blk * 15000000ull;
+        for (int i = 0; i < 8; i++) b[2 + i] = (uint8_t)(f >> (8 * i));
+        reinterpret_cast<int8_t*>(b + 16)[0] = 64; reinterpret_cast<int8_t*>(b + 16)[1] = -64;
+    }
+    std::vector<double> centres; float first = 0;
+    const size_t n = parseSweepBuffer(buf.data(), buf.size(), 7.5e6, [&](double c, const cf32* s, size_t m) { centres.push_back(c); if (centres.size() == 1) first = s[0].real(); CHECK(m == (kSweepBlockBytes - 16) / 2); });
+    CHECK(n == 2 && centres.size() == 2 && nearTo(centres[0], 2407.5e6, 1) && nearTo(centres[1], 2437.5e6, 1) && nearTo(first, 0.5, 1e-6));
+    CHECK(parseSweepBuffer(buf.data(), kSweepBlockBytes - 1, 0, [&](double, const cf32*, size_t) {}) == 0);   // a short buffer holds no block
+    // the plan: whole MHz start, 15 MHz hops, one range
+    const RadioProfile& hr = radioProfile("hackrf");
+    FastPlanConfig w; w.bands = {{1e6, 6000e6}};
+    const FwSweepPlan fp = planFirmwareSweep(w, hr);
+    CHECK(fp.loMhz == 1 && fp.hiMhz == 6001 && nearTo(fp.stepHz, 15e6, 1) && nearTo(fp.offsetHz, 7.5e6, 1));
+    FastPlanConfig w2; w2.bands = {{88.3e6, 107.9e6}};
+    const FwSweepPlan f2 = planFirmwareSweep(w2, hr);
+    CHECK(f2.loMhz == 88 && f2.hiMhz == 118);
+    // the block loop: a tone is found in the right hop and passes are counted from the wraps
+    FastScanConfig c;
+    c.plan = f2.plan; c.plan.binHz = 40000; c.plan.dwellSec = 0.0004;
+    c.hits.onDb = 12; c.hits.offDb = 8; c.hits.hangSec = 0.05; c.hits.mergeHz = 100e3;
+    FastScanner sc;
+    std::string err;
+    RadioProfile r20 = hr; r20.rateHz = 20e6;
+    CHECK(sc.configure(c, r20, err));
+    SimBlocks src(20e6);
+    src.plan = &sc.plan();
+    src.toneHz = 95.2e6;
+    CHECK(sc.plan().hops.size() == 2 && nearTo(sc.plan().hops[0].centerHz, 95.5e6, 2e5));
+    RunHooks hk; hk.maxPasses = 6;
+    hk.clock = [&] { return (double)src.k * 0.0005; };
+    CHECK(sc.runBlocks(src, nullptr, hk, err));
+    CHECK(sc.stats().passes == 6);
+    bool found = false;
+    for (const ChannelInfo& ch : sc.channels(true)) if (nearTo(ch.hit.freqHz, 95.2e6, 60e3)) found = true;
+    CHECK(found);
+    printf("  firmware sweep: packets parsed, plan 1-6000 MHz = sweep %u-%u MHz in %zu 15 MHz hops, block loop found the tone\n", fp.loMhz, fp.hiMhz, (size_t)((fp.hiMhz - fp.loMhz) / 15));
 }
 
 static void testProfile() {
@@ -687,6 +864,9 @@ static void testProfile() {
 
 int main() {
     testProfile();
+    testQualifyPure();
+    testQualifyScan();
+    testFirmwareSweep();
     testFloor();
     testCalibration();
     testCandidates();

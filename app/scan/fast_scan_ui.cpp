@@ -1,5 +1,6 @@
 // The "Fast scan" scope of the merged Scanner view. See fast_scan_ui.h and docs/fast-scan.md.
 #include "dect2/common/thread_name.h"
+#include "dect2/fastscan/fwsweep.h"
 #include "dect2/fastscan/profile.h"
 #include "dect2/fastscan/scanner.h"
 #include "dect2/sweep/sweep.h"
@@ -19,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 
 namespace {
 using namespace dect2;
@@ -30,7 +32,7 @@ struct St {
     ScanProfile prof;
     std::vector<ScanProfile> presets;      // the user's
     char bands[256] = "", excl[256] = "", prio[128] = "", name[48] = "";
-    bool loaded = false, autoSettle = true, persistFloor = true;
+    bool loaded = false, autoSettle = true, persistFloor = true, autoParams = true, reliableOnly = true, fwSweep = true, usedFw = false;
     float gainDb = 30;
     int presetSel = -1;
     // traces
@@ -48,6 +50,9 @@ struct St {
     // view
     SpectrumView view;
     std::vector<Hit> hits;
+    std::vector<ChannelInfo> chans;         // the same hits with confirmation, class and spur / image flags
+    std::unordered_map<uint64_t, size_t> chanOf;
+    AutoScan applied;                       // step / dwell / threshold the automatic mode chose for this scan
     double lastPull = 0;
     std::deque<std::vector<float>> hist;
     uint64_t histSeq = 0;
@@ -88,6 +93,7 @@ void saveState() {
     for (const ScanProfile& q : S.presets) all += (all.empty() ? "" : "|") + serializeProfile(q);
     p.setS("fsPresets", all);
     p.setS("fsLocked", S.lockedText); p.setS("fsPrio", S.prioText);
+    p.setB("fsFw", S.fwSweep); p.setB("fsAutoParams", S.autoParams); p.setB("fsReliable", S.reliableOnly);
     p.setB("fsAutoSettle", S.autoSettle); p.setB("fsPersist", S.persistFloor); p.setD("fsGain", S.gainDb);
 }
 void load() {
@@ -105,6 +111,7 @@ void load() {
         pos = e + 1;
     }
     S.lockedText = p.getS("fsLocked", ""); S.prioText = p.getS("fsPrio", "");
+    S.fwSweep = p.getB("fsFw", true); S.autoParams = p.getB("fsAutoParams", true); S.reliableOnly = p.getB("fsReliable", true);
     S.autoSettle = p.getB("fsAutoSettle", true); S.persistFloor = p.getB("fsPersist", true); S.gainDb = (float)p.getD("fsGain", 30);
     toBuffers();
 }
@@ -140,8 +147,34 @@ std::string floorPath(const FastScanConfig& c) {
     return plat::dataDir() + b;
 }
 
-void worker(DeviceInfo dev, TuneSettings t, FastScanConfig cfg, ScanProfile prof) {
+void worker(DeviceInfo dev, TuneSettings t, FastScanConfig cfg, ScanProfile prof, bool useFw) {
     std::string err;
+    if (useFw) {
+        // HackRF: the firmware sweeps by itself (hackrf_init_sweep), 20 Msps hops of 15 MHz; when it cannot start the retune loop below takes over
+        const FwSweepPlan fp = planFirmwareSweep(cfg.plan, S.radio);
+        FastScanConfig fc = cfg;
+        fc.plan = fp.plan;
+        fc.plan.binHz = std::max(fc.plan.binHz, 30000.0);
+        RadioProfile r20 = S.radio; r20.rateHz = 20e6;
+        HackrfFwSweep fw;
+        std::string ferr;
+        if (S.sc->configure(fc, r20, ferr) && fw.open(fp, t.lnaDb, t.vgaDb, t.ampOn, dev.serial, ferr)) {
+            pushFilters();
+            RunHooks hk;
+            { std::lock_guard<std::mutex> l(S.mu); S.usedFw = true; S.msg = tr("HackRF firmware sweep (receive only)."); }
+            S.ready = true;
+            S.sc->runBlocks(fw, &S.cancel, hk, err);
+            fw.close();
+            if (S.persistFloor && !fc.floorFile.empty()) S.sc->saveFloor();
+            std::lock_guard<std::mutex> l(S.mu);
+            if (!err.empty()) S.msg = err;
+            S.running = false;
+            return;
+        }
+        std::lock_guard<std::mutex> l(S.mu);
+        S.usedFw = false;
+        S.msg = std::string(tr("The firmware sweep is not available, using the retune loop: ")) + ferr;
+    }
     sweep::IqSweepSource src(dev, t);
     if (!src.open(err)) { std::lock_guard<std::mutex> l(S.mu); S.msg = err; S.running = false; return; }
     if (S.autoSettle && !cfg.plan.bands.empty()) {
@@ -171,6 +204,12 @@ void worker(DeviceInfo dev, TuneSettings t, FastScanConfig cfg, ScanProfile prof
     S.running = false;
 }
 
+RadioProfile radioOf(const App& a) {
+    if (a.devIdx < 0 || a.devIdx >= (int)a.devices.size()) return radioProfile("rtlsdr");
+    const DeviceInfo& d = a.devices[a.devIdx];
+    return profileForBoard(d.board + " " + d.name, d.maxRateHz);
+}
+
 void startScan(App& a) {
     fastscanui::stop();
     fromBuffers();
@@ -179,6 +218,13 @@ void startScan(App& a) {
     if (a.devIdx < 0 || a.devIdx >= (int)a.devices.size() || !a.devices[a.devIdx].isRadio()) { S.msg = tr("Pick a radio first (the test signal and files cannot scan)."); return; }
     const DeviceInfo dev = a.devices[a.devIdx];
     S.radio = profileForBoard(dev.board + " " + dev.name, dev.maxRateHz);
+    if (S.autoParams && !parseRanges(S.prof.bands).empty()) {
+        // one-button mode: the step, dwell and threshold follow from the radio and the width of the span
+        double lo = 1e18, hi = 0;
+        for (const FreqRange& r : parseRanges(S.prof.bands)) { lo = std::min(lo, r.loHz); hi = std::max(hi, r.hiHz); }
+        S.applied = autoScan(S.radio, hi - lo);
+        if (hi - lo > 150e6) { S.prof.stepKhz = S.applied.stepKhz; S.prof.dwellMs = S.applied.dwellMs; S.prof.thresholdDb = std::max(S.prof.thresholdDb, S.applied.thresholdDb); }
+    }
     FastScanConfig cfg = toConfig(S.prof);
     if (cfg.plan.bands.empty()) { S.msg = tr("No band: type ranges in MHz, for example 118-137."); return; }
     for (const FreqRange& r : parseRanges(S.prioText)) cfg.plan.priority.push_back(r);
@@ -193,7 +239,14 @@ void startScan(App& a) {
     S.sc = std::make_unique<FastScanner>();
     S.cancel = false; S.running = true; S.ready = false; S.msg.clear(); S.hist.clear(); S.hits.clear(); S.settleMeasured = 0; S.fitOnce = true;
     saveState();
-    S.th = dect2::namedThread("onair-fastscan", worker, dev, t, cfg, S.prof);
+    bool useFw = false;
+    if (S.fwSweep && S.radio.id == "hackrf" && !S.prof.record) {
+        double lo = 1e18, hi = 0;
+        for (const FreqRange& r : cfg.plan.bands) { lo = std::min(lo, r.loHz); hi = std::max(hi, r.hiHz); }
+        useFw = hi - lo >= 30e6;
+    }
+    S.usedFw = false;
+    S.th = dect2::namedThread("onair-fastscan", worker, dev, t, cfg, S.prof, useFw);
 }
 
 void tuneTo(App& a, double hz) {
@@ -216,12 +269,21 @@ void saveToMemory(const Hit& h) {
     else S.msg = tr(r.what == dect2::MemoryAdd::Duplicate ? "This frequency and mode is already in the table." : "The table is full.");
 }
 
+bool shown(uint64_t id) {
+    if (!S.reliableOnly) return true;
+    auto it = S.chanOf.find(id);
+    return it == S.chanOf.end() || S.chans[it->second].reliable();
+}
+
 void pull() {
     const double now = ImGui::GetTime();
     if (!S.sc || !S.ready || now - S.lastPull < 0.066) return;
     S.lastPull = now;
     S.view = S.sc->snapshot();
     S.hits = S.sc->hitsSnapshot();
+    S.chans = S.sc->channels(false);
+    S.chanOf.clear();
+    for (size_t i = 0; i < S.chans.size(); i++) S.chanOf[S.chans[i].hit.id] = i;
     if (S.view.seq != S.histSeq && S.view.bins() > 0) {
         S.histSeq = S.view.seq;
         std::vector<float> row(kHistCols, -150.f);
@@ -275,6 +337,30 @@ void controls(App& a) {
     if (S.th.joinable() && !run) S.th.join();
     if (ImGui::Button(tr(run ? "Stop" : "Start fast scan"))) { if (run) stop(); else startScan(a); }
     ImGui::SameLine();
+    ImGui::BeginDisabled(run);
+    if (ImGui::Button(tr("Whole span"))) {
+        // the radio's whole tuning range with the step and dwell that suit it; the record settings of the current profile stay
+        ScanProfile w = wholeSpanProfile(radioOf(a));
+        w.record = S.prof.record; w.recordIq = S.prof.recordIq; w.maxRecordings = S.prof.maxRecordings; w.budgetMb = S.prof.budgetMb; w.recordKhz = S.prof.recordKhz;
+        S.prof = w; S.presetSel = -1; toBuffers(); saveState(); startScan(a);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Sweeps everything this radio can tune (RTL-SDR 25-1700 MHz, HackRF 1-6000 MHz ...) with an automatic step and dwell. Confirmed channels appear in the list below."));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("?##fshelp")) ImGui::OpenPopup("fshelp");
+    if (ImGui::BeginPopup("fshelp")) {
+        ImGui::PushTextWrapPos(460 * gUi);
+        ImGui::TextUnformatted(tr("Fast scan shows a pseudo-spectrum of a very wide span by hopping the radio quickly, and finds every signal in each window at once."));
+        ImGui::Spacing();
+        ImGui::BulletText("%s", tr("Whole span: one button sweeps everything this radio can tune, with an automatic step and dwell."));
+        ImGui::BulletText("%s", tr("A channel is listed once it was seen in two sweeps. Images of strong signals, steady spurs and the radio's DC spike are hidden (untick \"confirmed channels only\" to see them flagged)."));
+        ImGui::BulletText("%s", tr("Click a channel to tune and listen; Save puts it in the memory table, Lock ignores it from now on."));
+        ImGui::BulletText("%s", tr("On a HackRF the firmware does the hopping (hackrf_sweep style), which is several times faster than retuning from the computer. Receive only."));
+        ImGui::BulletText("%s", tr("Everything else (step, dwell, threshold, recording) is under Advanced."));
+        ImGui::PopTextWrapPos();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
     presetBar();
     bool ch = false;
     ImGui::BeginDisabled(run);
@@ -284,6 +370,16 @@ void controls(App& a) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Known interferers and FM broadcast: hops wholly inside are skipped, bins inside never report."));
     ImGui::SameLine(); ImGui::SetNextItemWidth(130 * gUi); ch |= ImGui::InputText(tr("priority MHz"), S.prio, sizeof S.prio);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ranges visited more often (one hop in four)."));
+    ImGui::EndDisabled();
+    ch |= ImGui::Checkbox(tr("automatic step and dwell"), &S.autoParams);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Wide spans (over 150 MHz) get wider bins and a short dwell that suit the radio; narrow bands keep the values under Advanced."));
+    ImGui::SameLine(); ch |= ImGui::Checkbox(tr("confirmed channels only"), &S.reliableOnly);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Hides signals seen in one sweep only, steady spurs and images of strong signals. Untick to see every raw hit."));
+    const bool adv = ImGui::TreeNode(tr("Advanced (step, dwell, threshold, floor, recording)"));
+    if (adv) {
+    ImGui::BeginDisabled(run);
+    ch |= ImGui::Checkbox(tr("HackRF firmware sweep"), &S.fwSweep);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("On a HackRF the firmware retunes by itself for spans over 30 MHz (much faster, receive only, no hit recording). Falls back to the normal retune loop when the radio cannot do it."));
     ImGui::SetNextItemWidth(80 * gUi); ch |= ImGui::InputDouble("step kHz", &S.prof.stepKhz, 0, 0, "%.2f");
     ImGui::SameLine(); ImGui::SetNextItemWidth(70 * gUi); ch |= ImGui::InputDouble("dwell ms", &S.prof.dwellMs, 0, 0, "%.1f");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Capture per hop after the radio has settled: longer averages more (weak signals show) but scans slower."));
@@ -315,6 +411,8 @@ void controls(App& a) {
             ImGui::TextColored(rs.active ? pal::warnAmber() : pal::grey(), tr("recording %d channels (cap %d, CPU %.0f%%)%s"), rs.active, rs.cap, rs.load * 100.0, rs.throttled ? tr(", CPU guard on") : "");
         }
     }
+    ImGui::TreePop();
+    }
     if (ch) { fromBuffers(); S.prof.stepKhz = std::max(0.5, S.prof.stepKhz); S.prof.dwellMs = std::max(0.5, S.prof.dwellMs); saveState(); if (run) pushFilters(); }
     if (!S.msg.empty()) ImGui::TextColored(pal::warnAmber(), "%s", S.msg.c_str());
     if (run && S.ready && S.sc) {
@@ -322,6 +420,9 @@ void controls(App& a) {
         ImGui::TextDisabled(tr("%s: %.0f MHz/s measured (retune-limited ceiling %.0f), %d hops/pass, pass %.2f s, settle %.1f ms%s, %d active hits%s"),
                             S.radio.name.c_str(), st.mhzPerSec, ceilingMhzPerSec(S.radio, S.prof.dwellMs / 1e3), (int)S.sc->plan().hops.size(), st.passSec,
                             S.sc->plan().settleSec * 1e3, S.settleMeasured > 0 ? tr(" (measured)") : "", st.activeHits, st.parked ? tr(", parked on a hop to record") : "");
+        int ok = 0;
+        for (const ChannelInfo& c : S.chans) ok += c.reliable();
+        ImGui::TextDisabled(tr("%d confirmed channels of %zu raw hits; step %.1f kHz, dwell %.1f ms%s"), ok, S.chans.size(), S.prof.stepKhz, S.prof.dwellMs, S.autoParams ? tr(" (automatic)") : "");
     }
 }
 
@@ -380,6 +481,7 @@ void body(App& a) {
             for (const Hit& h : S.hits) {
                 const double f = h.freqHz / 1e6, y = h.peakDb;
                 if (f < vlo || f > vhi) continue;
+                { auto it = S.chanOf.find(h.id); if (S.reliableOnly && it != S.chanOf.end() && !S.chans[it->second].reliable()) continue; }
                 plt::Spec m; m.LineColor = h.id == S.sel ? ImVec4(1, 1, 0.2f, 1) : (h.active ? ImVec4(0.3f, 1, 0.4f, 1) : ImVec4(0.6f, 0.6f, 0.6f, 1));
                 m.Marker = plt::Marker_Circle; m.MarkerSize = 4;
                 plt::PlotScatter("hit", &f, &y, 1, m);
@@ -398,7 +500,7 @@ void body(App& a) {
                     if (std::fabs(p.x - S.clickPos.x) < 4 && std::fabs(p.y - S.clickPos.y) < 4) {
                         // snap to the nearest hit within a few bins, else the clicked frequency
                         double hz = mhz * 1e6, best = 10 * S.view.binHz;
-                        for (const Hit& h : S.hits) if (std::fabs(h.freqHz - hz) < best) { best = std::fabs(h.freqHz - hz); hz = h.freqHz; }
+                        for (const Hit& h : S.hits) if (std::fabs(h.freqHz - hz) < best && shown(h.id)) { best = std::fabs(h.freqHz - hz); hz = h.freqHz; }
                         tuneTo(a, hz);
                     }
                 }
@@ -421,20 +523,20 @@ void body(App& a) {
         }
     } else ImGui::TextDisabled("%s", tr("The pseudo-spectrum fills in as the scan goes through the bands."));
     // hits
-    ImGui::Text(tr("Hits (%zu)"), S.hits.size());
+    { size_t n = 0; for (const Hit& h : S.hits) n += shown(h.id); ImGui::Text(tr("Channels (%zu)"), n); }
     ImGui::SameLine(); ImGui::TextDisabled("%s", tr("locked: "));
     ImGui::SameLine(); ImGui::TextDisabled("%s", S.lockedText.empty() ? "-" : S.lockedText.c_str());
     if (!S.lockedText.empty()) { ImGui::SameLine(); if (ImGui::SmallButton(tr("Clear lockout list"))) { S.lockedText.clear(); saveState(); pushFilters(); } }
     uint64_t save = 0, lock = 0, prio = 0, rem = 0, tune = 0;
-    if (ImGui::BeginTable("##fshits", 10, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit, ImVec2(0, std::max(120.f * gUi, ImGui::GetContentRegionAvail().y)))) {
+    if (ImGui::BeginTable("##fshits", 12, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit, ImVec2(0, std::max(120.f * gUi, ImGui::GetContentRegionAvail().y)))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(tr("MHz"), 0, 90 * gUi); ImGui::TableSetupColumn(tr("BW kHz"), 0, 55 * gUi); ImGui::TableSetupColumn(tr("Peak dBFS"), 0, 70 * gUi);
+        ImGui::TableSetupColumn(tr("MHz"), 0, 90 * gUi); ImGui::TableSetupColumn(tr("Type"), 0, 110 * gUi); ImGui::TableSetupColumn(tr("Seen"), 0, 70 * gUi); ImGui::TableSetupColumn(tr("BW kHz"), 0, 55 * gUi); ImGui::TableSetupColumn(tr("Peak dBFS"), 0, 70 * gUi);
         ImGui::TableSetupColumn(tr("SNR dB"), 0, 50 * gUi); ImGui::TableSetupColumn(tr("Best"), 0, 45 * gUi); ImGui::TableSetupColumn(tr("First seen"), 0, 75 * gUi);
         ImGui::TableSetupColumn(tr("Last seen"), 0, 75 * gUi); ImGui::TableSetupColumn(tr("Hits"), 0, 40 * gUi); ImGui::TableSetupColumn(tr("State"), 0, 70 * gUi);
         ImGui::TableSetupColumn(tr(""), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         std::vector<const Hit*> order;
-        for (const Hit& h : S.hits) order.push_back(&h);
+        for (const Hit& h : S.hits) if (shown(h.id)) order.push_back(&h);
         std::sort(order.begin(), order.end(), [](const Hit* x, const Hit* y) { return x->active != y->active ? x->active : x->lastSeen > y->lastSeen; });
         for (const Hit* hp : order) {
             const Hit& h = *hp;
@@ -442,7 +544,16 @@ void body(App& a) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             char b[32]; snprintf(b, sizeof b, "%.4f", h.freqHz / 1e6);
-            if (ImGui::Selectable(b, S.sel == h.id, ImGuiSelectableFlags_SpanAllColumns)) S.sel = h.id;
+            if (ImGui::Selectable(b, S.sel == h.id, ImGuiSelectableFlags_SpanAllColumns)) { S.sel = h.id; tune = h.id; }   // a click tunes and listens
+            const ChannelInfo* ci = nullptr;
+            { auto it = S.chanOf.find(h.id); if (it != S.chanOf.end()) ci = &S.chans[it->second]; }
+            ImGui::TableNextColumn();
+            if (ci) {
+                const char* flag = ci->spur ? tr(" (spur)") : ci->image ? tr(" (image)") : ci->dc ? tr(" (DC)") : !ci->confirmed ? tr(" (unconfirmed)") : "";
+                ImGui::Text("%s%s", ci->hint.c_str(), flag);
+            }
+            ImGui::TableNextColumn();
+            if (ci) ImGui::Text(tr("%d sweeps, %.0f%%"), ci->sweeps, ci->presence * 100.0);
             ImGui::TableNextColumn(); ImGui::Text("%.1f", h.bwHz / 1e3);
             ImGui::TableNextColumn(); ImGui::Text("%.1f", h.peakDb);
             ImGui::TableNextColumn(); ImGui::Text("%.1f", h.snrDb);

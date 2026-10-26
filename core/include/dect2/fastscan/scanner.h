@@ -7,6 +7,7 @@
 #include "dect2/fastscan/floor.h"
 #include "dect2/fastscan/hits.h"
 #include "dect2/fastscan/plan.h"
+#include "dect2/fastscan/qualify.h"
 #include "dect2/fastscan/record.h"
 #include "dect2/sweep/sweep.h"
 #include <atomic>
@@ -26,6 +27,7 @@ struct FastScanConfig {
     double avgAlpha = 0.2;           // weight of a new look in the average trace
     double maxholdFallDbPerSec = 2;  // the max-hold trace falls at this rate (0: holds for ever)
     int threads = 0;                 // 0: the shared pool, 1: none (the result is the same)
+    QualifyParams qualify;           // channel confirmation / spur / image rules
 };
 
 struct SpectrumView {
@@ -58,6 +60,14 @@ struct RunHooks {
     double maxParkSec = 120;                              // longest stay on one hop for recording
 };
 
+// A source that delivers blocks tagged with the centre frequency they were taken at (the HackRF firmware sweep: the radio retunes by itself).
+struct BlockSource {
+    virtual ~BlockSource() {}
+    virtual double sampleRate() const = 0;
+    // The next block: its centre and samples. false: ended or failed (err; empty on cancel).
+    virtual bool next(double& centerHz, std::vector<cf32>& out, const std::atomic<bool>* cancel, std::string& err) = 0;
+};
+
 class FastScanner {
 public:
     FastScanner();
@@ -75,12 +85,19 @@ public:
     // The scan loop over a source until cancelled / maxPasses. false: the source failed (err).
     bool run(sweep::SweepSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err);
 
+    // The same scan fed by a source that retunes by itself: every block is one hop capture of the hop whose centre it carries (within a quarter of
+    // a hop). A pass ends when the hop index wraps. No recording in this mode (the radio is never parked on a hop).
+    bool runBlocks(BlockSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err);
+
     // thread-safe while a scan runs (the tracker is touched under the scanner's lock)
     std::vector<Hit> hitsSnapshot() const;
     void setFilters(std::vector<FreqRange> excluded, std::vector<double> locked, std::vector<double> priority);
     void removeHit(uint64_t id);
     SpectrumView snapshot() const;           // copy of the pseudo-spectrum
     ScanStats stats() const;
+    // The channel list of fast scan v2: hits with sweeps seen, class, and the spur / image / DC flags. reliableOnly hides unconfirmed and false ones.
+    std::vector<ChannelInfo> channels(bool reliableOnly) const;
+    void beginSweep() { std::lock_guard<std::mutex> g(m_); sweep_++; }   // run() does this by itself; tests driving processHop() call it per pass
     bool saveFloor() const;                  // to config.floorFile
     void resetTraces();                      // clears average and max-hold (not the floor)
 
@@ -100,6 +117,8 @@ private:
     std::vector<double> lastT_;
     ScanStats st_;
     bool floorLoaded_ = false;
+    Qualifier qual_;
+    int sweep_ = 0;
     std::atomic<int> park_{-1};
 };
 

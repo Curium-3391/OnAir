@@ -135,7 +135,7 @@ target_sources(dect2core PRIVATE core/src/dsp/synth_wide.cpp)
 target_sources(dect2core PRIVATE core/src/source/synth_group.cpp)
 target_sources(dect2core PRIVATE core/src/t2/t2ldpc.cpp)
 target_sources(dect2core PRIVATE core/src/tv/avsplus_dec.cpp)
-target_sources(dect2core PRIVATE core/src/sweep/survey.cpp core/src/fastscan/floor.cpp core/src/fastscan/hits.cpp core/src/fastscan/plan.cpp core/src/fastscan/record.cpp core/src/fastscan/scanner.cpp core/src/fastscan/profile.cpp)
+target_sources(dect2core PRIVATE core/src/sweep/survey.cpp core/src/fastscan/floor.cpp core/src/fastscan/hits.cpp core/src/fastscan/plan.cpp core/src/fastscan/record.cpp core/src/fastscan/scanner.cpp core/src/fastscan/profile.cpp core/src/fastscan/qualify.cpp core/src/fastscan/fwsweep.cpp)
 target_sources(dect2core PRIVATE core/src/source/usb_fd.cpp core/src/source/usb_fd_io.cpp core/src/source/audio_push.cpp)   # radios opened by the platform and handed over as USB descriptors (Android): rtl_fd_shim.h
 # the built-in band plans: data/bandplans/builtin.json compiled in as text (bandplan.cpp parses it); a changed file configures again
 file(READ ${ONAIR_ROOT}/data/bandplans/builtin.json _bp_txt)
@@ -939,6 +939,8 @@ if(DECT2_BUILD_TESTS)
   target_link_libraries(test_backup PRIVATE dect2core)
   add_test(NAME backup COMMAND test_backup)
   add_executable(dect2sweep tools/dect2sweep.cpp)
+  add_executable(dect2fastscan tools/dect2fastscan.cpp)   # the fast scanner on a real radio: firmware sweep vs retune, pass times, channel list
+  target_link_libraries(dect2fastscan PRIVATE dect2core)
   target_link_libraries(dect2sweep PRIVATE dect2core)
   add_executable(dect2scan tools/dect2scan.cpp)
   target_link_libraries(dect2scan PRIVATE dect2core)

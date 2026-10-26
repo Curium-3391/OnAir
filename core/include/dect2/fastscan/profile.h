@@ -34,6 +34,12 @@ std::string serializeProfile(const ScanProfile& p);                // key=value;
 bool parseProfile(const std::string& s, ScanProfile& out);         // false: nothing readable (out unchanged)
 std::vector<ScanProfile> builtinProfiles();
 
+// One-button "Whole span": the tuning range of a radio and the step / dwell / threshold that suit it (wide spans take wider bins and a short dwell).
+FreqRange wholeSpan(const RadioProfile& r);
+struct AutoScan { double stepKhz = 12.5, dwellMs = 4, thresholdDb = 10; };
+AutoScan autoScan(const RadioProfile& r, double spanHz);
+ScanProfile wholeSpanProfile(const RadioProfile& r);        // bands = the radio's whole range, automatic step and dwell
+
 // The scanner configuration of a profile. locked: frequencies the tracker ignores; priority rows are the profile's priorityBands.
 FastScanConfig toConfig(const ScanProfile& p);
 

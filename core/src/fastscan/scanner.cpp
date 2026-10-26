@@ -41,6 +41,7 @@ bool FastScanner::configure(const FastScanConfig& c, const RadioProfile& r, std:
     cal_.configure(plan_.binsPerHop);
     HitParams hp = c.hits;
     tracker_.configure(hp);
+    qual_.configure(c.qualify); qual_.clear(); sweep_ = 0;
     view_ = SpectrumView();
     view_.startHz = plan_.startHz; view_.binHz = plan_.binHz;
     view_.cur.assign(plan_.totalBins, -150.f); view_.avg = view_.cur; view_.maxhold = view_.cur; view_.floor = view_.cur;
@@ -70,6 +71,7 @@ void FastScanner::setFilters(std::vector<FreqRange> ex, std::vector<double> lk, 
 }
 void FastScanner::removeHit(uint64_t id) { std::lock_guard<std::mutex> g(m_); tracker_.remove(id); }
 
+std::vector<ChannelInfo> FastScanner::channels(bool reliableOnly) const { std::lock_guard<std::mutex> g(m_); return qual_.channels(tracker_.hits(), reliableOnly); }
 SpectrumView FastScanner::snapshot() const { std::lock_guard<std::mutex> g(m_); return view_; }
 ScanStats FastScanner::stats() const { std::lock_guard<std::mutex> g(m_); return st_; }
 
@@ -127,6 +129,7 @@ void FastScanner::processHop(int hop, const cf32* x, size_t n, double t, std::ve
     const std::vector<Candidate> cands = findCandidates(hopCal_.data(), &floor_.floors()[h.firstBin], nb, plan_.startHz + h.firstBin * plan_.binHz, plan_.binHz,
                                                         tracker_.detectDb(), std::min(tracker_.detectDb(), 4.f), 1, &plan_.mask[h.firstBin]);
     tracker_.observe(t, h.loHz - plan_.binHz * 0.5, h.hiHz + plan_.binHz * 0.5, cands, ev);
+    qual_.look(plan_, hop, sweep_, t, tracker_.hits());
     // the pseudo-spectrum
     const double dt = lastT_[hop] > 0 ? std::max(0.0, t - lastT_[hop]) : 0.0;
     lastT_[hop] = t;
@@ -247,6 +250,7 @@ bool FastScanner::run(sweep::SweepSource& src, const std::atomic<bool>* cancel, 
         if (parked) continue;   // the pass does not advance while recording
         if (++oi % plan_.order.size() == 0) {
             pass++;
+            beginSweep();
             const double sec = since(passStart);
             passStart = Clock::now();
             {
@@ -275,6 +279,50 @@ bool FastScanner::run(sweep::SweepSource& src, const std::atomic<bool>* cancel, 
     if (hk.rec) { for (const HitEvent& e : ev) hk.rec->stop(e.hit.id); hk.rec->closeAll(); }
     if (hk.onEvents && !ev.empty()) hk.onEvents(ev);
     (void)failed; (void)werr;
+    return ok;
+}
+
+bool FastScanner::runBlocks(BlockSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err) {
+    if (plan_.hops.empty()) { err = "not configured"; return false; }
+    if (std::fabs(src.sampleRate() - plan_.rateHz) > 1.0) { err = "the radio runs at a different sample rate than the plan"; return false; }
+    const auto clock = hk.clock ? hk.clock : std::function<double()>(wall);
+    const double tol = std::max(plan_.binHz, (double)plan_.binsPerHop * plan_.binHz * 0.25);
+    std::vector<cf32> buf;
+    std::vector<HitEvent> ev;
+    int last = -1;
+    uint64_t pass = 0, blocks = 0;
+    auto passStart = Clock::now();
+    double c = 0;
+    bool ok = true;
+    while (!(cancel && cancel->load())) {
+        if (!src.next(c, buf, cancel, err)) { ok = err.empty(); break; }
+        int hop = -1;
+        double best = tol;
+        for (size_t i = 0; i < plan_.hops.size(); i++) {
+            const double d = std::fabs(plan_.hops[i].centerHz - c);
+            if (d < best) { best = d; hop = (int)i; }
+        }
+        if (hop < 0 || buf.size() < (size_t)plan_.fftSize) continue;
+        ev.clear();
+        if (last >= 0 && hop <= last) {   // the sweep wrapped: one pass done
+            pass++;
+            beginSweep();
+            const double sec = since(passStart);
+            passStart = Clock::now();
+            { std::lock_guard<std::mutex> g(m_); st_.passes = pass; st_.passSec = sec; st_.mhzPerSec = sec > 0 ? plan_.coveredHz / 1e6 / sec : 0;
+              st_.hopsPerSec = sec > 0 ? (double)blocks / sec : 0; }
+            blocks = 0;
+            if (hk.onPass) hk.onPass(stats());
+            if (hk.maxPasses > 0 && (int)pass >= hk.maxPasses) break;
+        }
+        last = hop;
+        blocks++;
+        processHop(hop, buf.data(), buf.size(), clock(), ev);
+        if (hk.onEvents && !ev.empty()) hk.onEvents(ev);
+    }
+    ev.clear();
+    { std::lock_guard<std::mutex> g(m_); tracker_.endAll(clock(), ev); }
+    if (hk.onEvents && !ev.empty()) hk.onEvents(ev);
     return ok;
 }
 
