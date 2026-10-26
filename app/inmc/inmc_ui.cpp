@@ -3,6 +3,7 @@
 #include "app.h"
 #include "dect2/inmc/inmc_pkt.h"
 #include "dect2/inmc/inmc_tel.h"
+#include "ui/msglog_ui.h"
 #include <algorithm>
 #include <cmath>
 #include <cfloat>
@@ -93,7 +94,10 @@ void readingPane(const App& a, const dect2::InmcMessage* m) {
     snprintf(b, sizeof b, "%s, %s", m->rxTime.c_str(), dect2::inmc::priorityName(m->priority)); kvLine(a, "received", b);
     snprintf(b, sizeof b, "%02X  %s", m->serviceCode, m->serviceText.c_str()); kvLine(a, "service", b);
     snprintf(b, sizeof b, "%u, repetition %d, %d packet%s%s", m->id, m->repetition, m->packets, m->packets == 1 ? "" : "s", m->complete ? "" : ", not complete yet"); kvLine(a, "message", b);
-    if (!m->area.empty()) kvLine(a, "area bytes", m->area.c_str());
+    if (!m->navarea.empty()) kvLine(a, "area", m->navarea.c_str());
+    if (!m->subject.empty()) kvLine(a, "subject", m->subject.c_str());
+    if (!m->ident.empty()) kvLine(a, "warning no.", m->ident.c_str());
+    if (!m->area.empty()) kvLine(a, "address bytes", m->area.c_str());
     if (m->sat >= 0 && !m->lesName.empty()) { snprintf(b, sizeof b, "%s, %s (a guess)", dect2::inmc::satName(m->sat).c_str(), m->lesName.c_str()); kvLine(a, "station", b); }
     snprintf(b, sizeof b, "%s", m->presentation == 6 ? "ITA2" : m->presentation == 7 ? "binary" : m->presentation == 0 ? "IA5" : "other"); kvLine(a, "coding", b);
     if (m->seen > 0) { snprintf(b, sizeof b, "%u time%s complete", m->seen, m->seen == 1 ? "" : "s"); kvLine(a, "heard", b); }
@@ -119,11 +123,26 @@ void messageView(App& a) {
     ImGui::SetNextItemWidth(100 * gUi);
     static const char* kinds[] = {"all", "SafetyNET", "FleetNET"};
     ImGui::Combo("##inmkind", &S.kindFilter, kinds, 3);
+    ImGui::SameLine(0, 12 * gUi);
+    {   // Save... / Auto-save to file: the messages that pass the filter, oldest first (time, service, area and subject, number, text)
+        std::vector<dect2::msglog::Row> rows;
+        for (const auto& m : t.messages) {
+            if (!passes(m)) continue;
+            dect2::msglog::Row r;
+            r.epoch = m.rxUnix; r.mode = std::string("Inmarsat-C ") + (m.kind == 1 ? "SafetyNET" : m.kind == 2 ? "FleetNET" : "system") + " " + dect2::inmc::priorityName(m.priority);
+            r.freqHz = a.freqMhz * 1e6;
+            r.address = (m.navarea.empty() ? "" : m.navarea + " ") + (m.ident.empty() ? "" : m.ident + " ") + "#" + std::to_string(m.id);
+            r.text = (m.subject.empty() ? "" : "[" + m.subject + "] ") + (m.complete ? "" : "[incomplete] ") + m.text;
+            rows.push_back(std::move(r));
+        }
+        std::stable_sort(rows.begin(), rows.end(), [](const dect2::msglog::Row& x, const dect2::msglog::Row& y) { return x.epoch < y.epoch; });
+        msglog_ui::bar("inmc", "inmarsat-c", rows);
+    }
     const float H = ImGui::GetContentRegionAvail().y;
     const float listH = std::max(120.f * gUi, H * 0.5f);
-    if (ImGui::BeginTable("##inmmsg", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
+    if (ImGui::BeginTable("##inmmsg", 8, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV, ImVec2(0, listH))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Priority"); ImGui::TableSetupColumn("Service"); ImGui::TableSetupColumn("Ch");
+        ImGui::TableSetupColumn(dect2::timefmt::headTime()); ImGui::TableSetupColumn("Priority"); ImGui::TableSetupColumn("Service"); ImGui::TableSetupColumn("Area"); ImGui::TableSetupColumn("Ch");
         ImGui::TableSetupColumn("No."); ImGui::TableSetupColumn("Pkts"); ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
         int shown = 0;
@@ -137,6 +156,7 @@ void messageView(App& a) {
                 if (ImGui::Selectable((m.rxTime + id).c_str(), S.selected == keyOf(m), ImGuiSelectableFlags_SpanAllColumns)) S.selected = keyOf(m);
                 ImGui::TableNextColumn(); ImGui::PushStyleColor(ImGuiCol_Text, prioColour(m.priority)); ImGui::TextUnformatted(dect2::inmc::priorityName(m.priority)); ImGui::PopStyleColor();
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(m.kind == 1 ? "SafetyNET" : m.kind == 2 ? "FleetNET" : "System");
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(m.navarea.c_str());
                 ImGui::TableNextColumn(); ImGui::Text("%d", m.channel);
                 ImGui::TableNextColumn(); ImGui::Text("%u", m.id);
                 ImGui::TableNextColumn(); ImGui::Text("%d%s", m.packets, m.complete ? "" : "+");
@@ -244,7 +264,7 @@ void panels(App& a) {
         ImGui::PushStyleColor(ImGuiCol_Text, prioColour(m.priority));
         ImGui::Text("%s  %s", dect2::inmc::priorityName(m.priority), m.serviceText.c_str());
         ImGui::PopStyleColor();
-        ImGui::SameLine(); ImGui::TextDisabled("%s, no. %u, %d packet%s%s", m.rxTime.c_str(), m.id, m.packets, m.packets == 1 ? "" : "s", m.complete ? "" : ", more to come");
+        ImGui::SameLine(); ImGui::TextDisabled("%s%s%s%s, no. %u, %d packet%s%s", m.navarea.c_str(), m.navarea.empty() ? "" : ", ", m.rxTime.c_str(), m.subject.empty() ? "" : (", " + m.subject).c_str(), m.id, m.packets, m.packets == 1 ? "" : "s", m.complete ? "" : ", more to come");
         ImGui::PushFont(a.mono, 0);
         ImGui::TextWrapped("%s", m.text.empty() ? "(no text yet)" : m.text.c_str());
         ImGui::PopFont();

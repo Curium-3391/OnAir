@@ -82,6 +82,8 @@ private:
         InmcMessage msg;
         std::vector<std::pair<int, std::vector<uint8_t>>> parts;   // key = packetNo * 2 + (descriptor == 0xB2)
         int lastKey = -1;
+        std::vector<int> passKeys;   // the parts heard in this broadcast of the message (a repeat refreshes the parts, the old text stays until it is whole again)
+        bool counted = false;        // this broadcast was counted in InmcMessage::seen
         uint64_t order = 0;
     };
     void egc(const uint8_t* p, int len, int64_t rxUnix);

@@ -1,4 +1,5 @@
 #include "dect2/inmc/inmc_pkt.h"
+#include "dect2/inmc/inmc_egc.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -360,9 +361,16 @@ void FrameParser::egc(const uint8_t* p, int len, int64_t rxUnix) {
         s->msg.rxTime = utcText(rxUnix);
         messageCount_++;
     }
-    if (pno == 1 && p[0] == 0xB1 && s->msg.complete) {   // the next broadcast of a message we have: start a new pass
-        s->parts.clear(); s->lastKey = -1; s->msg.packets = 0;
-        s->msg.rxUnix = rxUnix; s->msg.rxTime = utcText(rxUnix); s->msg.frameNo = curFrame_;
+    if (pno == 1 && p[0] == 0xB1) {
+        bool differs = false;   // a first packet that differs from the one kept: another message under the same number (the numbers wrap), not more of the old one
+        for (auto& q : s->parts) if (q.first == key && q.second != std::vector<uint8_t>(p + hdr, p + len - 2)) differs = true;
+        if (differs) {
+            s->parts.clear(); s->lastKey = -1; s->msg.packets = 0; s->msg.text.clear(); s->msg.complete = false; s->msg.seen = 0; s->passKeys.clear(); s->counted = false;
+            s->msg.rxUnix = rxUnix; s->msg.rxTime = utcText(rxUnix); s->msg.frameNo = curFrame_;
+        } else if (s->msg.complete) {   // the next broadcast of a message we have: a new pass. The text of the last one stays shown until this one is whole
+            s->passKeys.clear(); s->counted = false;
+            s->msg.rxUnix = rxUnix; s->msg.rxTime = utcText(rxUnix); s->msg.frameNo = curFrame_;
+        }
     }
     s->order = ++gOrder;
     s->msg.priority = prio; s->msg.repetition = rep; s->msg.presentation = pres;
@@ -376,6 +384,7 @@ void FrameParser::egc(const uint8_t* p, int len, int64_t rxUnix) {
     for (auto& q : s->parts) if (q.first == key) { q.second.assign(p + hdr, p + len - 2); have = true; break; }
     if (!have) s->parts.emplace_back(key, std::vector<uint8_t>(p + hdr, p + len - 2));
     if (!cont) s->lastKey = std::max(s->lastKey, key);
+    if (std::find(s->passKeys.begin(), s->passKeys.end(), key) == s->passKeys.end()) s->passKeys.push_back(key);
     s->msg.packets = (int)s->parts.size();
     finish(*s);
 }
@@ -394,10 +403,14 @@ void FrameParser::finish(Slot& s) {
             if (!g) done = false;
         }
     }
-    const bool was = s.msg.complete;
     s.msg.text = text;
+    { const EgcInfo i = classifyEgc(s.msg.serviceCode, s.msg.priority, text); s.msg.navarea = i.area; s.msg.subject = i.subject; s.msg.ident = i.ident; }
     s.msg.complete = done;
-    if (done && !was) s.msg.seen++;
+    if (done && !s.counted) {   // every part was heard in this broadcast
+        bool all = true;
+        for (auto& q : s.parts) if (std::find(s.passKeys.begin(), s.passKeys.end(), q.first) == s.passKeys.end()) all = false;
+        if (all) { s.msg.seen++; s.counted = true; }
+    }
 }
 
 void FrameParser::fill(InmcTelemetry& t) const {

@@ -29,6 +29,9 @@ struct InmcMessage {
     int64_t rxUnix = 0;          // time received, seconds since 1970 (UTC)
     std::string rxTime;          // the same as HH:MM:SS UTC
     std::string text;            // text assembled across packets and frames
+    std::string navarea;         // "NAVAREA IV" / "METAREA 9", read from the text ("" when it names none; the address bytes are not decoded, see inmc_egc.h)
+    std::string subject;         // "Navigational warning", "Weather forecast", "Distress relay", "Search and rescue", ...
+    std::string ident;           // the warning number from the text, "123/26"
     int channel = 0;             // 0 the channel tuned to, 1 and up: other channels found in the band (see InmcChannelInfo)
     uint64_t order = 0;          // grows with every packet received; the report sorts by it
 };
