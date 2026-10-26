@@ -282,5 +282,49 @@ bool FastScanner::run(sweep::SweepSource& src, const std::atomic<bool>* cancel, 
     return ok;
 }
 
+bool FastScanner::runBlocks(BlockSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err) {
+    if (plan_.hops.empty()) { err = "not configured"; return false; }
+    if (std::fabs(src.sampleRate() - plan_.rateHz) > 1.0) { err = "the radio runs at a different sample rate than the plan"; return false; }
+    const auto clock = hk.clock ? hk.clock : std::function<double()>(wall);
+    const double tol = std::max(plan_.binHz, (double)plan_.binsPerHop * plan_.binHz * 0.25);
+    std::vector<cf32> buf;
+    std::vector<HitEvent> ev;
+    int last = -1;
+    uint64_t pass = 0, blocks = 0;
+    auto passStart = Clock::now();
+    double c = 0;
+    bool ok = true;
+    while (!(cancel && cancel->load())) {
+        if (!src.next(c, buf, cancel, err)) { ok = err.empty(); break; }
+        int hop = -1;
+        double best = tol;
+        for (size_t i = 0; i < plan_.hops.size(); i++) {
+            const double d = std::fabs(plan_.hops[i].centerHz - c);
+            if (d < best) { best = d; hop = (int)i; }
+        }
+        if (hop < 0 || buf.size() < (size_t)plan_.fftSize) continue;
+        ev.clear();
+        if (last >= 0 && hop <= last) {   // the sweep wrapped: one pass done
+            pass++;
+            beginSweep();
+            const double sec = since(passStart);
+            passStart = Clock::now();
+            { std::lock_guard<std::mutex> g(m_); st_.passes = pass; st_.passSec = sec; st_.mhzPerSec = sec > 0 ? plan_.coveredHz / 1e6 / sec : 0;
+              st_.hopsPerSec = sec > 0 ? (double)blocks / sec : 0; }
+            blocks = 0;
+            if (hk.onPass) hk.onPass(stats());
+            if (hk.maxPasses > 0 && (int)pass >= hk.maxPasses) break;
+        }
+        last = hop;
+        blocks++;
+        processHop(hop, buf.data(), buf.size(), clock(), ev);
+        if (hk.onEvents && !ev.empty()) hk.onEvents(ev);
+    }
+    ev.clear();
+    { std::lock_guard<std::mutex> g(m_); tracker_.endAll(clock(), ev); }
+    if (hk.onEvents && !ev.empty()) hk.onEvents(ev);
+    return ok;
+}
+
 }  // namespace fastscan
 }  // namespace dect2

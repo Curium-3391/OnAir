@@ -1,5 +1,6 @@
 // The "Fast scan" scope of the merged Scanner view. See fast_scan_ui.h and docs/fast-scan.md.
 #include "dect2/common/thread_name.h"
+#include "dect2/fastscan/fwsweep.h"
 #include "dect2/fastscan/profile.h"
 #include "dect2/fastscan/scanner.h"
 #include "dect2/sweep/sweep.h"
@@ -31,7 +32,7 @@ struct St {
     ScanProfile prof;
     std::vector<ScanProfile> presets;      // the user's
     char bands[256] = "", excl[256] = "", prio[128] = "", name[48] = "";
-    bool loaded = false, autoSettle = true, persistFloor = true, autoParams = true, reliableOnly = true;
+    bool loaded = false, autoSettle = true, persistFloor = true, autoParams = true, reliableOnly = true, fwSweep = true, usedFw = false;
     float gainDb = 30;
     int presetSel = -1;
     // traces
@@ -92,7 +93,7 @@ void saveState() {
     for (const ScanProfile& q : S.presets) all += (all.empty() ? "" : "|") + serializeProfile(q);
     p.setS("fsPresets", all);
     p.setS("fsLocked", S.lockedText); p.setS("fsPrio", S.prioText);
-    p.setB("fsAutoParams", S.autoParams); p.setB("fsReliable", S.reliableOnly);
+    p.setB("fsFw", S.fwSweep); p.setB("fsAutoParams", S.autoParams); p.setB("fsReliable", S.reliableOnly);
     p.setB("fsAutoSettle", S.autoSettle); p.setB("fsPersist", S.persistFloor); p.setD("fsGain", S.gainDb);
 }
 void load() {
@@ -110,7 +111,7 @@ void load() {
         pos = e + 1;
     }
     S.lockedText = p.getS("fsLocked", ""); S.prioText = p.getS("fsPrio", "");
-    S.autoParams = p.getB("fsAutoParams", true); S.reliableOnly = p.getB("fsReliable", true);
+    S.fwSweep = p.getB("fsFw", true); S.autoParams = p.getB("fsAutoParams", true); S.reliableOnly = p.getB("fsReliable", true);
     S.autoSettle = p.getB("fsAutoSettle", true); S.persistFloor = p.getB("fsPersist", true); S.gainDb = (float)p.getD("fsGain", 30);
     toBuffers();
 }
@@ -146,8 +147,34 @@ std::string floorPath(const FastScanConfig& c) {
     return plat::dataDir() + b;
 }
 
-void worker(DeviceInfo dev, TuneSettings t, FastScanConfig cfg, ScanProfile prof) {
+void worker(DeviceInfo dev, TuneSettings t, FastScanConfig cfg, ScanProfile prof, bool useFw) {
     std::string err;
+    if (useFw) {
+        // HackRF: the firmware sweeps by itself (hackrf_init_sweep), 20 Msps hops of 15 MHz; when it cannot start the retune loop below takes over
+        const FwSweepPlan fp = planFirmwareSweep(cfg.plan, S.radio);
+        FastScanConfig fc = cfg;
+        fc.plan = fp.plan;
+        fc.plan.binHz = std::max(fc.plan.binHz, 30000.0);
+        RadioProfile r20 = S.radio; r20.rateHz = 20e6;
+        HackrfFwSweep fw;
+        std::string ferr;
+        if (S.sc->configure(fc, r20, ferr) && fw.open(fp, t.lnaDb, t.vgaDb, t.ampOn, dev.serial, ferr)) {
+            pushFilters();
+            RunHooks hk;
+            { std::lock_guard<std::mutex> l(S.mu); S.usedFw = true; S.msg = tr("HackRF firmware sweep (receive only)."); }
+            S.ready = true;
+            S.sc->runBlocks(fw, &S.cancel, hk, err);
+            fw.close();
+            if (S.persistFloor && !fc.floorFile.empty()) S.sc->saveFloor();
+            std::lock_guard<std::mutex> l(S.mu);
+            if (!err.empty()) S.msg = err;
+            S.running = false;
+            return;
+        }
+        std::lock_guard<std::mutex> l(S.mu);
+        S.usedFw = false;
+        S.msg = std::string(tr("The firmware sweep is not available, using the retune loop: ")) + ferr;
+    }
     sweep::IqSweepSource src(dev, t);
     if (!src.open(err)) { std::lock_guard<std::mutex> l(S.mu); S.msg = err; S.running = false; return; }
     if (S.autoSettle && !cfg.plan.bands.empty()) {
@@ -212,7 +239,14 @@ void startScan(App& a) {
     S.sc = std::make_unique<FastScanner>();
     S.cancel = false; S.running = true; S.ready = false; S.msg.clear(); S.hist.clear(); S.hits.clear(); S.settleMeasured = 0; S.fitOnce = true;
     saveState();
-    S.th = dect2::namedThread("onair-fastscan", worker, dev, t, cfg, S.prof);
+    bool useFw = false;
+    if (S.fwSweep && S.radio.id == "hackrf" && !S.prof.record) {
+        double lo = 1e18, hi = 0;
+        for (const FreqRange& r : cfg.plan.bands) { lo = std::min(lo, r.loHz); hi = std::max(hi, r.hiHz); }
+        useFw = hi - lo >= 30e6;
+    }
+    S.usedFw = false;
+    S.th = dect2::namedThread("onair-fastscan", worker, dev, t, cfg, S.prof, useFw);
 }
 
 void tuneTo(App& a, double hz) {
@@ -313,6 +347,20 @@ void controls(App& a) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Sweeps everything this radio can tune (RTL-SDR 25-1700 MHz, HackRF 1-6000 MHz ...) with an automatic step and dwell. Confirmed channels appear in the list below."));
     ImGui::SameLine();
+    if (ImGui::SmallButton("?##fshelp")) ImGui::OpenPopup("fshelp");
+    if (ImGui::BeginPopup("fshelp")) {
+        ImGui::PushTextWrapPos(460 * gUi);
+        ImGui::TextUnformatted(tr("Fast scan shows a pseudo-spectrum of a very wide span by hopping the radio quickly, and finds every signal in each window at once."));
+        ImGui::Spacing();
+        ImGui::BulletText("%s", tr("Whole span: one button sweeps everything this radio can tune, with an automatic step and dwell."));
+        ImGui::BulletText("%s", tr("A channel is listed once it was seen in two sweeps. Images of strong signals, steady spurs and the radio's DC spike are hidden (untick \"confirmed channels only\" to see them flagged)."));
+        ImGui::BulletText("%s", tr("Click a channel to tune and listen; Save puts it in the memory table, Lock ignores it from now on."));
+        ImGui::BulletText("%s", tr("On a HackRF the firmware does the hopping (hackrf_sweep style), which is several times faster than retuning from the computer. Receive only."));
+        ImGui::BulletText("%s", tr("Everything else (step, dwell, threshold, recording) is under Advanced."));
+        ImGui::PopTextWrapPos();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
     presetBar();
     bool ch = false;
     ImGui::BeginDisabled(run);
@@ -330,6 +378,8 @@ void controls(App& a) {
     const bool adv = ImGui::TreeNode(tr("Advanced (step, dwell, threshold, floor, recording)"));
     if (adv) {
     ImGui::BeginDisabled(run);
+    ch |= ImGui::Checkbox(tr("HackRF firmware sweep"), &S.fwSweep);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("On a HackRF the firmware retunes by itself for spans over 30 MHz (much faster, receive only, no hit recording). Falls back to the normal retune loop when the radio cannot do it."));
     ImGui::SetNextItemWidth(80 * gUi); ch |= ImGui::InputDouble("step kHz", &S.prof.stepKhz, 0, 0, "%.2f");
     ImGui::SameLine(); ImGui::SetNextItemWidth(70 * gUi); ch |= ImGui::InputDouble("dwell ms", &S.prof.dwellMs, 0, 0, "%.1f");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Capture per hop after the radio has settled: longer averages more (weak signals show) but scans slower."));

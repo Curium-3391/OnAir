@@ -60,6 +60,14 @@ struct RunHooks {
     double maxParkSec = 120;                              // longest stay on one hop for recording
 };
 
+// A source that delivers blocks tagged with the centre frequency they were taken at (the HackRF firmware sweep: the radio retunes by itself).
+struct BlockSource {
+    virtual ~BlockSource() {}
+    virtual double sampleRate() const = 0;
+    // The next block: its centre and samples. false: ended or failed (err; empty on cancel).
+    virtual bool next(double& centerHz, std::vector<cf32>& out, const std::atomic<bool>* cancel, std::string& err) = 0;
+};
+
 class FastScanner {
 public:
     FastScanner();
@@ -76,6 +84,10 @@ public:
 
     // The scan loop over a source until cancelled / maxPasses. false: the source failed (err).
     bool run(sweep::SweepSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err);
+
+    // The same scan fed by a source that retunes by itself: every block is one hop capture of the hop whose centre it carries (within a quarter of
+    // a hop). A pass ends when the hop index wraps. No recording in this mode (the radio is never parked on a hop).
+    bool runBlocks(BlockSource& src, const std::atomic<bool>* cancel, RunHooks& hk, std::string& err);
 
     // thread-safe while a scan runs (the tracker is touched under the scanner's lock)
     std::vector<Hit> hitsSnapshot() const;
