@@ -167,7 +167,7 @@ private:
         uint8_t raw[9];
         packFullLc(lc, raw);
         const int traffic = c_.traffic;
-        int nSuper = 2 + rng_.range(traffic == 2 ? 6 : 4);     // 0.7 s to 2.9 s
+        int nSuper = c_.superSpan > 0 ? c_.superMin + rng_.range(c_.superSpan) : 2 + rng_.range(traffic == 2 ? 6 : 4);     // 0.7 s to 2.9 s
         const int ti = newTruth(kind, src, dst);
         DmrTruth& tr = truth_[(size_t)ti];
         std::string alias;

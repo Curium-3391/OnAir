@@ -48,6 +48,7 @@ struct DmrGenConfig {
     double devScale = 1.0;
     double dcOffset = 0;
     double iqImbalanceDb = 0;
+    int superMin = 0, superSpan = 0;   // direct mode: length of a voice call in superframes of 360 ms, superMin + 0..superSpan-1 (0: the default 2..5, or 2..7 when busy)
     double rms = 0.22;           // total power of signal plus noise, as an rms of the complex samples
 };
 

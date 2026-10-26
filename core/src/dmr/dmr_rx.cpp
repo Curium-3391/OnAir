@@ -439,6 +439,12 @@ struct DmrReceiver::Impl {
                 const double sum = sumRange(c - kAfcHalfWidth, c + kAfcHalfWidth);
                 if (sum > best) { best = sum; bestC = c; bestBins = std::max(1, binsIn(c - kAfcHalfWidth, c + kAfcHalfWidth)); }
             }
+            // A peak at the edge of the near range with more power beyond it is the skirt of a carrier outside the range (a strong neighbour on the next
+            // channel), not a carrier: its centroid would pull the oscillator off the wanted channel. Look further out instead.
+            if (range < kAfcRange && best >= kAfcMinRatio * n0 * bestBins && std::fabs(bestC) > range - 1500.0) {
+                const double out = bestC > 0 ? 1500.0 : -1500.0;
+                if (sumRange(bestC + out - kAfcHalfWidth, bestC + out + kAfcHalfWidth) > 1.05 * best) best = 0;
+            }
             if (best >= kAfcMinRatio * n0 * bestBins) break;
         }
         if (best < kAfcMinRatio * n0 * bestBins) { afcPrev = 1e9; return; }
