@@ -74,6 +74,8 @@ const std::set<std::string>& restrictedKnownKinds() {
     "argos", "asterix", "horus", "isdbs", "lorasat", "lorawanwide", "nfc", "sbas", "sigfox",
     // 3.1 modes: blocked likewise
     "pactor", "pskd",
+    // 3.2 modes: blocked likewise
+    "esubghz",
     };
     return s;
 }
