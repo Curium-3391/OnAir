@@ -35,6 +35,7 @@ struct CarrierRow {
     double idleSec = -1;          // seconds since the last good frame or SU, -1 never
     std::string region;           // Inmarsat-C: ocean region from the bulletin board
     std::string station;          // Inmarsat-C: station name
+    bool voiceCandidate = false;  // wide, old enough, and no data decoder holds sync: it may be an Aero C (voice) channel (not decodable yet, see inmsat_voice.h)
     bool parked = false;          // no window: the CPU budget is used up
     bool focus = false;
     int window = -1;              // index into Snapshot::windows, -1 parked

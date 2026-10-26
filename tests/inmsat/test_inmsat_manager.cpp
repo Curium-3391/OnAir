@@ -92,7 +92,8 @@ int main() {
     CHECK(snap.egc.size() >= 1, "Inmarsat-C messages: %zu", snap.egc.size());
     // the unrelated wide carrier is listed and nothing decodes on it
     bool wideListed = false;
-    for (const auto& c : snap.carriers) if (std::fabs(c.offsetHz - 1.8e6) < 4000) { wideListed = true; CHECK(c.type == CarrierType::Unknown, "unrelated carrier decoded as %s", carrierTypeName(c.type)); }
+    for (const auto& c : snap.carriers) if (std::fabs(c.offsetHz - 1.8e6) < 4000) { wideListed = true; CHECK(c.type == CarrierType::Unknown, "unrelated carrier decoded as %s", carrierTypeName(c.type)); CHECK(c.voiceCandidate, "the unrelated wide carrier is not flagged as a voice candidate"); }
+    for (const auto& c : snap.carriers) if (c.type != CarrierType::Unknown) CHECK(!c.voiceCandidate, "a decoded carrier flagged as voice");
     CHECK(wideListed, "the unrelated carrier is not in the table");
     // messages from both Aero groups, and every message decoded was sent (checked against what the generators recorded)
     const auto sent1 = s1.takeMessages(), sent2 = s2.takeMessages();

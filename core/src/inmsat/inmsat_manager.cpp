@@ -283,6 +283,7 @@ struct Manager::Impl {
                 break;
             }
             r.parked = r.window < 0;
+            r.voiceCandidate = c.cls == CarrierClass::Wide && r.state < 2 && det.nowSec() - c.firstSeen > 20;
             s.carriers.push_back(r);
         }
         std::lock_guard<std::mutex> lk(snapMu);
