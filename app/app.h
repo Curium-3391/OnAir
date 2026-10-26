@@ -691,6 +691,8 @@ void languageButton(App& a);
 void setUiLanguage(App& a, const std::string& code);   // empty: the system's language
 extern bool gTightTabs;   // the tabs of mainTabs() get less padding (a narrow pane)
 void toggleFullscreen();
+bool analogFullPicture(App& a, ImVec2 disp);   // analog TV and FPV video: the picture over the whole window (video-only view); false when there is none yet (#326)
+bool analogHasPicture(const App& a);
 void handleFullscreenHotkeys();          // F11 and Alt+Enter; ignored while a text field has the keyboard
 std::string adsbJamBody(const std::string& station);   // adsb_ui.cpp: the POST /jam body of the GPS interference cells ("" when there is nothing to share)
 bool adsbFullMap(App& a, ImVec2 disp);           // adsb_ui.cpp: the ADS-B map or radar over the whole window when it is popped out

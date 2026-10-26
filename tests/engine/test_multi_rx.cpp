@@ -39,6 +39,14 @@ int main() {
         FileOptions fo; TuneSettings t;
         CHECK(!e2.start(radio, t, fo), "RX 2 started a radio RX 1 holds");
     }
+    {   // two RTL-SDR dongles with the same serial (the factory 00000001) are two radios (#328)
+        DeviceInfo d0; d0.kind = DeviceInfo::Native; d0.board = "rtlsdr"; d0.serial = "00000001"; d0.nativeArgs = "0"; d0.name = "RTL-SDR 00000001";
+        DeviceInfo d1 = d0; d1.nativeArgs = "1";
+        CHECK(deviceClaimKey(d0) != deviceClaimKey(d1), "two dongles with one serial share a claim key");
+        CHECK(claimDevice(d0, 5, &holder) && claimDevice(d1, 6, &holder), "second dongle with the same serial refused (holder %d)", holder);
+        CHECK(!claimDevice(d0, 6, &holder) && holder == 5, "the first dongle is held by RX 5");
+        releaseDevice(5); releaseDevice(6);
+    }
     releaseDevice(1);
     CHECK(deviceHolder(radio) == 0 && claimDevice(radio, 2, &holder), "released radio taken by RX 2");
     releaseDevice(2);

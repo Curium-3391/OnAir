@@ -32,7 +32,8 @@ std::vector<std::string> UsacLib::codecFolderCandidates() {
                               "libfdk-aac.2.dylib", "libfdk-aac.dylib"}) v.push_back(dir + n);
         std::error_code ec;
         std::vector<std::string> extra;
-        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+        try {   // a folder name the system cannot convert must not end the program (std::filesystem throws on it, #329)
+        for (const auto& e : std::filesystem::directory_iterator(std::filesystem::path(dir), ec)) {
             const std::string f = e.path().filename().string();
             std::string low = f;
             std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return (char)std::tolower(c); });
@@ -40,6 +41,7 @@ std::vector<std::string> UsacLib::codecFolderCandidates() {
             if (low.find(".dll") == std::string::npos && low.find(".dylib") == std::string::npos && low.find(".so") == std::string::npos) continue;
             if (std::find(v.begin(), v.end(), dir + f) == v.end()) extra.push_back(dir + f);
         }
+        } catch (const std::exception&) {}
         std::sort(extra.begin(), extra.end());
         v.insert(v.end(), extra.begin(), extra.end());
     }
@@ -50,7 +52,7 @@ namespace {
 std::mutex gRepMu;
 UsacLib::Report gRep;
 std::atomic<uint64_t> gGen{1};
-bool fileThere(const std::string& p) { std::error_code ec; return std::filesystem::is_regular_file(std::filesystem::path(p), ec); }
+bool fileThere(const std::string& p) { try { std::error_code ec; return std::filesystem::is_regular_file(std::filesystem::path(p), ec); } catch (const std::exception&) { return false; } }
 #ifdef _WIN32
 // why LoadLibrary refused a file that is there, in plain words (#266: the DLL was in the codecs folder but nothing said why it did not load)
 std::string winLoadError(DWORD e) {
@@ -77,7 +79,10 @@ UsacLib UsacLib::load(const std::string& path) {
     for (const std::string& n : names) {
         const bool full = n.find('\\') != std::string::npos || n.find('/') != std::string::npos;   // a full path: its own folder is searched for the DLLs it needs
         if (full && !fileThere(n)) continue;
-        if ((h = full ? (void*)LoadLibraryExA(n.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH) : (void*)LoadLibraryA(n.c_str()))) { used = n; break; }
+        std::wstring wn;   // the paths are UTF-8: the wide call finds a file in a folder with non-ASCII letters
+        if (const int wl = MultiByteToWideChar(CP_UTF8, 0, n.c_str(), -1, nullptr, 0); wl > 1) { wn.resize((size_t)wl - 1); MultiByteToWideChar(CP_UTF8, 0, n.c_str(), -1, wn.data(), wl); }
+        if (wn.empty()) continue;
+        if ((h = full ? (void*)LoadLibraryExW(wn.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH) : (void*)LoadLibraryW(wn.c_str()))) { used = n; break; }
         if (full) rep.failed.push_back(n + ": " + winLoadError(GetLastError()));
     }
     auto sym = [&](const char* s) -> void* { return h ? (void*)GetProcAddress((HMODULE)h, s) : nullptr; };
