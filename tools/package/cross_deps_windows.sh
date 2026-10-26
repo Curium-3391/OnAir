@@ -22,6 +22,15 @@ step() { echo; echo "=== $1"; }
 
 [ -f "$P/lib/libusb-1.0.a" ] || { step libusb; unpack libusb-1.0.27.tar.bz2 libusb-1.0.27; (cd libusb-1.0.27 && ./configure --host=$HOST --prefix=$P --enable-static --disable-shared >/dev/null && make -j$JOBS >/dev/null && make install >/dev/null); }
 
+# OpenSSL (Apache-2.0 from 3.0): HTTPS for onair-server (web_tls_cert) and the checked HTTPS call of the web.on-air.dev directory heartbeat. Built STATIC
+# (libssl.a, libcrypto.a), so the programs need no extra DLL. Source: any openssl-3.*.tar.gz (the 3.0 LTS or newer) from https://www.openssl.org/source/
+# put into build-windows-deps/src; check its SHA-256 against the one published next to it. The certificate authorities are read from the Windows
+# root store at run time (core/src/net/tls_conn.cpp), so no bundle file is shipped.
+[ -f "$P/lib/libssl.a" ] || { step openssl; OSSL=$(ls "$SRC"/openssl-3.*.tar.gz 2>/dev/null | sort -V | tail -1); [ -n "$OSSL" ] || { echo "error: no openssl-3.*.tar.gz in $SRC (https://www.openssl.org/source/)"; exit 1; }
+  OD=$(basename "$OSSL" .tar.gz); unpack "$(basename "$OSSL")" "$OD"
+  (cd "$OD" && ./Configure mingw64 --cross-compile-prefix=$HOST- no-shared no-tests no-docs no-apps no-module --prefix=$P --libdir=lib --openssldir=C:/OnAir-no-openssl-dir >/dev/null && make -j$JOBS build_libs >/dev/null && make install_dev >/dev/null)
+  mkdir -p "$P/licenses"; cp "$OD/LICENSE.txt" "$P/licenses/openssl-LICENSE.txt"; [ -f "$OD/NOTICE.md" ] && cp "$OD/NOTICE.md" "$P/licenses/openssl-NOTICE.md" || true; }
+
 [ -f "$P/lib/libglfw3.a" ] || { step glfw; unpack glfw-3.4.zip glfw-3.4; cmake -S glfw-3.4 -B glfw-build "-DCMAKE_TOOLCHAIN_FILE=$TC" -DCMAKE_INSTALL_PREFIX=$P -DBUILD_SHARED_LIBS=OFF -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/dev/null && cmake --build glfw-build -j$JOBS >/dev/null && cmake --install glfw-build >/dev/null; }
 
 [ -f "$P/lib/libhackrf.a" ] || { step libhackrf; unpack hackrf-2024.02.1.tar.xz hackrf-2024.02.1

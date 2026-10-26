@@ -17,13 +17,15 @@ if [ -z "$ONAIR_WIN_PARTIAL" ]; then
   missing=""
   for f in libSoapySDR librtlsdr libairspy libairspyhf libbladeRF libLimeSuite libiio FTD3XX; do [ -f "$P/bin/$f.dll" ] || missing="$missing bin/$f.dll"; done
   [ -f "$P/lib/SoapySDR/modules0.8/libremoteSupport.dll" ] || missing="$missing lib/SoapySDR/modules0.8/libremoteSupport.dll"
+  [ -f "$P/lib/libssl.a" ] && [ -f "$P/lib/libcrypto.a" ] || missing="$missing lib/libssl.a lib/libcrypto.a (OpenSSL: cross_deps_windows.sh builds it)"
   for f in libusb-1.0 libstdc++-6 libgcc_s_seh-1 libwinpthread-1; do [ -f "$P/redist/$f.dll" ] || missing="$missing redist/$f.dll"; done
   [ -z "$missing" ] || { echo "error: not in $P:$missing"; echo "run tools/package/cross_deps_windows.sh first (or set ONAIR_WIN_PARTIAL=1 to package without them)"; exit 1; }
 fi
 HAMLIB_CMAKE=OFF
 for f in "$P/bin"/libhamlib*.dll "$P/bin"/hamlib.dll; do [ -f "$f" ] && HAMLIB_CMAKE=ON && break; done
+TLS_CMAKE=OFF; [ -f "$P/lib/libssl.a" ] && TLS_CMAKE=ON || echo "warning: no OpenSSL in $P: onair-server is built without TLS (ONAIR_WIN_PARTIAL)"
 GEN=""; command -v ninja >/dev/null 2>&1 && GEN="-G Ninja"   # Ninja plus ccache (CMake picks it up) make a repeat build several times faster
-cmake --fresh $GEN -S . -B $BUILD "-DCMAKE_TOOLCHAIN_FILE=$PWD/packaging/windows/mingw-toolchain.cmake" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_BUILD_TESTS=ON -DDECT2_HAVE_HAMLIB=$HAMLIB_CMAKE -DDECT2_WITH_SOAPY=ON -DONAIR_WIN_SOAPY=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/dev/null
+cmake --fresh $GEN -S . -B $BUILD "-DCMAKE_TOOLCHAIN_FILE=$PWD/packaging/windows/mingw-toolchain.cmake" -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_BUILD_TESTS=ON -DDECT2_HAVE_HAMLIB=$HAMLIB_CMAKE -DDECT2_WITH_SOAPY=ON -DDECT2_WITH_TLS=$TLS_CMAKE -DOPENSSL_ROOT_DIR=$P -DOPENSSL_USE_STATIC_LIBS=TRUE -DONAIR_WIN_SOAPY=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/dev/null
 cmake --build $BUILD -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" --target dect2 dect2cli dect2scan onair-server
 OUT=${ONAIR_WIN_OUT:-$BUILD/OnAir-$VERSION-windows-x64}
 ZIP=${OUT%/}.zip
@@ -35,6 +37,7 @@ $S -o "$OUT/onair-cli.exe" $BUILD/dect2cli.exe
 $S -o "$OUT/onair-scan.exe" $BUILD/dect2scan.exe
 $S -o "$OUT/onair-server.exe" $BUILD/onair-server.exe   # the headless server (OnAir Web)
 [ -f "$OUT/onair-server.exe" ] || { echo "error: onair-server.exe is missing from $OUT"; exit 1; }
+mkdir -p "$OUT/web"; cp -R web/onair-web "$OUT/web/"   # the OnAir Web browser page (onair-server.exe looks in web\\onair-web next to it)
 # generic radios: SoapySDR (a DLL). Its RTL-SDR and Airspy modules are not shipped: the native drivers of the same name always win and hide them.
 cp "$P/bin/libSoapySDR.dll" "$OUT/"
 # the radios OnAir drives by itself: their libraries next to the program (nothing to install). FTD3XX.dll is FTDI's USB 3 driver library that the

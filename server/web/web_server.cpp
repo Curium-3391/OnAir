@@ -165,6 +165,7 @@ struct WebServer::Impl {
         std::map<std::string, std::string> h;
         std::string peer;   // the listener's address (X-Forwarded-For when trusted)
         bool loopbackPeer = false;
+        bool viaProxy = false;   // the connection came from a reverse proxy on this computer that web_trust_proxy believes (also when it sent X-Forwarded-For)
     };
 
     static std::string secHeaders(bool tls) {
@@ -257,7 +258,7 @@ struct WebServer::Impl {
         if (ht != r.h.end()) {
             const std::string host = lowerStr(ht->second);
             if (o == std::string(tls ? "https://" : "http://") + host) return true;
-            if (cfg.trustProxy && r.loopbackPeer && o == "https://" + host) return true;   // TLS ends at the proxy
+            if (cfg.trustProxy && r.viaProxy && o == "https://" + host) return true;   // TLS ends at the proxy
         }
         for (const auto& a : cfg.origins) if (o == lowerStr(a)) return true;
         return false;
@@ -564,6 +565,7 @@ struct WebServer::Impl {
         r.peer = peer;
         if (readRequest(io, r)) {
             if (cfg.trustProxy && r.loopbackPeer) {
+                r.viaProxy = true;
                 auto xf = r.h.find("x-forwarded-for");
                 if (xf != r.h.end()) {   // the last address is the one the proxy saw
                     std::string v = xf->second;

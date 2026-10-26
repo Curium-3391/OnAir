@@ -47,7 +47,7 @@ onair-server --lan --tls-cert server.crt --tls-key server.key
 
 or the same as `tls_cert=` / `tls_key=` in the settings file. The page is then `https://...`; a self-signed certificate gives the browser's warning once (add an exception, or use a certificate from your own CA or Let's Encrypt). TLS 1.2 and up.
 
-TLS needs a build with OpenSSL: `cmake -DDECT2_WITH_TLS=ON`. It is off in the default build so the packages need no extra library; without it the server says so and refuses a certificate. A reverse proxy (Caddy, nginx) in front of the server works as well; then keep the server on `127.0.0.1` and let the proxy do the TLS and the access control.
+TLS needs OpenSSL. The release packages from 3.2 on have it (macOS and Linux carry libssl/libcrypto, Windows has it built in); a build you make yourself needs `cmake -DDECT2_WITH_TLS=ON` (it is off by default so a development build needs no extra library). 3.1 and older packages, and builds without it, say so and refuse a certificate. For OnAir Web the keys are `web_tls_cert` / `web_tls_key`. A reverse proxy (Caddy, nginx) in front of the server works as well; then keep the server on `127.0.0.1` and let the proxy do the TLS and the access control.
 
 ## Bandwidth
 
