@@ -65,6 +65,7 @@ The user guides and notes that live in the repository. The same text is on the [
 | [zwave.md](zwave.md) | Z-Wave (ITU-T G.9959) | A receive-only monitor for Z-Wave home automation networks on the sub-GHz bands. |
 | [esubghz.md](esubghz.md) | Flipper Zero Sub-GHz chat | Chat with Flipper Zero devices (Enhanced Sub-GHz Chat app), plain or AES-256-GCM encrypted, receive and send. |
 | [roshf.md](roshf.md) | ROS (HF) detector | Detects the ROS weak-signal HF mode and names its sub-mode; text decoding partial (needs a public spec). |
+| [ssdv.md](ssdv.md) | SSDV pictures | Balloon and satellite pictures from SSDV packets (FSK / RTTY-framed), built up while they arrive. |
 
 ## Added in 3.0 (not in the table above yet)
 

@@ -251,6 +251,7 @@ void Engine::placeNarrowReceivers(const DeviceInfo& dev, const TuneSettings& tun
         rxPac_.setSignalOffset(o);
         rxEsg_.setSignalOffset(o);
         rxRoshf_.setSignalOffset(o);
+        rxSsdv_.setSignalOffset(o);
         rxPskd_.setSignalOffset(o);
         rxLs_.setCenterHz(dev.kind != DeviceInfo::File ? radioTune(tune).centerHz : 0.0);
         rxWs_.setSignalOffset(o);
@@ -556,6 +557,8 @@ void Engine::configureDataReceivers(const DeviceInfo& dev, const TuneSettings& t
     rxEsg_.configure(rate_);
     rxRoshf_.configure(rate_);
     rxRoshf_.setLogCallback([this](const std::string& s) { log(s); });
+    rxSsdv_.configure(rate_);
+    rxSsdv_.setLogCallback([this](const std::string& s) { log(s); });
     rxEsg_.setLogCallback([this](const std::string& s) { log(s); });
     rxPskd_.configure(rate_);
     rxPskd_.setLogCallback([this](const std::string& s) { log(s); });

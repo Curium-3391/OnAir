@@ -299,6 +299,7 @@ int Engine::pollMode(int a, RxTelemetry& t, uint64_t* seqs) {
     case 202: return pollStd(rxLs_, 202, t, seqs[161], &RxTelemetry::lorasat);   // LoRa satellites (slot 161)
     case 204: return pollStd(rxPac_, 204, t, seqs[164], &RxTelemetry::pactor);   // PACTOR-I monitor (slot 164)
     case 206: return pollStd(rxRoshf_, 206, t, seqs[182], &RxTelemetry::roshf);   // Roshf (slot 182)
+    case 207: return pollStd(rxSsdv_, 207, t, seqs[183], &RxTelemetry::ssdv);   // Ssdv (slot 183)
     case 205: return pollStd(rxEsg_, 205, t, seqs[165], &RxTelemetry::esubghz);   // Flipper Zero Sub-GHz chat (slot 165)
     case 203: return pollStd(rxPskd_, 203, t, seqs[163], &RxTelemetry::pskd);   // PSK demodulator (slot 163)
     case 99: return pollStd(rxZw_, 99, t, seqs[90], &RxTelemetry::zwave);
