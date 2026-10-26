@@ -387,6 +387,39 @@ static void syncSpectrumEngine(App& a) {
 
 double specBinsPerPixel();   // plots.cpp: FFT bins per pixel column of the spectrum as last drawn
 
+// Fast waterfall rows (Waterfall::fast(), the CW preset): the engine makes a row every 1/rowsPerSec seconds from its own short transforms and queues
+// them; a frame of the screen takes whatever has come (several rows) and writes them all, so the rate does not depend on the frame rate.
+static void fastRowsIngest(App& a) {
+    const double want = a.wf.fast() ? a.wf.rowsPerSec : 0;
+    if (a.wf.fastSent != want) { a.engine.setSpectrumFastRows(want); a.wf.fastSent = want; }
+    if (want <= 0) return;
+    static std::vector<float> rows;   // (one waterfall per App; the buffer ping-pongs with the engine's queue: no allocation in the steady state)
+    size_t bins = 0; double dt = 0; uint64_t dropped = 0;   // dt: the engine's exact row time (the scale uses 1 / rowsPerSec, the same)
+    const size_t n = a.engine.takeFastRows(rows, bins, dt, dropped);
+    if (!n || bins < 64) return;
+    const double fsHz = a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate;
+    const double now = glfwGetTime();
+    a.wf.fastBins = bins;
+    a.wf.setCols(specaxis::historyCols(a.wf.detail, bins, Waterfall::kMaxCols));
+    a.wf.follow(radioCenterMhz(a), fsHz / 1e6);
+    const float off = a.specPerHz ? spipe::perHzOffset(fsHz, bins) : 0.f;
+    bool any = false;
+    for (size_t r = 0; r < n; r++) {
+        float* row = rows.data() + r * bins;
+        if (off != 0.f) for (size_t i = 0; i < bins; i++) row[i] -= off;
+        any = a.wf.offerFast(row, bins) || any;
+    }
+    if (any) { a.wf.pushT = now; wfExportRow(a, now); }
+    static const bool perf = getenv("DECT2_FPS") != nullptr;   // DECT2_FPS=1: rows a second taken, the biggest batch, rows the engine dropped
+    if (perf) {
+        static double t0 = now; static size_t rowsN = 0, maxBatch = 0; static uint64_t drop = 0;
+        rowsN += n; maxBatch = std::max(maxBatch, n); drop += dropped;
+        if (now - t0 > 2.0) { const float* last = rows.data() + (n - 1) * bins; size_t pk = 0; for (size_t i = 1; i < bins; i++) if (last[i] > last[pk]) pk = i;
+            fprintf(stderr, "fast rows: %.0f a second (wanted %.0f), %zu bins, biggest batch %zu, dropped %llu, newest row peak %.1f dB at bin %zu\n", rowsN / (now - t0), a.wf.rowsPerSec, bins, maxBatch, (unsigned long long)drop, last[pk], pk); t0 = now; rowsN = maxBatch = 0; drop = 0; }
+    }
+    (void)dt;
+}
+
 void ingestSpectrum(App& a) {
     syncSpectrumEngine(a);
     Waterfall::themeMode() = pal::wfMode();
@@ -401,7 +434,7 @@ void ingestSpectrum(App& a) {
         slook::demoSpectrum(a.spec.dbfs, 8192, radioCenterMhz(a), fsMhz, t, (uint32_t)(a.lastSeq + 1));
         a.spec.seq = a.lastSeq + 1;
     } else
-    if (!a.engine.latestSpectrum(a.spec, a.lastSeq)) return;   // straight into the kept frame: no copy that allocates, 30 times a second
+    if (!a.engine.latestSpectrum(a.spec, a.lastSeq)) { fastRowsIngest(a); return; }   // straight into the kept frame: no copy that allocates, 30 times a second
     const SpectrumFrame& f = a.spec;
     const uint64_t prevSeq = a.lastSeq;
     a.lastSeq = f.seq;
@@ -434,12 +467,13 @@ void ingestSpectrum(App& a) {
     }
     {   // the history has the width the detail setting and the FFT give (#243), and follows the radio: a retune moves the rows along (#270)
         const double fsMhz = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
-        a.wf.setCols(specaxis::historyCols(a.wf.detail, n, Waterfall::kMaxCols));
+        a.wf.setCols(specaxis::historyCols(a.wf.detail, a.wf.fast() && a.wf.fastBins ? a.wf.fastBins : n, Waterfall::kMaxCols));
         a.wf.follow(radioCenterMhz(a), fsMhz);   // also while paused: the frozen picture must stay under its frequencies
     }
     // frames the screen did not take (it drew slower than they came): the row is repeated for them, so the picture keeps its true speed (#246)
     const int missed = a.wf.rowsPerSec <= 0 ? specaxis::missedRows(prevSeq, f.seq) : 0;
-    if (a.wf.offer(a.specView, now, missed)) {
+    if (a.wf.fast()) fastRowsIngest(a);   // the rows come from the engine's own short transforms, in batches
+    else if (a.wf.offer(a.specView, now, missed)) {
         const int k = a.wf.slow() ? 1 : 1 + missed;   // one time stamp per row, spread over the gap
         const double t0 = a.wf.pushT > 0 && a.wf.pushT < now ? a.wf.pushT : now;
         for (int i = 1; i <= k; i++) a.wf.stamp(t0 + (now - t0) * i / k);

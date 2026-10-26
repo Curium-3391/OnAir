@@ -171,8 +171,22 @@ static void clickToTune(App& a, int plotId) {
         const double lx[2] = {mhz, mhz}, ly[2] = {lim.Y.Min, lim.Y.Max};
         plt::Spec ls; ls.LineColor = ImVec4(0.95f, 0.25f, 0.25f, 0.9f); ls.LineWeight = 1.2f;
         plt::PlotLine("##tunehere", lx, ly, 2, ls);
-        if (a.tuningMode == 1) ImGui::SetTooltip(tr("click to decode %.4f MHz (radio centre stays)"), mhz);
-        else ImGui::SetTooltip(a.centreTuning ? tr("click to centre the radio on %.4f MHz") : tr("click to tune to %.4f MHz"), mhz);
+        std::string when;   // on the waterfall: how long ago the row under the pointer came (the rows are evenly spaced, rowDt apart)
+        if (plotId == 1 && a.wf.filled > 0 && a.wf.rowDt > 0) {
+            const double secs = std::max(0.0, -plt::GetPlotMousePos().y) * a.wf.rowDt;
+            char b[40];
+            if (a.wf.clockLabels) { const time_t t = (time_t)std::llround((double)std::time(nullptr) - secs); struct tm tmv {};
+#ifdef _WIN32
+                localtime_s(&tmv, &t);
+#else
+                localtime_r(&t, &tmv);
+#endif
+                strftime(b, sizeof b, "%H:%M:%S", &tmv); }
+            else snprintf(b, sizeof b, secs < 10 ? "%.2f s" : "%.1f s", secs);
+            when = std::string("\n") + (a.wf.clockLabels ? "" : tr("row from ")) + b + (a.wf.clockLabels ? "" : tr(" ago"));
+        }
+        const std::string tip = std::string(a.tuningMode == 1 ? tr("click to decode %.4f MHz (radio centre stays)") : a.centreTuning ? tr("click to centre the radio on %.4f MHz") : tr("click to tune to %.4f MHz")) + when;
+        ImGui::SetTooltip(tip.c_str(), mhz);
     }
 }
 
@@ -1038,6 +1052,19 @@ void wfDisplayPopup(App& a) {
         if (ImGui::RadioButton(lb, std::fabs(a.wf.rowsPerSec - rates[i]) < 1e-4f)) { a.wf.setRate(rates[i]); savePrefs(a); }
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Slow rows for long watches: one row a minute keeps about 8.5 hours in the picture"));
+    {   // fast rows: more rows a second than the 30 frames, for Morse (CW) and other short signals
+        ImGui::TextDisabled("%s", tr("Fast (Morse / CW)"));
+        static const float fr[] = {50, 100, 200, 500};
+        for (int i = 0; i < 4; i++) {
+            if (i) ImGui::SameLine(0, 4 * gUi);
+            char lb[16]; snprintf(lb, sizeof lb, "%g##fast", fr[i]);
+            if (ImGui::RadioButton(lb, std::fabs(a.wf.rowsPerSec - fr[i]) < 1e-4f)) { a.wf.setRate(fr[i]); savePrefs(a); }
+        }
+        ImGui::SameLine(0, 8 * gUi);
+        if (ImGui::Button(tr("CW / fast"))) { a.wf.setRate(100); savePrefs(a); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("100 rows a second, each from a short transform (about 20 ms of signal), whatever the frame rate: dots and dashes of Morse get several rows each. The picture then holds about 5 seconds. Costs a little CPU for the extra transforms."));
+        if (a.wf.fast()) ImGui::TextDisabled(tr("%g rows a second: a row every %.1f ms."), a.wf.rowsPerSec, 1e3 / a.wf.rowsPerSec);
+    }
     {
         const double secs = Waterfall::H * (a.wf.timeKnown() || a.wf.nStamps > 8 ? a.wf.rowDt : 1.0 / 30);
         if (secs >= 2 * 3600) ImGui::TextDisabled(tr("The picture holds the last %.1f hours."), secs / 3600);
@@ -1783,7 +1810,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
     const bool measured = a.wf.timeKnown();
     // clock labels (#237): the positions stay, the texts are the time of day of those rows, made again when the newest row moves on a second
     const long long clockSec = a.wf.clockLabels ? (long long)std::time(nullptr) : 0;
-    if (avail.x != sc.avail.x || avail.y != sc.avail.y || measured != sc.measured || (a.wf.slow() && std::fabs(a.wf.rowDt - sc.dt) > 1e-9) ||
+    if (avail.x != sc.avail.x || avail.y != sc.avail.y || measured != sc.measured || ((a.wf.slow() || a.wf.fast()) && std::fabs(a.wf.rowDt - sc.dt) > 1e-9) ||
         a.wf.clockLabels != sc.clock || clockSec != sc.clockSec) {
         sc.clock = a.wf.clockLabels; sc.clockSec = clockSec;
         sc.avail = avail; sc.measured = measured; sc.dt = a.wf.rowDt > 0 ? a.wf.rowDt : 1.0 / 30;   // a zero would make the label step zero: an endless loop
@@ -1820,7 +1847,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
         double fs = (a.engine.sampleRate() > 0 ? a.engine.sampleRate() : a.tune.sampleRate) / 1e6;
         const double rc = radioCenterMhz(a);
         // the picture starts half a bin left of the band edge, so each bin's colour sits under the trace point of that bin (#270)
-        const double x0 = specaxis::imageLo(rc, fs, a.smooth.empty() ? (size_t)a.wf.cols : a.smooth.size()), x1 = x0 + fs;
+        const double x0 = specaxis::imageLo(rc, fs, a.wf.fast() && a.wf.fastBins ? a.wf.fastBins : a.smooth.empty() ? (size_t)a.wf.cols : a.smooth.size()), x1 = x0 + fs;
         setupFreqAxis(a);
         // y is in rows, so the picture keeps its size while the measured row time wanders; the labels are the fixed scale above.
         // Paused, the view is free to scroll and zoom back through the rows (but not past the oldest or the newest), with ordinary tick labels.
@@ -1831,7 +1858,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
         if (!a.wf.paused) plt::SetupAxisTicks(plt::Y1, sc.pos.data(), (int)sc.pos.size(), sc.cstr.data());
         // rows arrive at the engine's ~30 Hz, the screen draws faster: slide down by the part of a row that is due since the last one,
         // so the picture moves at an even speed instead of jumping a row at a time
-        const double frac = a.wf.pushT > 0 && !a.wf.paused ? std::min(1.0, std::max(0.0, (glfwGetTime() - a.wf.pushT) / a.wf.rowDt)) : 0;
+        const double frac = a.wf.pushT > 0 && !a.wf.paused && !a.wf.fast() ? std::min(1.0, std::max(0.0, (glfwGetTime() - a.wf.pushT) / a.wf.rowDt)) : 0;
         // Drawn from the history made to the size of the plot (wf_view.h): the visible columns onto the pixel columns, the rows in groups
         // at least a pixel tall, so nothing is skipped by the texture sampling and the picture does not blink as it slides.
         const ImVec2 psz = plt::GetPlotSize();   // first: it finishes the setup, after which the limits are this frame's
@@ -1862,7 +1889,7 @@ static void waterfallPlot(App& a, ImVec2 size, int extraFlags) {
             if (a.specReadout && curLook(a).tooltipBox && plt::IsPlotHovered() && !ImGui::IsMouseDown(0) && a.wf.rows > 0) {
                 // the level under the cursor from the history: the row (rows ago) and the column of that frequency
                 const plt::Point mp = plt::GetPlotMousePos();
-                const double fracNow = a.wf.pushT > 0 && !a.wf.paused ? std::min(1.0, std::max(0.0, (glfwGetTime() - a.wf.pushT) / a.wf.rowDt)) : 0;
+                const double fracNow = a.wf.pushT > 0 && !a.wf.paused && !a.wf.fast() ? std::min(1.0, std::max(0.0, (glfwGetTime() - a.wf.pushT) / a.wf.rowDt)) : 0;
                 const long long ago = (long long)std::floor(-mp.y - fracNow);
                 const int col = (int)std::floor((mp.x - x0) / fs * a.wf.cols);
                 double db = NAN;

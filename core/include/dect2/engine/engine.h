@@ -289,6 +289,9 @@ public:
     void setNoiseBlanker(bool on, float threshold, float widthUs) { nbThr_ = threshold; nbWidthUs_ = widthUs; nbOn_ = on; nbDirty_ = true; }
     bool noiseBlankerOn() const { return nbOn_.load(); }
     float nbBlankedPct() const { return nbPct_.load(); }
+    // Fast waterfall rows (SpectrumAnalyzer::setFastRows): 0 = off. The analyser is told the sample rate again after a restart (applyReset).
+    void setSpectrumFastRows(double rowsPerSec) { fastRps_ = rowsPerSec; analyzer_.setFastRows(rowsPerSec, rate_.load()); }
+    size_t takeFastRows(std::vector<float>& rows, size_t& bins, double& dt, uint64_t& dropped) { return analyzer_.takeFastRows(rows, bins, dt, dropped); }
     int spectrumFft() const { return specFft_.load(); }   // the choice (0: automatic)
     void setSpectrumFft(int n) { specFft_ = n; if (n > 0) analyzer_.resize((size_t)n); else analyzer_.resize(SpectrumAnalyzer::autoSize(rate_.load())); }   // 0: automatic from the sample rate
 
@@ -700,6 +703,7 @@ private:
     bool recSigmf_ = true;
     std::unique_ptr<IqSource> src_;
     SpectrumAnalyzer analyzer_{8192};
+    std::atomic<double> fastRps_{0};   // the fast waterfall rows wanted (setSpectrumFastRows)
     std::atomic<int> specFft_{0};
     NoiseBlanker nb_;   // the analysis thread's; set from the atomics below when nbDirty_
     std::atomic<bool> nbOn_{false}, nbDirty_{true};

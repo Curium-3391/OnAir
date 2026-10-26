@@ -345,6 +345,7 @@ void Engine::applyReset() {
     autoMark_ = nSamp_ / std::max(1.0, rate_.load()); lastLockSec_ = autoMark_;
     analyzer_.resize(specFft_.load() > 0 ? (size_t)specFft_.load() : SpectrumAnalyzer::autoSize(rate_.load()));   // finer bins for a wide capture
     analyzer_.reset();
+    analyzer_.setFastRows(0, 0); analyzer_.setFastRows(fastRps_.load(), rate_.load());   // the sample rate may have changed: the hop and the row transform follow
     {
         std::lock_guard<std::mutex> lk(tsMu_);
         demux_.reset();
