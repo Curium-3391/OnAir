@@ -28,6 +28,8 @@
 
 namespace dect2 {
 
+bool dmrTalking(const DmrTelemetry& t) { return t.slot[0].state == 1 || t.slot[1].state == 1; }   // DmrSlot::state 1: voice
+
 namespace {
 
 constexpr size_t kLogCap = 200;
@@ -196,6 +198,7 @@ struct WideModes::Impl {
             if (t.messages.size() > kLogCap) t.messages.erase(t.messages.begin(), t.messages.end() - (long)kLogCap);
         };
         d.info = [](const DmrTelemetry& t) { return t.cc >= 0 ? fmt("CC %d", t.cc) + (t.link.empty() ? "" : " " + t.link) : t.link; };
+        d.voice = dmrTalking;
         dmr = put(10, d, &RxTelemetry::dmr);
 
         auto m = baseOps<M17Receiver, M17Telemetry>(300000);

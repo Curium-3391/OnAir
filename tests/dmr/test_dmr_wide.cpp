@@ -3,6 +3,7 @@
 #include "dect2/dsp/carrierfind.h"
 #include "dect2/common/stable_random.h"
 #include "dect2/dmr/dmr_gen.h"
+#include "dect2/dmr/dmr_rx.h"
 #include "dect2/engine/wide_modes.h"
 #include "dect2/t2/t2rx.h"
 #include <chrono>
@@ -139,7 +140,42 @@ static void testDmrBank() {
     CHECK(t.dmr.callLog.empty(), "clearResults left %zu calls", t.dmr.callLog.size());
 }
 
+// dmrTalking (the whole-span sound rule's voice hook): true while a voice call is on the air, false in the idle time between calls. A base
+// station: its idle bursts keep the carrier locked between calls, as a control channel's CSBKs do.
+static void testDmrTalking() {
+    DmrGenConfig g; g.rate = kFs; g.cc = 3; g.seed = 7; g.snrDb = 35; g.traffic = 1;
+    DmrSignal sig(g);
+    DmrReceiver rx;
+    rx.configure(kFs);
+    std::vector<cf32> buf((size_t)(kFs * 0.05));
+    DmrTelemetry t; uint64_t seq = 0;
+    int inCallTrue = 0, inCall = 0, idleFalse = 0, idle = 0;
+    for (int i = 0; i < 600; i++) {   // 30 s in 50 ms steps
+        const double s = i * 0.05;
+        sig.generate(buf.data(), buf.size());
+        rx.feed(buf.data(), buf.size());
+        if (rx.telemetry(t, seq)) seq = t.seq;
+        if (s < 2.0 || t.state != 2) continue;   // locked first
+        const double now = sig.seconds();
+        bool voice = false, near = false;
+        for (const auto& tr : sig.truth()) {
+            if (tr.kind > 2) continue;
+            const double end = tr.finished ? tr.endSec : 1e9;   // a call still going on
+            if (now > tr.startSec + 0.6 && now < end - 0.2) voice = true;   // well inside a call (the receiver needs a few bursts)
+            if (now > tr.startSec - 0.3 && now < end + 1.5) near = true;     // the start, the call or its hang time
+        }
+        const bool talk = dmrTalking(t);
+        if (voice) { inCall++; inCallTrue += talk; }
+        else if (!near) { idle++; idleFalse += !talk; }
+    }
+    printf("dmrTalking: true in %d of %d moments inside calls, false in %d of %d idle moments\n", inCallTrue, inCall, idleFalse, idle);
+    CHECK(inCall >= 20 && idle >= 20, "the signal held too little call (%d) or idle (%d) time to judge", inCall, idle);
+    CHECK(inCallTrue >= inCall * 9 / 10, "talking during calls only %d of %d", inCallTrue, inCall);
+    CHECK(idleFalse >= idle * 9 / 10, "talking between calls %d of %d", idle - idleFalse, idle);
+}
+
 int main() {
+    testDmrTalking();
     testFinder();
     testDmrBank();
     printf(fails ? "FAILED %d\n" : "ok\n", fails);

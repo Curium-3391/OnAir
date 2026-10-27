@@ -1,6 +1,8 @@
 // Regression test for the sound rule of the whole-span banks (core/include/dect2/engine/wide_bank.h): with no carrier chosen the best locked carrier
 // plays (it used to stay silent until a row was clicked); it keeps playing while it is as good as the best (no flapping between equal carriers);
 // a better locked carrier takes over; a chosen carrier plays whatever the others do; clearing the choice goes back to the automatic one; mute silences all.
+// With the voice hook (WideOps::voice) a carrier that carries voice wins over one that is only locked (a control channel never goes idle) and keeps
+// the sound while its call goes on.
 // A fake receiver stands in for the decoders: it records the sound flags the bank gives it and reports a state set by the test.
 #include "dect2/engine/wide_bank.h"
 #include <cmath>
@@ -9,9 +11,10 @@
 using namespace dect2;
 #include "../common/test_util.h"
 
-struct FakeTel { uint64_t seq = 0; int state = 0; };
+struct FakeTel { uint64_t seq = 0; int state = 0; bool voice = false; };
 static std::vector<struct FakeRx*> gAll;
 static int gState[4] = {0, 0, 0, 0};
+static bool gVoice[4] = {false, false, false, false};
 
 struct FakeRx {
     int idx;
@@ -21,7 +24,7 @@ struct FakeRx {
     ~FakeRx() { for (auto& p : gAll) if (p == this) p = nullptr; }
     void configure(double) {}
     void feed(const cf32*, size_t) {}
-    bool telemetry(FakeTel& t, uint64_t) { t.seq = ++seq; t.state = gState[idx < 4 ? idx : 3]; return true; }
+    bool telemetry(FakeTel& t, uint64_t) { t.seq = ++seq; t.state = gState[idx < 4 ? idx : 3]; t.voice = gVoice[idx < 4 ? idx : 3]; return true; }
 };
 
 static int playing() {   // how many fake receivers have their sound on, and which (the last one)
@@ -35,6 +38,7 @@ int main() {
     WideOps<FakeRx, FakeTel> ops;
     ops.outRate = 48000; ops.occupiedHz = 20000;
     ops.audio = [](FakeRx& r, bool play) { r.play = play; };
+    ops.voice = [](const FakeTel& t) { return t.voice; };
     WideBank<FakeRx, FakeTel> bank(ops);
     CarrierCfg cfg; cfg.stepHz = 12500; cfg.debounceSec = 0.1; cfg.holdSec = 8; cfg.avgSec = 0.05;
     bank.configure(fs, cfg);
@@ -102,6 +106,28 @@ int main() {
     snap();
     CHECK(playing() == 1, "unmuted: the sound is back, got %d", playing());
     (void)idOf1;
+
+    // 7. a control channel: locked all the time, never voice. It plays while nothing talks, but a call on the other carrier takes the sound
+    gState[0] = 2; gState[1] = 1; gVoice[0] = false; gVoice[1] = false;
+    snap();   // instance 0 is the better one: it takes the sound
+    gState[1] = 2;
+    snap();   // now both are locked: 0 keeps the sound (hysteresis)
+    CHECK(playing() == 0, "setup: the locked carrier 0 should play, got %d", playing());
+    gVoice[1] = true;
+    snap();
+    CHECK(playing() == 1, "a carrier with voice should take the sound from a locked one without voice, got %d", playing());
+    // 8. the call goes on although the other carrier is now as good or better: the sound stays with the call
+    gState[1] = 1; gVoice[0] = false;
+    snap();
+    CHECK(playing() == 1, "the carrier with the call keeps the sound while the call goes on, got %d", playing());
+    // 9. two calls: the one being played is not interrupted
+    gState[1] = 2; gVoice[0] = true;
+    snap();
+    CHECK(playing() == 1, "a second call does not take the sound from the call being played, got %d", playing());
+    // 10. the played call ends while the other goes on: the sound moves to the call
+    gVoice[1] = false;
+    snap();
+    CHECK(playing() == 0, "when the played call ends the other call gets the sound, got %d", playing());
     printf(fails ? "%d failure(s)\n" : "all passed\n", fails);
     return fails ? 1 : 0;
 }

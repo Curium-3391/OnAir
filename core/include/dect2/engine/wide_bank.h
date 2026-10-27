@@ -94,6 +94,7 @@ struct WideOps {
     std::function<double(const Tel&)> freqCorrection;        // optional: Hz to add to the finder's frequency of the carrier (the decoder's own carrier-offset measurement)
     std::function<bool(const Tel&)> hasLog;                  // optional: false = this telemetry has no list entries, a carrier that goes is not kept in the log
     std::function<int(const Tel&)> rowState;                 // optional: the table's state (0 searching, 1 partly locked, 2 locked) when the telemetry's own state is not that scale
+    std::function<bool(const Tel&)> voice;                   // optional: a voice call is on this carrier now (the sound goes to a call before a carrier that is only locked)
     std::function<void(Rx&, double absHz)> bind;             // optional: a receiver was made for a carrier at this absolute frequency (the span's centre set by setCenterHz plus the carrier's offset; the offset alone while no centre is known)
 };
 
@@ -273,7 +274,12 @@ public:
         if (sel_ == 0 && ops_.audio) {   // none chosen: the sound follows the best locked carrier too (it used to stay silent until a row was clicked); it stays on its carrier while that is as good as the best
             Slot* cur = nullptr;
             for (auto& s : live_) if (s->car.id == autoPlay_) cur = s.get();
-            const int want = (cur && best && cur->tel.state >= best->tel.state) ? autoPlay_ : (best ? best->car.id : 0);
+            // a call wins over a carrier that is only locked (a control channel is locked all the time and would keep the sound for ever); the call
+            // being played keeps it until it ends, then the strongest other call takes it
+            auto talking = [&](const Slot& q) { return ops_.voice && ops_.voice(q.tel); };
+            Slot* call = cur && talking(*cur) ? cur : nullptr;
+            if (!call) for (auto& s : live_) if (talking(*s) && (!call || s->car.levelDb > call->car.levelDb)) call = s.get();
+            const int want = call ? call->car.id : (cur && best && cur->tel.state >= best->tel.state) ? autoPlay_ : (best ? best->car.id : 0);
             if (want != autoPlay_) { autoPlay_ = want; applyAudio(); }
         } else if (autoPlay_ != 0) autoPlay_ = 0;
         Tel p = best ? best->tel : Tel();
