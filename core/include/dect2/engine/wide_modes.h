@@ -17,6 +17,11 @@ namespace dect2 {
 
 struct RxTelemetry;
 struct WideStatus;
+struct DmrTelemetry;
+
+// A DMR carrier carries a voice call now (either time slot): the whole-span sound goes to a call before a carrier that is only locked, such as
+// a trunking control channel sending CSBKs all the time (WideOps::voice)
+bool dmrTalking(const DmrTelemetry& t);
 
 // The settings of the whole-span detector the user can change (the carriers table's settings)
 struct WideTuning {
