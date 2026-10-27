@@ -41,6 +41,7 @@ struct IdenInfo {
     bool valid = false, vu = false, tdma = false;
     int chanType = 0, slots = 1;
     double baseHz = 0, spacingHz = 0, txOffsetHz = 0, bwHz = 0;
+    double lastSec = 0;          // when the table row was last announced
 };
 
 struct SiteInfo {
@@ -65,6 +66,9 @@ public:
     const IdenInfo& iden(int id) const { return idens_[id & 15]; }
     // The control channel and the others the system announces (secondary control channels, adjacent sites): the frequencies to try, current one first
     std::vector<double> controlCandidates() const;
+    // The control channels of this site only (its own and the secondary ones its SCCB messages list), current one first. An adjacent site's
+    // channel is placed with this site's identifier table, which is not the neighbour's: a search must not visit those.
+    std::vector<double> ownControlChannels() const;
     void setSitePosition(int sysId, int rfss, int site, double lat, double lon);
     uint64_t tsbks() const { return nTsbk_; }
     uint64_t grants() const { return nGrant_; }
@@ -77,6 +81,7 @@ private:
     std::vector<double> secondary_;
     std::vector<std::pair<std::pair<int, std::pair<int, int>>, std::pair<double, double>>> positions_;
     uint64_t nTsbk_ = 0, nGrant_ = 0;
+    void leaveSite(double nowSec);
 };
 
 // Extra opcodes (TIA-102.AABC) next to the ones in p25_proto.h
@@ -167,8 +172,8 @@ struct FollowConfig {
     int maxSlices = 2;           // simultaneous followed calls inside the capture (CPU limit)
     double hangSec = 2.0;        // a call with no grant repeat or voice for this long has ended
     double ccLossSec = 4.0;      // no control message for this long: the control channel is lost
-    double ccDwellSec = 3.0;     // time spent on each candidate while looking for the control channel
-    double returnTimeoutSec = 3.0;   // back on the control channel but nothing heard for this long: start looking
+    double ccDwellSec = 12.0;    // time spent on each candidate while looking for the control channel (a retune restarts the receiver: tuner settle, gain, sync)
+    double returnTimeoutSec = 12.0;  // back on the control channel but nothing heard for this long: start looking
     double edgeGuardHz = 12500;  // a voice channel this close to the edge of the capture is not taken as inside
     double sliceBandwidthHz = 12500;
     bool allowRetune = false;    // the single radio may leave the control channel for a call (and look for the control channel when it is lost); off: it stays
@@ -228,6 +233,8 @@ private:
     void note(const std::string& s) { Action a; a.text = s; out_.push_back(a); }
     void close(Slot& s, CallLog& log, double now, const char* why);
     void goHome(double now);
+    double tunedHz() const;
+    void searchAt(double hz, double now);
     void setState(FollowState s, double now) { if (state_ != s) { state_ = s; stateSince_ = now; } }
     Slot* freeSlot();
 };
