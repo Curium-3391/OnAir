@@ -601,6 +601,7 @@ void Engine::autoSelect(const RxTelemetry& t, bool tLocked) {
                 placeReceiverAsPrimary(activeStd_.load());
             }
             resetReceiver(activeStd_.load());
+            for (auto& q : modeSeq_) q = 0;   // the fresh receiver numbers its reports from 0 again
         }
         autoMark_ = lastLockSec_ = now;
         return;
