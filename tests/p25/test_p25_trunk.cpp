@@ -31,6 +31,23 @@ static void setupSite(Controller& c, double now) {
 
 static double chHz(int ch) { return 851006250 + (ch & 0xFFF) * 12500.0; }
 
+// A fake second receiver: does what the host does with OpenRemote / CloseRemote, and lets a test make it fail
+struct FakeVoiceRadio {
+    bool present = true, failRetune = false;
+    bool open = false, tdma = false; int slot = -1; double hz = 0; uint64_t call = 0;
+    int opens = 0, closes = 0;
+    bool voice = true;           // the radio hears the call once tuned
+    void apply(Controller& c, double now) {
+        for (const Action& a : c.takeActions()) {
+            if (a.kind == Action::OpenRemote) {
+                if (!present) { c.onRemoteFailed(a.callId, "second radio is gone", now); continue; }
+                if (failRetune) { c.onRemoteFailed(a.callId, "retune failed", now); continue; }
+                open = true; opens++; tdma = a.tdma; slot = a.slot; hz = a.freqHz; call = a.callId;
+            } else if (a.kind == Action::CloseRemote) { open = false; closes++; if (call == a.callId) call = 0; }
+        }
+    }
+};
+
 int main() {
     // ---- system model
     {
@@ -455,6 +472,151 @@ int main() {
         e.tick(8);
         a = e.takeActions();
         CHECK(count(a, Action::Retune) == 1 && !a.back().tdma && std::fabs(a.back().freqHz - chHz(0x1001)) < 1, "back to the control channel after the call");
+    }
+    // ---- voice radio: a second receiver takes calls outside the capture, the control channel radio stays
+    {
+        Controller c;
+        setupSite(c, 0);
+        feed(c, gen::idenUpTdma(6, 3, 856000000, 12500, 0), 0);
+        c.setCapture(chHz(0x1001), 0);   // only the control channel
+        FollowConfig fc; fc.hangSec = 1.5; fc.voiceRadio = true; fc.remoteStartSec = 3.0;
+        c.follower.setConfig(fc);
+        FakeVoiceRadio vr;
+        // Phase 1 call: the voice radio opens, the control radio is not retuned
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.0);
+        auto a = c.takeActions();
+        CHECK(count(a, Action::OpenRemote) == 1 && count(a, Action::Retune) == 0 && count(a, Action::OpenSlice) == 0, "grant outside the capture goes to the voice radio, no retune");
+        CHECK(!a.empty() && a[0].kind == Action::OpenRemote && !a[0].tdma && std::fabs(a[0].freqHz - chHz(0x1010)) < 1, "voice radio frequency");
+        const uint64_t id1 = c.log.records().back().id;
+        // put the actions back through the fake: it gets them again
+        for (const Action& x : a) if (x.kind == Action::OpenRemote) { vr.open = true; vr.call = x.callId; vr.hz = x.freqHz; vr.opens++; }
+        CHECK(c.follower.state() == FollowState::Following && c.follower.sliceFreqs(false).empty(), "following, and the wide bank list stays empty (%s)", followStateName(c.follower.state()));
+        // the control channel keeps being heard and its grant repeats do not keep a call alive that the voice radio does not hear
+        for (double t = 1.2; t < 2.2; t += 0.2) { feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), t); c.onVoice(id1, t); c.tick(t); }
+        CHECK(c.log.records().back().active && c.follower.remoteActive() && c.follower.remoteCall() == id1, "voice keeps the call");
+        // a second grant for another talkgroup while the voice radio is busy: not followed, not hopped, logged
+        feed(c, gen::grpVGrant(0x00, 0x1012, 4002, 22), 2.0);
+        a = c.takeActions();
+        CHECK(count(a, Action::OpenRemote) == 0 && count(a, Action::Retune) == 0 && c.log.records().back().missed && c.log.records().back().note.find("voice radio") != std::string::npos,
+              "two grants in a row: the second is missed with a note (%s)", c.log.records().back().note.c_str());
+        // a higher priority talkgroup preempts
+        c.tgs.upsert(4003).priority = 1;
+        c.tgs.upsert(4001).priority = 5;
+        // (the running call was granted before its priority was set: its slot priority is the default 0, i.e. none = lowest)
+        feed(c, gen::grpVGrant(0x00, 0x1013, 4003, 23), 2.1);
+        a = c.takeActions();
+        CHECK(count(a, Action::CloseRemote) == 1 && count(a, Action::OpenRemote) == 1 && a[0].kind == Action::RecordStop, "a higher priority call preempts: close then open (%d)", (int)a.size());
+        const uint64_t id3 = c.log.records().back().id;
+        CHECK(c.follower.remoteCall() == id3, "voice radio is on the new call");
+        // terminator: the call ends after the hang time, the voice radio is closed, the follower is back on the control channel (state ControlHold)
+        c.onTerminator(id3, 3.0);
+        c.tick(3.0);
+        a = c.takeActions();
+        CHECK(count(a, Action::CloseRemote) == 1 && !c.follower.remoteActive(), "terminator closes the voice radio");
+        c.tick(3.1);
+        CHECK(c.follower.state() == FollowState::ControlHold && count(c.takeActions(), Action::Retune) == 0, "back to idle with no control-channel retune (%s)", followStateName(c.follower.state()));
+        CHECK(!c.log.records().back().active, "call is over in the log");
+    }
+    {   // hang time: voice stops, the call ends hangSec later; voice that goes on keeps it
+        Controller c;
+        setupSite(c, 0);
+        c.setCapture(chHz(0x1001), 0);
+        FollowConfig fc; fc.hangSec = 2.0; fc.voiceRadio = true;
+        c.follower.setConfig(fc);
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.0);
+        const uint64_t id = c.log.records().back().id;
+        (void)c.takeActions();
+        for (double t = 1.2; t < 4; t += 0.2) { c.onVoice(id, t); c.tick(t); }
+        CHECK(c.follower.remoteActive(), "long call kept by voice");
+        c.tick(5.0);
+        CHECK(c.follower.remoteActive(), "inside the hang time");
+        c.tick(6.1);
+        CHECK(!c.follower.remoteActive() && count(c.takeActions(), Action::CloseRemote) == 1 && !c.log.records().back().missed, "hang time over: closed, call not marked missed");
+    }
+    {   // Phase 2 call on the voice radio carries the slot
+        Controller c;
+        setupSite(c, 0);
+        feed(c, gen::idenUpTdma(6, 3, 856000000, 12500, 0), 0);
+        c.setCapture(chHz(0x1001), 0);
+        FollowConfig fc; fc.voiceRadio = true;
+        c.follower.setConfig(fc);
+        feed(c, gen::grpVGrant(0x04, 0x6021, 7005, 15), 1.0);
+        const auto a = c.takeActions();
+        CHECK(count(a, Action::OpenRemote) == 1 && a[0].tdma && a[0].slot == 1, "Phase 2 voice radio call with slot 1");
+    }
+    {   // encrypted: grants that say so are never sent; a voice channel that says so ends the call at once
+        Controller c;
+        setupSite(c, 0);
+        c.setCapture(chHz(0x1001), 0);
+        FollowConfig fc; fc.voiceRadio = true;
+        c.follower.setConfig(fc);
+        feed(c, gen::grpVGrant(0x40, 0x1010, 4004, 24), 1.0);
+        CHECK(count(c.takeActions(), Action::OpenRemote) == 0 && c.log.records().back().encrypted, "encrypted grant never opens the voice radio");
+        feed(c, gen::grpVGrant(0x00, 0x1011, 4005, 25), 2.0);
+        (void)c.takeActions();
+        const uint64_t id = c.log.records().back().id;
+        c.onEncrypted(id, 2.3);
+        c.tick(2.31);
+        const auto b = c.takeActions();
+        CHECK(count(b, Action::CloseRemote) == 1 && !c.follower.remoteActive() && c.log.records().back().encrypted && !c.log.records().back().followed, "encrypted voice channel: voice radio left at once");
+        feed(c, gen::grpVGrant(0x00, 0x1011, 4005, 25), 2.5);   // the grant repeats: it must not open again
+        CHECK(count(c.takeActions(), Action::OpenRemote) == 0, "no reopen of an encrypted call");
+    }
+    {   // failures: the second radio went away / the retune failed / the radio never hears the call
+        Controller c;
+        setupSite(c, 0);
+        c.setCapture(chHz(0x1001), 0);
+        FollowConfig fc; fc.voiceRadio = true; fc.remoteStartSec = 3.0; fc.remoteBackoffSec = 3.0;
+        c.follower.setConfig(fc);
+        FakeVoiceRadio vr;
+        vr.failRetune = true;
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.0);
+        vr.apply(c, 1.0);
+        const CallRecord& r = c.log.records().back();
+        CHECK(!vr.open && r.missed && !r.followed && r.note.find("retune failed") != std::string::npos && !c.follower.remoteActive(), "failed retune: logged missed with the reason (%s)", r.note.c_str());
+        CHECK(c.follower.state() != FollowState::NoControl && count(c.takeActions(), Action::Retune) == 0, "control channel radio untouched");
+        // within the back-off a repeat is skipped, afterwards it tries again
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.5);
+        CHECK(count(c.takeActions(), Action::OpenRemote) == 0, "back-off after a failure");
+        vr.failRetune = false;
+        c.tick(2.0);
+        c.tick(4.4);
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 4.5);
+        vr.apply(c, 4.5);
+        CHECK(vr.open && vr.opens == 1 && c.follower.remoteActive(), "tries again after the back-off");
+        // the radio disappears while on a call
+        vr.present = false;
+        c.onRemoteFailed(vr.call, "second radio is gone", 5.0);
+        vr.apply(c, 5.0);
+        CHECK(!c.follower.remoteActive() && c.log.records().back().note.find("gone") != std::string::npos, "second radio disappearing ends the call");
+        // a radio that never hears the call: dropped after remoteStartSec, then the back-off
+        vr.present = true;
+        feed(c, gen::grpVGrant(0x00, 0x1014, 4006, 26), 10.0);
+        vr.apply(c, 10.0);
+        CHECK(c.follower.remoteActive(), "call open on the voice radio");
+        for (double t = 10.5; t < 12.5; t += 0.5) { feed(c, gen::grpVGrant(0x00, 0x1014, 4006, 26), t); c.tick(t); }   // grant repeats do not keep it alive
+        CHECK(c.follower.remoteActive(), "still waiting for the voice radio to sync");
+        c.tick(13.5);
+        vr.apply(c, 13.5);
+        CHECK(!c.follower.remoteActive() && c.log.records().back().missed && c.log.records().back().note.find("heard nothing") != std::string::npos, "never heard: dropped (%s)", c.log.records().back().note.c_str());
+        feed(c, gen::grpVGrant(0x00, 0x1014, 4006, 26), 14.0);
+        CHECK(count(c.takeActions(), Action::OpenRemote) == 0, "back-off after a call the radio never heard");
+    }
+    {   // single radio behaviour untouched: a grant inside the capture still takes the slice path with the voice radio on
+        Controller c;
+        setupSite(c, 0);
+        c.setCapture(851.1e6, 2.4e6);
+        FollowConfig fc; fc.voiceRadio = true;
+        c.follower.setConfig(fc);
+        feed(c, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.0);
+        const auto a = c.takeActions();
+        CHECK(count(a, Action::OpenSlice) == 1 && count(a, Action::OpenRemote) == 0, "inside the capture: single-radio slice path");
+        // and with the option off an outside grant is missed as before
+        Controller d;
+        setupSite(d, 0);
+        d.setCapture(chHz(0x1001), 0);
+        feed(d, gen::grpVGrant(0x00, 0x1010, 4001, 21), 1.0);
+        CHECK(count(d.takeActions(), Action::OpenRemote) == 0 && d.log.records().back().missed, "voice radio off: unchanged");
     }
     return testSummary("p25 trunk");
 }
