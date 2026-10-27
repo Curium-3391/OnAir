@@ -99,6 +99,21 @@ void Follower::leave(uint64_t callId, double now) {
         if (s.used && s.callId == callId) { s.leave = true; s.lastSec = now - cfg_.hangSec - 0.001; }   // closed at the next tick, the call stays in the log
 }
 
+// Where the radio is now, as far as known: the last retune, else the capture centre of a single-channel capture
+double Follower::tunedHz() const { return radioHz_ > 0 ? radioHz_ : spanHz_ <= 0 ? centerHz_ : 0; }
+
+// Start (or step) the control channel search at a frequency. Already tuned there: no retune (it would only restart the receiver's acquisition for nothing)
+void Follower::searchAt(double hz, double now) {
+    const double cur = tunedHz();
+    if (!(cur > 0 && std::fabs(cur - hz) < 1)) {
+        Action a;
+        a.kind = Action::Retune; a.freqHz = hz;
+        out_.push_back(a);
+    }
+    radioHz_ = hz;
+    dwellStart_ = now;
+}
+
 void Follower::goHome(double now) {
     const double home = ccHz_ > 0 ? ccHz_ : homeHz_;
     if (home <= 0) { setState(FollowState::NoControl, now); return; }
@@ -291,11 +306,7 @@ void Follower::tick(double now, CallLog& log) {
         if (activeSlices() > 0) { setState(FollowState::Following, now); break; }
         if (cfg_.allowRetune && !cands_.empty() && now - lastCcSec_ > cfg_.ccLossSec) {
             candIdx_ = 0;
-            Action a;
-            a.kind = Action::Retune; a.freqHz = cands_[0];
-            out_.push_back(a);
-            radioHz_ = cands_[0];
-            dwellStart_ = now;
+            searchAt(cands_[0], now);
             setState(FollowState::Searching, now);
             note("Control channel lost: looking for it");
         }
@@ -304,11 +315,7 @@ void Follower::tick(double now, CallLog& log) {
         if (now - stateSince_ > cfg_.returnTimeoutSec) {
             if (cfg_.allowRetune && !cands_.empty()) {
                 candIdx_ = 0;
-                Action a;
-                a.kind = Action::Retune; a.freqHz = cands_[0];
-                out_.push_back(a);
-                radioHz_ = cands_[0];
-                dwellStart_ = now;
+                searchAt(cands_[0], now);
                 setState(FollowState::Searching, now);
             } else setState(FollowState::NoControl, now);
         }
@@ -316,11 +323,7 @@ void Follower::tick(double now, CallLog& log) {
     case FollowState::Searching:
         if (!cands_.empty() && now - dwellStart_ > cfg_.ccDwellSec) {
             candIdx_ = (candIdx_ + 1) % cands_.size();
-            Action a;
-            a.kind = Action::Retune; a.freqHz = cands_[candIdx_];
-            out_.push_back(a);
-            radioHz_ = cands_[candIdx_];
-            dwellStart_ = now;
+            searchAt(cands_[candIdx_], now);
         }
         break;
     default: break;

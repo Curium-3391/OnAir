@@ -290,13 +290,16 @@ void trunkTick(App& a) {
     for (const auto& r : t.tsbks) {
         if (r.seq <= T.tsbkSeen) continue;
         T.tsbkSeen = r.seq;
+        // history: the receiver keeps the last 96 messages, and following may have been off (or the screen stalled) for a while. Site and identifier
+        // messages are as good as new; an old grant is a call long over, and following it would hop the radio away for nothing
+        if (t.timeSec - r.sigSec > 3.0 && r.opcode >= 0x00 && r.opcode <= 0x06) continue;
         dect2::p25::Tsbk k; k.opcode = r.opcode; k.mfid = r.mfid; k.args = r.args;
         T.ctl.onTsbk(k, r.nac, now);
     }
     // the whole capture counts for Phase 2 calls (the second mode takes any channel in it); Phase 1 calls in it need whole-span decoding
     T.ctl.setCapture(a.engine.captureCentreHz(), a.engine.sampleRate(), wideActive(a));
     // the radio is on a voice channel: what it hears keeps the call open (no grant repeats reach it there)
-    if (T.hopCall && !T.p2Hop && live(a) && t.seq != T.hopSeq) { T.hopSeq = t.seq; if (t.now.active) T.ctl.onVoice(T.hopCall, now); }
+    if (T.hopCall && !T.p2Hop && live(a) && t.seq != T.hopSeq) { T.hopSeq = t.seq; if (t.now.active) { if (t.now.encrypted) T.ctl.onEncrypted(T.hopCall, now); else T.ctl.onVoice(T.hopCall, now); } }   // the voice channel says encrypted (a grant does not always): left at once, back to the control channel
     if (T.p2Call) {
         const dect2::P25p2Telemetry& p = T.p2Second ? a.second.rx.p25p2 : a.rx.p25p2;
         if (p.seq != T.p2Seq && p.followTag == T.p2Call && (T.p2Second || a.rx.standard == kP25p2Std - 1)) {   // reports of this call only

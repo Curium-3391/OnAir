@@ -193,6 +193,34 @@ int main() {
         a = e.takeActions();
         CHECK(count(a, Action::Retune) == 0 && e.log.records().back().missed, "no hop away from a running call");
     }
+    // ---- identifier table across a change of site, and FDMA channel types of an IDEN_UP_TDMA
+    {
+        Controller c;
+        setupSite(c, 1);                       // site 5 of system 3A1, identifier 1 at 851.00625 MHz
+        feed(c, gen::idenUp(2, 769000000, 12500, 0, 12500), 1);
+        feed(c, gen::adjSts(0x3A1, 1, 6, 0x1009, 0x70), 1);
+        feed(c, gen::sccb(1, 5, 0x1020, 0x1021), 1);
+        CHECK(c.sys.channelFreq(0x1010) > 0 && c.sys.adjacent().size() == 1, "site A known");
+        // ten seconds later the radio is on another system's control channel: its site id arrives before its identifier updates
+        feed(c, gen::netSts(0xBEE00, 0x2D1, 0x2001, 0x70), 11);
+        feed(c, gen::rfssSts(0x2D1, 1, 3, 0x2001, 0x70), 11);
+        CHECK(!c.sys.iden(1).valid && !c.sys.iden(2).valid && c.sys.adjacent().empty(), "the old site's identifiers and neighbours are dropped");
+        CHECK(c.sys.channelFreq(0x1010) == 0, "no frequency from the old site's table (%f)", c.sys.channelFreq(0x1010));
+        feed(c, gen::idenUp(1, 770000000, 12500, 0, 12500), 11.5);
+        CHECK(std::fabs(c.sys.channelFreq(0x1010) - (770000000 + 16 * 12500.0)) < 1, "the new table places the channel");
+        // an identifier announced a moment before the site id (the same cycle) survives it
+        Controller d;
+        feed(d, gen::idenUp(1, 770000000, 12500, 0, 12500), 20);
+        feed(d, gen::netSts(0xBEE00, 0x2D1, 0x2001, 0x70), 20.5);
+        feed(d, gen::rfssSts(0x2D1, 1, 3, 0x2001, 0x70), 20.6);
+        feed(d, gen::rfssSts(0x2D1, 1, 4, 0x2001, 0x70), 21);   // a site change within a second: the table row is current
+        CHECK(d.sys.iden(1).valid, "a fresh identifier row stays");
+        // channel types 0..2 of an IDEN_UP_TDMA are plain carriers, 3 is two slots, the others stay unplaced
+        feed(d, gen::idenUpTdma(5, 0, 770000000, 12500, 0), 21);
+        int slot = -2; bool tdma = true;
+        const double f = d.sys.channelFreq(0x5004, &slot, &tdma);
+        CHECK(!tdma && slot == -1 && std::fabs(f - (770000000 + 4 * 12500.0)) < 1, "FDMA channel type: %f slot %d tdma %d", f, slot, (int)tdma);
+    }
     // ---- rotating control channel
     {
         Controller c;
@@ -205,12 +233,53 @@ int main() {
         CHECK(c.follower.state() == FollowState::ControlHold, "holding");
         c.tick(3.0);
         auto a = c.takeActions();
-        CHECK(c.follower.state() == FollowState::Searching && count(a, Action::Retune) == 1, "control lost: searching");
+        CHECK(c.follower.state() == FollowState::Searching && count(a, Action::Retune) == 0, "control lost: searching, the radio is on candidate 1 already (no retune)");
         c.tick(4.5);
         a = c.takeActions();
         CHECK(count(a, Action::Retune) == 1 && std::fabs(a[0].freqHz - chHz(0x1020)) < 1, "next candidate");
         feed(c, gen::rfssSts(0x3A1, 1, 5, 0x1020, 0x70), 5.0);   // heard it
         CHECK(c.follower.state() == FollowState::ControlHold, "found, holding");
+    }
+    // ---- issue #348: the radio hops to a call and comes back to a receiver that needs seconds to lock again. Model: a retune costs 4 s of acquisition,
+    //      the site's control channels lock, nothing else does. The follower must get its control channel back without a search tour.
+    {
+        const double base = 770031250;
+        auto hz = [&](int ch) { return base + ch * 12500.0; };
+        Controller c;
+        feed(c, gen::idenUp(1, base, 12500, 0, 12500), 0);
+        feed(c, gen::netSts(0xBEE00, 0x1A7, 0x1019, 0x70), 0);
+        feed(c, gen::rfssSts(0x1A7, 2, 14, 0x1019, 0x70), 0);
+        feed(c, gen::sccb(2, 14, 0x10DA, 0x114C), 0);
+        feed(c, gen::adjSts(0x1A7, 2, 15, 0x1BB8, 0x70), 0);   // a neighbour whose channel this site's table would place far outside the band
+        const double ccHz = hz(0x19);
+        CHECK(std::fabs(c.sys.site().ccHz - ccHz) < 1, "site cc %f", c.sys.site().ccHz);
+        const auto own = c.sys.ownControlChannels();
+        CHECK(own.size() == 3 && std::fabs(own[0] - ccHz) < 1 && std::fabs(own[1] - hz(0xDA)) < 1 && std::fabs(own[2] - hz(0x14C)) < 1, "own control channels: %zu", own.size());
+        CHECK(c.sys.controlCandidates().size() == 4, "controlCandidates() keeps the adjacent site for its other users");
+        c.setCapture(ccHz, 0);
+        FollowConfig fc; fc.allowRetune = true;   // default timers
+        c.follower.setConfig(fc);
+        double radio = ccHz, lockAt = 0;
+        int searchRetunes = 0;
+        bool visitedOutside = false, back = false;
+        auto isOwn = [&](double f) { for (double o : own) if (std::fabs(o - f) < 1) return true; return false; };
+        for (double t = 0.2; t < 60; t += 0.1) {
+            const bool lockedNow = isOwn(radio) && t >= lockAt;
+            if (lockedNow && std::fmod(t, 0.2) < 0.1) feed(c, gen::rfssSts(0x1A7, 2, 14, 0x1019, 0x70), t);
+            if (lockedNow && t > 1 && t < 1.5) feed(c, gen::grpVGrant(4, 0x1000 | 89, 5001, 77), t);   // 771.14375 MHz: outside the capture
+            c.tick(t);
+            for (const Action& a : c.takeActions()) {
+                if (a.kind != Action::Retune) continue;
+                const bool hop = a.callId != 0;
+                if (!hop && std::fabs(a.freqHz - ccHz) > 1) searchRetunes++;
+                if (!isOwn(a.freqHz) && !hop) visitedOutside = true;
+                radio = a.freqHz; lockAt = t + 4.0;
+            }
+            if (t > 20 && c.follower.state() == FollowState::ControlHold && std::fabs(radio - ccHz) < 1) back = true;
+        }
+        CHECK(back, "back on the control channel after the call (state %s)", followStateName(c.follower.state()));
+        CHECK(searchRetunes == 0 && !visitedOutside, "no search tour: %d retunes, outside %d", searchRetunes, (int)visitedOutside);
+        CHECK(c.follower.state() == FollowState::ControlHold, "still holding at the end (%s)", followStateName(c.follower.state()));
     }
     // ---- talkgroup CSV
     {
