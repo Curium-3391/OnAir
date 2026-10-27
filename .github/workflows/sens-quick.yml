@@ -40,12 +40,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build pkg-config ccache libhackrf-dev libsoapysdr-dev libusb-1.0-0-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libswresample-dev
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .ccache
           key: ccache-sens-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-${{ github.sha }}
@@ -72,7 +72,7 @@ jobs:
           mkdir -p sens-merged
           cp tests/sens/baseline/sens-baseline.json sens-merged/ 2>/dev/null || true
           python3 tools/sens/compare.py --merge sens-merged/sens-baseline.json sens-out/sens-baseline.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sens-results
           path: |

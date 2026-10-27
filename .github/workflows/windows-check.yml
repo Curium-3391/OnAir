@@ -82,6 +82,6 @@ jobs:
           cat "$APPDATA/OnAir/onair.log" || echo "no log at $APPDATA/OnAir/onair.log"
           [ -f "$GITHUB_WORKSPACE/shot.png" ]
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: windows-check, path: "shot.png\nscan.txt\ncli.txt", if-no-files-found: ignore }
