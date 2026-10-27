@@ -9,7 +9,10 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 #include <cstring>
+#include <string_view>
 #ifdef _WIN32
+#include <chrono>
+#include <mutex>
 #include <windows.h>
 #else
 #include <dirent.h>
@@ -26,6 +29,37 @@ const char* inputFmt() {
 #endif
 }
 
+#ifdef _WIN32
+// DirectShow opens a device by its name ("video=HP HD Camera"), not by a number. Asking DirectShow takes tens of ms and the
+// transmitter panel lists every frame, so the list is kept for a few seconds.
+std::vector<VideoInputDevice> dshowCameras() {
+    static std::mutex mu;
+    static std::vector<VideoInputDevice> cache;
+    static std::chrono::steady_clock::time_point at;
+    std::lock_guard<std::mutex> lk(mu);
+    const auto now = std::chrono::steady_clock::now();
+    if (at != std::chrono::steady_clock::time_point() && now - at < std::chrono::seconds(3)) return cache;
+    at = now;
+    cache.clear();
+    avdevice_register_all();
+    const AVInputFormat* inf = av_find_input_format("dshow");
+    AVDeviceInfoList* list = nullptr;
+    if (!inf || avdevice_list_input_sources(inf, nullptr, nullptr, &list) < 0 || !list) return cache;
+    for (int i = 0; i < list->nb_devices; i++) {
+        const AVDeviceInfo* d = list->devices[i];
+        // one of the two is the friendly name, the other the "@device_pnp_..." moniker (too long for the saved settings)
+        std::string_view a = d->device_name ? d->device_name : "", b = d->device_description ? d->device_description : "";
+        if (a.starts_with("@device")) std::swap(a, b);
+        // a webcam may report no media types at all (seen: HP HD Camera); microphones sit in the audio-input category
+        bool video = d->nb_media_types == 0 && b.find("{33D9A762-90C8-11D0-BD43-00A0C911CE86}") == std::string_view::npos;
+        for (int k = 0; k < d->nb_media_types; k++) video = video || d->media_types[k] == AVMEDIA_TYPE_VIDEO;
+        if (video && !a.empty()) cache.push_back({"video=" + std::string(a), std::string(a)});
+    }
+    avdevice_free_list_devices(&list);
+    return cache;
+}
+#endif
+
 bool openCam(VideoIn::Impl* I, const std::string& url, std::string& err) {
     avdevice_register_all();
     const AVInputFormat* inf = av_find_input_format(inputFmt());
@@ -34,12 +68,16 @@ bool openCam(VideoIn::Impl* I, const std::string& url, std::string& err) {
     AVDictionary* opt = nullptr;
     av_dict_set(&opt, "framerate", "25", 0);
     av_dict_set(&opt, "video_size", "640x480", 0);
-    if (avformat_open_input(&fmt, url.c_str(), inf, &opt) < 0) {
-        av_dict_free(&opt);
-        err = "could not open this capture device";
+    int rc = avformat_open_input(&fmt, url.c_str(), inf, &opt);
+    av_dict_free(&opt);
+    // a capture card without 640x480 at 25 fps: open it in its own mode
+    if (rc < 0) rc = avformat_open_input(&fmt, url.c_str(), inf, nullptr);
+    if (rc < 0) {
+        std::string e(AV_ERROR_MAX_STRING_SIZE, '\0');
+        av_strerror(rc, e.data(), e.size());
+        err = "could not open this capture device (" + url + "): " + e.c_str();
         return false;
     }
-    av_dict_free(&opt);
     if (avformat_find_stream_info(fmt, nullptr) < 0) { avformat_close_input(&fmt); err = "this capture device sent no video"; return false; }
     const int si = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (si < 0) { avformat_close_input(&fmt); err = "this capture device has no video"; return false; }
@@ -78,7 +116,14 @@ bool openCam(VideoIn::Impl* I, const std::string& url, std::string& err) {
 
 bool videoInCameraStart(VideoIn::Impl* I, const std::string& deviceId, std::string& err) {
 #ifdef _WIN32
-    std::string url = deviceId.empty() ? "video=0" : (deviceId.find('=') == std::string::npos ? "video=" + deviceId : deviceId);
+    std::string url = deviceId;
+    if (url.empty()) {
+        const auto cams = dshowCameras();
+        if (cams.empty()) { err = "Windows reports no camera or capture card"; return false; }
+        url = cams.front().id;
+    } else if (url.find('=') == std::string::npos) {
+        url = "video=" + url;
+    }
 #else
     std::string url = deviceId.empty() ? "/dev/video0" : deviceId;
 #endif
@@ -94,7 +139,7 @@ void videoInCameraStop(VideoIn::Impl* I) {
 std::vector<VideoInputDevice> videoInListCameras() {
     std::vector<VideoInputDevice> v;
 #ifdef _WIN32
-    v.push_back({"", "Default capture device"});
+    v = dshowCameras();
 #else
     DIR* d = opendir("/dev");
     if (d) {
