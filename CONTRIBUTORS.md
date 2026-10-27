@@ -166,7 +166,6 @@ In the program: Help, Credits, tab Contributors. To add someone, edit `tools/con
 - **HD Radio**: tsalisbury0
 - **HFDL**: drelectro, f0cyf, ffishman, frank-1225
 - **ISDB-T**: dhihacker, F5OEO
-- **Interface**: peterdewitte
 - **Ionospheric sounders**: niuniu1138
 - **Iridium**: WasyaTheWolf
 - **LBJ**: YZYMC
@@ -176,17 +175,14 @@ In the program: Help, Credits, tab Contributors. To add someone, edit `tools/con
 - **Meshtastic**: f5gkw, ffishman, KvaKKK, WispAyr
 - **Meteor-M LRPT**: PY2PLL
 - **NAVTEX**: Axpelle
-- **Network radios**: F5OEO
 - **Orbcomm**: f0cyf
 - **P25**: drelectro
 - **QO-100**: ic706mk2, WolfgangSchreiner
 - **TETRAPOL**: f5gkw
 - **TV sat beacon decoder**: Arclamp (CasualArclamp)
 - **Time signals**: michaelgeorge001, tortyl
-- **Tools**: peterdewitte
 - **VDL2**: IZ5RZR
 - **VDL4**: f0cyf
-- **Video input**: peterdewitte
 - **Weather fax**: Axpelle
 - **Wi-Fi HaLow (802.11ah)**: tsalisbury0
 - **Wi-SUN FAN**: drelectro
@@ -197,11 +193,13 @@ In the program: Help, Credits, tab Contributors. To add someone, edit `tools/con
 - **Build**: drelectro, fe8769a, YZYMC
 - **Credits**: DickvanNoort
 - **Docker**: sbuchweitz
-- **Interface**: A2ureIm4la, andriux26, drelectro, grahampaull, Jamiar, nature.van, richt314, Sunnnset5, Tech500, Ugo300, unilabs-exp, Voyager-III
+- **Interface**: A2ureIm4la, andriux26, drelectro, grahampaull, Jamiar, nature.van, peterdewitte, richt314, Sunnnset5, Tech500, Ugo300, unilabs-exp, Voyager-III
 - **Languages**: andriux26, ffishman, PU2SWX
 - **Memory**: Ken W4KRR
 - **Network radios**: andriux26, Chercheur, DG9BFC, drelectro, F5OEO, ffishman, MUSTARDTIGERFPV, nmaster2042, rlabs-oss, tortyl
 - **Radios**: drelectro, ea4hwg, iu0azb, iu1mrd, mechanicalpotato, mrwish7, OM5NA, OnesAndZer0s, sugusllly, Topol (Pawel Topolski), in collaboration with AI, trebor-56
 - **Satellite passes**: andriux26
+- **Tools**: peterdewitte
+- **Video input**: peterdewitte
 - **Windows**: ffishman, gvanem, py2gn
 - **macOS**: FleXoft, modemuser

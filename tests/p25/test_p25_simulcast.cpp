@@ -53,7 +53,7 @@ std::vector<cf32> modulate(const std::vector<int8_t>& sym, double rate, bool cqp
                 const double sinc = std::fabs(t) < 1e-9 ? 1.0 : std::sin(pi * t) / (pi * t);
                 const double d = 1 - 4 * a * a * t * t;
                 const double cc = std::fabs(d) < 1e-9 ? pi / 4 : std::cos(pi * a * t) / d;
-                f[c + (size_t)(j + span * sps)] += sym[k] * 600.0 * sinc * cc;
+                f[(size_t)((long)c + j)] += sym[k] * 600.0 * sinc * cc;
             }
         }
         double ph = 0;

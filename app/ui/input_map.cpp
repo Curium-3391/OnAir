@@ -104,7 +104,7 @@ bool pressed(Action a, bool repeat) {
 void window() {
     if (!gOpen) { gCapture = -1; return; }
     Settings& s = settings();
-    ImGui::SetNextWindowSize(ImVec2(700 * gUi, 640 * gUi), ImGuiCond_FirstUseEver);
+    firstWindowSize(700 * gUi, 640 * gUi);
     if (!ImGui::Begin(trw("Controls"), &gOpen)) { ImGui::End(); return; }
     bool changed = false;
     ImGui::TextWrapped("%s", tr("Choose what the mouse wheel, the keys and the extra mouse buttons do on the spectrum and the waterfall. Nothing here is needed: the defaults are what OnAir has always done."));

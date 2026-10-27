@@ -111,7 +111,7 @@ struct Demod::Impl {
         hist.assign((size_t)n * 2, cf32(0.f, 0.f));
         uart.setup(kUartBaud, true, rs);
         raw.setup(kRawBaud, false, rs);
-        cw.assign(kCodeBits, 0.f);
+        cw.assign((size_t)kBodyBytes * 8, 0.f);   // the UART body is 323 whole bytes: 4 bits more than the code word
         isReady = true;
         resetState();
         return true;
