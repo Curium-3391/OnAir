@@ -1,0 +1,16 @@
+# Keep LF on Windows checkouts too: the tests read the sources and fail on CRLF
+* text=auto eol=lf
+
+# Leave patches untouched
+*.patch -text
+
+*.png binary
+*.jpg binary
+*.bmp binary
+*.ico binary
+*.icns binary
+*.img binary
+*.ttf binary
+*.wav binary
+*.mp4 binary
+*.jar binary
