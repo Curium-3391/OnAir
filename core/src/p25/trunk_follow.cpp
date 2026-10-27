@@ -48,13 +48,13 @@ bool Follower::inSpan(double f) const {
 
 int Follower::activeSlices() const {
     int n = 0;
-    for (const Slot& s : slots_) if (s.used && !s.hopped) n++;
+    for (const Slot& s : slots_) if (s.used && !s.hopped) n++;   // a call on the voice radio counts: the control channel radio is still following
     return n;
 }
 
 std::vector<double> Follower::sliceFreqs(bool tdma) const {
     std::vector<double> v;
-    for (const Slot& s : slots_) if (s.used && !s.hopped && s.tdma == tdma) v.push_back(s.freqHz);
+    for (const Slot& s : slots_) if (s.used && !s.hopped && !s.remote && s.tdma == tdma) v.push_back(s.freqHz);   // not the voice radio's: the wide bank is for the capture
     return v;
 }
 
@@ -79,9 +79,13 @@ void Follower::close(Slot& s, CallLog& log, double now, const char* why) {
     Action a;
     a.kind = Action::RecordStop; a.callId = s.callId; a.slice = idx;
     if (cfg_.record) out_.push_back(a);
-    a.kind = s.hopped ? Action::Notice : Action::CloseSlice;
+    a.kind = s.remote ? Action::CloseRemote : s.hopped ? Action::Notice : Action::CloseSlice;
     a.tdma = s.tdma;
     if (!s.hopped) out_.push_back(a);
+    if (s.remote && !s.voiced && !s.leave) {   // the voice radio never heard it: logged as not followed, and not hammered with the next repeat
+        remoteBlockUntil_ = now + cfg_.remoteBackoffSec;
+        if (CallRecord* r = log.byId(s.callId)) { r->followed = false; r->missed = true; missed_++; }
+    }
     if (CallRecord* r = log.byId(s.callId)) {
         if (!s.leave) {
             r->active = false;
@@ -89,8 +93,29 @@ void Follower::close(Slot& s, CallLog& log, double now, const char* why) {
         }
         if (why && *why && r->note.empty()) r->note = why;
     }
-    (void)now;
-    s.used = false; s.leave = false;
+    s.used = false; s.leave = false; s.remote = false; s.voiced = false;
+}
+
+bool Follower::remoteActive() const { return remoteCall() != 0; }
+uint64_t Follower::remoteCall() const {
+    for (const Slot& s : slots_) if (s.used && s.remote) return s.callId;
+    return 0;
+}
+
+void Follower::remoteFailed(uint64_t callId, const std::string& why, double now, CallLog& log) {
+    lastNow_ = now;
+    for (Slot& s : slots_) {
+        if (!s.used || !s.remote || s.callId != callId) continue;
+        if (CallRecord* r = log.byId(callId)) {
+            r->followed = false; r->missed = true; r->note = "voice radio: " + why;
+            missed_++;
+        }
+        s.voiced = true;   // a failure the host named: no extra back-off for "heard nothing"
+        remoteBlockUntil_ = now + cfg_.remoteBackoffSec;
+        close(s, log, now, "");
+        note("Voice radio could not take the call: " + why);
+        return;
+    }
 }
 
 void Follower::leave(uint64_t callId, double now) {
@@ -152,7 +177,7 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
         r.lastSec = now;
         if (g.src >= 0 && r.src < 0) r.src = g.src;
         if (g.emergency) r.emergency = true;
-        for (Slot& s : slots_) if (s.used && s.callId == r.id && !s.leave) s.lastSec = now;
+        for (Slot& s : slots_) if (s.used && s.callId == r.id && !s.leave && !s.remote) s.lastSec = now;   // the voice radio's call lives on what it hears, not on grant repeats
         return;
     }
     CallRecord rec;
@@ -226,6 +251,43 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
         if (state_ == FollowState::ControlHold) setState(FollowState::Following, now);
         return;
     }
+    // outside the capture, a second radio takes the call and the control channel radio stays where it is
+    if (!captured && cfg_.voiceRadio) {
+        if (now < remoteBlockUntil_) { skip("voice radio: waiting after a call it did not hear", true); return; }
+        Slot* busy = nullptr;
+        for (Slot& x : slots_) if (x.used && x.remote) busy = &x;
+        if (busy) {
+            if (effPrio(prio) >= effPrio(busy->prio)) {
+                skip("voice radio is on another call", true);
+                announce("Call on " + std::to_string(g.freqHz / 1e6).substr(0, 9) + " MHz is outside the capture while the voice radio has another call: needs a third radio or a wider capture");
+                return;
+            }
+            close(*busy, log, now, "preempted by a higher priority call");
+        }
+        Slot* s = freeSlot();
+        if (!s) {   // every slot is taken by calls inside the capture: take the lowest one's
+            Slot* v = lowest(false, false);
+            if (!v) { skip("busy: every slice is in use", true); return; }
+            close(*v, log, now, "preempted by a higher priority call");
+            s = v;
+        }
+        s->used = true; s->hopped = false; s->remote = true; s->voiced = false; s->tdma = p2; s->callId = id; s->prio = prio; s->freqHz = g.freqHz; s->startSec = s->lastSec = now;
+        Action a;
+        a.kind = Action::OpenRemote; a.callId = id; a.slice = (int)(s - slots_.data()); a.freqHz = g.freqHz;
+        a.tdma = p2; a.slot = p2Slot;
+        out_.push_back(a);
+        if (cfg_.record) {
+            Action rs;
+            rs.kind = Action::RecordStart; rs.callId = id; rs.slice = a.slice;
+            char b[64];
+            snprintf(b, sizeof b, "tg%d", g.tg);
+            rs.text = b;
+            out_.push_back(rs);
+        }
+        rp->followed = true;
+        if (state_ == FollowState::ControlHold) setState(FollowState::Following, now);
+        return;
+    }
     // outside the capture: the radio has to leave the control channel, which blinds it to every other grant
     if (!cfg_.allowRetune && captured) {   // a Phase 1 call inside the capture, but nothing decodes it there
         skip("inside the capture: turn on whole-span decoding (or let the radio retune)", true);
@@ -269,12 +331,12 @@ void Follower::onGrant(const Grant& g, const TalkgroupList::Decision& d, double 
 
 void Follower::onVoice(uint64_t callId, double now) {
     lastNow_ = now;
-    for (Slot& s : slots_) if (s.used && s.callId == callId && !s.leave) s.lastSec = now;
+    for (Slot& s : slots_) if (s.used && s.callId == callId && !s.leave) { s.lastSec = now; s.voiced = true; }
 }
 
 void Follower::onTerminator(uint64_t callId, double now) {
     lastNow_ = now;
-    for (Slot& s : slots_) if (s.used && s.callId == callId) s.lastSec = now - cfg_.hangSec - 0.001;   // ends at the next tick
+    for (Slot& s : slots_) if (s.used && s.callId == callId) { s.lastSec = now - cfg_.hangSec - 0.001; s.voiced = true; }   // ends at the next tick (a terminator is heard: the radio works)
 }
 
 void Follower::tick(double now, CallLog& log) {
@@ -282,9 +344,11 @@ void Follower::tick(double now, CallLog& log) {
     bool hoppedEnded = false;
     for (Slot& s : slots_) {
         if (!s.used) continue;
-        if (now - s.lastSec > cfg_.hangSec) {
+        // a voice radio call not heard yet is given time to retune and sync; after that the hang time counts from the last voice
+        const double limit = s.remote && !s.voiced && !s.leave ? std::max(cfg_.hangSec, cfg_.remoteStartSec) : cfg_.hangSec;
+        if (now - s.lastSec > limit) {
             if (s.hopped) hoppedEnded = true;
-            close(s, log, now, "");
+            close(s, log, now, s.remote && !s.voiced ? "voice radio heard nothing on the channel" : "");
         }
     }
     // calls nobody follows end by silence on the control channel too

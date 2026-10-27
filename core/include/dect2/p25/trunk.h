@@ -159,10 +159,10 @@ private:
 // ------------------------------------------------------------------------------------------------ follower
 
 struct Action {
-    enum Kind { OpenSlice, CloseSlice, Retune, Listen, RecordStart, RecordStop, Notice } kind = Notice;
+    enum Kind { OpenSlice, CloseSlice, Retune, Listen, RecordStart, RecordStop, Notice, OpenRemote, CloseRemote } kind = Notice;
     uint64_t callId = 0;
     int slice = -1;              // OpenSlice / CloseSlice / Listen: the follower's own slice number
-    double freqHz = 0;           // OpenSlice / Retune
+    double freqHz = 0;           // OpenSlice / Retune / OpenRemote (the voice radio's frequency)
     bool tdma = false;           // OpenSlice / Retune: a P25 Phase 2 voice channel (needs the Phase 2 receiver, seeded with the site's WACN / system / NAC)
     int slot = -1;               // ... its time slot, 0 or 1
     std::string text;            // Notice; RecordStart: the file name stem
@@ -177,6 +177,9 @@ struct FollowConfig {
     double edgeGuardHz = 12500;  // a voice channel this close to the edge of the capture is not taken as inside
     double sliceBandwidthHz = 12500;
     bool allowRetune = false;    // the single radio may leave the control channel for a call (and look for the control channel when it is lost); off: it stays
+    bool voiceRadio = false;     // a second radio (the host's voice radio) takes calls outside the capture while the first stays on the control channel: OpenRemote / CloseRemote
+    double remoteStartSec = 4.0; // the voice radio must be heard on the call within this long of OpenRemote (retune, settle, sync), else the call is dropped
+    double remoteBackoffSec = 3.0; // after a call the voice radio never heard, no new call is sent to it for this long
     bool followPhase2 = true;    // follow P25 Phase 2 (TDMA) grants (inside the capture: one at a time, the engine runs one Phase 2 receiver)
     bool record = true;
 };
@@ -204,6 +207,11 @@ public:
     // Stop following the call but keep it in the log as running (its grant repeats keep it there, not followed); it ends by silence on the
     // control channel like any call nobody follows
     void leave(uint64_t callId, double now);
+    // The voice radio could not take the call (it went away, the retune failed): the call ends here, is logged as missed with the reason, and the
+    // control channel radio is not touched (it never left). A repeat of the grant tries again after remoteBackoffSec.
+    void remoteFailed(uint64_t callId, const std::string& why, double now, CallLog& log);
+    bool remoteActive() const;         // a call is on the voice radio
+    uint64_t remoteCall() const;       // its call id, 0 none
     // Time passes: ends calls, returns the radio, rotates through control channel candidates
     void tick(double now, CallLog& log);
     std::vector<Action> takeActions();
@@ -218,7 +226,7 @@ public:
     void reset();
 
 private:
-    struct Slot { uint64_t callId = 0; int prio = 0; double freqHz = 0, startSec = 0, lastSec = 0; bool used = false, hopped = false, tdma = false, leave = false; };
+    struct Slot { uint64_t callId = 0; int prio = 0; double freqHz = 0, startSec = 0, lastSec = 0; bool used = false, hopped = false, tdma = false, leave = false, remote = false, voiced = false; };
     std::vector<Slot> slots_;
     FollowConfig cfg_;
     FollowState state_ = FollowState::NoControl;
@@ -229,6 +237,7 @@ private:
     double lastCcSec_ = -1e9, stateSince_ = 0, lastNow_ = 0, dwellStart_ = 0;
     std::vector<Action> out_;
     uint64_t missed_ = 0;
+    double remoteBlockUntil_ = -1e9;   // the voice radio heard nothing on its last call: not before this time
     std::vector<std::pair<double, double>> noticed_;   // out-of-span frequencies already announced
     void note(const std::string& s) { Action a; a.text = s; out_.push_back(a); }
     void close(Slot& s, CallLog& log, double now, const char* why);
@@ -288,6 +297,7 @@ public:
     std::vector<Action> takeActions() { return follower.takeActions(); }
     void onVoice(uint64_t callId, double now) { follower.onVoice(callId, now); }
     void onTerminator(uint64_t callId, double now) { follower.onTerminator(callId, now); }
+    void onRemoteFailed(uint64_t callId, const std::string& why, double now) { follower.remoteFailed(callId, why, now, log); }
     // The voice channel says the call is encrypted (the Phase 2 ESS: grants do not always say so): logged as encrypted, and left
     void onEncrypted(uint64_t callId, double now) {
         if (CallRecord* r = log.byId(callId)) { r->encrypted = true; r->followed = false; if (r->note.empty()) r->note = "encrypted (voice channel): left"; }
