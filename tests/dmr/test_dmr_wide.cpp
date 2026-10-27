@@ -160,16 +160,16 @@ static void testDmrTalking() {
         if (rx.telemetry(t, seq)) seq = t.seq;
         if (s < 2.0 || t.state != 2) continue;   // locked first
         const double now = sig.seconds();
-        bool voice = false, near = false;
+        bool voice = false, closeBy = false;
         for (const auto& tr : sig.truth()) {
             if (tr.kind > 2) continue;
             const double end = tr.finished ? tr.endSec : 1e9;   // a call still going on
             if (now > tr.startSec + 0.6 && now < end - 0.2) voice = true;   // well inside a call (the receiver needs a few bursts)
-            if (now > tr.startSec - 0.3 && now < end + 1.5) near = true;     // the start, the call or its hang time
+            if (now > tr.startSec - 0.3 && now < end + 1.5) closeBy = true;     // the start, the call or its hang time
         }
         const bool talk = dmrTalking(t);
         if (voice) { inCall++; inCallTrue += talk; }
-        else if (!near) { idle++; idleFalse += !talk; }
+        else if (!closeBy) { idle++; idleFalse += !talk; }
     }
     printf("dmrTalking: true in %d of %d moments inside calls, false in %d of %d idle moments\n", inCallTrue, inCall, idleFalse, idle);
     CHECK(inCall >= 20 && idle >= 20, "the signal held too little call (%d) or idle (%d) time to judge", inCall, idle);
