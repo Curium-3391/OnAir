@@ -11,6 +11,10 @@ One mode that finds and decodes every Inmarsat L-band carrier of a wide capture 
 3. **Carriers** shows the whole capture as a strip and a table: frequency, type, bit rate, level, Eb/N0, state, last activity, ocean region for Inmarsat-C. Click a row to focus it (a focused carrier is never parked).
 4. **Messages** lists ACARS and ADS-C from all P channels and Inmarsat-C EGC broadcasts, with a filter. **Aircraft** shows the aircraft with a position report on a map (reports come every few minutes). **Voice** is described below.
 
+## Which satellite
+
+The mode names the satellite by itself, from three independent clues that are scored together: the **decoded content** (the Aero P channel system table gives the satellite id, its longitude and spot or global beam; the Inmarsat-C bulletin board gives the ocean region), the **frequency fingerprint** (the set of P carriers against the published channel list of each satellite), and the **geometry** (where each geostationary slot stands in your sky from your location; a satellite below your horizon cannot be the one you hear). The Carriers tab shows the satellite, its longitude, the beam type, a confidence and the evidence behind it; every Aero carrier row gets the satellite name. Choose one under Advanced to override. Set your location under View > Map. The satellite tables are unverified: they come from public channel lists (credit: github.com/alphafox02/inmarsat-sniffer) and nominal ocean-region slots, and the system-table reading is JAERO's, so this **needs a user test with a real capture**. A TLE is not used (geostationary slots only); the beam's own name is not in the signal we decode.
+
 ## What radios do
 
 | Radio | Sample rate | What it covers |

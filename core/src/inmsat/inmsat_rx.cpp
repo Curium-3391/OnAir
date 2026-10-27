@@ -32,6 +32,8 @@ void InmsatReceiver::reset() { p_->mgr.reset(); }
 void InmsatReceiver::clearResults() { p_->mgr.clearResults(); }
 void InmsatReceiver::setLogCallback(std::function<void(const std::string&)> cb) { p_->mgr.setLogCallback(std::move(cb)); }
 void InmsatReceiver::setCenterFrequency(double hz) { p_->mgr.setCenter(hz); }
+void InmsatReceiver::setLocation(bool k, double la, double lo) { p_->mgr.setLocation(k, la, lo); }
+void InmsatReceiver::setSatelliteOverride(const std::string& n) { p_->mgr.setSatelliteOverride(n); }
 void InmsatReceiver::setFocus(int id) { p_->mgr.setFocus(id); }
 void InmsatReceiver::setBudget(double u) { p_->mgr.setBudget(u); }
 void InmsatReceiver::setInmarsatC(bool on) { p_->mgr.setInmcOn(on); }

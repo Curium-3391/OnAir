@@ -10,6 +10,7 @@
 #include "inmsat_detect.h"
 #include "dect2/aero/aero_tel.h"
 #include "dect2/inmc/inmc_tel.h"
+#include "inmsat_satid.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -35,6 +36,7 @@ struct CarrierRow {
     double idleSec = -1;          // seconds since the last good frame or SU, -1 never
     std::string region;           // Inmarsat-C: ocean region from the bulletin board
     std::string station;          // Inmarsat-C: station name
+    std::string satellite;        // from the satellite identification (inmsat_satid.h), "" while it is not sure
     bool voiceCandidate = false;  // wide, old enough, and no data decoder holds sync: it may be an Aero C (voice) channel (not decodable yet, see inmsat_voice.h)
     bool parked = false;          // no window: the CPU budget is used up
     bool focus = false;
@@ -60,6 +62,7 @@ struct Snapshot {
     std::vector<InmcMessage> egc;               // Inmarsat-C messages, newest first, up to 150
     uint64_t messagesTotal = 0, positionsTotal = 0, susOk = 0, susBad = 0;
     float floorDb = 0;
+    SatResult sat;                              // which satellite this capture is looking at, with the evidence
     // the common prefix the engine copies into RxTelemetry (status bar, history plot): same meaning as in every other mode
     int state = 0;                              // 0 searching, 1 carriers found, 2 decoding
     double cfoHz = 0;
@@ -90,6 +93,8 @@ public:
     void setCenter(double hz);                   // absolute frequency of the capture centre, for the carrier table
     void setBudget(double units);
     void setInmcOn(bool on);
+    void setLocation(bool known, double latDeg, double lonDeg);   // the user's position, for the geometry evidence
+    void setSatelliteOverride(const std::string& name);           // "" = automatic
     void setFocus(int carrierId);                // 0 none; a focused carrier's window is never parked
     void setLogCallback(std::function<void(const std::string&)> cb);
 private:

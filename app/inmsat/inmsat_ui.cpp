@@ -31,6 +31,9 @@ struct State {
     double pushedBudget = -1;
     bool inmcOn = true;
     int pushedInmc = -1;
+    char satChoice[48] = "";             // manual satellite, "" = automatic
+    std::string pushedSat = "?";
+    double pushedLat = -999, pushedLon = -999;
     bool record = false;
     int pushedRecord = -1;
     char filter[24] = "";
@@ -48,6 +51,7 @@ void load() {
     S.budget = (double)std::max(2L, std::min(24L, plat::prefs().getI("inmsatBudget", 10)));
     S.inmcOn = plat::prefs().getI("inmsatInmc", 1) != 0;
     S.record = plat::prefs().getI("inmsatRecord", 0) != 0;
+    snprintf(S.satChoice, sizeof S.satChoice, "%s", plat::prefs().getS("inmsatSat", "").c_str());
 }
 
 const char* stateName(int s) { return s >= 3 ? "data" : s == 2 ? "frames in sync" : s == 1 ? "carrier locked" : "seen"; }
@@ -112,15 +116,48 @@ void strip(App& a, const dect2::InmsatTelemetry& t) {
     ImGui::Dummy(ImVec2(w, h));
 }
 
+// which satellite the capture is looking at, and why: the three kinds of evidence of the best candidates
+void satellitePanel(const dect2::InmsatTelemetry& t) {
+    const dect2::inmsat::SatResult& s = t.sat;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Satellite");
+    ImGui::SameLine(0, 8 * gUi);
+    if (s.valid) {
+        ImGui::Text("%s", s.name.c_str());
+        char lon[24]; snprintf(lon, sizeof lon, "%.1f%c", std::fabs(s.lonDeg), s.lonDeg < 0 ? 'W' : 'E');
+        ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("%s", lon);
+        if (!s.beam.empty()) { ImGui::SameLine(0, 8 * gUi); ImGui::TextDisabled("%s", s.beam.c_str()); }
+        ImGui::SameLine(0, 8 * gUi);
+        if (s.manual) ImGui::TextDisabled("chosen by you");
+        else ImGui::TextColored(s.confidence >= 0.7 ? ImVec4(0.45f, 0.85f, 0.55f, 1) : s.confidence >= 0.4 ? ImVec4(0.95f, 0.8f, 0.4f, 1) : ImVec4(0.9f, 0.5f, 0.4f, 1), "%.0f%% sure%s", s.confidence * 100, s.ambiguous ? ", close call" : "");
+    } else {
+        ImGui::TextDisabled("%s", s.summary.c_str());
+    }
+    {
+        if (!s.ranked.empty() && ImGui::TreeNode("Evidence##inmsatev")) {
+            const size_t n = std::min<size_t>(3, s.ranked.size());
+            for (size_t i = 0; i < n; i++) {
+                const auto& c = s.ranked[i];
+                const auto& sat = dect2::inmsat::satTable()[(size_t)c.index];
+                ImGui::Text("%s  %.0f%%", sat.name, c.confidence * 100);
+                for (const auto& e : c.evidence) ImGui::TextDisabled("    %s: %s%s", e.kind.c_str(), e.available ? "" : "(no data) ", e.text.c_str());
+            }
+            ImGui::TextDisabled("%s", "Tables are unverified: needs a user test with a real capture.");
+            ImGui::TreePop();
+        }
+    }
+}
+
 void carriersView(App& a) {
     const dect2::InmsatTelemetry& t = a.rx.inmsat;
+    satellitePanel(t);
     strip(a, t);
     ImGui::Spacing();
     if (t.carriers.empty()) { ImGui::TextDisabled("%s", "no carriers yet: the search needs two seconds. Tune the radio to the middle of the satellite's L-band channels (about 1545.6 MHz) and use a sample rate of 6 Msps or more."); return; }
-    if (!ImGui::BeginTable("##inmc", 10, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV,
+    if (!ImGui::BeginTable("##inmc", 11, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV,
                            ImVec2(0, ImGui::GetContentRegionAvail().y))) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Frequency"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Rate"); ImGui::TableSetupColumn("Level"); ImGui::TableSetupColumn("Eb/N0");
+    ImGui::TableSetupColumn("Frequency"); ImGui::TableSetupColumn("Satellite"); ImGui::TableSetupColumn("Type"); ImGui::TableSetupColumn("Rate"); ImGui::TableSetupColumn("Level"); ImGui::TableSetupColumn("Eb/N0");
     ImGui::TableSetupColumn("State"); ImGui::TableSetupColumn("Frames"); ImGui::TableSetupColumn("Last"); ImGui::TableSetupColumn("Width"); ImGui::TableSetupColumn("Notes", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGui::PushFont(a.mono, 0);
@@ -132,6 +169,7 @@ void carriersView(App& a) {
         char f[48];
         if (c.freqHz > 0) snprintf(f, sizeof f, "%.4f MHz##ic%d", c.freqHz / 1e6, c.id); else snprintf(f, sizeof f, "%+.1f kHz##ic%d", c.offsetHz / 1e3, c.id);
         if (ImGui::Selectable(f, c.id == S.focusId, ImGuiSelectableFlags_SpanAllColumns)) { S.focusId = c.id == S.focusId ? 0 : c.id; }
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(c.satellite.empty() ? "-" : c.satellite.c_str());
         ImGui::TableNextColumn(); ImGui::TextUnformatted(dect2::inmsat::carrierTypeName(c.type));
         ImGui::TableNextColumn(); if (c.bitRate) ImGui::Text("%d", c.bitRate); else ImGui::TextDisabled("-");
         ImGui::TableNextColumn(); ImGui::Text("%.0f dB", c.snrDb);
@@ -321,6 +359,9 @@ void tick(App& a) {
     if (S.focusId != S.pushedFocus) { r.setFocus(S.focusId); S.pushedFocus = S.focusId; }
     if (S.budget != S.pushedBudget) { r.setBudget(S.budget); S.pushedBudget = S.budget; }
     if ((int)S.inmcOn != S.pushedInmc) { r.setInmarsatC(S.inmcOn); S.pushedInmc = (int)S.inmcOn; }
+    if (S.pushedSat != S.satChoice) { r.setSatelliteOverride(S.satChoice); S.pushedSat = S.satChoice; }
+    { double la = 0, lo = 0; const bool known = receiverLocationSet(); if (known) receiverLocation(la, lo);
+      if (la != S.pushedLat || lo != S.pushedLon) { r.setLocation(known, la, lo); S.pushedLat = la; S.pushedLon = lo; } }
     if ((int)S.record != S.pushedRecord) { r.voice().setRecording(S.record ? picui::folder() + "/Inmarsat" : std::string()); S.pushedRecord = (int)S.record; }
 }
 
@@ -331,6 +372,14 @@ void tuner(App&, bool&) {
         float b = (float)S.budget;
         if (ImGui::SliderFloat("##inmbud", &b, 2.f, 24.f, "%.0f")) { S.budget = std::round(b); plat::prefs().setI("inmsatBudget", (long)S.budget); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "How much decoding runs at once. One window of carriers (an Aero receiver) costs 1, an added Inmarsat-C receiver 0.6.\nCarriers that do not fit are listed as parked. The focused carrier is served first.");
+        ImGui::TextDisabled("Satellite"); ImGui::SameLine(); ImGui::SetNextItemWidth(220 * gUi);
+        if (ImGui::BeginCombo("##inmsatsel", S.satChoice[0] ? S.satChoice : "Automatic")) {
+            if (ImGui::Selectable("Automatic", !S.satChoice[0])) { S.satChoice[0] = 0; plat::prefs().setS("inmsatSat", ""); }
+            for (const auto& s : dect2::inmsat::satTable())
+                if (ImGui::Selectable(s.name, !strcmp(S.satChoice, s.name))) { snprintf(S.satChoice, sizeof S.satChoice, "%s", s.name); plat::prefs().setS("inmsatSat", s.name); }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Normally found automatically from the decoded system table, the carrier frequencies and where the satellite stands in your sky (set your location under View > Map). Choose one here to override it.");
         if (ImGui::Checkbox("Inmarsat-C##inmc", &S.inmcOn)) plat::prefs().setI("inmsatInmc", S.inmcOn ? 1 : 0);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Also decode the 2 kHz Inmarsat-C channels (EGC safety and news broadcasts) found in the capture.");
     }

@@ -31,6 +31,9 @@ struct Manager::Impl {
     CarrierDetector det;
     uint64_t lastSearches = 0;
     int focusId = 0;
+    bool haveLoc = false;
+    double locLat = 0, locLon = 0;
+    std::string satManual;
     std::function<void(const std::string&)> log;
 
     struct Window {
@@ -293,6 +296,20 @@ struct Manager::Impl {
             s.snrDb = bestSnr; s.dataValid = s.messagesTotal > 0 || !s.egc.empty();
             s.blocksOk = s.susOk; s.blocksBad = s.susBad;
         }
+        // which satellite: the evidence of the decoded content, the carrier frequencies and the geometry (inmsat_satid.h)
+        {
+            SatInput si;
+            si.haveLocation = haveLoc; si.latDeg = locLat; si.lonDeg = locLon; si.manual = satManual;
+            for (const auto& r : s.carriers) if (r.type == CarrierType::AeroP && r.freqHz > 0) si.carriers.push_back({r.freqHz, r.bitRate, true});
+            for (const AeroTelemetry* a : as)
+                for (const auto& e : a->sys) { SatSysFact f; f.kind = e.kind; f.satId = e.satId; f.lonDeg = e.lonDeg; f.pMHz = e.pMHz; f.spotBeam = e.spotBeam; f.gesId = e.gesId; si.sys.push_back(f); }
+            for (const auto& w : wins) if (w->inmc) {
+                if (w->it.ncs.valid) si.inmcRegions.push_back(w->it.ncs.sat);
+                for (const auto& ch : w->it.channels) if (ch.sat >= 0) si.inmcRegions.push_back(ch.sat);
+            }
+            s.sat = identifySatellite(si);
+            for (auto& r : s.carriers) r.satellite = satNameForCarrier(s.sat, r.freqHz, r.bitRate);
+        }
         std::lock_guard<std::mutex> lk(snapMu);
         s.seq = ++seq;
         snap = std::move(s);
@@ -328,6 +345,8 @@ bool Manager::snapshot(Snapshot& out, uint64_t lastSeq) {
 void Manager::setCenter(double hz) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.centerHz = hz; }
 void Manager::setBudget(double u) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.budget = std::max(1.0, u); }
 void Manager::setInmcOn(bool on) { std::lock_guard<std::mutex> lk(p_->mu); p_->cfg.inmcOn = on; }
+void Manager::setLocation(bool known, double lat, double lon) { std::lock_guard<std::mutex> lk(p_->mu); p_->haveLoc = known; p_->locLat = lat; p_->locLon = lon; }
+void Manager::setSatelliteOverride(const std::string& name) { std::lock_guard<std::mutex> lk(p_->mu); p_->satManual = name; }
 void Manager::setFocus(int id) { std::lock_guard<std::mutex> lk(p_->mu); p_->focusId = id; }
 void Manager::setLogCallback(std::function<void(const std::string&)> cb) { std::lock_guard<std::mutex> lk(p_->mu); p_->log = std::move(cb); }
 

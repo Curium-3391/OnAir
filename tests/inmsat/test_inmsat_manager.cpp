@@ -44,6 +44,7 @@ int main() {
     mc.centerHz = 1545.0e6;
     Manager mgr;
     mgr.configure(mc);
+    mgr.setLocation(true, 54.7, 25.3);          // Lithuania: 64.5E is above the horizon
     std::vector<std::string> logs;
     mgr.setLogCallback([&](const std::string& s) { logs.push_back(s); });
     const double secs = 80;
@@ -105,6 +106,16 @@ int main() {
         CHECK(ok, "decoded message %s %s '%s' was not sent", d.registration.c_str(), d.label.c_str(), d.text.c_str());
     }
     CHECK(snap.messages.size() >= 6, "merged messages %zu", snap.messages.size());
+    // the satellite: the Aero system table (64.5E) and the Inmarsat-C bulletin board (IOR) both say 64.5E, the geometry agrees
+    printf("  satellite: %s\n", snap.sat.summary.c_str());
+    CHECK(snap.sat.valid && std::fabs(snap.sat.lonDeg - 64.5) < 0.1 && snap.sat.confidence >= 0.5, "satellite '%s' conf %.2f", snap.sat.name.c_str(), snap.sat.confidence);
+    if (!snap.sat.ranked.empty()) {
+        for (const auto& e : snap.sat.ranked[0].evidence) printf("    %s: %s %.2f %s\n", e.kind.c_str(), e.available ? "on" : "off", e.score, e.text.c_str());
+        CHECK(snap.sat.ranked[0].evidence[0].available && snap.sat.ranked[0].evidence[2].available, "content and geometry evidence present");
+    }
+    int named = 0;
+    for (const auto& c : snap.carriers) if (c.type == CarrierType::AeroP && !c.satellite.empty()) named++;
+    CHECK(named >= 1, "carriers with a satellite name: %d", named);
     CHECK(snap.susBad == 0, "bad SUs %llu", (unsigned long long)snap.susBad);
     CHECK(secs / cpu > 1.0, "slower than real time: %.2fx", secs / cpu);
     return testSummary("inmsat_manager");

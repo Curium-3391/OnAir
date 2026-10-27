@@ -28,6 +28,8 @@ public:
     bool telemetry(InmsatTelemetry& out, uint64_t lastSeq);
     void setLogCallback(std::function<void(const std::string&)> cb);
     void setCenterFrequency(double hz);       // absolute frequency of the capture centre (0 unknown): the carrier table shows absolute frequencies
+    void setLocation(bool known, double latDeg, double lonDeg);   // the user's position (satellite identification)
+    void setSatelliteOverride(const std::string& name);           // "" = automatic
     void setFocus(int carrierId);
     void setBudget(double units);             // CPU budget (Advanced); an Aero window costs 1
     void setInmarsatC(bool on);
