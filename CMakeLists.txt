@@ -1691,6 +1691,9 @@ if(DECT2_BUILD_TESTS)
   add_executable(test_channel_db tests/channels/test_channel_db.cpp)
   target_link_libraries(test_channel_db PRIVATE dect2core)
   add_test(NAME channel_db COMMAND test_channel_db)
+  add_executable(test_swbc tests/general/test_swbc.cpp)   # shortwave broadcast bands: complete, sorted, no overlaps, in the HF range, same as the band plan
+  target_link_libraries(test_swbc PRIVATE dect2core)
+  add_test(NAME swbc COMMAND test_swbc)
   add_executable(test_bandplan tests/bandplan/test_bandplan.cpp)   # band plans: built-in channel tables, validation, CSV / JSON import and export, damaged files
   target_link_libraries(test_bandplan PRIVATE dect2core)
   target_compile_definitions(test_bandplan PRIVATE DECT2_SOURCE_DIR="${ONAIR_ROOT}")
