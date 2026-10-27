@@ -1146,7 +1146,7 @@ void wideSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);
 void multiSwitch(App& a, ImVec2 plotMin, ImVec2 plotSize);   // the "Whole span" switch of the TV standards (wholeSpanTvState in plots.cpp)
 bool wholeSpanTvOffered(const App& a);
 float specCornerPopup(App& a, const char* label, const char* popId, ImVec2 plotMin, ImVec2 plotSize, float rightUsed, float reserveLeft, float dropY, bool on, const char* tip, void (*body)(App&));
-double clickTuneMhz(const App& a, double mhz);   // plots.cpp: where a click on the spectrum at mhz tunes (the mode's limits and raster); NAN: the mode is not tuned by a click
+double clickTuneMhz(const App& a, double mhz, bool snap = true);   // plots.cpp: where a click on the spectrum at mhz tunes (the mode's limits and raster); NAN: the mode is not tuned by a click
 void waterfall3dPlot(App& a, ImVec2 size);       // gfx/wf3d_plot.cpp: the 3D waterfall in place of the flat one (a.wf.s3d.on)
 void waterfall3dPopup(App& a);                   // gfx/wf3d_plot.cpp: its settings (in the waterfall popup)
 float bandPlanStripHeight();         // plots.cpp: one text line plus padding; follows the font and resize
