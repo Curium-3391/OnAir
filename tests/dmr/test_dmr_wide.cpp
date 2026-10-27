@@ -150,7 +150,8 @@ static void testDmrTalking() {
     std::vector<cf32> buf((size_t)(kFs * 0.05));
     DmrTelemetry t; uint64_t seq = 0;
     int inCallTrue = 0, inCall = 0, idleFalse = 0, idle = 0;
-    for (double s = 0; s < 30.0; s += 0.05) {
+    for (int i = 0; i < 600; i++) {   // 30 s in 50 ms steps
+        const double s = i * 0.05;
         sig.generate(buf.data(), buf.size());
         rx.feed(buf.data(), buf.size());
         if (rx.telemetry(t, seq)) seq = t.seq;
