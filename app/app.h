@@ -160,6 +160,7 @@ constexpr int kNumSlots = kNumFamilies + kNumSubModes;   // what keeps its own f
 struct App {
     Engine engine;
     int rxId = 1;                 // receiver number: RX 1 is the first (receivers.h)
+    std::string mainTabName;      // the main tab this receiver last showed (a tab's English name): shown again when its chip is selected again (#342)
     bool rxForcedMute = false, rxSavedMuted = false;   // only the receiver that plays gets sound: the others are muted
     NetTuner net{engine};      // network tuner (declared after the engine so that it stops first)
     bool netOn = false, netLan = false;
@@ -694,6 +695,8 @@ void languageMenuItems(App& a);
 void languageButton(App& a);
 void setUiLanguage(App& a, const std::string& code);   // empty: the system's language
 extern bool gTightTabs;   // the tabs of mainTabs() get less padding (a narrow pane)
+extern App* gTabOwner;      // the receiver whose main tab bar is being drawn (widgets.cpp): tabItem() notes the open tab on it
+extern void* gMainTabBar;   // that bar (an ImGuiTabBar*)
 void toggleFullscreen();
 bool analogFullPicture(App& a, ImVec2 disp);   // analog TV and FPV video: the picture over the whole window (video-only view); false when there is none yet (#326)
 bool analogHasPicture(const App& a);
