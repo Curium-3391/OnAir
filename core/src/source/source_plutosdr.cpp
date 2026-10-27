@@ -740,17 +740,20 @@ void listPluto(std::vector<DeviceInfo>& out) {
     if (!iio().ok && !iio().v1) return;
     auto add = [&](const std::string& uri, const std::string& desc) {
         for (const auto& d : out) if (d.board == "pluto" && d.nativeArgs == uri) return;
-        out.push_back(plutoEntry(uri, desc, true, false));   // a scan result: never a network probe
+        // a scan result is never a network probe, unless the user turned on "Search the network for radios": the network boards found then
+        // are asked which firmware they run, as the ones added by address are
+        out.push_back(plutoEntry(uri, desc, true, networkDiscovery()));
     };
-    // USB only. The network boards are not scanned for (mDNS, "usb:ip"): a network Pluto is listed when the user adds its address (Add network
-    // radio), so no network device is contacted just by listing (#215)
-    for (const char* backends : {"usb"}) {
+    // USB always. The network boards (libiio's "ip" backend: mDNS) only when "Search the network for radios" is on; otherwise a network Pluto is
+    // listed when the user adds its address (Add network radio), so no network device is contacted just by listing (#215)
+    for (const char* backends : {"usb", "ip"}) {
+        if (backends[0] == 'i' && !networkDiscovery()) continue;
         IioApi::iio_scan_context* sc = iio().v1 ? nullptr : iio().create_scan_context(backends, 0);
         if (!sc) continue;
         IioApi::iio_context_info** info = nullptr;
         const auto n = iio().scan_context_get_info_list(sc, &info);
         if (n <= 0) { if (info) iio().context_info_list_free(info); iio().scan_context_destroy(sc); continue; }
-        for (long i = 0; i < (long)n && i < 16; i++) {
+        for (long i = 0; i < (long)n && i < 32; i++) {
             const char* desc = iio().context_info_get_description(info[i]);
             const char* uri = iio().context_info_get_uri(info[i]);
             if (!uri || !desc) continue;
@@ -759,7 +762,6 @@ void listPluto(std::vector<DeviceInfo>& out) {
         }
         if (info) iio().context_info_list_free(info);
         iio().scan_context_destroy(sc);
-        break;
     }
     if (const char* u = getenv("DECT2_PLUTO_URI")) add(u, "");   // a PlutoSDR on the network, e.g. ip:192.168.2.1
 }
