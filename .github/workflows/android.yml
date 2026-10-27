@@ -35,8 +35,8 @@ jobs:
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: android } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: "21" }
       - uses: gradle/actions/setup-gradle@v4
       - name: JNI declarations match the C++ bridge
@@ -45,7 +45,7 @@ jobs:
         run: bash -n tools/build_native.sh && python3 -m py_compile tools/*.py
       - name: Debug APK (Kotlin compile, resources, manifest)
         run: ./gradlew --no-daemon assembleDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: onair-android-debug-no-native, path: android/app/build/outputs/apk/debug/*.apk, retention-days: 7 }
 
   apk:
@@ -54,8 +54,8 @@ jobs:
     runs-on: macos-15            # the maintainer's own build host: Homebrew gives the pkg-config headers the core configures with
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: "21" }
       - uses: gradle/actions/setup-gradle@v4
       - name: Build tools and headers
@@ -112,5 +112,5 @@ jobs:
           done
           rm -f "$RUNNER_TEMP/onair-release.jks"
           ls -la out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: onair-android-apk, path: out/*.apk, retention-days: 30 }

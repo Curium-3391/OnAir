@@ -33,7 +33,7 @@ jobs:
       base: ${{ steps.v.outputs.base }}
       skip: ${{ steps.skip.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: v
         run: |
@@ -80,14 +80,14 @@ jobs:
     if: vars.ONAIR_WINDOWS_IN_ACTIONS == 'true' && needs.version.outputs.skip != 'true'
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install cross toolchain
         run: |
           brew install cmake pkg-config nasm mingw-w64
           rustup target add x86_64-pc-windows-gnu   # the Rust protocol layers (rust/README.md) are linked into the exe
       - name: Cache Windows cross prefix
         id: winpfx
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: onair-win-prefix
           key: onair-win-prefix-${{ hashFiles('tools/package/cross_deps_windows.sh', 'packaging/windows/mingw-toolchain.cmake') }}
@@ -104,7 +104,7 @@ jobs:
           ONAIR_WIN_PREFIX: ${{ github.workspace }}/onair-win-prefix
           ONAIR_WIN_BUILD: build-windows
         run: tools/package/make_windows_cross.sh "${{ needs.version.outputs.ver }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x64
           path: |
@@ -124,20 +124,20 @@ jobs:
           - { arch: arm64, os: macos-15 }
           - { arch: x86_64, os: macos-15-intel }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: brew install cmake pkg-config nasm hackrf soapysdr soapyremote libusb glfw librtlsdr airspy airspyhf libbladerf limesuite uhd hamlib openssl@3   # radio libraries and Hamlib go into the app (tools/package/bundle_macos.py)
       # No Homebrew FFmpeg (it is --enable-gpl): the LGPL static build of tools/package/build_ffmpeg_static.sh, cached per architecture and script version
       - name: Cache the static FFmpeg
         id: ffmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with: { path: ~/ffmpeg, key: "ffmpeg-8.0-static-macos-${{ matrix.arch }}-${{ hashFiles('tools/package/build_ffmpeg_static.sh') }}" }
       - name: Build FFmpeg (LGPL, static, only what OnAir uses)
         if: steps.ffmpeg.outputs.cache-hit != 'true'
         run: tools/package/build_ffmpeg_static.sh "$HOME/ffmpeg"
       - name: Build the app and the .dmg
         run: FFMPEG_PREFIX="$HOME/ffmpeg" tools/package/make_dmg.sh "${{ needs.version.outputs.ver }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: "macos-dmg-${{ matrix.arch }}", path: build-release/*.dmg }
 
   linux:
@@ -152,21 +152,21 @@ jobs:
           - { arch: x86_64, os: ubuntu-22.04 }
           - { arch: arm64, os: ubuntu-22.04-arm }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential file cmake pkg-config ccache nasm patchelf curl xz-utils libhackrf-dev libsoapysdr-dev libusb-1.0-0-dev libglfw3-dev libairspy0 libbladerf2 libiio0 liblimesuite20.10-1 libuhd4.1.0 libhamlib-dev libssl-dev
       - name: Cache the static FFmpeg
         id: ffmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with: { path: ~/ffmpeg, key: "ffmpeg-8.0-static-${{ matrix.arch }}-${{ hashFiles('tools/package/build_ffmpeg_static.sh') }}" }
       - name: "Build FFmpeg (static, only what OnAir uses, so that the packages do not depend on the FFmpeg of the system they are installed on)"
         if: steps.ffmpeg.outputs.cache-hit != 'true'
         run: tools/package/build_ffmpeg_static.sh "$HOME/ffmpeg"
       - name: "Gather the radio libraries (RTL-SDR is built here from the RTL-SDR Blog source: the distribution's librtlsdr0 cannot drive the V4)"
         run: tools/package/collect_radio_libs_linux.sh "$GITHUB_WORKSPACE/build/radiolibs"
-      - uses: actions/cache@v4   # ccache, same scheme as ci.yml; separate cache per architecture
+      - uses: actions/cache@v6   # ccache, same scheme as ci.yml; separate cache per architecture
         with:
           path: .ccache
           key: ccache-release-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-${{ github.sha }}
@@ -198,7 +198,7 @@ jobs:
           test "$(stat -c %s smoke/shot.png)" -gt 10000
           dpkg-deb -I build/onair_*.deb | head -12
           { echo "### Linux ${{ matrix.arch }} sizes"; echo '```'; ls -l build/onair_*.deb build/onair-*-portable.tar.gz; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: "linux-${{ matrix.arch }}", path: "build/onair_*.deb\nbuild/onair-*-portable.tar.gz" }
 
   # Windows: built on a Mac with tools/package/make_windows_cross.sh, which ships the RTL-SDR, Airspy, BladeRF and PlutoSDR
@@ -211,7 +211,7 @@ jobs:
     if: (startsWith(github.ref, 'refs/tags/v') || (startsWith(github.ref, 'refs/heads/release-') && github.event_name == 'push')) && needs.version.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
       - name: Create the release
         env:
@@ -255,7 +255,7 @@ jobs:
       needs.windows.result == 'success'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: windows-x64, path: dist }
       - name: Upload Windows zip and installer
         env:
@@ -279,8 +279,8 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4   # this run's own .debs: the release is still a draft here, so its assets cannot be downloaded anonymously
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8   # this run's own .debs: the release is still a draft here, so its assets cannot be downloaded anonymously
         with: { pattern: "linux-*", path: packaging/docker/debs, merge-multiple: true }
       - id: img
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/onair" >> "$GITHUB_OUTPUT"   # registry names are lower case
