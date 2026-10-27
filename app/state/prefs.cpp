@@ -412,6 +412,7 @@ void loadPrefs(App& a) {
         w.dwellSec = d.getD("wideDwell", w.dwellSec); w.holdSec = d.getD("wideHold", w.holdSec);
         w.maxCarriers = (int)d.getI("wideMax", w.maxCarriers); w.cpuBudget = d.getD("wideCpu", w.cpuBudget);
         w.usePriors = d.getI("widePriors", w.usePriors ? 1 : 0) != 0; w.priorsOnly = d.getI("widePriorsOnly", w.priorsOnly ? 1 : 0) != 0;
+        w.rasterKhz = d.getD("wideRasterKhz", w.rasterKhz); w.snapFreq = d.getI("wideSnap", w.snapFreq ? 1 : 0) != 0;
         a.wideTuningDirty = true;
     }
     if (a.rxId == 1 && a.mapSend && !a.mapConsent) a.mapSend = false;   // never on without consent
@@ -480,6 +481,7 @@ void savePrefs(const App& a) {
         d.setD("wideOnDb", w.onDb); d.setD("wideOffDb", w.offDb); d.setD("wideMinSnr", w.minSnrDb); d.setD("wideDwell", w.dwellSec);
         d.setD("wideHold", w.holdSec); d.setI("wideMax", w.maxCarriers); d.setD("wideCpu", w.cpuBudget);
         d.setI("widePriors", w.usePriors ? 1 : 0); d.setI("widePriorsOnly", w.priorsOnly ? 1 : 0);
+        d.setD("wideRasterKhz", w.rasterKhz); d.setI("wideSnap", w.snapFreq ? 1 : 0);
     }
     saveFmStations(d, a);
     d.setS("fmSaved", fmSavedEncode(a.fmSaved));   // the saved-stations library, not the scan results
