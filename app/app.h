@@ -354,6 +354,7 @@ struct App {
     bool signallabOpen = false;    // Tools > Signal Lab: blind analysis of an unknown digital signal, stage by stage, with a bit viewer (signallab_ui.cpp)
     bool modeBuilderOpen = false;  // Tools > Mode Builder: decoders built from a JSON definition (modebuilder_ui.cpp)
     bool txStudioOpen = false;     // Tools > TX studio: make, measure, decode-check and save a transmit signal without a radio (tx_studio.cpp)
+    bool videoGenOpen = false;     // Tools > Digital video generator: camera / picture / video file to a .ts file or a UDP / RTP stream (videogen_ui.cpp)
     bool pluginsOpen = false;      // View > Plugins: the plugin manager (plugin/plugin_app.cpp)
     bool automationOpen = false;   // View > Automations: rules and scripts (automation_ui.cpp)
     dect2::FeedConfig feeds;  // the data feeds out (all off by default), saved with the preferences
@@ -924,6 +925,7 @@ void modeBuilderFrame(App& a);    // modebuilder_ui.cpp, every frame: lists the 
 void modeBuilderOpenText(const std::string& json);   // modebuilder_ui.cpp: opens the Mode Builder with this definition (Protocol lab > Export)
 bool customModeSink(const float* iq, size_t nComplex, double rate);   // modebuilder_ui.cpp: the samples of a running custom mode (true: taken)
 void txStudioWindow(App& a);   // tx_studio.cpp: Tools > TX studio (a.txStudioOpen); no radio, nothing is transmitted
+void videoGenWindow(App& a);   // videogen_ui.cpp: Tools > Digital video generator (a.videoGenOpen); stands alone, no link to the receiver or transmitter
 void pluginFrame(App& a);          // plugin/plugin_app.cpp, every frame: discovery at the first call, starts and stops the running plugin mode, ticks the host
 void pluginShutdown();             // at exit: stops the plugins and removes the crash marker
 void pluginManagerWindow(App& a);  // View > Plugins
