@@ -705,3 +705,10 @@ Owner: "remove all tx blocks ... just when they tx they cant send data to the ma
 
 ## 2026-10-26: icom_r8600 CI crash
 Cause: the firmware test indexed `r[1]` after earlier failing parses had cleared `r` (read of an empty vector, undefined behaviour). It happened to pass on the Mac. Found with an ASan run on the Linux runner. Product code is not affected (the USB scan and the firmware import are fine). Fix: the sanity checks use the saved `good` copy.
+
+## 2026-10-27: pull requests merged for 3.3
+- #347 (drelectro): P25 follower keeps decoding the control channel in follow-only mode; the first followed Phase 2 call is heard.
+- #345 (F5OEO): Pluto native scan also searches the network when "Search the network for radios" is on.
+- #346 (peterdewitte): Windows cameras listed and opened by DirectShow name.
+- #343 (peterdewitte): Tools > Digital video generator (DVB-S/T contest streams; encoders come from the user's FFmpeg, no codec shipped).
+Checked on a combined merge: dect2 app builds, test_videogen passes (run from the source root).
