@@ -473,7 +473,7 @@ struct P25p2Receiver::Impl {
             break;
         case p25p2::kMacEndPtt:
             if (len >= p25p2::kEndLen) {
-                tel.nac = (int)(p25p2::be16(m + p25p2::kEndColorOff) >> 4);
+                tel.nac = (int)(p25p2::be16(m + p25p2::kEndColorOff) & 0xFFF);
                 if (tel.now[ci].active) endCall(ci, true);
             }
             break;
@@ -483,7 +483,7 @@ struct P25p2Receiver::Impl {
         case p25p2::kMacSignal: case p25p2::kMacActive: case p25p2::kMacHangtime: {
             int pos = 1;
             while (pos < len) {
-                const int op = m[pos], ml = p25p2::macMsgLen(op);
+                const int op = m[pos], ml = (op >> 6) == 2 && pos + 2 < len && (m[pos + 2] & 0x3F) ? (m[pos + 2] & 0x3F) : p25p2::macMsgLen(op);   // a manufacturer's message carries its own length
                 if (op == p25p2::kMsgNull || ml == 0 || pos + ml > len) break;
                 if (op == p25p2::kMsgGrpVUser) userMsg(ci, m[pos + 1], (int)p25p2::be16(m + pos + 2), (int)p25p2::be24(m + pos + 4), true);
                 else if (op == p25p2::kMsgUuVUser) userMsg(ci, m[pos + 1], (int)p25p2::be24(m + pos + 2), (int)p25p2::be24(m + pos + 5), false);
@@ -677,9 +677,12 @@ struct P25p2Receiver::Impl {
             if (facch && vocUsed[ci]) { ambe[ci].reset(); vocUsed[ci] = false; }   // a call boundary: the vocoder starts afresh
             uint8_t pay[p25p2::kPayloadDibits];
             p25p2::payloadGet(duid == p25p2::kDuidSacchClear || duid == p25p2::kDuidFacchClear ? buf : d, pay);
-            uint8_t mac[p25p2::kFacchMacBytes];
+            uint8_t mac[p25p2::kFacchMacBytes + 4];
             int fixed = 0;
-            if (p25p2::macDecode(facch, pay, mac, &fixed)) {
+            if (p25p2::macDecodeAir(facch, pay, mac, &fixed)) {   // the coding of the standard
+                tel.blocksOk++; tel.rsCorrected += (uint64_t)fixed; tel.macAir++;
+                macPdu(ci, mac, facch ? p25p2::kFacchAirBytes : p25p2::kSacchAirBytes);
+            } else if (p25p2::macDecode(facch, pay, mac, &fixed)) {   // OnAir's own layout (the test signal of earlier versions); never expected on a real channel
                 tel.blocksOk++; tel.rsCorrected += (uint64_t)fixed;
                 macPdu(ci, mac, facch ? p25p2::kFacchMacBytes : p25p2::kSacchMacBytes);
             } else tel.blocksBad++;
