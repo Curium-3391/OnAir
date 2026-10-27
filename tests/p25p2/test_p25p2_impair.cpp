@@ -132,6 +132,10 @@ int main() {
     { Scn s{"cfo +2.6 kHz"}; s.cfo = 2600; S(s); }
     { Scn s{"cfo -2.6 kHz, snr 16 dB"}; s.cfo = -2600; s.snr = 16; S(s); }
     { Scn s{"noise only, 14 s"}; s.noiseOnly = true; s.snr = 0; s.harsh = true; S(s); }
+    { Scn s{"cfo +4 kHz"}; s.cfo = 4000; S(s); }
+    { Scn s{"cfo -5 kHz"}; s.cfo = -5000; S(s); }
+    { Scn s{"cfo +5 kHz, 960 ksps, snr 16 dB"}; s.cfo = 5000; s.rate = 960000; s.snr = 16; S(s); }
+    { Scn s{"cfo +6 kHz"}; s.cfo = 6000; S(s); }
     { Scn s{"clock +30 ppm, cfo +1 kHz"}; s.ppm = 30; s.cfo = 1000; S(s); }
     { Scn s{"snr 14 dB"}; s.snr = 14; S(s); }
     { Scn s{"snr 10 dB, cfo -1.5 kHz"}; s.snr = 10; s.cfo = -1500; s.harsh = true; S(s); }
@@ -143,6 +147,7 @@ int main() {
     { Scn s{"drop-out 0.3 s every 2 s"}; s.dropSec = 0.3; s.harsh = true; S(s); }
     if (table) printf("%-34s %8s %8s %7s %6s %6s %6s\n", "scenario", "lock(s)", "voice%", "ess%", "fclear", "fcalls", "calls");
     for (const Scn& s : scn) {
+        if (getenv("P25P2_ONLY") && !strstr(s.name, getenv("P25P2_ONLY"))) continue;
         const Result r = run(s);
         if (table) printf("%-34s %8.2f %7.1f%% %6.1f%% %6d %6d %6s   syncs %llu unlocks %llu realigns %llu cfo %.0f\n", s.name, r.lockSec, r.voicePct, r.essPct, r.falseClear, r.falseCalls, r.callsOk ? "yes" : "NO", r.syncs, r.unlocks, r.realigns, r.cfo);
         CHECK(r.falseClear == 0, "%s: %d frames of the encrypted call handed on as clear", s.name, r.falseClear);
