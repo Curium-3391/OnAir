@@ -141,7 +141,7 @@ Links: [Dear ImGui](https://github.com/ocornut/imgui); [stb_truetype, stb_rect_p
 
 OnAir exists because of the people below: they sent fixes, reported bugs, shared recordings, translated and suggested ideas. The maintainer, [Kristijonas Adomaitis](https://github.com/adswill), is the author and is not repeated here. Only names people already use in public are shown. **Want your name changed or removed? Tell us on Discord or open an issue.**
 
-## People (83)
+## People (86)
 
 | Who | What | Kind | Where | Reference |
 |---|---|---|---|---|
@@ -183,6 +183,8 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 | [drelectro](https://github.com/drelectro) | RFNM native receive driver | pull request | Radios | [#149](https://github.com/adswill/OnAir/issues/149) |
 | [drelectro](https://github.com/drelectro) | Wi-SUN FAN decoder with regional band plans | pull request | Wi-SUN FAN | [#147](https://github.com/adswill/OnAir/issues/147) |
 | [drelectro](https://github.com/drelectro) | ANZ 915 MeshCore Mid band plan | pull request | MeshCore | [#124](https://github.com/adswill/OnAir/issues/124) |
+| [drelectro](https://github.com/drelectro) | P25 follower keeps decoding the control channel in follow-only mode; first call heard | pull request | P25 | [#347](https://github.com/adswill/OnAir/issues/347) |
+| [drfruct](https://github.com/drfruct) | DMR Whole span: the sound goes to a voice call, not to a carrier only locked | pull request | DMR | [#352](https://github.com/adswill/OnAir/issues/352) |
 | [ea4gja](https://github.com/ea4gja) | Amateur television and PAL-FM requests | idea | Analog TV | [#13](https://github.com/adswill/OnAir/issues/13), [#15](https://github.com/adswill/OnAir/issues/15) |
 | [ea4hwg](https://github.com/ea4hwg) | SDRplay RSPduo tuner 2 API error | bug report | Radios | [#31](https://github.com/adswill/OnAir/issues/31) |
 | [f0cyf](https://github.com/f0cyf) | HFDL, Orbcomm, VDL4 and AIS reports | bug report | HFDL; Orbcomm; VDL4; AIS | [#66](https://github.com/adswill/OnAir/issues/66), [#181](https://github.com/adswill/OnAir/issues/181), [#182](https://github.com/adswill/OnAir/issues/182), [#87](https://github.com/adswill/OnAir/issues/87) |
@@ -196,6 +198,7 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 | [F5OEO](https://github.com/F5OEO) | DAB PAD, FIC analysis, Analyzer tab, announcements, recording; cheaper on ARM boards | pull request | DAB / DAB+ | [#47](https://github.com/adswill/OnAir/issues/47), [bb92f799](https://github.com/adswill/OnAir/commit/bb92f799) |
 | [F5OEO](https://github.com/F5OEO) | ISDB-T decodes the real signal, FEC on a worker thread | pull request | ISDB-T | [#86](https://github.com/adswill/OnAir/issues/86) |
 | [F5OEO](https://github.com/F5OEO) | GSM-R broadcast information | pull request | GSM-R | [#41](https://github.com/adswill/OnAir/issues/41) |
+| [F5OEO](https://github.com/F5OEO) | Pluto: the native driver scans the network and asks boards for their firmware | pull request | Network radios | [#345](https://github.com/adswill/OnAir/issues/345) |
 | [fe8769a](https://github.com/fe8769a) | Build crash on DragonOS | bug report | Build | [#43](https://github.com/adswill/OnAir/issues/43) |
 | [ffishman](https://github.com/ffishman) | Larger sample buffers for network Plutos; rtl_tcp greeting wait; headless --net-radio | fix | Network radios | [#119](https://github.com/adswill/OnAir/issues/119), [#186](https://github.com/adswill/OnAir/issues/186), [#187](https://github.com/adswill/OnAir/issues/187) |
 | [ffishman](https://github.com/ffishman) | Windows: files in folders with accents | fix | Windows | [#168](https://github.com/adswill/OnAir/issues/168) |
@@ -205,6 +208,7 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 | [ffishman](https://github.com/ffishman) | Optional full RDS dwell in the FM scan | pull request | FM | [#111](https://github.com/adswill/OnAir/issues/111) |
 | [ffishman](https://github.com/ffishman) | Brazilian Portuguese review and restore | translation | Languages | [#141](https://github.com/adswill/OnAir/issues/141), [#144](https://github.com/adswill/OnAir/issues/144) |
 | [FleXoft](https://github.com/FleXoft) | macOS Sequoia run problem | bug report | macOS | [#3](https://github.com/adswill/OnAir/issues/3) |
+| [frank-1225](https://github.com/frank-1225) | HFDL: ICAO octet bit order matches dumphfdl | pull request | HFDL | [#327](https://github.com/adswill/OnAir/issues/327) |
 | [gmg2719](https://github.com/gmg2719) | 5G NR and LTE band scan requests; LimeSDR and UHD requests | idea | 5G NR cells; Cell towers | [#64](https://github.com/adswill/OnAir/issues/64), [#65](https://github.com/adswill/OnAir/issues/65), [#89](https://github.com/adswill/OnAir/issues/89) |
 | [gmg2719](https://github.com/gmg2719) | Four DTMB IQ recordings and many decode reports | samples | DTMB | [#38](https://github.com/adswill/OnAir/issues/38), [#61](https://github.com/adswill/OnAir/issues/61), [#62](https://github.com/adswill/OnAir/issues/62), [#63](https://github.com/adswill/OnAir/issues/63), [#88](https://github.com/adswill/OnAir/issues/88), [#184](https://github.com/adswill/OnAir/issues/184) |
 | [grahampaull](https://github.com/grahampaull) | Lost spectrum display | bug report | Interface | [#142](https://github.com/adswill/OnAir/issues/142) |
@@ -234,6 +238,9 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 | [OnesAndZer0s](https://github.com/OnesAndZer0s) | FlexRadio support | idea | Radios | [#95](https://github.com/adswill/OnAir/issues/95) |
 | [Pacjunk](https://github.com/Pacjunk) | DAB+ confused with multiple multiplexes | bug report | DAB / DAB+ | [#179](https://github.com/adswill/OnAir/issues/179) |
 | [pbranly](https://github.com/pbranly) | macOS Sequoia DAB/DVB testing | testing | DAB / DAB+ | [#2](https://github.com/adswill/OnAir/issues/2), [#3](https://github.com/adswill/OnAir/issues/3), [#5](https://github.com/adswill/OnAir/issues/5) |
+| [peterdewitte](https://github.com/peterdewitte) | Digital video generator tool | pull request | Tools | [#343](https://github.com/adswill/OnAir/issues/343) |
+| [peterdewitte](https://github.com/peterdewitte) | Windows cameras opened by name and listed through DirectShow | pull request | Video input | [#346](https://github.com/adswill/OnAir/issues/346) |
+| [peterdewitte](https://github.com/peterdewitte) | CI: Node 24 actions, pinned docker and setup-gradle actions, LF line endings | pull request | Interface | [#353](https://github.com/adswill/OnAir/issues/353), [#354](https://github.com/adswill/OnAir/issues/354), [#355](https://github.com/adswill/OnAir/issues/355) |
 | [PU2SWX](https://github.com/PU2SWX) | Portuguese (Brazil) interface translation | translation | Languages | [#117](https://github.com/adswill/OnAir/issues/117), [#141](https://github.com/adswill/OnAir/issues/141) |
 | [py2gn](https://github.com/py2gn) | Crash on CPUs without AVX | bug report | Windows | [#74](https://github.com/adswill/OnAir/issues/74) |
 | [PY2PLL](https://github.com/PY2PLL) | AirSpy Discovery stop and Meteor M2-3 LRPT reports | bug report | Meteor-M LRPT | [#78](https://github.com/adswill/OnAir/issues/78), [#79](https://github.com/adswill/OnAir/issues/79) |
@@ -281,6 +288,7 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 - **Cell towers**: gmg2719, Mikki / YRPÄ
 - **DAB / DAB+**: dj1fti, F5OEO, lakisfm1, Pacjunk, pbranly, ranaud80, ryanginn
 - **DECT cordless phones**: bithunter-99
+- **DMR**: drfruct
 - **DTMB**: gmg2719, stdevPavelmc, xpwina, xxj737, YZYMC
 - **DVB**: A2ureIm4la, ar8001, Debegege, dhihacker, drelectro, F5OEO, zanco48
 - **DVB-C**: F5OEO, grue74
@@ -293,8 +301,9 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 - **General receiver**: kevgfire
 - **Globalstar**: WasyaTheWolf
 - **HD Radio**: tsalisbury0
-- **HFDL**: drelectro, f0cyf, ffishman
+- **HFDL**: drelectro, f0cyf, ffishman, frank-1225
 - **ISDB-T**: dhihacker, F5OEO
+- **Interface**: peterdewitte
 - **Ionospheric sounders**: niuniu1138
 - **Iridium**: WasyaTheWolf
 - **LBJ**: YZYMC
@@ -304,14 +313,17 @@ OnAir exists because of the people below: they sent fixes, reported bugs, shared
 - **Meshtastic**: f5gkw, ffishman, KvaKKK, WispAyr
 - **Meteor-M LRPT**: PY2PLL
 - **NAVTEX**: Axpelle
+- **Network radios**: F5OEO
 - **Orbcomm**: f0cyf
 - **P25**: drelectro
 - **QO-100**: ic706mk2, WolfgangSchreiner
 - **TETRAPOL**: f5gkw
 - **TV sat beacon decoder**: Arclamp (CasualArclamp)
 - **Time signals**: michaelgeorge001, tortyl
+- **Tools**: peterdewitte
 - **VDL2**: IZ5RZR
 - **VDL4**: f0cyf
+- **Video input**: peterdewitte
 - **Weather fax**: Axpelle
 - **Wi-Fi HaLow (802.11ah)**: tsalisbury0
 - **Wi-SUN FAN**: drelectro
