@@ -712,3 +712,8 @@ Cause: the firmware test indexed `r[1]` after earlier failing parses had cleared
 - #346 (peterdewitte): Windows cameras listed and opened by DirectShow name.
 - #343 (peterdewitte): Tools > Digital video generator (DVB-S/T contest streams; encoders come from the user's FFmpeg, no codec shipped).
 Checked on a combined merge: dect2 app builds, test_videogen passes (run from the source root).
+
+## 2026-10-27: pull requests #352 and #353 (3.3)
+
+- #352 (drfruct): whole-span sound goes to a carrier with a voice call before one that is only locked (DMR first). wide_bank_audio and dmr_wide pass. Only clash: the unmerged fix33-discord branch touches the same test file (test_dmr_wide.cpp), a text conflict to resolve when it merges.
+- #353 (peterdewitte): GitHub Actions bumped to Node 24 versions (checkout v7, cache v6, upload v7, download v8, setup-java v6); tags verified, release.yml flow unchanged. Docker pins and gradle action left for a later change.
