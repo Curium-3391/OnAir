@@ -717,3 +717,10 @@ Checked on a combined merge: dect2 app builds, test_videogen passes (run from th
 
 - #352 (drfruct): whole-span sound goes to a carrier with a voice call before one that is only locked (DMR first). wide_bank_audio and dmr_wide pass. Only clash: the unmerged fix33-discord branch touches the same test file (test_dmr_wide.cpp), a text conflict to resolve when it merges.
 - #353 (peterdewitte): GitHub Actions bumped to Node 24 versions (checkout v7, cache v6, upload v7, download v8, setup-java v6); tags verified, release.yml flow unchanged. Docker pins and gradle action left for a later change.
+
+## 2026-10-27: issues #351 #350 #344 #342 (fix33-issues2)
+- #351 APRS transmit 50 kHz low. Cause: most modes listen `tuneOffsetHz` above the dial (away from the radio's DC spike) and their generators put the signal that far below the radio's centre, but the transmitter told the radio the dial itself, so every such mode went out `tuneOffsetHz` low (packet 50 kHz; a survey of the generators showed 54 modes with the signal at -tuneOffset). `TxSession` now adds `txModeTuneOffsetHz(mode)` to the radio frequency (not for modes with their own transmit chain, not for Hamlib rigs which only key); the IQ file sink labels its centre with the radio's frequency; the TX panel shows the real "radio is told" value. Anyone who typed a manual offset to compensate must set it back to 0. Not done: the "Repeat" / "seconds" fields (a single frame is repeated back to back for the whole time; what the reporter expects is unclear).
+- #350 RDS text with Chinese stations: text buffers keep bytes and become UTF-8 on output; 0x80..0xFF as EBU Latin, or GB2312 when the bytes pair up (auto); tested with synthetic groups.
+- #344 text can be copied: hovering any ImGui text and Ctrl+C (or Ctrl+Insert) copies it, a right-click gives a "Copy" menu (patch in third_party/imgui TextEx).
+- #342 the Auto gain choice is saved per receiver (`agcOn`), and each receiver remembers its main tab: selecting its chip again returns to it.
+- #349 P25 with two radios: not built; see the design in the report (needs the follower's voice-radio action and an app side driving a second receiver).
