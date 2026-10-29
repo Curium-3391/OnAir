@@ -1,3 +1,5 @@
+# Cloud-only test build for PR #366. This branch keeps the FM UI patch but
+# does not publish any release; only the Apple Silicon DMG job is enabled.
 name: Release
 
 # A version tag (git tag v0.2.6 && git push --tags) builds the installers and attaches them to that release.
@@ -77,7 +79,7 @@ jobs:
     needs: version
     # Off by default: the dependency prefix (build-windows-deps/src) exists only on the maintainer's machines. The Windows files come from
     # package.yml in the private adswill/OnAir-ci (tools/release/release.sh). Set the repository variable ONAIR_WINDOWS_IN_ACTIONS=true to use this job.
-    if: vars.ONAIR_WINDOWS_IN_ACTIONS == 'true' && needs.version.outputs.skip != 'true'
+    if: false  # PR #366 hardware-test build: only macOS arm64
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
@@ -122,7 +124,6 @@ jobs:
       matrix:
         include:
           - { arch: arm64, os: macos-15 }
-          - { arch: x86_64, os: macos-15-intel }
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -137,13 +138,17 @@ jobs:
         run: tools/package/build_ffmpeg_static.sh "$HOME/ffmpeg"
       - name: Build the app and the .dmg
         run: FFMPEG_PREFIX="$HOME/ffmpeg" tools/package/make_dmg.sh "${{ needs.version.outputs.ver }}"
+      - name: Verify and describe test DMG
+        run: |
+          hdiutil verify build-release/*.dmg
+          shasum -a 256 build-release/*.dmg | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
-        with: { name: "macos-dmg-${{ matrix.arch }}", path: build-release/*.dmg }
+        with: { name: "fm-status-test-macos-${{ matrix.arch }}", path: build-release/*.dmg, if-no-files-found: error }
 
   linux:
     name: Linux ${{ matrix.arch }} packages
     needs: version
-    if: needs.version.outputs.skip != 'true'
+    if: false  # PR #366 hardware-test build: only macOS arm64
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
